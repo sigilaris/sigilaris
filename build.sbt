@@ -72,10 +72,41 @@ ThisBuild / version           := "0.0.1-SNAPSHOT"
 ThisBuild / scalaVersion      := V.Scala
 ThisBuild / semanticdbEnabled := true
 
+ThisBuild / versionScheme     := Some("early-semver")
+ThisBuild / homepage          := Some(url("https://github.com/sigilaris/sigilaris"))
+ThisBuild / licenses          := List("AGPL-3.0" -> url("https://www.gnu.org/licenses/agpl-3.0.en.html"))
+ThisBuild / developers := List(
+  Developer(
+    id = "sungkmi",
+    name ="Heungjin Kim",
+    email = "contact@sigilaris.org",
+    url = url("https://github.com/sungkmi")
+  )
+)
+ThisBuild / scmInfo := Some(
+  ScmInfo(
+    url("https://github.com/sigilaris/sigilaris"),
+    "scm:git@github.com:sigilaris/sigilaris.git"
+  )
+)
+ThisBuild / sonatypeCredentialHost := "central.sonatype.com"
+
+Global / useGpgPinentry := false
+Global / pgpPassphrase  := sys.env.get("PGP_PASSPHRASE").map(_.toArray)
+
+ThisBuild / publishTo := {
+  val snapshots = "https://central.sonatype.com/repository/maven-snapshots/"
+  if (isSnapshot.value) Some("central-snapshots" at snapshots)
+  else Some("releases" at "https://central.sonatype.com/api/v1/publisher")
+}
+
 lazy val root = (project in file("."))
   .aggregate(
     core.jvm,
     core.js,
+  )
+  .settings(
+    publish / skip := true,
   )
 
 lazy val core = crossProject(JSPlatform, JVMPlatform)
