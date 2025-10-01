@@ -109,6 +109,7 @@ lazy val root = (project in file("."))
     core.jvm,
     core.js,
   )
+  .enablePlugins(TypelevelSitePlugin)
   .settings(
     publish / skip := true,
   )
