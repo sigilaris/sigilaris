@@ -5,17 +5,17 @@ val V = new {
   val catsEffect = "3.6.3"
   val tapir      = "1.11.44"
   val sttp       = "4.0.11"
-  val circe      = "0.14.14"
+  val circe      = "0.14.15"
   val iron       = "3.2.0"
-  val scodecBits = "1.1.38"
+  val scodecBits = "1.2.4"
   val fs2        = "3.12.2"
 
   val bouncycastle = "1.70"
   val sway         = "0.16.2"
 
-  val scribe          = "3.13.4"
-  val hedgehog        = "0.10.1"
-  val munitCatsEffect = "2.0.0"
+  val scribe          = "3.17.0"
+  val hedgehog        = "0.13.0"
+  val munitCatsEffect = "2.2.0-RC1"
 
   val scalaJavaTime = "2.3.0"
   val jsSha3        = "0.8.0"
@@ -60,8 +60,8 @@ val Dependencies = new {
 
   lazy val tests = Def.settings(
     libraryDependencies ++= Seq(
-      "qa.hedgehog"  %%% "hedgehog-munit"    % V.hedgehog        % Test,
-      "org.typelevel" %% "munit-cats-effect" % V.munitCatsEffect % Test,
+      "qa.hedgehog"   %%% "hedgehog-munit"    % V.hedgehog        % Test,
+      "org.typelevel" %%% "munit-cats-effect" % V.munitCatsEffect % Test,
     ),
     Test / fork := true,
   )
@@ -72,22 +72,26 @@ ThisBuild / version           := "0.0.1-SNAPSHOT"
 ThisBuild / scalaVersion      := V.Scala
 ThisBuild / semanticdbEnabled := true
 
-ThisBuild / versionScheme     := Some("early-semver")
-ThisBuild / homepage          := Some(url("https://github.com/sigilaris/sigilaris"))
-ThisBuild / licenses          := List("AGPL-3.0" -> url("https://www.gnu.org/licenses/agpl-3.0.en.html"))
+ThisBuild / versionScheme := Some("early-semver")
+ThisBuild / homepage      := Some(url("https://github.com/sigilaris/sigilaris"))
+ThisBuild / licenses := List(
+  "AGPL-3.0" -> url("https://www.gnu.org/licenses/agpl-3.0.en.html"),
+)
+// (optional) If needed in the future, consider forcing Scala version overrides
+// scalaModuleInfo ~= (_.map(_.withOverrideScalaVersion(true)))
 ThisBuild / developers := List(
   Developer(
     id = "sungkmi",
-    name ="Heungjin Kim",
+    name = "Heungjin Kim",
     email = "contact@sigilaris.org",
-    url = url("https://github.com/sungkmi")
-  )
+    url = url("https://github.com/sungkmi"),
+  ),
 )
 ThisBuild / scmInfo := Some(
   ScmInfo(
     url("https://github.com/sigilaris/sigilaris"),
-    "scm:git@github.com:sigilaris/sigilaris.git"
-  )
+    "scm:git@github.com:sigilaris/sigilaris.git",
+  ),
 )
 ThisBuild / sonatypeCredentialHost := "central.sonatype.com"
 
@@ -132,9 +136,15 @@ lazy val core = crossProject(JSPlatform, JVMPlatform)
       "-scalajs",
     ),
     Test / fork := false,
-    // Warnings from ScalablyTyped std/node typings can appear; don't fail JS compile on warnings
-    Compile / scalacOptions ~= { opts => opts.filterNot(Set("-Werror", "-Xfatal-warnings")) },
-    Test / scalacOptions    ~= { opts => opts.filterNot(Set("-Werror", "-Xfatal-warnings")) },
+    // Do not escalate warnings to errors in JS targets; external typings may emit warnings
+    Compile / scalacOptions ~= { opts =>
+      opts.filterNot(Set("-Werror", "-Xfatal-warnings"))
+    },
+    Test / scalacOptions ~= { opts =>
+      opts.filterNot(Set("-Werror", "-Xfatal-warnings"))
+    },
+    // Selectively silence mixed stdlib 'caps' warning in JS compile (escape colon required)
+    scalacOptions += "-Wconf:msg=package scala contains object and package with same name\\: caps:s",
   )
   .jsConfigure { project =>
     project
