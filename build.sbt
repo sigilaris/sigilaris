@@ -1,0 +1,111 @@
+val V = new {
+  val Scala      = "3.7.3"
+  val ScalaGroup = "3.7"
+
+  val catsEffect = "3.6.3"
+  val tapir      = "1.11.44"
+  val sttp       = "4.0.11"
+  val circe      = "0.14.14"
+  val iron       = "3.2.0"
+  val scodecBits = "1.1.38"
+  val fs2        = "3.12.2"
+
+  val bouncycastle = "1.70"
+  val sway         = "0.16.2"
+
+  val scribe          = "3.13.4"
+  val hedgehog        = "0.10.1"
+  val munitCatsEffect = "2.0.0"
+
+  val scalaJavaTime = "2.3.0"
+  val jsSha3        = "0.8.0"
+  val elliptic      = "6.5.4"
+  val typesElliptic = "6.4.18"
+}
+
+val Dependencies = new {
+
+  lazy val core = Seq(
+    libraryDependencies ++= Seq(
+      "org.typelevel"      %%% "cats-effect"   % V.catsEffect,
+      "io.circe"           %%% "circe-generic" % V.circe,
+      "io.circe"           %%% "circe-parser"  % V.circe,
+      "io.github.iltotore" %%% "iron"          % V.iron,
+      "io.github.iltotore" %%% "iron-circe"    % V.iron,
+      "org.scodec"         %%% "scodec-bits"   % V.scodecBits,
+      "co.fs2"             %%% "fs2-core"      % V.fs2,
+    ),
+  )
+
+  lazy val coreJVM = Seq(
+    libraryDependencies ++= Seq(
+      "org.bouncycastle" % "bcprov-jdk15on" % V.bouncycastle,
+      "com.outr"        %% "scribe-slf4j"   % V.scribe,
+    ),
+  )
+
+  lazy val coreJS = Seq(
+    libraryDependencies ++= Seq(
+      "com.outr" %%% "scribe" % V.scribe,
+    ),
+    Compile / npmDependencies ++= Seq(
+      "js-sha3"         -> V.jsSha3,
+      "elliptic"        -> V.elliptic,
+      "@types/elliptic" -> V.typesElliptic,
+    ),
+    Compile / npmDevDependencies ++= Seq(
+      "@types/node" -> "18.19.33",
+    ),
+  )
+
+  lazy val tests = Def.settings(
+    libraryDependencies ++= Seq(
+      "qa.hedgehog"  %%% "hedgehog-munit"    % V.hedgehog        % Test,
+      "org.typelevel" %% "munit-cats-effect" % V.munitCatsEffect % Test,
+    ),
+    Test / fork := true,
+  )
+}
+Global / onChangedBuildSource := ReloadOnSourceChanges
+ThisBuild / organization      := "org.sigilaris"
+ThisBuild / version           := "0.0.1-SNAPSHOT"
+ThisBuild / scalaVersion      := V.Scala
+ThisBuild / semanticdbEnabled := true
+
+lazy val root = (project in file("."))
+  .aggregate(
+    core.jvm,
+    core.js,
+  )
+
+lazy val core = crossProject(JSPlatform, JVMPlatform)
+  .crossType(CrossType.Full)
+  .in(file("modules/core"))
+  .settings(Dependencies.core)
+  .settings(Dependencies.tests)
+  .settings(
+    scalacOptions ++= Seq(
+      "-Wconf:msg=Alphanumeric method .* is not declared infix:s",
+    ),
+    Compile / compile / wartremoverErrors ++= Warts
+      .allBut(Wart.SeqApply, Wart.SeqUpdated),
+  )
+  .jvmSettings(Dependencies.coreJVM)
+  .jsSettings(Dependencies.coreJS)
+  .jsSettings(
+    useYarn := true,
+    Test / scalaJSLinkerConfig ~= {
+      _.withModuleKind(ModuleKind.ESModule)
+    },
+    scalacOptions ++= Seq(
+      "-scalajs",
+    ),
+    Test / fork := false,
+    // Warnings from ScalablyTyped std/node typings can appear; don't fail JS compile on warnings
+    Compile / scalacOptions ~= { opts => opts.filterNot(Set("-Werror", "-Xfatal-warnings")) },
+    Test / scalacOptions    ~= { opts => opts.filterNot(Set("-Werror", "-Xfatal-warnings")) },
+  )
+  .jsConfigure { project =>
+    project
+      .enablePlugins(ScalaJSBundlerPlugin)
+  }
