@@ -1,13 +1,14 @@
 package org.sigilaris.core
 package codec.byte
 
-import failure.DecodeFailure
-
 import cats.syntax.eq.*
 
 import io.github.iltotore.iron.*
 import io.github.iltotore.iron.constraint.numeric.Positive0
 import scodec.bits.ByteVector
+
+import failure.DecodeFailure
+import util.SafeStringInterp.*
 
 final case class DecodeResult[A](value: A, remainder: ByteVector)
 
@@ -33,6 +34,18 @@ trait ByteDecoder[A]:
 
 object ByteDecoder:
   def apply[A: ByteDecoder]: ByteDecoder[A] = summon
+
+  object ops:
+    extension (bytes: ByteVector)
+      def to[A: ByteDecoder]: Either[DecodeFailure, A] = for
+        result <- ByteDecoder[A].decode(bytes)
+        DecodeResult[A](a, r) = result
+        _ <- Either.cond(
+          r.isEmpty,
+          (),
+          DecodeFailure(ss"non empty remainder: ${r.toHex}"),
+        )
+      yield a
 
   type BigNat = BigInt :| Positive0
 

@@ -16,6 +16,10 @@ trait ByteEncoder[A]:
 object ByteEncoder:
   def apply[A: ByteEncoder]: ByteEncoder[A] = summon
 
+  object ops:
+    extension [A: ByteEncoder](a: A)
+      def toBytes: ByteVector = ByteEncoder[A].encode(a)
+
   type BigNat = BigInt :| Positive0
 
   given bignatByteEncoder: ByteEncoder[BigNat] = bignat =>
