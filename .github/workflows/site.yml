@@ -41,8 +41,8 @@ jobs:
           restore-keys: |
             sbt-${{ runner.os }}-
 
-      - name: Build static site
-        run: sbt -v -J-XX:MaxMetaspaceSize=1G tlSite
+      - name: Build static site (with API)
+        run: sbt -v -J-XX:MaxMetaspaceSize=1G tlSiteWithApi
 
       - name: Upload site artifact
         uses: actions/upload-pages-artifact@v3

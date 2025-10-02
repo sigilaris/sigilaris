@@ -111,7 +111,55 @@ lazy val root = (project in file("."))
   .settings(
     publish / skip := true,
     (ScalaUnidoc / unidoc) / unidocProjectFilter := inProjects(core.jvm),
+    // Map unidoc into site output so preview won't drop it
+    ScalaUnidoc / siteSubdirName := "api",
+    addMappingsToSiteDir(ScalaUnidoc / packageDoc / mappings, ScalaUnidoc / siteSubdirName),
+    // Tasks to include unidoc into the generated site and preview
+    tlCopyUnidocToSite := {
+      val log         = streams.value.log
+      val dir         = target.value / s"scala-${scalaVersion.value}" / "unidoc"
+      val siteApiDir  = (ThisBuild / baseDirectory).value / "target" / "docs" / "site" / "api"
+
+      IO.delete(siteApiDir)
+      IO.createDirectory(siteApiDir)
+      if (dir.exists()) {
+        IO.copyDirectory(dir, siteApiDir)
+        log.info(s"Copied unidoc from ${dir.getAbsolutePath} to ${siteApiDir.getAbsolutePath}")
+      } else {
+        log.warn(s"Unidoc directory not found at ${dir.getAbsolutePath}")
+      }
+      siteApiDir
+    },
+    // Prepare docs/api so Laika serves as static files in preview
+    tlPrepareApi := {
+      val log        = streams.value.log
+      val srcDir     = target.value / s"scala-${scalaVersion.value}" / "unidoc"
+      val docsApiDir = (ThisBuild / baseDirectory).value / "docs" / "api"
+      IO.delete(docsApiDir)
+      IO.createDirectory(docsApiDir)
+      if (srcDir.exists()) {
+        IO.copyDirectory(srcDir, docsApiDir)
+        log.info(s"Prepared docs/api from ${srcDir.getAbsolutePath}")
+      } else {
+        log.warn(s"Unidoc not found at ${srcDir.getAbsolutePath}")
+      }
+      docsApiDir
+    },
   )
+
+// Task keys
+val tlCopyUnidocToSite    = taskKey[File]("Copy unidoc output into site/api")
+val tlPrepareApi          = taskKey[File]("Copy unidoc output into docs/api for preview")
+
+// Commands for convenience
+addCommandAlias(
+  "tlSiteWithApi",
+  ";unidoc;tlPrepareApi;tlSite",
+)
+addCommandAlias(
+  "tlSitePreviewWithApi",
+  ";unidoc;tlPrepareApi;tlSitePreview",
+)
 
 lazy val core = crossProject(JSPlatform, JVMPlatform)
   .crossType(CrossType.Full)
