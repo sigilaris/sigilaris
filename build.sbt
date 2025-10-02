@@ -115,6 +115,8 @@ lazy val root = (project in file("."))
     ScalaUnidoc / siteSubdirName := "api",
     addMappingsToSiteDir(ScalaUnidoc / packageDoc / mappings, ScalaUnidoc / siteSubdirName),
     // (CI fallback in workflow handles copying into /api.)
+    // Ensure mdoc reads from Typelevel Site convention: site/src (not default docs/)
+    mdocIn := baseDirectory.value / "site" / "src",
   )
 
 // Note: Unidoc is mapped into the site under /api via sbt-site mappings.
