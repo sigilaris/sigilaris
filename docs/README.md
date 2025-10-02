@@ -30,3 +30,5 @@ Sigilaris is dual-licensed:
 ## Links
 
 - [GitHub Repository](https://github.com/sigilaris/sigilaris)
+
+- [Release API](https://javadoc.io/doc/org.sigilaris/sigilaris-core_3/latest/index.html)
