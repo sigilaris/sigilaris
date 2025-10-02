@@ -77,8 +77,6 @@ ThisBuild / homepage      := Some(url("https://github.com/sigilaris/sigilaris"))
 ThisBuild / licenses := List(
   "AGPL-3.0" -> url("https://www.gnu.org/licenses/agpl-3.0.en.html"),
 )
-// (optional) If needed in the future, consider forcing Scala version overrides
-// scalaModuleInfo ~= (_.map(_.withOverrideScalaVersion(true)))
 ThisBuild / developers := List(
   Developer(
     id = "sungkmi",
@@ -109,9 +107,10 @@ lazy val root = (project in file("."))
     core.jvm,
     core.js,
   )
-  .enablePlugins(TypelevelSitePlugin)
+  .enablePlugins(TypelevelSitePlugin, ScalaUnidocPlugin)
   .settings(
     publish / skip := true,
+    (ScalaUnidoc / unidoc) / unidocProjectFilter := inProjects(core.jvm),
   )
 
 lazy val core = crossProject(JSPlatform, JVMPlatform)
