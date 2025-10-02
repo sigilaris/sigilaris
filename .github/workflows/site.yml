@@ -42,7 +42,16 @@ jobs:
             sbt-${{ runner.os }}-
 
       - name: Build static site (with API)
-        run: sbt -v -J-XX:MaxMetaspaceSize=1G tlSiteWithApi
+        run: sbt -v -J-XX:MaxMetaspaceSize=1G ";unidoc;tlSite"
+
+      - name: Copy Unidoc into site/api (CI fallback)
+        run: |
+          UNIDOC_DIR=$(echo target/scala-*/unidoc)
+          mkdir -p target/docs/site/api
+          cp -a "$UNIDOC_DIR"/. target/docs/site/api/
+
+      - name: Assert API exists
+        run: test -f target/docs/site/api/index.html
 
       - name: Upload site artifact
         uses: actions/upload-pages-artifact@v3
