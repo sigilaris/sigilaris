@@ -1,6 +1,12 @@
 package org.sigilaris.core
 package codec.byte
 
+
+import scala.compiletime.{erasedValue, summonInline}
+import scala.deriving.Mirror
+import scala.reflect.ClassTag
+
+import cats.syntax.either.*
 import cats.syntax.eq.*
 
 import io.github.iltotore.iron.*
@@ -46,6 +52,50 @@ object ByteDecoder:
           DecodeFailure(ss"non empty remainder: ${r.toHex}"),
         )
       yield a
+
+  private def decoderProduct[A](
+      p: Mirror.ProductOf[A],
+      elems: => List[ByteDecoder[?]],
+  ): ByteDecoder[A] = (bytes: ByteVector) =>
+
+    def reverse(tuple: Tuple): Tuple =
+      @SuppressWarnings(Array("org.wartremover.warts.Any"))
+      @annotation.tailrec
+      def loop(tuple: Tuple, acc: Tuple): Tuple = tuple match
+        case _: EmptyTuple => acc
+        case t *: ts       => loop(ts, t *: acc)
+      loop(tuple, EmptyTuple)
+
+    @SuppressWarnings(Array("org.wartremover.warts.Any"))
+    @annotation.tailrec
+    def loop(
+        elems: List[ByteDecoder[?]],
+        bytes: ByteVector,
+        acc: Tuple,
+    ): Either[DecodeFailure, DecodeResult[A]] = elems match
+      case Nil =>
+        (DecodeResult(p.fromProduct(reverse(acc)), bytes))
+          .asRight[DecodeFailure]
+      case decoder :: rest =>
+        scribe.info(s"Decoder: $decoder")
+        scribe.info(s"Bytes to decode: $bytes")
+        decoder.decode(bytes) match
+          case Left(failure) => failure.asLeft[DecodeResult[A]]
+          case Right(DecodeResult(value, remainder)) =>
+            scribe.info(s"Decoded: $value")
+            loop(rest, remainder, value *: acc)
+    loop(elems, bytes, EmptyTuple)
+
+  @SuppressWarnings(Array("org.wartremover.warts.Recursion"))
+  inline def summonAll[T <: Tuple]: List[ByteDecoder[?]] =
+    inline erasedValue[T] match
+      case _: EmptyTuple => Nil
+      case _: (t *: ts)  => summonInline[ByteDecoder[t]] :: summonAll[ts]
+
+  inline given derived[T](using p: Mirror.ProductOf[T]): ByteDecoder[T] =
+    lazy val elemInstances: List[ByteDecoder[?]] =
+      summonAll[p.MirroredElemTypes]
+    decoderProduct(p, elemInstances)
 
   type BigNat = BigInt :| Positive0
 

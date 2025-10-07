@@ -1,6 +1,9 @@
 package org.sigilaris.core
 package codec.byte
 
+import scala.compiletime.{erasedValue, summonInline}
+import scala.deriving.Mirror
+
 import cats.syntax.eq.*
 
 import scodec.bits.ByteVector
@@ -19,6 +22,26 @@ object ByteEncoder:
   object ops:
     extension [A: ByteEncoder](a: A)
       def toBytes: ByteVector = ByteEncoder[A].encode(a)
+
+  @SuppressWarnings(Array("org.wartremover.warts.AsInstanceOf", "org.wartremover.warts.Any"))
+  private def encoderProduct[A](
+//      p: Mirror.ProductOf[A],
+      elems: => List[ByteEncoder[?]],
+  ): ByteEncoder[A] = (a: A) =>
+    a.asInstanceOf[Product].productIterator.zip(elems).map{
+     case (aElem, encoder) => encoder.asInstanceOf[ByteEncoder[Any]].encode(aElem)
+    }.foldLeft(ByteVector.empty)(_ ++ _)
+
+  @SuppressWarnings(Array("org.wartremover.warts.Recursion"))
+  inline def summonAll[T <: Tuple]: List[ByteEncoder[?]] =
+    inline erasedValue[T] match
+      case _: EmptyTuple => Nil
+      case _: (t *: ts)  => summonInline[ByteEncoder[t]] :: summonAll[ts]
+
+  inline given derived[T](using p: Mirror.ProductOf[T]): ByteEncoder[T] =
+    lazy val elemInstances: List[ByteEncoder[?]] =
+      summonAll[p.MirroredElemTypes]
+    encoderProduct(elemInstances)
 
   type BigNat = BigInt :| Positive0
 
