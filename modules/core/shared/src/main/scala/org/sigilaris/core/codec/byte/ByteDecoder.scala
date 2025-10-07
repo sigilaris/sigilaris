@@ -1,10 +1,11 @@
 package org.sigilaris.core
 package codec.byte
 
+import java.time.Instant
 
 import scala.compiletime.{erasedValue, summonInline}
 import scala.deriving.Mirror
-import scala.reflect.ClassTag
+import scala.reflect.{ClassTag, classTag}
 
 import cats.syntax.either.*
 import cats.syntax.eq.*
@@ -98,9 +99,7 @@ object ByteDecoder:
     decoderProduct(p, elemInstances)
 
   given unitByteDecoder: ByteDecoder[Unit] = bytes =>
-    Right[DecodeFailure, DecodeResult[Unit]](
-      DecodeResult((), bytes),
-    )
+    DecodeResult((), bytes).asRight[DecodeFailure]
 
   type BigNat = BigInt :| Positive0
 
@@ -148,3 +147,24 @@ object ByteDecoder:
   given bigintByteDecoder: ByteDecoder[BigInt] = ByteDecoder[BigNat].map:
     case x if x % 2 === 0 => x / 2
     case x => (x - 1) / (-2)
+
+  def fromFixedSizeBytes[T: ClassTag](
+      size: Long,
+  )(f: ByteVector => T): ByteDecoder[T] = bytes =>
+    def failure = DecodeFailure:
+      ss"Too short bytes to decode ${classTag[T].toString}; required ${size.toString} bytes, but received ${bytes.size.toString} bytes: ${bytes.toString}"
+
+    Either.cond(
+      bytes.size >= size,
+      bytes splitAt size match
+        case (front, back) => DecodeResult(f(front), back)
+      ,
+      failure,
+    )
+
+  given byteDecoder: ByteDecoder[Byte] = fromFixedSizeBytes(1)(_.toByte())
+
+  given longDecoder: ByteDecoder[Long] = fromFixedSizeBytes(8)(_.toLong())
+
+  given instantDecoder: ByteDecoder[Instant] =
+    ByteDecoder[Long] `map` Instant.ofEpochMilli

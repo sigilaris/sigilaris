@@ -1,6 +1,8 @@
 package org.sigilaris.core
 package codec.byte
 
+import java.time.Instant
+
 import scala.compiletime.{erasedValue, summonInline}
 import scala.deriving.Mirror
 
@@ -23,14 +25,19 @@ object ByteEncoder:
     extension [A: ByteEncoder](a: A)
       def toBytes: ByteVector = ByteEncoder[A].encode(a)
 
-  @SuppressWarnings(Array("org.wartremover.warts.AsInstanceOf", "org.wartremover.warts.Any"))
+  @SuppressWarnings(
+    Array("org.wartremover.warts.AsInstanceOf", "org.wartremover.warts.Any"),
+  )
   private def encoderProduct[A](
-//      p: Mirror.ProductOf[A],
       elems: => List[ByteEncoder[?]],
   ): ByteEncoder[A] = (a: A) =>
-    a.asInstanceOf[Product].productIterator.zip(elems).map{
-     case (aElem, encoder) => encoder.asInstanceOf[ByteEncoder[Any]].encode(aElem)
-    }.foldLeft(ByteVector.empty)(_ ++ _)
+    a.asInstanceOf[Product]
+      .productIterator
+      .zip(elems)
+      .map { case (aElem, encoder) =>
+        encoder.asInstanceOf[ByteEncoder[Any]].encode(aElem)
+      }
+      .foldLeft(ByteVector.empty)(_ ++ _)
 
   @SuppressWarnings(Array("org.wartremover.warts.Recursion"))
   inline def summonAll[T <: Tuple]: List[ByteEncoder[?]] =
@@ -44,6 +51,13 @@ object ByteEncoder:
     encoderProduct(elemInstances)
 
   given unitByteEncoder: ByteEncoder[Unit] = _ => ByteVector.empty
+
+  given byteEncoder: ByteEncoder[Byte] = ByteVector.fromByte(_)
+
+  given longEncoder: ByteEncoder[Long] = ByteVector.fromLong(_)
+
+  given instantEncoder: ByteEncoder[Instant] =
+    ByteVector fromLong _.toEpochMilli
 
   type BigNat = BigInt :| Positive0
 

@@ -46,7 +46,8 @@ val Dependencies = new {
 
   lazy val coreJS = Seq(
     libraryDependencies ++= Seq(
-      "com.outr" %%% "scribe" % V.scribe,
+      "com.outr"       %%% "scribe"           % V.scribe,
+      "io.github.cquiroz" %%% "scala-java-time" % V.scalaJavaTime,
     ),
     Compile / npmDependencies ++= Seq(
       "js-sha3"         -> V.jsSha3,
