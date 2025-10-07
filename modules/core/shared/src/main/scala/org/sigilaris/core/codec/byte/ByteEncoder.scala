@@ -43,6 +43,8 @@ object ByteEncoder:
       summonAll[p.MirroredElemTypes]
     encoderProduct(elemInstances)
 
+  given unitByteEncoder: ByteEncoder[Unit] = _ => ByteVector.empty
+
   type BigNat = BigInt :| Positive0
 
   given bignatByteEncoder: ByteEncoder[BigNat] = bignat =>

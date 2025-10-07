@@ -97,6 +97,11 @@ object ByteDecoder:
       summonAll[p.MirroredElemTypes]
     decoderProduct(p, elemInstances)
 
+  given unitByteDecoder: ByteDecoder[Unit] = bytes =>
+    Right[DecodeFailure, DecodeResult[Unit]](
+      DecodeResult((), bytes),
+    )
+
   type BigNat = BigInt :| Positive0
 
   def unsafeFromBigInt(n: BigInt): BigNat = n.refineUnsafe
