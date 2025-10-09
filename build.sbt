@@ -119,6 +119,11 @@ lazy val root = (project in file("."))
     // (CI fallback in workflow handles copying into /api.)
     // Ensure mdoc reads from Typelevel Site convention: site/src (not default docs/)
     mdocIn := baseDirectory.value / "site" / "src",
+    // Silence unused warnings only for mdoc (documentation examples)
+    mdocExtraArguments ++= Seq(
+      "--scalac-options",
+      "-Wconf:cat=unused:s",
+    ),
   )
 
 // Note: Unidoc is mapped into the site under /api via sbt-site mappings.
