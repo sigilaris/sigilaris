@@ -108,6 +108,7 @@ lazy val root = (project in file("."))
     core.jvm,
     core.js,
   )
+  .dependsOn(core.jvm)
   .enablePlugins(TypelevelSitePlugin, ScalaUnidocPlugin)
   .settings(
     publish / skip := true,
