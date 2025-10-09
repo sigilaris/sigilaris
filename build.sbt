@@ -128,13 +128,16 @@ lazy val core = crossProject(JSPlatform, JVMPlatform)
   .settings(Dependencies.core)
   .settings(Dependencies.tests)
   .settings(
-    scalacOptions ++= Seq(
-      "-Wconf:msg=Alphanumeric method .* is not declared infix:s",
-    ),
     Compile / compile / wartremoverErrors ++= Warts
       .allBut(Wart.SeqApply, Wart.SeqUpdated),
   )
-  .jvmSettings(Dependencies.coreJVM)
+  .jvmSettings(
+    Dependencies.coreJVM,
+    // JVM: silence infix warning with precise message filter
+    scalacOptions ++= Seq(
+      "-Wconf:msg=Alphanumeric method .* is not declared infix:s",
+    ),
+  )
   .jsSettings(Dependencies.coreJS)
   .jsSettings(
     useYarn := true,
@@ -152,8 +155,15 @@ lazy val core = crossProject(JSPlatform, JVMPlatform)
     Test / scalacOptions ~= { opts =>
       opts.filterNot(Set("-Werror", "-Xfatal-warnings"))
     },
-    // Selectively silence mixed stdlib 'caps' warning in JS compile (escape colon required)
-    scalacOptions += "-Wconf:msg=package scala contains object and package with same name\\: caps:s",
+    // JS: silence warnings via message filters only (avoid colon in pattern)
+    Compile / scalacOptions ++= Seq(
+      "-Wconf:msg=Alphanumeric method .* is not declared infix:s",
+      "-Wconf:msg=package scala contains object and package with same name.*caps:s",
+    ),
+    Test / scalacOptions ++= Seq(
+      "-Wconf:msg=Alphanumeric method .* is not declared infix:s",
+      "-Wconf:msg=package scala contains object and package with same name.*caps:s",
+    ),
   )
   .jsConfigure { project =>
     project
