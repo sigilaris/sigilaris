@@ -78,12 +78,12 @@ object ByteDecoder:
         (DecodeResult(p.fromProduct(reverse(acc)), bytes))
           .asRight[DecodeFailure]
       case decoder :: rest =>
-        scribe.info(s"Decoder: $decoder")
-        scribe.info(s"Bytes to decode: $bytes")
+//        scribe.info(s"Decoder: $decoder")
+//        scribe.info(s"Bytes to decode: $bytes")
         decoder.decode(bytes) match
           case Left(failure) => failure.asLeft[DecodeResult[A]]
           case Right(DecodeResult(value, remainder)) =>
-            scribe.info(s"Decoded: $value")
+//            scribe.info(s"Decoded: $value")
             loop(rest, remainder, value *: acc)
     loop(elems, bytes, EmptyTuple)
 
@@ -164,4 +164,34 @@ object ByteDecoder:
   given longDecoder: ByteDecoder[Long] = fromFixedSizeBytes(8)(_.toLong())
 
   given instantDecoder: ByteDecoder[Instant] =
-    ByteDecoder[Long] `map` Instant.ofEpochMilli
+    ByteDecoder[Long] map Instant.ofEpochMilli
+
+  def sizedListDecoder[A: ByteDecoder](size: BigNat): ByteDecoder[List[A]] =
+    bytes =>
+      @annotation.tailrec
+      def loop(
+          bytes: ByteVector,
+          count: BigInt,
+          acc: List[A],
+      ): Either[DecodeFailure, DecodeResult[List[A]]] =
+        if count === BigInt(0) then
+          DecodeResult(acc.reverse, bytes).asRight[DecodeFailure]
+        else
+          ByteDecoder[A].decode(bytes) match
+            case Left(failure) =>
+              failure.asLeft[DecodeResult[List[A]]]
+            case Right(DecodeResult(value, remainder)) =>
+              loop(remainder, count - 1, value :: acc)
+      loop(bytes, size, Nil)
+
+  def failed[A](msg: String): ByteDecoder[A] = _ =>
+    DecodeFailure(msg).asLeft[DecodeResult[A]]
+
+  given optionByteDecoder[A: ByteDecoder]: ByteDecoder[Option[A]] =
+    bignatByteDecoder flatMap sizedListDecoder[A] map (_.headOption)
+
+  given setByteDecoder[A: ByteDecoder]: ByteDecoder[Set[A]] =
+    bignatByteDecoder flatMap sizedListDecoder[A] map (_.toSet)
+
+  given mapByteDecoder[K: ByteDecoder, V: ByteDecoder]: ByteDecoder[Map[K, V]] =
+    bignatByteDecoder flatMap sizedListDecoder[(K, V)] map (_.toMap)

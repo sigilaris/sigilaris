@@ -79,3 +79,25 @@ object ByteEncoder:
   given bigintByteEncoder: ByteEncoder[BigInt] = ByteEncoder[BigNat].contramap:
     case n if n >= 0 => (n * 2).asInstanceOf[BigNat]
     case n           => (n * (-2) + 1).asInstanceOf[BigNat]
+
+  private def encodeSize(size: Int): ByteVector =
+    bignatByteEncoder.encode:
+      BigInt(size).refineUnsafe[Positive0]
+
+  given listByteEncoder[A: ByteEncoder]: ByteEncoder[List[A]] =
+    (list: List[A]) =>
+      list.foldLeft(encodeSize(list.size)):
+        case (acc, a) => acc ++ ByteEncoder[A].encode(a)
+
+  given optionByteEncoder[A: ByteEncoder]: ByteEncoder[Option[A]] =
+    listByteEncoder.contramap(_.toList)
+
+  given setByteEncoder[A: ByteEncoder]: ByteEncoder[Set[A]] = (set: Set[A]) =>
+    set
+      .map(ByteEncoder[A].encode)
+      .toList
+      .sorted
+      .foldLeft(encodeSize(set.size))(_ ++ _)
+
+  given mapByteEncoder[K: ByteEncoder, V: ByteEncoder]: ByteEncoder[Map[K, V]] =
+    setByteEncoder[(K, V)].contramap(_.toSet)

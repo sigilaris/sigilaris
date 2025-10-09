@@ -77,3 +77,63 @@ class ByteCodecTest extends HedgehogSuite:
               Result.assert(remainder.isEmpty),
             )
         case _ => Result.failure
+
+  property("Option[Long] roundtrip"):
+    for opt <- Gen
+        .long(Range.linearFrom(0L, Long.MinValue, Long.MaxValue))
+        .option
+        .forAll
+    yield
+      val encoded = ByteEncoder[Option[Long]].encode(opt)
+
+      ByteDecoder[Option[Long]].decode(encoded) match
+        case Right(DecodeResult(decoded, remainder)) =>
+          Result.all:
+            List(
+              decoded ==== opt,
+              Result.assert(remainder.isEmpty),
+            )
+        case _ => Result.failure
+
+  property("Set[Byte] roundtrip"):
+    for set <- Gen
+        .list(
+          Gen.byte(Range.linearFrom(0, Byte.MinValue, Byte.MaxValue)),
+          Range.linear(0, 20)
+        )
+        .map(_.toSet)
+        .forAll
+    yield
+      val encoded = ByteEncoder[Set[Byte]].encode(set)
+
+      ByteDecoder[Set[Byte]].decode(encoded) match
+        case Right(DecodeResult(decoded, remainder)) =>
+          Result.all:
+            List(
+              decoded ==== set,
+              Result.assert(remainder.isEmpty),
+            )
+        case _ => Result.failure
+
+  property("Map[Byte, Long] roundtrip"):
+    for map <- Gen
+        .list(
+          for
+            k <- Gen.byte(Range.linearFrom(0, Byte.MinValue, Byte.MaxValue))
+            v <- Gen.long(Range.linear(0L, 1000L))
+          yield (k, v),
+          Range.linear(0, 10)
+        )
+        .map(_.toMap)
+        .forAll
+    yield
+      val encoded = ByteEncoder[Map[Byte, Long]].encode(map)
+
+      ByteDecoder[Map[Byte, Long]].decode(encoded) match
+        case Right(DecodeResult(decoded, remainder)) =>
+          Result.all:
+            List(
+              decoded ==== map,
+              Result.assert(remainder.isEmpty),
+            )
+        case _ => Result.failure
