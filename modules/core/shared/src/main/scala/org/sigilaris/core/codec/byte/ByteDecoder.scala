@@ -113,36 +113,33 @@ object ByteDecoder:
         val head: Int        = nonEmptyBytes.head & 0xff
         val tail: ByteVector = nonEmptyBytes.tail
         if head <= 0x80 then
-          Right[DecodeFailure, DecodeResult[BigNat]]:
-            DecodeResult(unsafeFromBigInt(BigInt(head)), tail)
+          DecodeResult(unsafeFromBigInt(BigInt(head)), tail)
+            .asRight[DecodeFailure]
         else if head <= 0xf8 then
           val size = head - 0x80
           if tail.size < size then
-            Left[DecodeFailure, DecodeResult[BigNat]]:
-              DecodeFailure:
-                s"required byte size $size, but $tail"
+            DecodeFailure(s"required byte size $size, but $tail")
+              .asLeft[DecodeResult[BigNat]]
           else
             val (front, back) = tail.splitAt(size.toLong)
-            Right[DecodeFailure, DecodeResult[BigNat]]:
-              DecodeResult(unsafeFromBigInt(BigInt(1, front.toArray)), back)
+            DecodeResult(unsafeFromBigInt(BigInt(1, front.toArray)), back)
+              .asRight[DecodeFailure]
         else
           val sizeOfNumber = head - 0xf8 + 1
           if tail.size < sizeOfNumber then
-            Left[DecodeFailure, DecodeResult[BigNat]]:
-              DecodeFailure:
-                s"required byte size $sizeOfNumber, but $tail"
+            DecodeFailure(s"required byte size $sizeOfNumber, but $tail")
+              .asLeft[DecodeResult[BigNat]]
           else
             val (sizeBytes, data) = tail.splitAt(sizeOfNumber.toLong)
             val size              = BigInt(1, sizeBytes.toArray).toLong
 
             if data.size < size then
-              Left[DecodeFailure, DecodeResult[BigNat]]:
-                DecodeFailure:
-                  s"required byte size $size, but $data"
+              DecodeFailure(s"required byte size $size, but $data")
+                .asLeft[DecodeResult[BigNat]]
             else
               val (front, back) = data.splitAt(size)
-              Right[DecodeFailure, DecodeResult[BigNat]]:
-                DecodeResult(unsafeFromBigInt(BigInt(1, front.toArray)), back)
+              DecodeResult(unsafeFromBigInt(BigInt(1, front.toArray)), back)
+                .asRight[DecodeFailure]
 
   given bigintByteDecoder: ByteDecoder[BigInt] = ByteDecoder[BigNat].map:
     case x if x % 2 === 0 => x / 2
