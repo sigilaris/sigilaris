@@ -12,6 +12,7 @@ Sigilaris is a purely functional cryptographic library built with cats-effect ec
 - **Cross-Platform**: Supports both JVM and Scala.js
 - **Type-Safe**: Leverages Scala's type system for compile-time safety
 - **Secure**: Industry-standard cryptographic algorithms
+- **Deterministic Byte Codec**: Blockchain-ready encoding with guaranteed consistency for hashing and signatures
 
 ## Getting Started
 
@@ -20,6 +21,24 @@ Add Sigilaris to your `build.sbt`:
 ```scala
 libraryDependencies += "org.sigilaris" %%% "sigilaris-core" % "@VERSION@"
 ```
+
+## Documentation
+
+### Core Modules
+
+#### Byte Codec
+Deterministic byte encoding/decoding for blockchain applications.
+- [한국어 문서](ko/codec/README.md) | [English Documentation](en/codec/README.md)
+- Use cases: Transaction signing, block hashing, merkle tree construction
+
+### API Documentation
+- [Latest Release API](https://javadoc.io/doc/org.sigilaris/sigilaris-core_3/latest/index.html)
+- [Development API](https://sigilaris.github.io/sigilaris/api/index.html)
+
+### Coming Soon
+- Merkle Tree
+- Consensus Algorithms
+- Network Protocols
 
 ## License
 
@@ -30,7 +49,3 @@ Sigilaris is dual-licensed:
 ## Links
 
 - [GitHub Repository](https://github.com/sigilaris/sigilaris)
-
-- [Release API](https://javadoc.io/doc/org.sigilaris/sigilaris-core_3/latest/index.html)
-
-- [Snapshot API](https://sigilaris.github.io/sigilaris/api/index.html)

@@ -2,24 +2,30 @@
 
 [← Main](../../README.md) | [한국어 →](../../ko/codec/README.md)
 
----
-
-[← Codec Overview](README.md) | [API](api.md) | [Type Rules](types.md) | [Examples](examples.md) | [RLP Comparison](rlp-comparison.md)
+[API](api.md) | [Type Rules](types.md) | [Examples](examples.md) | [RLP Comparison](rlp-comparison.md)
 
 ---
 
 ## Overview
 
-Sigilaris Byte Codec is a deterministic byte encoding/decoding library designed for blockchain applications. It provides type-safe, composable encoding of Scala data structures into byte sequences suitable for transaction signing, block hashing, and merkle tree construction.
+The Sigilaris byte codec provides deterministic binary encoding and decoding for blockchain applications. When signing transactions or computing block hashes, data must first be converted to a deterministic byte sequence—the same data must always produce the same bytes to ensure hash and signature correctness.
 
-**Why deterministic?** In blockchain systems, the same data must always encode to the same byte sequence. This ensures that cryptographic hashes and signatures remain consistent across different nodes and platforms.
+### Why Deterministic Encoding?
 
-**Key Features:**
-- **Type-safe API**: Leverages Scala 3's type system and cats typeclasses
-- **Automatic derivation**: Product types (case classes) encode automatically
-- **Deterministic collections**: Set and Map elements are sorted by encoded bytes
-- **Variable-length encoding**: Space-efficient representation (similar to RLP but distinct)
-- **Composable**: Easily create custom encoders using `contramap`, `map`, `emap`
+In blockchain systems:
+- **Transaction Signing**: Users sign the byte representation of transactions
+- **Block Hashing**: Block headers are hashed to create block IDs
+- **Merkle Trees**: Data structures require consistent byte ordering
+- **Consensus**: All nodes must agree on byte representations
+
+Any non-deterministic encoding (e.g., random collection ordering) breaks consensus.
+
+### Key Features
+
+- **Variable-Length Encoding**: Space-efficient encoding similar to RLP but with distinct design choices
+- **Deterministic Collections**: Sets and Maps are lexicographically sorted after encoding
+- **Type-Safe API**: Built on Scala 3 + cats ecosystem with contravariant/covariant functors
+- **Automatic Derivation**: Case classes and sealed traits via `Mirror.ProductOf`
 
 ## Quick Start (30 seconds)
 
@@ -27,97 +33,119 @@ Sigilaris Byte Codec is a deterministic byte encoding/decoding library designed 
 import org.sigilaris.core.codec.byte.*
 import scodec.bits.ByteVector
 
-// Simple encoding and decoding
-val value: Long = 42L
-val bytes = ByteEncoder[Long].encode(value)
-val decoded = ByteDecoder[Long].decode(bytes)
-// Result: Right(DecodeResult(42, ByteVector(empty)))
+case class Transaction(from: Long, to: Long, amount: Long)
 
-// Works with tuples automatically
-val pair = (1L, 2L)
-val pairBytes = ByteEncoder[(Long, Long)].encode(pair)
-val decodedPair = ByteDecoder[(Long, Long)].decode(pairBytes)
-// Result: Right(DecodeResult((1,2), ByteVector(empty)))
+val tx = Transaction(from = 1L, to = 2L, amount = 100L)
 ```
 
-That's it! The codec automatically:
-- Encodes values deterministically
-- Uses space-efficient variable-length encoding for BigInt
-- Provides type-safe encoding and decoding
-- Supports automatic derivation for product types
+```scala mdoc
+val encoded: ByteVector = ByteEncoder[Transaction].encode(tx)
+val decoded = ByteDecoder[Transaction].decode(encoded)
+```
+
+That's it! The codec automatically derives instances for case classes.
 
 ## Documentation
 
-### Core Concepts
-- **[API Reference](api.md)**: ByteEncoder, ByteDecoder, ByteCodec traits and methods
-- **[Type Rules](types.md)**: Detailed encoding/decoding specifications per type
-- **[Examples](examples.md)**: Real-world blockchain data structures
-- **[RLP Comparison](rlp-comparison.md)**: How this codec differs from Ethereum RLP
+- **[API Reference](api.md)**: `ByteEncoder`, `ByteDecoder`, `ByteCodec` details
+- **[Type Rules](types.md)**: Encoding/decoding rules for `BigNat`, `BigInt`, collections
+- **[Practical Examples](examples.md)**: Blockchain data structures
+- **[RLP Comparison](rlp-comparison.md)**: Differences from Ethereum RLP
 
-### Use Cases
-1. **Transaction signing**: Encode transaction data before signing with private key
-2. **Block hashing**: Create deterministic byte representation for block headers
-3. **Merkle trees**: Generate consistent hashes for merkle proof verification
-4. **Network protocols**: Serialize messages for peer-to-peer communication
+## What's Included
 
-### What This Library Does NOT Do
-- **Cryptographic hashing**: Use separate crypto modules (SHA-256, Keccak, etc.)
-- **Digital signatures**: Use signature modules (ECDSA, EdDSA, etc.)
-- **Network transport**: Use separate networking layer (TCP, HTTP, etc.)
+### Basic Types
+- `Unit`, `Byte`, `Long`, `Instant`: Direct encoding
+- `BigInt`: Sign-aware variable-length encoding
 
-This library focuses solely on byte encoding/decoding. Combine it with other modules for complete blockchain functionality.
+### Collections
+- `List[A]`: Size prefix + ordered elements
+- `Option[A]`: Encoded as `List[A]` (0 or 1 element)
+- `Set[A]`: Lexicographically sorted after encoding
+- `Map[K, V]`: Treated as `Set[(K, V)]` for determinism
 
-## Type Support
+### Automatic Derivation
+```scala mdoc:reset:silent
+import org.sigilaris.core.codec.byte.*
 
-The codec provides instances for:
+case class Block(height: Long, txCount: Long)
 
-**Primitive types:**
-- `Unit`, `Byte`, `Long`, `java.time.Instant`
-
-**Numeric types:**
-- `BigInt` (signed integers with efficient encoding)
-- `BigNat` (natural numbers, internal use)
-
-**Collections:**
-- `List[A]` (preserves order)
-- `Option[A]` (encoded as zero or one-element list)
-- `Set[A]` (deterministic: sorted by encoded bytes)
-- `Map[K, V]` (deterministic: encoded as sorted set of tuples)
-
-**Product types:**
-- `Tuple2`, `Tuple3`, ... (automatic derivation)
-- Case classes (automatic derivation via `Mirror.ProductOf`)
-
-**Custom types:**
-- Create instances using `contramap`, `map`, `emap`
-
-## Error Handling
-
-Decoding returns `Either[String, (A, ByteVector)]`:
-- **Left(error)**: Decoding failed with error message
-- **Right((value, remainder))**: Successfully decoded `value`, `remainder` contains unused bytes
-
-```scala mdoc:silent
-// Example: decoding insufficient data
-val incomplete = ByteVector(0x01)
-val result = ByteDecoder[Long].decode(incomplete)
-// Result: Left("Insufficient bytes for BigNat data: needed 1, got 0")
+// Instances automatically derived
+val block = Block(height = 1L, txCount = 10L)
 ```
 
-## Performance Characteristics
+```scala mdoc
+ByteEncoder[Block].encode(block)
+```
 
-- **Space-efficient**: Small integers (0-128) encoded as single byte
-- **Time complexity**: O(n) encoding and decoding where n is data size
-- **Deterministic sorting**: Set/Map sorting is O(n log n) where n is element count
-- **Stack-safe**: Uses cats-effect stack-safe recursion for large collections
+## Design Philosophy
+
+### Separation of Concerns
+This codec library handles **byte encoding only**. Hashing and signing are separate modules:
+- Codec: `Data → ByteVector`
+- Crypto: `ByteVector → Hash/Signature` (future module)
+
+### Determinism Guarantee
+- Collections are sorted by encoded byte representation
+- Same input always produces same output
+- Independent of platform, JVM version, or execution order
+
+### Performance
+- Small integers (0-128) use single bytes
+- Variable-length encoding minimizes space
+- Tail-recursive implementations for stack safety
+
+## Example: Transaction Encoding
+
+```scala mdoc:reset:silent
+import org.sigilaris.core.codec.byte.*
+import scodec.bits.ByteVector
+
+case class Address(id: Long)
+case class Transaction(
+  from: Address,
+  to: Address,
+  amount: Long,
+  nonce: Long
+)
+```
+
+```scala mdoc
+val tx = Transaction(
+  from = Address(100L),
+  to = Address(200L),
+  amount = 5000L,
+  nonce = 42L
+)
+
+val bytes = ByteEncoder[Transaction].encode(tx)
+val roundtrip = ByteDecoder[Transaction].decode(bytes)
+```
+
+The encoded bytes can now be hashed or signed (using future crypto modules).
 
 ## Next Steps
 
-- Read [API Reference](api.md) for detailed trait documentation
-- Check [Type Rules](types.md) to understand encoding specifications
-- See [Examples](examples.md) for real-world usage patterns
-- Compare with [RLP](rlp-comparison.md) if you're familiar with Ethereum
+1. **[API Reference](api.md)**: Learn about `contramap`, `emap`, `flatMap` combinators
+2. **[Type Rules](types.md)**: Understand `BigNat`/`BigInt` variable-length encoding
+3. **[Examples](examples.md)**: See complete blockchain data structures
+4. **[RLP Comparison](rlp-comparison.md)**: Compare with Ethereum's RLP encoding
+
+## Limitations and Scope
+
+- **No Hashing/Signing**: This module only handles byte encoding
+- **No Compression**: Data is not compressed (use separate compression library if needed)
+- **Not RLP Compatible**: Similar design but different byte layout
+
+## Performance Characteristics
+
+- **Encoding**: O(n) where n is the size of the data structure
+- **Decoding**: O(n) with early exit on errors
+- **Space**: Variable-length encoding minimizes bytes for small values
+- **Collections**: Sorting overhead is O(k log k) where k is collection size
 
 ---
 
 [← Main](../../README.md) | [한국어 →](../../ko/codec/README.md)
+
+[API](api.md) | [Type Rules](types.md) | [Examples](examples.md) | [RLP Comparison](rlp-comparison.md)
