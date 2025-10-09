@@ -33,10 +33,10 @@ Consumes no bytes, returns Unit and original byte sequence as remainder
 import org.sigilaris.core.codec.byte.*
 import scodec.bits.ByteVector
 
-val encoded1 = ByteEncoder[Unit].encode(())
+val unitEncoded = ByteEncoder[Unit].encode(())
 // Result: ByteVector(empty)
 
-val decoded1 = ByteDecoder[Unit].decode(ByteVector(0x01, 0x02))
+val unitDecoded = ByteDecoder[Unit].decode(ByteVector(0x01, 0x02))
 // Result: Right(DecodeResult((), ByteVector(0x01, 0x02)))
 ```
 
@@ -58,10 +58,10 @@ Read 1 byte, return as Byte with remainder
 **Examples:**
 ```scala mdoc:silent
 val b: Byte = 0x42
-val encoded1 = ByteEncoder[Byte].encode(b)
+val byteEncoded = ByteEncoder[Byte].encode(b)
 // Result: ByteVector(0x42)
 
-val decoded1 = ByteDecoder[Byte].decode(encoded1)
+val byteDecoded = ByteDecoder[Byte].decode(byteEncoded)
 // Result: Right(DecodeResult(0x42, ByteVector(empty)))
 ```
 
@@ -80,10 +80,10 @@ Read 8 bytes, interpret as big-endian Long
 **Examples:**
 ```scala mdoc:silent
 val n: Long = 42L
-val encoded1 = ByteEncoder[Long].encode(n)
+val longEncoded = ByteEncoder[Long].encode(n)
 // Result: ByteVector(0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x2a)
 
-val decoded1 = ByteDecoder[Long].decode(encoded1)
+val longDecoded = ByteDecoder[Long].decode(longEncoded)
 // Result: Right(DecodeResult(42L, ByteVector(empty)))
 ```
 
@@ -106,10 +106,10 @@ Read 8 bytes as Long, convert to Instant via Instant.ofEpochMilli
 import java.time.Instant
 
 val timestamp = Instant.parse("2024-01-01T00:00:00Z")
-val encoded1 = ByteEncoder[Instant].encode(timestamp)
+val instantEncoded = ByteEncoder[Instant].encode(timestamp)
 // Result: epoch milliseconds encoded as Long
 
-val decoded1 = ByteDecoder[Instant].decode(encoded1)
+val instantDecoded = ByteDecoder[Instant].decode(instantEncoded)
 // Result: Right(DecodeResult(timestamp, ByteVector(empty)))
 ```
 
@@ -189,9 +189,9 @@ import io.github.iltotore.iron.*
 import io.github.iltotore.iron.constraint.numeric.Positive0
 
 def testRoundtrip(n: BigInt :| Positive0): Boolean =
-  val encoded1 = ByteEncoder[BigInt :| Positive0].encode(n)
-  val decoded1 = ByteDecoder[BigInt :| Positive0].decode(encoded1)
-  decoded1 match
+  val bignatEncoded = ByteEncoder[BigInt :| Positive0].encode(n)
+  val bignatDecoded = ByteDecoder[BigInt :| Positive0].decode(bignatEncoded)
+  bignatDecoded match
     case Right(DecodeResult(value, remainder)) =>
       value == n && remainder.isEmpty
     case Left(_) => false
@@ -270,7 +270,7 @@ Tuples are encoded as concatenated fields in order:
 **Encoding:**
 ```scala mdoc:silent
 val tuple = (42L, 100L)
-val encoded1 = ByteEncoder[(Long, Long)].encode(tuple)
+val tupleEncoded = ByteEncoder[(Long, Long)].encode(tuple)
 // Result: [42L encoded][100L encoded]
 ```
 
@@ -291,7 +291,7 @@ case class User(id: Long, balance: Long)
 case class User(id: Long, balance: Long)
 
 val user = User(1L, 100L)
-val encoded1 = ByteEncoder[User].encode(user)
+val userEncoded = ByteEncoder[User].encode(user)
 // Result: [id encoded][balance encoded]
 ```
 
@@ -311,7 +311,7 @@ List(a1, a2, ..., an) → [size:BigNat][a1][a2]...[an]
 **Encoding:**
 ```scala mdoc:silent
 val list = List(1, 2, 3).map(BigInt(_))
-val encoded1 = ByteEncoder[List[BigInt]].encode(list)
+val listEncoded = ByteEncoder[List[BigInt]].encode(list)
 // Result: [0x03][0x02][0x04][0x06]
 //         size=3, then 1→2, 2→4, 3→6
 ```
@@ -338,11 +338,11 @@ Some(x) → [0x01][x encoded]  // size = 1, element x
 **Encoding:**
 ```scala mdoc:silent
 val some: Option[Long] = Some(42L)
-val encoded1 = ByteEncoder[Option[Long]].encode(some)
+val someEncoded = ByteEncoder[Option[Long]].encode(some)
 // Result: [0x01][42L encoded as 8 bytes]
 
 val none: Option[Long] = None
-val encoded2 = ByteEncoder[Option[Long]].encode(none)
+val noneEncoded = ByteEncoder[Option[Long]].encode(none)
 // Result: [0x00]
 ```
 
@@ -367,7 +367,7 @@ Set(a1, a2, ..., an) → [size:BigNat][sorted_a1][sorted_a2]...[sorted_an]
 **Encoding:**
 ```scala mdoc:silent
 val set = Set(3, 1, 2).map(BigInt(_))
-val encoded1 = ByteEncoder[Set[BigInt]].encode(set)
+val setEncoded = ByteEncoder[Set[BigInt]].encode(set)
 // Elements encode as: 3→0x06, 1→0x02, 2→0x04
 // Sorted: 0x02, 0x04, 0x06
 // Result: [0x03][0x02][0x04][0x06]
@@ -394,7 +394,7 @@ Map(k1 → v1, k2 → v2) → Set((k1, v1), (k2, v2))
 **Encoding:**
 ```scala mdoc:silent
 val map = Map(1L -> 10L, 2L -> 20L)
-val encoded1 = ByteEncoder[Map[Long, Long]].encode(map)
+val mapEncoded = ByteEncoder[Map[Long, Long]].encode(map)
 // Each entry (1L, 10L) is encoded as tuple
 // Tuples are sorted by their encoded bytes
 // Result: [size][sorted entries]
