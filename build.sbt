@@ -46,7 +46,8 @@ val Dependencies = new {
 
   lazy val coreJS = Seq(
     libraryDependencies ++= Seq(
-      "com.outr" %%% "scribe" % V.scribe,
+      "com.outr"       %%% "scribe"           % V.scribe,
+      "io.github.cquiroz" %%% "scala-java-time" % V.scalaJavaTime,
     ),
     Compile / npmDependencies ++= Seq(
       "js-sha3"         -> V.jsSha3,
@@ -107,6 +108,7 @@ lazy val root = (project in file("."))
     core.jvm,
     core.js,
   )
+  .dependsOn(core.jvm)
   .enablePlugins(TypelevelSitePlugin, ScalaUnidocPlugin)
   .settings(
     publish / skip := true,
@@ -117,6 +119,11 @@ lazy val root = (project in file("."))
     // (CI fallback in workflow handles copying into /api.)
     // Ensure mdoc reads from Typelevel Site convention: site/src (not default docs/)
     mdocIn := baseDirectory.value / "site" / "src",
+    // Silence unused warnings only for mdoc (documentation examples)
+    mdocExtraArguments ++= Seq(
+      "--scalac-options",
+      "-Wconf:cat=unused:s",
+    ),
   )
 
 // Note: Unidoc is mapped into the site under /api via sbt-site mappings.
@@ -127,13 +134,16 @@ lazy val core = crossProject(JSPlatform, JVMPlatform)
   .settings(Dependencies.core)
   .settings(Dependencies.tests)
   .settings(
-    scalacOptions ++= Seq(
-      "-Wconf:msg=Alphanumeric method .* is not declared infix:s",
-    ),
     Compile / compile / wartremoverErrors ++= Warts
       .allBut(Wart.SeqApply, Wart.SeqUpdated),
   )
-  .jvmSettings(Dependencies.coreJVM)
+  .jvmSettings(
+    Dependencies.coreJVM,
+    // JVM: silence infix warning with precise message filter
+    scalacOptions ++= Seq(
+      "-Wconf:msg=Alphanumeric method .* is not declared infix:s",
+    ),
+  )
   .jsSettings(Dependencies.coreJS)
   .jsSettings(
     useYarn := true,
@@ -151,8 +161,15 @@ lazy val core = crossProject(JSPlatform, JVMPlatform)
     Test / scalacOptions ~= { opts =>
       opts.filterNot(Set("-Werror", "-Xfatal-warnings"))
     },
-    // Selectively silence mixed stdlib 'caps' warning in JS compile (escape colon required)
-    scalacOptions += "-Wconf:msg=package scala contains object and package with same name\\: caps:s",
+    // JS: silence warnings via message filters only (avoid colon in pattern)
+    Compile / scalacOptions ++= Seq(
+      "-Wconf:msg=Alphanumeric method .* is not declared infix:s",
+      "-Wconf:msg=package scala contains object and package with same name.*caps:s",
+    ),
+    Test / scalacOptions ++= Seq(
+      "-Wconf:msg=Alphanumeric method .* is not declared infix:s",
+      "-Wconf:msg=package scala contains object and package with same name.*caps:s",
+    ),
   )
   .jsConfigure { project =>
     project
