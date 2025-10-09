@@ -8,7 +8,7 @@
 
 이 문서는 세 가지 핵심 trait인 `ByteEncoder`, `ByteDecoder`, `ByteCodec`의 상세한 API 레퍼런스를 제공합니다. 타입별 인코딩 규칙은 [타입 규칙](types.md)을 참조하세요.
 
-## ByteEncoder[A]
+## ByteEncoder
 
 `ByteEncoder[A]`는 타입 `A`의 값을 deterministic 바이트 시퀀스로 인코딩하는 contravariant 타입 클래스입니다.
 
@@ -54,7 +54,7 @@ ByteEncoder[UserId].encode(UserId(100L))
 
 **사용 사례:** 커스텀 타입을 인코딩 가능한 타입으로 변환합니다.
 
-## ByteDecoder[A]
+## ByteDecoder
 
 `ByteDecoder[A]`는 바이트 시퀀스를 타입 `A`의 값으로 디코딩하는 covariant 타입 클래스입니다.
 
@@ -172,7 +172,7 @@ def decodeLengthPrefixed: ByteDecoder[String] =
 
 **사용 사례:** 구조가 이전에 디코딩된 값에 따라 달라지는 컨텍스트 의존적 디코딩.
 
-## ByteCodec[A]
+## ByteCodec
 
 `ByteCodec[A]`는 `ByteEncoder[A]`와 `ByteDecoder[A]`를 단일 타입 클래스로 결합합니다.
 

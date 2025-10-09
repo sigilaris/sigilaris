@@ -8,7 +8,7 @@
 
 This document provides detailed API reference for the three core traits: `ByteEncoder`, `ByteDecoder`, and `ByteCodec`. For type-specific encoding rules, see [Type Rules](types.md).
 
-## ByteEncoder[A]
+## ByteEncoder
 
 `ByteEncoder[A]` is a contravariant type class for encoding values of type `A` into deterministic byte sequences.
 
@@ -54,7 +54,7 @@ ByteEncoder[UserId].encode(UserId(100L))
 
 **Use Case:** Transform custom types to encodable types.
 
-## ByteDecoder[A]
+## ByteDecoder
 
 `ByteDecoder[A]` is a covariant type class for decoding byte sequences into values of type `A`.
 
@@ -172,7 +172,7 @@ def decodeLengthPrefixed: ByteDecoder[String] =
 
 **Use Case:** Context-dependent decoding where the structure depends on previously decoded values.
 
-## ByteCodec[A]
+## ByteCodec
 
 `ByteCodec[A]` combines both `ByteEncoder[A]` and `ByteDecoder[A]` into a single type class.
 

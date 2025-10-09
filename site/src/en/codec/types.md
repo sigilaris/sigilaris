@@ -300,7 +300,7 @@ Fields are encoded in the order they appear in the case class definition.
 
 ## Collection Types
 
-### List[A]
+### List
 
 Lists preserve order and encode with size prefix:
 
@@ -326,7 +326,7 @@ val listEncoded = ByteEncoder[List[BigInt]].encode(list)
 List() → [0x00]  // size = 0
 ```
 
-### Option[A]
+### Option
 
 Option is encoded as zero or one-element list:
 
@@ -351,7 +351,7 @@ The context (type) distinguishes `Option[Long]` from `Long`. The byte `0x00` mea
 - In `BigNat` context: natural number 0
 - In `Option[A]` context: None (zero elements)
 
-### Set[A]
+### Set
 
 Sets encode with deterministic ordering:
 
@@ -382,7 +382,7 @@ Bytes are compared left to right:
 - `0x01 0x00` < `0x01 0x01`
 - `0x01 0xff` < `0x02 0x00`
 
-### Map[K, V]
+### Map
 
 Maps are encoded as deterministically sorted sets of tuples:
 
@@ -479,9 +479,9 @@ val negative = ByteVector(0x03)  // encodes -1 as BigInt
 | BigInt 0-64 | 1 byte | Single byte range |
 | BigInt 65-128 | 1 byte | Single byte range |
 | BigInt 129-32767 | 3 bytes | Short data range |
-| List[A] n elements | 1+ + n*sizeof(A) | Size prefix + elements |
-| Set[A] n elements | 1+ + n*sizeof(A) | Size prefix + sorted |
-| Map[K,V] n entries | 1+ + n*(sizeof(K)+sizeof(V)) | Size + sorted tuples |
+| `List[A]` n elements | 1+ + n*sizeof(A) | Size prefix + elements |
+| `Set[A]` n elements | 1+ + n*sizeof(A) | Size prefix + sorted |
+| `Map[K,V]` n entries | 1+ + n*(sizeof(K)+sizeof(V)) | Size + sorted tuples |
 
 ### Time Complexity
 
@@ -489,14 +489,14 @@ val negative = ByteVector(0x03)  // encodes -1 as BigInt
 |-----------|------------|-------|
 | Encode primitive | O(1) | Constant time |
 | Encode BigNat | O(log n) | Proportional to value size |
-| Encode List[A] | O(n) | Linear in list size |
-| Encode Set[A] | O(n log n) | Due to sorting |
-| Encode Map[K,V] | O(n log n) | Due to sorting |
+| Encode `List[A]` | O(n) | Linear in list size |
+| Encode `Set[A]` | O(n log n) | Due to sorting |
+| Encode `Map[K,V]` | O(n log n) | Due to sorting |
 | Decode primitive | O(1) | Constant time |
 | Decode BigNat | O(log n) | Read variable bytes |
-| Decode List[A] | O(n) | Linear in list size |
-| Decode Set[A] | O(n) | No sorting needed |
-| Decode Map[K,V] | O(n) | No sorting needed |
+| Decode `List[A]` | O(n) | Linear in list size |
+| Decode `Set[A]` | O(n) | No sorting needed |
+| Decode `Map[K,V]` | O(n) | No sorting needed |
 
 ## Roundtrip Property
 
