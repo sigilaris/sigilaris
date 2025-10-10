@@ -1,6 +1,6 @@
 # 바이트 코덱 (Byte Codec)
 
-[← 메인](../../README.md) | [English →](../../en/codec/README.md)
+[← 메인](../../README.md) | [English →](../../en/byte-codec/README.md)
 
 ---
 
@@ -120,4 +120,4 @@ val result = ByteDecoder[Long].decode(incomplete)
 
 ---
 
-[← 메인](../../README.md) | [English →](../../en/codec/README.md)
+[← 메인](../../README.md) | [English →](../../en/byte-codec/README.md)

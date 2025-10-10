@@ -28,8 +28,13 @@ libraryDependencies += "org.sigilaris" %%% "sigilaris-core" % "@VERSION@"
 
 #### Byte Codec
 Deterministic byte encoding/decoding for blockchain applications.
-- [한국어 문서](ko/codec/README.md) | [English Documentation](en/codec/README.md)
+- [한국어 문서](ko/byte-codec/README.md) | [English Documentation](en/byte-codec/README.md)
 - Use cases: Transaction signing, block hashing, merkle tree construction
+
+#### JSON Codec
+Library-agnostic JSON encoding/decoding with customizable configuration.
+- [한국어 문서](ko/json-codec/README.md) | [English Documentation](en/json-codec/README.md)
+- Use cases: API serialization, configuration files, data interchange
 
 ### API Documentation
 - [Latest Release API](https://javadoc.io/doc/org.sigilaris/sigilaris-core_3/latest/index.html)
