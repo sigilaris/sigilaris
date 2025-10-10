@@ -33,12 +33,26 @@ private[circe] object CirceConversions:
     case JsonValue.JObject(fields) =>
       CJson.fromFields(fields.view.mapValues(fromCore))
 
-/** Circe-backed parser and printer that operate on the core JsonValue. */
+/** Circe-backed parser and printer that operate on the core [[JsonValue]].
+  *
+  * Provides JSON parsing and printing using the Circe library while
+  * converting to/from the library-agnostic [[JsonValue]] AST.
+  */
 object CirceJsonOps extends JsonParser, JsonPrinter:
   import CirceConversions.*
 
+  /** Parses a JSON string using Circe and converts to [[JsonValue]].
+    *
+    * @param input the JSON string to parse
+    * @return either a parse failure or the parsed [[JsonValue]]
+    */
   def parse(input: String): Either[ParseFailure, JsonValue] =
     parser.parse(input).left.map(err => ParseFailure(err.message)).map(toCore)
 
+  /** Prints a [[JsonValue]] to a compact JSON string using Circe.
+    *
+    * @param json the JSON value to print
+    * @return the compact JSON string (no whitespace)
+    */
   def print(json: JsonValue): String =
     fromCore(json).noSpaces

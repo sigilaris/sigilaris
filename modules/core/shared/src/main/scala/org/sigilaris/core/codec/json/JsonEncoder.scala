@@ -10,18 +10,48 @@ import scala.deriving.Mirror
 
 import util.SafeStringInterp.*
 
-/** Type class for encoding Scala values into the core `JsonValue` AST.
+/** Type class for encoding Scala values into the core [[JsonValue]] AST.
   *
-  * Encoders consult a `JsonConfig` to honor naming policies, null/absent
+  * Encoders consult a [[JsonConfig]] to honor naming policies, null/absent
   * handling, discriminator strategy, and number formatting for big numbers.
   *
   * Use `contramap` to adapt existing encoders and `derived` to auto-derive for
   * products and sums when appropriate givens are in scope.
+  *
+  * @example
+  * ```scala
+  * case class User(name: String, age: Int) derives JsonEncoder
+  * val user = User("Alice", 30)
+  * val json = JsonEncoder[User].encode(user)
+  * ```
+  *
+  * @note Encoding is deterministic: the same value always produces the same JSON structure.
+  *       However, object field order may vary. Use sorted encoding if field order matters.
+  *
+  * @see [[JsonDecoder]] for the inverse operation
+  * @see [[JsonCodec]] for bidirectional encoding and decoding
+  * @see [[JsonConfig]] for configuration options
   */
 trait JsonEncoder[A]:
   self =>
+  /** Encodes a Scala value to a JSON value.
+    *
+    * @param value the value to encode
+    * @return the JSON representation
+    */
   def encode(value: A): JsonValue
 
+  /** Creates a new encoder by applying a function before encoding.
+    *
+    * @param f the preprocessing function
+    * @return a new encoder for type B
+    *
+    * @example
+    * ```scala
+    * val intEncoder: JsonEncoder[Int] = JsonEncoder[Int]
+    * val lengthEncoder: JsonEncoder[String] = intEncoder.contramap(_.length)
+    * ```
+    */
   def contramap[B](f: B => A): JsonEncoder[B] = new JsonEncoder[B]:
     def encode(value: B): JsonValue =
       self.encode(f(value))
@@ -150,12 +180,38 @@ trait JsonEncoderInstances:
       JsonValue.JObject(Map(key -> body))
 
 object JsonEncoder extends JsonEncoderInstances:
+  /** Summons an encoder instance for type A.
+    *
+    * ```scala
+    * val stringEnc = JsonEncoder[String]
+    * ```
+    */
   def apply[A: JsonEncoder]: JsonEncoder[A] = summon
 
+  /** Provides extension methods for encoding values. */
   object ops:
     extension [A: JsonEncoder](a: A)
+      /** Encodes this value to JSON.
+        *
+        * ```scala
+        * import JsonEncoder.ops.*
+        * val json = "hello".toJson
+        * ```
+        */
       def toJson: JsonValue = JsonEncoder[A].encode(a)
 
+  /** Derives an encoder for type A using Scala 3 mirrors.
+    *
+    * Supports both product types (case classes) and sum types (sealed traits).
+    * Enabled via `derives JsonEncoder` clause.
+    *
+    * ```scala
+    * case class Point(x: Int, y: Int) derives JsonEncoder
+    * sealed trait Color derives JsonEncoder
+    * case object Red extends Color
+    * case object Blue extends Color
+    * ```
+    */
   inline def derived[A](using m: Mirror.Of[A]): JsonEncoder[A] =
     inline m match
       case _: Mirror.ProductOf[A] => summonInline[JsonEncoder[A]]
@@ -163,10 +219,12 @@ object JsonEncoder extends JsonEncoderInstances:
 
   protected val config: JsonConfig = JsonConfig.default
 
+  /** Configuration-bound encoder bundles. */
   object configured:
-    /** Factory for encoder bundles bound to a specific `JsonConfig`.
+    /** Factory for encoder bundles bound to a specific [[JsonConfig]].
       *
-      * @example
+      * Use this to override default behavior like field naming or null handling.
+      *
       * ```scala
       * val cfg = JsonConfig.default.copy(dropNullValues = false)
       * given JsonEncoder.configured.Encoders = JsonEncoder.configured(cfg)
