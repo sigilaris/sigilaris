@@ -12,6 +12,7 @@
    - `org.sigilaris.core.codec.json.JsonValue` (small ADT)
    - `JsonEncoder`, `JsonDecoder`, `JsonCodec`
    - `JsonConfig`: field naming, null/absent policy, discriminator config
+   - `JsonKeyCodec`: map key codec (A ↔ JString) for `Map[K, V]`
 2) Derivation
    - Product (case classes) + Coproduct (sealed traits) via Scala 3 mirrors
    - Discriminator strategy: wrapped-by-type-key object (no inline `_type`)
@@ -34,11 +35,14 @@
 - Site docs: `site/src/{en,ko}/codec/json/*.md`
 - sbt unidoc configuration and site integration
 - Unit tests under `modules/core/shared/src/test/scala/.../codec/json/`
+ - `JsonKeyCodec` typeclass and base instances (String, UUID, numeric)
 
 ### Phases
 1. Core skeleton
    - Define `JsonValue`, `JsonConfig`, encoders/decoders for primitives/collections
    - Introduce `JsonCodec`
+   - Introduce `JsonKeyCodec` for map keys; provide base instances (String, UUID, numeric)
+   - Implement `Map[K, V]` encoder/decoder using `JsonKeyCodec[K]` + `JsonEncoder[V]`/`JsonDecoder[V]`
 2. Derivation
    - Implement product and coproduct derivation
    - Discriminator: encode as { "<TypeName>": { ... } } with configurable typeName strategy
@@ -63,6 +67,7 @@
 - BigInt/BigDecimal are encoded as strings by default; decoders accept both forms.
 - Circe-backed parse/print works; site docs include JSON section; unidoc generated.
 - Tests cover roundtrip and config-driven behaviors.
+ - `Map[K, V]` supported when `JsonKeyCodec[K]` is available; otherwise decode fails
 
 
 ### TDD Approach
@@ -94,6 +99,10 @@
     - Encode: `instant.toString` (ISO-8601)
     - Decode: `Instant.parse`
     - Precision: millisecond precision only (sub-millisecond truncated)
+ - Map keys:
+   - Encode keys via `JsonKeyCodec[K]` into JSON object field names (strings)
+   - No additional naming policy beyond the key codec is applied to map keys
+   - Decode failure on key parsing errors or duplicate decoded keys after normalization
 
 ### Testing Matrix (Example-based)
 - Primitives/Collections roundtrip
@@ -103,4 +112,5 @@
   - Decode: 올바른 서브타입 매핑, 알 수 없는 서브타입은 DecodeFailure
 - Null vs Absent interactions
 - Big numbers as strings by default; decoder supports string/number 입력 모두
-- Map[String, A] only; non-string keys are rejected with DecodeFailure
+- Map[K, A] roundtrip when `JsonKeyCodec[K]` is available
+- Key parsing failure or collisions → DecodeFailure
