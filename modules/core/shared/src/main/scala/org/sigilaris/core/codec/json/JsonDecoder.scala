@@ -9,6 +9,14 @@ import java.time.Instant
 import scala.deriving.Mirror
 import scala.compiletime.{erasedValue, constValue, summonInline}
 
+/** Type class for decoding the core `JsonValue` AST into Scala values.
+  *
+  * Decoders use `JsonConfig` to interpret field naming, discriminator strategy,
+  * null/absent semantics, and big number representations.
+  *
+  * Combinators `map`/`emap`/`flatMap` help build validated or dependent
+  * decoders; `derived` provides automatic derivation for products and sums.
+  */
 trait JsonDecoder[A]:
   self =>
   def decode(json: JsonValue, config: JsonConfig): Either[DecodeFailure, A]
@@ -246,5 +254,13 @@ object JsonDecoder extends JsonDecoderInstances:
       case _: Mirror.SumOf[A]     => summonInline[JsonDecoder[A]]
 
   object configured:
+    /** Factory for decoder bundles bound to a specific `JsonConfig`.
+      *
+      * @example
+      * ```scala
+      * val cfg = JsonConfig.default.copy(treatAbsentAsNull = false)
+      * given JsonDecoder.configured.Decoders = JsonDecoder.configured(cfg)
+      * ```
+      */
     final class Decoders(val config: JsonConfig) extends JsonDecoderInstances
     def apply(config: JsonConfig): Decoders = new Decoders(config)

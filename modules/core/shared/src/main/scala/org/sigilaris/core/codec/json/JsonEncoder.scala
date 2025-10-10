@@ -10,6 +10,14 @@ import scala.deriving.Mirror
 
 import util.SafeStringInterp.*
 
+/** Type class for encoding Scala values into the core `JsonValue` AST.
+  *
+  * Encoders consult a `JsonConfig` to honor naming policies, null/absent
+  * handling, discriminator strategy, and number formatting for big numbers.
+  *
+  * Use `contramap` to adapt existing encoders and `derived` to auto-derive for
+  * products and sums when appropriate givens are in scope.
+  */
 trait JsonEncoder[A]:
   self =>
   def encode(value: A): JsonValue
@@ -156,5 +164,14 @@ object JsonEncoder extends JsonEncoderInstances:
   protected val config: JsonConfig = JsonConfig.default
 
   object configured:
+    /** Factory for encoder bundles bound to a specific `JsonConfig`.
+      *
+      * @example
+      * ```scala
+      * val cfg = JsonConfig.default.copy(dropNullValues = false)
+      * given JsonEncoder.configured.Encoders = JsonEncoder.configured(cfg)
+      * import JsonEncoder.ops.*
+      * ```
+      */
     final class Encoders(val config: JsonConfig) extends JsonEncoderInstances
     def apply(config: JsonConfig): Encoders = new Encoders(config)

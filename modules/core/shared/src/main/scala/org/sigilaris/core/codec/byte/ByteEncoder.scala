@@ -49,10 +49,10 @@ trait ByteEncoder[A]:
     *   new encoder for type B
     *
     * @example
-    *   {{{
+    * ```scala
     * case class UserId(value: Long)
     * given ByteEncoder[UserId] = ByteEncoder[Long].contramap(_.value)
-    *   }}}
+    * ```
     */
   def contramap[B](f: B => A): ByteEncoder[B] = value => encode(f(value))
 
@@ -66,10 +66,10 @@ object ByteEncoder:
       /** Encodes this value to bytes.
         *
         * @example
-        *   {{{
+        * ```scala
         * import ByteEncoder.ops.*
         * val bytes = 42L.toBytes
-        *   }}}
+        * ```
         */
       def toBytes: ByteVector = ByteEncoder[A].encode(a)
 

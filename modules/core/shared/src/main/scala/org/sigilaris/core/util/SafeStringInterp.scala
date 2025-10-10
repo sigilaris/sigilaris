@@ -5,11 +5,11 @@ package org.sigilaris.core.util
   * preserves the readability of string interpolation without relying on `Any`.
   *
   * @example
-  *   {{{
+  * ```scala
   * import org.sigilaris.core.util.SafeStringInterp.*
   * val hex: String = "deadbeef"
   * val msg: String = ss"non empty remainder: ${hex}"
-  *   }}}
+  * ```
   */
 object SafeStringInterp:
   extension (inline sc: StringContext)

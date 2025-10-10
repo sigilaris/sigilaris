@@ -13,11 +13,17 @@ trait JsonKeyCodec[K]:
   def encodeKey(key: K): String
   def decodeKey(key: String): Either[DecodeFailure, K]
 
+  /** Invariant mapping for key codecs.
+    *
+    * Creates a `JsonKeyCodec[L]` from an existing `JsonKeyCodec[K]` using
+    * total conversions between `K` and `L`.
+    */
   final def imap[L](to: K => L, from: L => K): JsonKeyCodec[L] = new JsonKeyCodec[L]:
     def encodeKey(key: L): String = self.encodeKey(from(key))
     def decodeKey(key: String): Either[DecodeFailure, L] = self.decodeKey(key).map(to)
 
 object JsonKeyCodec:
+  /** Summons a key codec for the given type. */
   def apply[K](using ev: JsonKeyCodec[K]): JsonKeyCodec[K] = ev
 
   // Base instances
