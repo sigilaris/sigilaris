@@ -109,12 +109,25 @@ trait JsonDecoderInstances:
     mk: (j, cfg) =>
       listDecoder[A].decode(j, cfg).map(_.toVector)
 
-  given mapStringDecoder[A: JsonDecoder]: JsonDecoder[Map[String, A]] = mk:
-    case (JsonValue.JObject(fields), cfg) =>
-      fields.foldLeft(Map.empty[String, A].asRight[DecodeFailure]):
-        case (acc, (k, v)) =>
-          acc.flatMap(m => JsonDecoder[A].decode(v, cfg).map(m.updated(k, _)))
-    case (other, _) => typeMismatch[Map[String, A]]("object", other)
+  /** Decode Map[K, V] by converting field names with JsonKeyCodec[K].
+    * - Fails on key parse errors
+    * - Fails on duplicate decoded keys after normalization
+    */
+  given mapDecoder[K, V](using JsonKeyCodec[K], JsonDecoder[V]): JsonDecoder[Map[K, V]] =
+    mk:
+      case (JsonValue.JObject(fields), cfg) =>
+        // Decode keys and values; detect duplicates after key normalization
+        fields.foldLeft(Map.empty[K, V].asRight[DecodeFailure]):
+          case (acc, (rawKey, jv)) =>
+            for
+              m     <- acc
+              key   <- JsonKeyCodec[K].decodeKey(rawKey)
+              value <- JsonDecoder[V].decode(jv, cfg)
+              res   <-
+                if m.contains(key) then DecodeFailure(ss"Duplicate key after normalization: ${rawKey}").asLeft[Map[K, V]]
+                else m.updated(key, value).asRight[DecodeFailure]
+            yield res
+      case (other, _) => typeMismatch[Map[K, V]]("object", other)
 
 object JsonDecoder extends JsonDecoderInstances:
   def apply[A: JsonDecoder]: JsonDecoder[A] = summon

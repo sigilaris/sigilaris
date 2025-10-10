@@ -48,14 +48,16 @@ trait JsonEncoderInstances:
   given vectorEncoder[A: JsonEncoder]: JsonEncoder[Vector[A]] = mk: (xs, _) =>
     JsonValue.JArray(xs.iterator.map(a => JsonEncoder[A].encode(a)).toVector)
 
-  given mapStringEncoder[A: JsonEncoder]: JsonEncoder[Map[String, A]] = mk:
-    (m, cfg) =>
+  /** Encode Map[K, V] by converting keys with JsonKeyCodec[K] to field names. */
+  given mapEncoder[K, V](using JsonKeyCodec[K], JsonEncoder[V]): JsonEncoder[Map[K, V]] =
+    mk: (m, cfg) =>
       val pairs = m.iterator
         .flatMap: (k, a) =>
-          val v = JsonEncoder[A].encode(a)
-          v match
+          val field = JsonKeyCodec[K].encodeKey(k)
+          val value = JsonEncoder[V].encode(a)
+          value match
             case JsonValue.JNull if cfg.dropNullValues => None
-            case _                                     => Some(k -> v)
+            case _                                     => Some(field -> value)
         .toMap
       JsonValue.JObject(pairs)
 
