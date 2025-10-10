@@ -21,8 +21,10 @@ final class CirceJsonOpsSuite extends FunSuite:
       val p = CirceJsonOps.parse(s)
       assertEquals(p, Right(v))
 
-  test("parse invalid JSON returns DecodeFailure"):
+  test("parse invalid JSON returns ParseFailure"):
     val res = CirceJsonOps.parse("{ not-json }")
-    assert(res.isLeft)
+    res match
+      case Left(_: org.sigilaris.core.failure.ParseFailure) => assert(true)
+      case other => fail("expected ParseFailure, got: " + other)
 
 

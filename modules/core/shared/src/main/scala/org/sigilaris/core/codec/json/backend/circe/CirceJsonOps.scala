@@ -2,7 +2,7 @@ package org.sigilaris.core
 package codec.json
 package backend.circe
 
-import failure.DecodeFailure
+import failure.ParseFailure
 import io.circe.{Json => CJson}
 import io.circe.parser
 // no syntax imports needed
@@ -37,8 +37,8 @@ private[circe] object CirceConversions:
 object CirceJsonOps extends JsonParser, JsonPrinter:
   import CirceConversions.*
 
-  def parse(input: String): Either[DecodeFailure, JsonValue] =
-    parser.parse(input).left.map(err => DecodeFailure(err.message)).map(toCore)
+  def parse(input: String): Either[ParseFailure, JsonValue] =
+    parser.parse(input).left.map(err => ParseFailure(err.message)).map(toCore)
 
   def print(json: JsonValue): String =
     fromCore(json).noSpaces

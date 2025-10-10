@@ -6,3 +6,4 @@ sealed trait SigilarisFailure extends NoStackTrace:
   def msg: String
 
 final case class DecodeFailure(msg: String) extends SigilarisFailure
+final case class ParseFailure(msg: String) extends SigilarisFailure
