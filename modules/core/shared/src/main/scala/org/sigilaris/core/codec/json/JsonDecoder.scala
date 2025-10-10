@@ -1,10 +1,13 @@
 package org.sigilaris.core
 package codec.json
 
-import org.sigilaris.core.failure.DecodeFailure
+import failure.DecodeFailure
 import cats.syntax.either.*
 import util.SafeStringInterp.*
+import java.util.Locale
 import java.time.Instant
+import scala.deriving.Mirror
+import scala.compiletime.{erasedValue, constValue, summonInline}
 
 trait JsonDecoder[A]:
   self =>
@@ -95,25 +98,25 @@ trait JsonDecoderInstances:
         case JsonValue.JNull => success(None)
         case other           => JsonDecoder[A].decode(other, cfg).map(Some(_))
 
-  given listDecoder[A: JsonDecoder]: JsonDecoder[List[A]] = mk:
-    (j, cfg) =>
-      j match
-        case JsonValue.JArray(arr) =>
-          arr
-            .foldLeft(List.empty[A].asRight[DecodeFailure]): (acc, jv) =>
-              acc.flatMap(list => JsonDecoder[A].decode(jv, cfg).map(a => a :: list))
-            .map(_.reverse)
-        case other => typeMismatch[List[A]]("array", other)
+  given listDecoder[A: JsonDecoder]: JsonDecoder[List[A]] = mk: (j, cfg) =>
+    j match
+      case JsonValue.JArray(arr) =>
+        arr
+          .foldLeft(List.empty[A].asRight[DecodeFailure]): (acc, jv) =>
+            acc.flatMap: list =>
+              JsonDecoder[A].decode(jv, cfg).map(a => a :: list)
+          .map(_.reverse)
+      case other => typeMismatch[List[A]]("array", other)
 
   given vectorDecoder[A: JsonDecoder]: JsonDecoder[Vector[A]] =
     mk: (j, cfg) =>
       listDecoder[A].decode(j, cfg).map(_.toVector)
 
   /** Decode Map[K, V] by converting field names with JsonKeyCodec[K].
-    * - Fails on key parse errors
-    * - Fails on duplicate decoded keys after normalization
+    *   - Fails on key parse errors
+    *   - Fails on duplicate decoded keys after normalization
     */
-  given mapDecoder[K, V](using JsonKeyCodec[K], JsonDecoder[V]): JsonDecoder[Map[K, V]] =
+  given mapDecoder[K: JsonKeyCodec, V: JsonDecoder]: JsonDecoder[Map[K, V]] =
     mk:
       case (JsonValue.JObject(fields), cfg) =>
         // Decode keys and values; detect duplicates after key normalization
@@ -123,15 +126,124 @@ trait JsonDecoderInstances:
               m     <- acc
               key   <- JsonKeyCodec[K].decodeKey(rawKey)
               value <- JsonDecoder[V].decode(jv, cfg)
-              res   <-
-                if m.contains(key) then DecodeFailure(ss"Duplicate key after normalization: ${rawKey}").asLeft[Map[K, V]]
+              res <-
+                if m.contains(key) then
+                  DecodeFailure(
+                    ss"Duplicate key after normalization: ${rawKey}",
+                  ).asLeft[Map[K, V]]
                 else m.updated(key, value).asRight[DecodeFailure]
             yield res
       case (other, _) => typeMismatch[Map[K, V]]("object", other)
 
+  // --- Derivation helpers -------------------------------------------------
+  @SuppressWarnings(
+    Array(
+      "org.wartremover.warts.Recursion",
+      "org.wartremover.warts.AsInstanceOf",
+    ),
+  )
+  private inline def elemLabels[L <: Tuple]: List[String] =
+    inline erasedValue[L] match
+      case _: EmptyTuple => (Nil: List[String])
+      case _: (h *: t)   => constValue[h].asInstanceOf[String] :: elemLabels[t]
+
+  @SuppressWarnings(Array("org.wartremover.warts.Recursion"))
+  private inline def decoders[T <: Tuple]: List[JsonDecoder[?]] =
+    inline erasedValue[T] match
+      case _: EmptyTuple => (Nil: List[JsonDecoder[?]])
+      case _: (h *: t)   => summonInline[JsonDecoder[h]] :: decoders[t]
+
+  private def applyNaming(name: String, p: FieldNamingPolicy): String =
+    p match
+      case FieldNamingPolicy.Identity => name
+      case FieldNamingPolicy.CamelCase =>
+        if name.isEmpty then name
+        else ss"${name.head.toLower.toString}${name.tail}"
+      case FieldNamingPolicy.SnakeCase =>
+        name.replaceAll("([a-z0-9])([A-Z])", "$1_$2").toLowerCase(Locale.ROOT)
+      case FieldNamingPolicy.KebabCase =>
+        name.replaceAll("([a-z0-9])([A-Z])", "$1-$2").toLowerCase(Locale.ROOT)
+
+  // --- Derivation: Product -----------------------------------------------
+  @SuppressWarnings(
+    Array(
+      "org.wartremover.warts.AsInstanceOf",
+      "org.wartremover.warts.Any",
+    ),
+  )
+  inline given derivedProductDecoder[A](using
+      m: Mirror.ProductOf[A],
+  ): JsonDecoder[A] = mk:
+    case (JsonValue.JObject(fields), cfg) =>
+      val names = elemLabels[m.MirroredElemLabels].map: n =>
+        applyNaming(n, cfg.fieldNaming)
+      val decs = decoders[m.MirroredElemTypes]
+      val bldr = new Array[Any](names.size)
+      val res: Either[DecodeFailure, Unit] = (0 until names.size)
+        .foldLeft[Either[DecodeFailure, Unit]](().asRight): (acc, idx) =>
+          acc.flatMap: _ =>
+            val n  = names(idx)
+            val jd = decs(idx).asInstanceOf[JsonDecoder[Any]]
+            val toDecodeEither: Either[DecodeFailure, JsonValue] =
+              fields.get(n) match
+                case Some(jv) => jv.asRight[DecodeFailure]
+                case None =>
+                  if cfg.treatAbsentAsNull then
+                    JsonValue.JNull.asRight[DecodeFailure]
+                  else DecodeFailure(ss"Missing field: ${n}").asLeft[JsonValue]
+            toDecodeEither.flatMap: toDecode =>
+              jd.decode(toDecode, cfg)
+                .map: a =>
+                  bldr(idx) = a
+                  ()
+      res.map: _ =>
+        val tuple = Tuple.fromArray(bldr)
+        m.fromProduct(tuple)
+    case (other, _) => typeMismatch[A]("object", other)
+
+  // --- Derivation: Sum (wrapped-by-type-key) -----------------------------
+  @SuppressWarnings(
+    Array(
+      "org.wartremover.warts.AsInstanceOf",
+      "org.wartremover.warts.Any",
+    ),
+  )
+  inline given derivedSumDecoder[A](using m: Mirror.SumOf[A]): JsonDecoder[A] =
+    mk:
+      case (JsonValue.JObject(fields), cfg) =>
+        val labels = elemLabels[m.MirroredElemLabels]
+        // find the single key and map to subtype without using == / size
+        fields.toList match
+          case (rawKey, body) :: Nil =>
+            val idx = cfg.discriminator.typeNameStrategy match
+              case TypeNameStrategy.SimpleName     => labels.indexOf(rawKey)
+              case TypeNameStrategy.FullyQualified => labels.indexOf(rawKey)
+              case TypeNameStrategy.Custom(mapping) =>
+                val normalized = labels.map(l => mapping.getOrElse(l, l))
+                normalized.indexOf(rawKey)
+            if idx < 0 then DecodeFailure(ss"Unknown subtype: ${rawKey}").asLeft
+            else
+              val decs: List[JsonDecoder[?]] =
+                inline erasedValue[m.MirroredElemTypes] match
+                  case _: EmptyTuple => Nil
+                  case _: (h *: t) =>
+                    summonInline[JsonDecoder[h]] :: decoders[t]
+              val dec = decs(idx).asInstanceOf[JsonDecoder[Any]]
+              dec.decode(body, cfg).map(_.asInstanceOf[A])
+          case _ =>
+            DecodeFailure:
+              "Expected single-key object for coproduct discriminator"
+            .asLeft[A]
+      case (other, _) => typeMismatch[A]("object", other)
+
 object JsonDecoder extends JsonDecoderInstances:
   def apply[A: JsonDecoder]: JsonDecoder[A] = summon
   protected val config: JsonConfig          = JsonConfig.default
+
+  inline def derived[A](using m: Mirror.Of[A]): JsonDecoder[A] =
+    inline m match
+      case _: Mirror.ProductOf[A] => summonInline[JsonDecoder[A]]
+      case _: Mirror.SumOf[A]     => summonInline[JsonDecoder[A]]
 
   object configured:
     final class Decoders(val config: JsonConfig) extends JsonDecoderInstances

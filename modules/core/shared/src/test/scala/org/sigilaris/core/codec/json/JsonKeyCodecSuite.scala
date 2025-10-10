@@ -7,7 +7,7 @@ import java.util.UUID
 final class JsonKeyCodecSuite extends FunSuite:
 
   test("JsonKeyCodec base instances encode/decode roundtrip"):
-    val uuid = UUID.randomUUID()
+    val uuid = UUID.fromString("00000000-0000-0000-0000-000000000001")
     assertEquals(JsonKeyCodec[String].decodeKey("abc"), Right("abc"))
     assertEquals(JsonKeyCodec[String].encodeKey("abc"), "abc")
     assertEquals(JsonKeyCodec[UUID].decodeKey(uuid.toString), Right(uuid))
