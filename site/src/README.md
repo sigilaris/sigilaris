@@ -1,18 +1,19 @@
 # Sigilaris
 
-Functional and secure cryptographic operations library for Scala.
+A purely functional library for building application-specific private blockchains in Scala.
 
 ## Overview
 
-Sigilaris is a purely functional cryptographic library built with cats-effect ecosystem, providing type-safe cryptographic primitives for both JVM and JavaScript platforms.
+Sigilaris provides type-safe, deterministic building blocks for constructing custom blockchain applications. Built on the cats-effect ecosystem, it offers cross-platform support for both JVM and JavaScript, enabling you to create tailored blockchain solutions with compile-time guarantees.
 
 ## Features
 
+- **Application-Specific Design**: Build custom private blockchains tailored to your exact requirements
+- **Deterministic Encoding**: Guaranteed consistent byte representation for hashing and signatures
 - **Purely Functional**: Built on cats-effect for composable and referential transparent operations
 - **Cross-Platform**: Supports both JVM and Scala.js
 - **Type-Safe**: Leverages Scala's type system for compile-time safety
-- **Secure**: Industry-standard cryptographic algorithms
-- **Deterministic Byte Codec**: Blockchain-ready encoding with guaranteed consistency for hashing and signatures
+- **Library-Agnostic**: Flexible JSON codec works with any backend (Circe, Play JSON, etc.)
 
 ## Getting Started
 
@@ -27,29 +28,33 @@ libraryDependencies += "org.sigilaris" %%% "sigilaris-core" % "@VERSION@"
 ### Core Modules
 
 #### Byte Codec
-Deterministic byte encoding/decoding for blockchain applications.
+Deterministic byte encoding/decoding for custom blockchain implementations.
 - [한국어 문서](ko/byte-codec/README.md) | [English Documentation](en/byte-codec/README.md)
-- Use cases: Transaction signing, block hashing, merkle tree construction
+- Essential for: Transaction signing, block hashing, state commitment, consensus mechanisms
+- Guarantees identical byte representation across all nodes
 
 #### JSON Codec
-Library-agnostic JSON encoding/decoding with customizable configuration.
+Library-agnostic JSON encoding/decoding for blockchain APIs and configuration.
 - [한국어 문서](ko/json-codec/README.md) | [English Documentation](en/json-codec/README.md)
-- Use cases: API serialization, configuration files, data interchange
+- Use cases: RPC API serialization, node configuration, off-chain data interchange
+- Flexible backend support for seamless integration
 
 ### API Documentation
 - [Latest Release API](https://javadoc.io/doc/org.sigilaris/sigilaris-core_3/latest/index.html)
 - [Development API](https://sigilaris.github.io/sigilaris/api/index.html)
 
 ### Coming Soon
-- Merkle Tree
-- Consensus Algorithms
-- Network Protocols
+- **Cryptographic Primitives**: Hashing, digital signatures, key management
+- **Merkle Tree**: Efficient state verification and proof generation
+- **Consensus Algorithms**: Pluggable consensus for private blockchain networks
+- **P2P Networking**: Node discovery and communication protocols
+- **State Management**: Persistent storage abstractions for blockchain state
 
 ## License
 
-Sigilaris is dual-licensed:
-- [AGPL-3.0](https://www.gnu.org/licenses/agpl-3.0.en.html) for open source projects
-- Commercial license available - contact [contact@sigilaris.org](mailto:contact@sigilaris.org)
+Sigilaris is dual-licensed to support both open-source and commercial blockchain projects:
+- [AGPL-3.0](https://www.gnu.org/licenses/agpl-3.0.en.html) for open source and public blockchain projects
+- Commercial license available for private/enterprise blockchain deployments - contact [contact@sigilaris.org](mailto:contact@sigilaris.org)
 
 ## Links
 

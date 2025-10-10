@@ -2,6 +2,8 @@
 
 [← Main](../../README.md) | [한국어 →](../../ko/byte-codec/README.md)
 
+---
+
 [API](api.md) | [Type Rules](types.md) | [Examples](examples.md) | [RLP Comparison](rlp-comparison.md)
 
 ---
@@ -147,5 +149,3 @@ The encoded bytes can now be hashed or signed (using future crypto modules).
 ---
 
 [← Main](../../README.md) | [한국어 →](../../ko/byte-codec/README.md)
-
-[API](api.md) | [Type Rules](types.md) | [Examples](examples.md) | [RLP Comparison](rlp-comparison.md)
