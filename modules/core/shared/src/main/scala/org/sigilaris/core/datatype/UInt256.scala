@@ -4,7 +4,7 @@ import scodec.bits.ByteVector
 import cats.Eq
 
 import org.sigilaris.core.codec.byte.{ByteDecoder, ByteEncoder}
-import org.sigilaris.core.codec.json.{JsonDecoder, JsonEncoder}
+import org.sigilaris.core.codec.json.{JsonDecoder, JsonEncoder, JsonKeyCodec}
 import cats.syntax.either.*
 import org.sigilaris.core.failure.{DecodeFailure, UInt256Failure, UInt256InvalidHex, UInt256NegativeValue, UInt256Overflow, UInt256TooLong}
 
@@ -211,7 +211,7 @@ object UInt256:
     *
     * @return Eq instance
     */
-  given Eq[UInt256] = Eq.fromUniversalEquals
+  given eq: Eq[UInt256] = Eq.fromUniversalEquals
 
   /** Byte encoder for UInt256.
     *
@@ -274,3 +274,29 @@ object UInt256:
   given uint256JsonDecoder: JsonDecoder[UInt256] =
     JsonDecoder.stringDecoder.emap: s =>
       fromHex(s).leftMap(e => DecodeFailure(e.msg))
+
+  /** JSON key codec for UInt256.
+    *
+    * Encodes UInt256 as lowercase hex string for use as JSON object keys.
+    * Decodes from hex string keys, accepting optional `0x` prefix, whitespace, and underscores.
+    *
+    * @return key codec instance
+    *
+    * @example
+    * ```scala
+    * import io.circe.syntax.*
+    *
+    * val key = UInt256.unsafeFromBigIntUnsigned(BigInt(255))
+    * val json = Map(key -> "value").asJson
+    * // JSON: { "00...00ff": "value" }
+    * ```
+    *
+    * @note Keys are encoded as 64-character hex strings (32 bytes * 2 hex digits)
+    * @note Fails with [[org.sigilaris.core.failure.DecodeFailure]] on invalid hex or overflow
+    * @see [[uint256JsonEncoder]] for value encoding
+    * @see [[uint256JsonDecoder]] for value decoding
+    */
+  given uint256JsonKeyCodec: JsonKeyCodec[UInt256] =
+    def decodeFromHex(s: String): Either[DecodeFailure, UInt256] =
+      fromHex(s).leftMap(e => DecodeFailure(e.msg))
+    JsonKeyCodec[String].narrow(decodeFromHex, _.toHexLower)
