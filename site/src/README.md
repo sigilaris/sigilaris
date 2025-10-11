@@ -27,6 +27,12 @@ libraryDependencies += "org.sigilaris" %%% "sigilaris-core" % "@VERSION@"
 
 ### Core Modules
 
+#### Data Types
+Type-safe opaque types for blockchain primitives with built-in codec support.
+- [한국어 문서](ko/datatype/README.md) | [English Documentation](en/datatype/README.md)
+- Includes: BigNat (arbitrary-precision naturals), UInt256 (256-bit unsigned), Utf8 (length-prefixed strings)
+- Zero-cost abstractions with compile-time safety and automatic validation
+
 #### Byte Codec
 Deterministic byte encoding/decoding for custom blockchain implementations.
 - [한국어 문서](ko/byte-codec/README.md) | [English Documentation](en/byte-codec/README.md)
