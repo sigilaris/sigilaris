@@ -74,11 +74,11 @@ trait ByteDecoder[A]:
     *   new decoder for type B
     *
     * @example
-    *   {{{
+    * ```scala
     * val positiveDecoder = ByteDecoder[Long].emap { n =>
     *   Either.cond(n > 0, n, DecodeFailure("Must be positive"))
     * }
-    *   }}}
+    * ```
     */
   def emap[B](f: A => Either[DecodeFailure, B]): ByteDecoder[B] = bytes =>
     for
@@ -114,10 +114,10 @@ object ByteDecoder:
         *   Either failure or fully decoded value
         *
         * @example
-        *   {{{
+        * ```scala
         * import ByteDecoder.ops.*
         * val result: Either[DecodeFailure, Long] = bytes.to[Long]
-        *   }}}
+        * ```
         */
       def to[A: ByteDecoder]: Either[DecodeFailure, A] = for
         result <- ByteDecoder[A].decode(bytes)

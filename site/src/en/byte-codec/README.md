@@ -1,6 +1,8 @@
 # Byte Codec
 
-[← Main](../../README.md) | [한국어 →](../../ko/codec/README.md)
+[← Main](../../README.md) | [한국어 →](../../ko/byte-codec/README.md)
+
+---
 
 [API](api.md) | [Type Rules](types.md) | [Examples](examples.md) | [RLP Comparison](rlp-comparison.md)
 
@@ -29,7 +31,7 @@ Any non-deterministic encoding (e.g., random collection ordering) breaks consens
 
 ## Quick Start (30 seconds)
 
-```scala mdoc:silent
+```text
 import org.sigilaris.core.codec.byte.*
 import scodec.bits.ByteVector
 
@@ -38,7 +40,7 @@ case class Transaction(from: Long, to: Long, amount: Long)
 val tx = Transaction(from = 1L, to = 2L, amount = 100L)
 ```
 
-```scala mdoc
+```text
 val encoded: ByteVector = ByteEncoder[Transaction].encode(tx)
 val decoded = ByteDecoder[Transaction].decode(encoded)
 ```
@@ -65,7 +67,7 @@ That's it! The codec automatically derives instances for case classes.
 - `Map[K, V]`: Treated as `Set[(K, V)]` for determinism
 
 ### Automatic Derivation
-```scala mdoc:reset:silent
+```text
 import org.sigilaris.core.codec.byte.*
 
 case class Block(height: Long, txCount: Long)
@@ -74,7 +76,7 @@ case class Block(height: Long, txCount: Long)
 val block = Block(height = 1L, txCount = 10L)
 ```
 
-```scala mdoc
+```text
 ByteEncoder[Block].encode(block)
 ```
 
@@ -97,7 +99,7 @@ This codec library handles **byte encoding only**. Hashing and signing are separ
 
 ## Example: Transaction Encoding
 
-```scala mdoc:reset:silent
+```text
 import org.sigilaris.core.codec.byte.*
 import scodec.bits.ByteVector
 
@@ -110,7 +112,7 @@ case class Transaction(
 )
 ```
 
-```scala mdoc
+```text
 val tx = Transaction(
   from = Address(100L),
   to = Address(200L),
@@ -146,6 +148,4 @@ The encoded bytes can now be hashed or signed (using future crypto modules).
 
 ---
 
-[← Main](../../README.md) | [한국어 →](../../ko/codec/README.md)
-
-[API](api.md) | [Type Rules](types.md) | [Examples](examples.md) | [RLP Comparison](rlp-comparison.md)
+[← Main](../../README.md) | [한국어 →](../../ko/byte-codec/README.md)

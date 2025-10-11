@@ -32,11 +32,11 @@ object ByteCodec:
     * ByteCodec[A] is automatically available.
     *
     * @example
-    *   {{{
+    * ```scala
     * case class User(id: Long, name: String)
     * // ByteCodec[User] is automatically available via derivation
     * val codec = ByteCodec[User]
-    *   }}}
+    * ```
     */
   given [A: ByteDecoder: ByteEncoder]: ByteCodec[A] with
     def decode(bytes: ByteVector): Either[DecodeFailure, DecodeResult[A]] =

@@ -1,10 +1,10 @@
 # 바이트 코덱 (Byte Codec)
 
-[← 메인](../../README.md) | [English →](../../en/codec/README.md)
+[← 메인](../../README.md) | [English →](../../en/byte-codec/README.md)
 
 ---
 
-[← 코덱 개요](README.md) | [API](api.md) | [타입 규칙](types.md) | [예제](examples.md) | [RLP 비교](rlp-comparison.md)
+[API](api.md) | [타입 규칙](types.md) | [예제](examples.md) | [RLP 비교](rlp-comparison.md)
 
 ---
 
@@ -120,4 +120,4 @@ val result = ByteDecoder[Long].decode(incomplete)
 
 ---
 
-[← 메인](../../README.md) | [English →](../../en/codec/README.md)
+[← 메인](../../README.md) | [English →](../../en/byte-codec/README.md)
