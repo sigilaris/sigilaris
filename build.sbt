@@ -12,6 +12,7 @@ val V = new {
 
   val bouncycastle = "1.70"
   val sway         = "0.16.2"
+  val shapeless    = "3.5.0"
 
   val scribe          = "3.17.0"
   val hedgehog        = "0.13.0"
@@ -34,6 +35,7 @@ val Dependencies = new {
       "io.github.iltotore" %%% "iron-circe"    % V.iron,
       "org.scodec"         %%% "scodec-bits"   % V.scodecBits,
       "co.fs2"             %%% "fs2-core"      % V.fs2,
+      "org.typelevel" %%% "shapeless3-typeable" % V.shapeless,
     ),
   )
 
