@@ -11,28 +11,28 @@ final class JsonPrimitivesPropertySuite extends HedgehogSuite:
     for b <- Gen.boolean.forAll
     yield
       val json = JsonEncoder[Boolean].encode(b)
-      val res  = JsonDecoder[Boolean].decode(json, JsonConfig.default)
+      val res  = JsonDecoder[Boolean].decode(json)
       res ==== Right(b)
 
   property("String roundtrip"):
     for s <- Gen.string(Gen.unicode, Range.linear(0, 64)).forAll
     yield
       val json = JsonEncoder[String].encode(s)
-      val res  = JsonDecoder[String].decode(json, JsonConfig.default)
+      val res  = JsonDecoder[String].decode(json)
       res ==== Right(s)
 
   property("Int roundtrip"):
     for n <- Gen.int(Range.linearFrom(0, Int.MinValue, Int.MaxValue)).forAll
     yield
       val json = JsonEncoder[Int].encode(n)
-      val res  = JsonDecoder[Int].decode(json, JsonConfig.default)
+      val res  = JsonDecoder[Int].decode(json)
       res ==== Right(n)
 
   property("Long roundtrip"):
     for n <- Gen.long(Range.linearFrom(0L, Long.MinValue, Long.MaxValue)).forAll
     yield
       val json = JsonEncoder[Long].encode(n)
-      val res  = JsonDecoder[Long].decode(json, JsonConfig.default)
+      val res  = JsonDecoder[Long].decode(json)
       res ==== Right(n)
 
   property("BigInt roundtrip (default writes as string; decoder accepts both)"):
@@ -43,7 +43,7 @@ final class JsonPrimitivesPropertySuite extends HedgehogSuite:
       val isStringEncoded = enc match
         case JsonValue.JString(_) => true
         case _                    => false
-      val back = JsonDecoder[BigInt].decode(enc, JsonConfig.default)
+      val back = JsonDecoder[BigInt].decode(enc)
       Result.all:
         List(
           isStringEncoded ==== true,
@@ -64,7 +64,7 @@ final class JsonPrimitivesPropertySuite extends HedgehogSuite:
       val isStringEncoded = enc match
         case JsonValue.JString(_) => true
         case _                    => false
-      val back = JsonDecoder[BigDecimal].decode(enc, JsonConfig.default)
+      val back = JsonDecoder[BigDecimal].decode(enc)
       Result.all:
         List(
           isStringEncoded ==== true,
@@ -78,5 +78,5 @@ final class JsonPrimitivesPropertySuite extends HedgehogSuite:
     yield
       val inst   = Instant.ofEpochMilli(epochMilli)
       val enc    = JsonEncoder[Instant].encode(inst)
-      val decoded = JsonDecoder[Instant].decode(enc, JsonConfig.default)
+      val decoded = JsonDecoder[Instant].decode(enc)
       decoded ==== Right(inst.truncatedTo(java.time.temporal.ChronoUnit.MILLIS))

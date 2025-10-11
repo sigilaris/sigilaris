@@ -23,7 +23,7 @@ val person = Person("Alice", 30)
 val json = JsonEncoder[Person].encode(person)
 
 // Decode
-JsonDecoder[Person].decode(json, JsonConfig.default)
+JsonDecoder[Person].decode(json)
 ```
 
 ## Nested Structures
@@ -172,7 +172,9 @@ val json = JsonValue.obj("name" -> JsonValue.JString("Alice"))
 
 val treatAbsentConfig = JsonConfig.default.copy(treatAbsentAsNull = true)
 // With this config, missing "age" decodes as None
-JsonDecoder[PartialData].decode(json, treatAbsentConfig)
+val decs = JsonDecoder.configured(treatAbsentConfig)
+import decs.given
+JsonDecoder[PartialData].decode(json)
 ```
 
 ## Big Number Formatting
@@ -331,8 +333,8 @@ given JsonDecoder[CustomDate] =
 val validDate = JsonValue.JString("2025-01-15")
 val invalidDate = JsonValue.JString("not-a-date")
 
-JsonDecoder[CustomDate].decode(validDate, JsonConfig.default)
-JsonDecoder[CustomDate].decode(invalidDate, JsonConfig.default).isLeft
+JsonDecoder[CustomDate].decode(validDate)
+JsonDecoder[CustomDate].decode(invalidDate).isLeft
 ```
 
 ### Bidirectional Custom Codec
@@ -352,8 +354,8 @@ object CustomDate:
     def encode(cd: CustomDate): JsonValue =
       JsonValue.JString(cd.value.format(DateTimeFormatter.ISO_LOCAL_DATE))
 
-  given JsonDecoder[CustomDate] with
-    def decode(json: JsonValue, config: JsonConfig): Either[DecodeFailure, CustomDate] =
+  given JsonDecoder[CustomDate] = new JsonDecoder[CustomDate]:
+    def decode(json: JsonValue): Either[DecodeFailure, CustomDate] =
       json match
         case JsonValue.JString(s) =>
           Try(LocalDate.parse(s, DateTimeFormatter.ISO_LOCAL_DATE))
@@ -371,7 +373,7 @@ object CustomDate:
 ```scala mdoc
 val date = CustomDate(LocalDate.of(2025, 1, 15))
 val encoded = JsonEncoder[CustomDate].encode(date)
-JsonDecoder[CustomDate].decode(encoded, JsonConfig.default)
+JsonDecoder[CustomDate].decode(encoded)
 ```
 
 ## Custom Discriminator Mapping
@@ -462,7 +464,7 @@ val jsonString = CirceJsonOps.print(jsonValue)
 val reparsed = CirceJsonOps.parse(jsonString)
 
 // JsonValue → Domain
-reparsed.flatMap(JsonDecoder[Product].decode(_, JsonConfig.default))
+reparsed.flatMap(JsonDecoder[Product].decode(_))
 ```
 
 ## Validation with emap
@@ -479,8 +481,8 @@ object Email:
     def encode(email: Email): JsonValue =
       JsonValue.JString(email.value)
 
-  given JsonDecoder[Email] with
-    def decode(json: JsonValue, config: JsonConfig): Either[DecodeFailure, Email] =
+  given JsonDecoder[Email] = new JsonDecoder[Email]:
+    def decode(json: JsonValue): Either[DecodeFailure, Email] =
       json match
         case JsonValue.JString(s) =>
           if s.contains("@") && s.contains(".") then
@@ -497,8 +499,8 @@ object Email:
 val validEmail = JsonValue.JString("alice@example.com")
 val invalidEmail = JsonValue.JString("not-an-email")
 
-JsonDecoder[Email].decode(validEmail, JsonConfig.default)
-JsonDecoder[Email].decode(invalidEmail, JsonConfig.default).isLeft
+JsonDecoder[Email].decode(validEmail)
+JsonDecoder[Email].decode(invalidEmail).isLeft
 ```
 
 ## Complex Example: API Response

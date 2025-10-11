@@ -46,7 +46,7 @@ val parsed = CirceJsonOps.parse(jsonString)
 
 ```scala mdoc
 // User로 디코딩
-parsed.flatMap(JsonDecoder[User].decode(_, JsonConfig.default))
+parsed.flatMap(JsonDecoder[User].decode(_))
 ```
 
 이게 전부입니다! 코덱이 자동으로 인스턴스를 derivation하고, import를 변경하는 것만으로 JSON 백엔드를 교체할 수 있습니다.

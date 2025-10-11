@@ -9,7 +9,6 @@ final class JsonDerivedHelpersSuite extends FunSuite:
   case class Book(title: String, pages: Int)
 
   test("derived: product encode/decode with default config"):
-    val cfg   = JsonConfig.default
     val value = Book("FP in Scala", 400)
     val enc   = JsonEncoder.derived[Book]
     val dec   = JsonDecoder.derived[Book]
@@ -18,15 +17,14 @@ final class JsonDerivedHelpersSuite extends FunSuite:
       "title" -> JsonValue.JString("FP in Scala"),
       "pages" -> JsonValue.JNumber(BigDecimal(400)),
     ))
-    val back  = dec.decode(json, cfg)
+    val back  = dec.decode(json)
     assertEquals(back, Right(value))
 
   // Product type designed to exercise naming policy
   case class Report(pageCount: Int, authorName: String)
 
   test("derived: product honors SnakeCase naming via configured givens"):
-    val cfg  = JsonConfig.default.copy(fieldNaming = FieldNamingPolicy.SnakeCase)
-    val encs = JsonEncoder.configured(cfg)
+    val encs = JsonEncoder.configured(JsonConfig.default.copy(fieldNaming = FieldNamingPolicy.SnakeCase))
     import encs.given
     val value = Report(12, "Alice")
     val enc   = JsonEncoder.derived[Report]
@@ -35,10 +33,10 @@ final class JsonDerivedHelpersSuite extends FunSuite:
       "page_count" -> JsonValue.JNumber(BigDecimal(12)),
       "author_name" -> JsonValue.JString("Alice"),
     ))
-    val decs = JsonDecoder.configured(cfg)
+    val decs = JsonDecoder.configured(JsonConfig.default.copy(fieldNaming = FieldNamingPolicy.SnakeCase))
     import decs.given
     val dec  = JsonDecoder.derived[Report]
-    val back = dec.decode(json, cfg)
+    val back = dec.decode(json)
     assertEquals(back, Right(value))
 
   // Sum type for discriminator wrapper
@@ -50,7 +48,6 @@ final class JsonDerivedHelpersSuite extends FunSuite:
   import Animal.*
 
   test("derived: sum uses wrapped-by-type-key; roundtrip"):
-    val cfg  = JsonConfig.default
     val a: Animal = Dog("Rex")
     val enc  = JsonEncoder.derived[Animal]
     val json = enc.encode(a)
@@ -58,5 +55,5 @@ final class JsonDerivedHelpersSuite extends FunSuite:
       "Dog" -> JsonValue.obj("name" -> JsonValue.JString("Rex"))
     ))
     val dec  = JsonDecoder.derived[Animal]
-    val back = dec.decode(json, cfg)
+    val back = dec.decode(json)
     assertEquals(back, Right(a))

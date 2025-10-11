@@ -21,7 +21,7 @@ import scala.compiletime.{erasedValue, constValue, summonInline}
   * ```scala
   * case class User(name: String, age: Int) derives JsonDecoder
   * val json = JsonValue.obj("name" -> JString("Alice"), "age" -> JNumber(30))
-  * val user = JsonDecoder[User].decode(json, JsonConfig.default)
+  * val user = JsonDecoder[User].decode(json)
   * ```
   *
   * @note Decoding validates structure and types. Failures return [[org.sigilaris.core.failure.DecodeFailure]]
@@ -36,10 +36,9 @@ trait JsonDecoder[A]:
   /** Decodes a JSON value to a Scala value.
     *
     * @param json the JSON value to decode
-    * @param config the configuration for decoding behavior
     * @return either a decode failure or the decoded value
     */
-  def decode(json: JsonValue, config: JsonConfig): Either[DecodeFailure, A]
+  def decode(json: JsonValue): Either[DecodeFailure, A]
 
   /** Creates a new decoder by applying a function after decoding.
     *
@@ -55,8 +54,8 @@ trait JsonDecoder[A]:
     * ```
     */
   def map[B](f: A => B): JsonDecoder[B] = new JsonDecoder[B]:
-    def decode(json: JsonValue, config: JsonConfig): Either[DecodeFailure, B] =
-      self.decode(json, config).map(f)
+    def decode(json: JsonValue): Either[DecodeFailure, B] =
+      self.decode(json).map(f)
 
   /** Creates a new decoder by applying a validation function after decoding.
     *
@@ -72,11 +71,8 @@ trait JsonDecoder[A]:
     */
   def emap[B](f: A => Either[DecodeFailure, B]): JsonDecoder[B] =
     new JsonDecoder[B]:
-      def decode(
-          json: JsonValue,
-          config: JsonConfig,
-      ): Either[DecodeFailure, B] =
-        self.decode(json, config).flatMap(f)
+      def decode(json: JsonValue): Either[DecodeFailure, B] =
+        self.decode(json).flatMap(f)
 
 // Shared instance provider using an abstract config (top-level trait)
 trait JsonDecoderInstances:
@@ -85,7 +81,7 @@ trait JsonDecoderInstances:
   protected def mk[A](
       f: (JsonValue, JsonConfig) => Either[DecodeFailure, A],
   ): JsonDecoder[A] = new JsonDecoder[A]:
-    def decode(json: JsonValue, c: JsonConfig): Either[DecodeFailure, A] =
+    def decode(json: JsonValue): Either[DecodeFailure, A] =
       f(json, config)
 
   private inline def success[A](a: A): Either[DecodeFailure, A] =
@@ -146,24 +142,24 @@ trait JsonDecoderInstances:
       case other => typeMismatch[Instant]("instant (ISO-8601 string)", other)
 
   given optionDecoder[A: JsonDecoder]: JsonDecoder[Option[A]] =
-    mk: (j, cfg) =>
+    mk: (j, _) =>
       j match
         case JsonValue.JNull => success(None)
-        case other           => JsonDecoder[A].decode(other, cfg).map(Some(_))
+        case other           => JsonDecoder[A].decode(other).map(Some(_))
 
-  given listDecoder[A: JsonDecoder]: JsonDecoder[List[A]] = mk: (j, cfg) =>
+  given listDecoder[A: JsonDecoder]: JsonDecoder[List[A]] = mk: (j, _) =>
     j match
       case JsonValue.JArray(arr) =>
         arr
           .foldLeft(List.empty[A].asRight[DecodeFailure]): (acc, jv) =>
             acc.flatMap: list =>
-              JsonDecoder[A].decode(jv, cfg).map(a => a :: list)
+              JsonDecoder[A].decode(jv).map(a => a :: list)
           .map(_.reverse)
       case other => typeMismatch[List[A]]("array", other)
 
   given vectorDecoder[A: JsonDecoder]: JsonDecoder[Vector[A]] =
-    mk: (j, cfg) =>
-      listDecoder[A].decode(j, cfg).map(_.toVector)
+    mk: (j, _) =>
+      listDecoder[A].decode(j).map(_.toVector)
 
   /** Decode Map[K, V] by converting field names with JsonKeyCodec[K].
     *   - Fails on key parse errors
@@ -178,7 +174,7 @@ trait JsonDecoderInstances:
             for
               m     <- acc
               key   <- JsonKeyCodec[K].decodeKey(rawKey)
-              value <- JsonDecoder[V].decode(jv, cfg)
+              value <- JsonDecoder[V].decode(jv)
               res <-
                 if m.contains(key) then
                   DecodeFailure(
@@ -245,7 +241,7 @@ trait JsonDecoderInstances:
                     JsonValue.JNull.asRight[DecodeFailure]
                   else DecodeFailure(ss"Missing field: ${n}").asLeft[JsonValue]
             toDecodeEither.flatMap: toDecode =>
-              jd.decode(toDecode, cfg)
+              jd.decode(toDecode)
                 .map: a =>
                   bldr(idx) = a
                   ()
@@ -282,7 +278,7 @@ trait JsonDecoderInstances:
                   case _: (h *: t) =>
                     summonInline[JsonDecoder[h]] :: decoders[t]
               val dec = decs(idx).asInstanceOf[JsonDecoder[Any]]
-              dec.decode(body, cfg).map(_.asInstanceOf[A])
+              dec.decode(body).map(_.asInstanceOf[A])
           case _ =>
             DecodeFailure:
               "Expected single-key object for coproduct discriminator"

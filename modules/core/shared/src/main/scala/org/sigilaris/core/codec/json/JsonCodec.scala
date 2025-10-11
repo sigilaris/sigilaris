@@ -16,7 +16,7 @@ import failure.DecodeFailure
   * case class User(name: String, age: Int) derives JsonCodec
   * val codec = JsonCodec[User]
   * val json = codec.encode(User("Alice", 30))
-  * val user = codec.decode(json, JsonConfig.default)
+  * val user = codec.decode(json)
   * ```
   *
   * See also: [[JsonEncoder]] for encoding only, [[JsonDecoder]] for decoding only
@@ -32,11 +32,10 @@ final case class JsonCodec[A](encoder: JsonEncoder[A], decoder: JsonDecoder[A]):
   /** Decodes a JSON value using the bundled decoder.
     *
     * @param json the JSON value to decode
-    * @param config the configuration for decoding behavior
     * @return either a decode failure or the decoded value
     */
-  def decode(json: JsonValue, config: JsonConfig): Either[DecodeFailure, A] =
-    decoder.decode(json, config)
+  def decode(json: JsonValue): Either[DecodeFailure, A] =
+    decoder.decode(json)
 
 object JsonCodec:
   /** Builds a [[JsonCodec]] from explicit encoder and decoder.

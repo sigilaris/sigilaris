@@ -46,7 +46,7 @@ val parsed = CirceJsonOps.parse(jsonString)
 
 ```scala mdoc
 // Decode back to User
-parsed.flatMap(JsonDecoder[User].decode(_, JsonConfig.default))
+parsed.flatMap(JsonDecoder[User].decode(_))
 ```
 
 That's it! The codec automatically derives instances and you can switch JSON backends by changing imports.

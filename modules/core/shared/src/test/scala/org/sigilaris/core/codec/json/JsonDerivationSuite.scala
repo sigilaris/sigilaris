@@ -9,10 +9,9 @@ final class JsonDerivationSuite extends FunSuite:
   case class Person(name: String, age: Option[Int])
 
   test("product: encode/decode roundtrip with Identity naming and Option field"):
-    val cfg  = JsonConfig.default
     val p    = Person("Ann", Some(42))
     val json = JsonEncoder[Person].encode(p)
-    val back = JsonDecoder[Person].decode(json, cfg)
+    val back = JsonDecoder[Person].decode(json)
     assertEquals(back, Right(p))
 
   test("product: drop null fields on encode when dropNullValues=true"):
@@ -39,13 +38,12 @@ final class JsonDerivationSuite extends FunSuite:
     )
     val decs = JsonDecoder.configured(snake)
     import decs.given
-    val back = summon[JsonDecoder[Person]].decode(json, snake)
+    val back = summon[JsonDecoder[Person]].decode(json)
     assertEquals(back, Right(p))
 
   test("product: treat absent as null on decode for Option field"):
-    val cfg  = JsonConfig.default.copy(treatAbsentAsNull = true)
     val json = JsonValue.obj("name" -> JsonValue.JString("Zed"))
-    val res  = JsonDecoder[Person].decode(json, cfg)
+    val res  = JsonDecoder[Person].decode(json)
     assertEquals(res, Right(Person("Zed", None)))
 
   // Coproduct derivation
@@ -57,7 +55,6 @@ final class JsonDerivationSuite extends FunSuite:
   import Shape.*
 
   test("sum: encode uses wrapped-by-type-key with SimpleName; decode roundtrip"):
-    val cfg      = JsonConfig.default
     val s: Shape = Circle(3)
     val json     = JsonEncoder[Shape].encode(s)
     assertEquals(
@@ -68,11 +65,10 @@ final class JsonDerivationSuite extends FunSuite:
         ),
       ),
     )
-    val back = JsonDecoder[Shape].decode(json, cfg)
+    val back = JsonDecoder[Shape].decode(json)
     assertEquals(back, Right(s))
 
   test("sum: unknown subtype key fails"):
-    val cfg = JsonConfig.default
     val bad = JsonValue.obj("Triangle" -> JsonValue.JObject(Map.empty))
-    val res = JsonDecoder[Shape].decode(bad, cfg)
+    val res = JsonDecoder[Shape].decode(bad)
     assert(res.isLeft)

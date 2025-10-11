@@ -99,7 +99,7 @@ JsonEncoder[UserId].encode(UserId("user-123"))
 #### decode
 
 ```scala
-def decode(json: JsonValue, config: JsonConfig): Either[DecodeFailure, A]
+def decode(json: JsonValue): Either[DecodeFailure, A]
 ```
 
 Decodes JSON to a value, returning either a failure or the decoded value.
@@ -113,7 +113,7 @@ val json = JsonValue.JNumber(42)
 ```
 
 ```scala mdoc
-decoder.decode(json, JsonConfig.default)
+decoder.decode(json)
 ```
 
 ### Combinators
@@ -137,7 +137,7 @@ given JsonDecoder[UserId] = JsonDecoder[String].map(UserId(_))
 
 ```scala mdoc
 val json = JsonValue.JString("user-123")
-JsonDecoder[UserId].decode(json, JsonConfig.default)
+JsonDecoder[UserId].decode(json)
 ```
 
 #### emap
@@ -166,8 +166,8 @@ given JsonDecoder[PositiveInt] = JsonDecoder[Int].emap { n =>
 val validJson = JsonValue.JNumber(10)
 val invalidJson = JsonValue.JNumber(-5)
 
-JsonDecoder[PositiveInt].decode(validJson, JsonConfig.default)
-JsonDecoder[PositiveInt].decode(invalidJson, JsonConfig.default).isLeft
+JsonDecoder[PositiveInt].decode(validJson)
+JsonDecoder[PositiveInt].decode(invalidJson).isLeft
 ```
 
 **Use Case:** Add business rule validation during decoding.
@@ -195,7 +195,7 @@ val person = Person("Alice", 30)
 val json = JsonEncoder[Person].encode(person)
 
 // Decode
-JsonDecoder[Person].decode(json, JsonConfig.default)
+JsonDecoder[Person].decode(json)
 ```
 
 ### Automatic Derivation
@@ -346,7 +346,7 @@ case class PartialData(name: String, age: Option[Int]) derives JsonCodec
 val json = JsonValue.obj("name" -> JsonValue.JString("Alice"))
 
 // With treatAbsentAsNull=true, age decodes as None
-JsonDecoder[PartialData].decode(json, JsonConfig.default)
+JsonDecoder[PartialData].decode(json)
 ```
 
 ### Number Formatting
@@ -467,11 +467,11 @@ import org.sigilaris.core.codec.json.*
 
 ```scala mdoc
 // Type mismatch
-JsonDecoder[Int].decode(JsonValue.JString("not a number"), JsonConfig.default)
+JsonDecoder[Int].decode(JsonValue.JString("not a number"))
 
 // Missing field
 case class Required(name: String) derives JsonCodec
-JsonDecoder[Required].decode(JsonValue.obj(), JsonConfig.default)
+JsonDecoder[Required].decode(JsonValue.obj())
 ```
 
 ## Best Practices
@@ -525,8 +525,8 @@ val json = JsonValue.obj(
   "account_balance" -> JsonValue.JNumber(100.50)
 )
 
-// Pass config to decoder
-// JsonDecoder[ApiData].decode(json, apiConfig)
+// Pass config via configured givens
+// val decs = JsonDecoder.configured(apiConfig); import decs.given; summon[JsonDecoder[ApiData]].decode(json)
 ```
 
 ## Performance Notes

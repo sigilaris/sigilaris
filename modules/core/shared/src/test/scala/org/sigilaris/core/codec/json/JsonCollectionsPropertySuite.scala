@@ -10,7 +10,7 @@ final class JsonCollectionsPropertySuite extends HedgehogSuite:
     for xs <- Gen.list(Gen.int(Range.linearFrom(0, Int.MinValue, Int.MaxValue)), Range.linear(0, 30)).forAll
     yield
       val json = JsonEncoder[List[Int]].encode(xs)
-      val res  = JsonDecoder[List[Int]].decode(json, JsonConfig.default)
+      val res  = JsonDecoder[List[Int]].decode(json)
       res ==== Right(xs)
 
   property("Vector[String] roundtrip"):
@@ -18,14 +18,14 @@ final class JsonCollectionsPropertySuite extends HedgehogSuite:
     for xs <- Gen.list(genStr, Range.linear(0, 20)).map(_.toVector).forAll
     yield
       val json = JsonEncoder[Vector[String]].encode(xs)
-      val res  = JsonDecoder[Vector[String]].decode(json, JsonConfig.default)
+      val res  = JsonDecoder[Vector[String]].decode(json)
       res ==== Right(xs)
 
   property("Option[Int] roundtrip (None encoded as null; decoder treats null)"):
     for oi <- Gen.int(Range.linearFrom(0, Int.MinValue, Int.MaxValue)).option.forAll
     yield
       val json = JsonEncoder[Option[Int]].encode(oi)
-      val res  = JsonDecoder[Option[Int]].decode(json, JsonConfig.default)
+      val res  = JsonDecoder[Option[Int]].decode(json)
       res ==== Right(oi)
 
   property("Map[Int, Int] roundtrip via JsonKeyCodec[Int]"):
@@ -37,7 +37,7 @@ final class JsonCollectionsPropertySuite extends HedgehogSuite:
     for m <- Gen.list(pairGen, Range.linear(0, 20)).map(_.toMap).forAll
     yield
       val json = JsonEncoder[Map[Int, Int]].encode(m)
-      val res  = JsonDecoder[Map[Int, Int]].decode(json, JsonConfig.default)
+      val res  = JsonDecoder[Map[Int, Int]].decode(json)
       res ==== Right(m)
 
   property("Map[String, Int] roundtrip via JsonKeyCodec[String]"):
@@ -50,5 +50,5 @@ final class JsonCollectionsPropertySuite extends HedgehogSuite:
     for m <- Gen.list(pairGen, Range.linear(0, 20)).map(_.toMap).forAll
     yield
       val json = JsonEncoder[Map[String, Int]].encode(m)
-      val res  = JsonDecoder[Map[String, Int]].decode(json, JsonConfig.default)
+      val res  = JsonDecoder[Map[String, Int]].decode(json)
       res ==== Right(m)

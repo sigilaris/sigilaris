@@ -43,21 +43,19 @@ final class JsonConfiguredImportSuite extends FunSuite:
     val num = JsonValue.JNumber(BigDecimal(123))
     val str = JsonValue.JString("123")
 
-    assertEquals(JsonDecoder[BigInt].decode(num, cfg), Right(BigInt(123)))
-    assert(JsonDecoder[BigInt].decode(str, cfg).isLeft)
+    assertEquals(JsonDecoder[BigInt].decode(num), Right(BigInt(123)))
+    assert(JsonDecoder[BigInt].decode(str).isLeft)
 
   // Default instances resolve without imports
   test("default JsonDecoder instances resolve without imports"):
-    val cfg = JsonConfig.default
-
     val jNum = JsonValue.JNumber(BigDecimal(7))
-    assertEquals(JsonDecoder[Int].decode(jNum, cfg), Right(7))
+    assertEquals(JsonDecoder[Int].decode(jNum), Right(7))
 
     val arr =
       JsonValue.JArray(Vector(JsonValue.JNumber(1), JsonValue.JNumber(2)))
-    assertEquals(JsonDecoder[List[Int]].decode(arr, cfg), Right(List(1, 2)))
+    assertEquals(JsonDecoder[List[Int]].decode(arr), Right(List(1, 2)))
 
     val biStr = JsonValue.JString("123")
     val biNum = JsonValue.JNumber(BigDecimal(123))
-    assertEquals(JsonDecoder[BigInt].decode(biStr, cfg), Right(BigInt(123)))
-    assertEquals(JsonDecoder[BigInt].decode(biNum, cfg), Right(BigInt(123)))
+    assertEquals(JsonDecoder[BigInt].decode(biStr), Right(BigInt(123)))
+    assertEquals(JsonDecoder[BigInt].decode(biNum), Right(BigInt(123)))

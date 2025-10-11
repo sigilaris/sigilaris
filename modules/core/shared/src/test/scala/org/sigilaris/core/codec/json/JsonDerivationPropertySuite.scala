@@ -22,7 +22,7 @@ final class JsonDerivationPropertySuite extends HedgehogSuite:
     for p <- genPerson.forAll
     yield
       val json = JsonEncoder[Person].encode(p)
-      val back = JsonDecoder[Person].decode(json, JsonConfig.default)
+      val back = JsonDecoder[Person].decode(json)
       back ==== Right(p)
 
   property("product: SnakeCase naming roundtrip via configured givens"):
@@ -35,7 +35,7 @@ final class JsonDerivationPropertySuite extends HedgehogSuite:
     for p <- genPerson.forAll
     yield
       val json = summon[JsonEncoder[Person]].encode(p)
-      val back = summon[JsonDecoder[Person]].decode(json, snake)
+      val back = summon[JsonDecoder[Person]].decode(json)
       back ==== Right(p)
 
   property("product: treat absent as null for missing optional fields"):
@@ -47,8 +47,7 @@ final class JsonDerivationPropertySuite extends HedgehogSuite:
       val stripped = json match
         case JsonValue.JObject(fields) => JsonValue.JObject(fields - "age" - "Age" - "age" - "AGE")
         case other                     => other
-      val cfg = JsonConfig.default.copy(treatAbsentAsNull = true)
-      val res = JsonDecoder[Person].decode(stripped, cfg)
+      val res = JsonDecoder[Person].decode(stripped)
       res ==== Right(p0.copy(age = None))
 
   // Sum type for tests
@@ -75,7 +74,7 @@ final class JsonDerivationPropertySuite extends HedgehogSuite:
     for s <- genShape.forAll
     yield
       val json = JsonEncoder[Shape].encode(s)
-      val back = JsonDecoder[Shape].decode(json, JsonConfig.default)
+      val back = JsonDecoder[Shape].decode(json)
       val structuralOk = json match
         case JsonValue.JObject(fields) if fields.size == 1 =>
           fields.head match

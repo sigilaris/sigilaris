@@ -99,7 +99,7 @@ JsonEncoder[UserId].encode(UserId("user-123"))
 #### decode
 
 ```scala
-def decode(json: JsonValue, config: JsonConfig): Either[DecodeFailure, A]
+def decode(json: JsonValue): Either[DecodeFailure, A]
 ```
 
 JSON을 값으로 디코딩하여, 실패 또는 디코딩된 값을 반환합니다.
@@ -113,7 +113,7 @@ val json = JsonValue.JNumber(42)
 ```
 
 ```scala mdoc
-decoder.decode(json, JsonConfig.default)
+decoder.decode(json)
 ```
 
 ### 조합자 (Combinators)
@@ -137,7 +137,7 @@ given JsonDecoder[UserId] = JsonDecoder[String].map(UserId(_))
 
 ```scala mdoc
 val json = JsonValue.JString("user-123")
-JsonDecoder[UserId].decode(json, JsonConfig.default)
+JsonDecoder[UserId].decode(json)
 ```
 
 #### emap
@@ -166,8 +166,8 @@ given JsonDecoder[PositiveInt] = JsonDecoder[Int].emap { n =>
 val validJson = JsonValue.JNumber(10)
 val invalidJson = JsonValue.JNumber(-5)
 
-JsonDecoder[PositiveInt].decode(validJson, JsonConfig.default)
-JsonDecoder[PositiveInt].decode(invalidJson, JsonConfig.default).isLeft
+JsonDecoder[PositiveInt].decode(validJson)
+JsonDecoder[PositiveInt].decode(invalidJson).isLeft
 ```
 
 **사용 사례:** 디코딩 중 비즈니스 규칙 검증 추가.
@@ -195,7 +195,7 @@ val person = Person("Alice", 30)
 val json = JsonEncoder[Person].encode(person)
 
 // 디코딩
-JsonDecoder[Person].decode(json, JsonConfig.default)
+JsonDecoder[Person].decode(json)
 ```
 
 ### 자동 Derivation
@@ -346,7 +346,7 @@ case class PartialData(name: String, age: Option[Int]) derives JsonCodec
 val json = JsonValue.obj("name" -> JsonValue.JString("Alice"))
 
 // treatAbsentAsNull=true일 때, age는 None으로 디코딩됩니다
-JsonDecoder[PartialData].decode(json, JsonConfig.default)
+JsonDecoder[PartialData].decode(json)
 ```
 
 ### 숫자 포맷팅
@@ -467,11 +467,11 @@ import org.sigilaris.core.codec.json.*
 
 ```scala mdoc
 // 타입 불일치
-JsonDecoder[Int].decode(JsonValue.JString("not a number"), JsonConfig.default)
+JsonDecoder[Int].decode(JsonValue.JString("not a number"))
 
 // 필드 누락
 case class Required(name: String) derives JsonCodec
-JsonDecoder[Required].decode(JsonValue.obj(), JsonConfig.default)
+JsonDecoder[Required].decode(JsonValue.obj())
 ```
 
 ## 모범 사례
@@ -525,8 +525,8 @@ val json = JsonValue.obj(
   "account_balance" -> JsonValue.JNumber(100.50)
 )
 
-// 디코더에 config 전달
-// JsonDecoder[ApiData].decode(json, apiConfig)
+// 구성된 givens로 config 전달
+// val decs = JsonDecoder.configured(apiConfig); import decs.given; summon[JsonDecoder[ApiData]].decode(json)
 ```
 
 ## 성능 특성
