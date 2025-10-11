@@ -63,6 +63,48 @@ trait JsonKeyCodec[K]:
     def encodeKey(key: L): String = self.encodeKey(from(key))
     def decodeKey(key: String): Either[DecodeFailure, L] = self.decodeKey(key).map(to)
 
+  /** Narrows this codec with decode-time validation only.
+    *
+    * Creates a [[JsonKeyCodec]][L] from an existing [[JsonKeyCodec]][K] where
+    * the forward transformation `to: K => Either[DecodeFailure, L]` may fail
+    * (affecting decoding), while the backward transformation `from: L => K` is
+    * total (used for encoding).
+    *
+    * Use this when you want to refine keys during decoding (e.g. constrain
+    * numeric ranges or string formats) but can always project refined keys back
+    * to the base representation for encoding.
+    *
+    * @param to
+    *   conversion from K to L with validation (used on decode)
+    * @param from
+    *   total conversion from L to K (used on encode)
+    *
+    * @example
+    * ```scala
+    * // Refine Int keys to positive-only keys for decoding, while encoding via Int
+    * final case class PositiveKey private (value: Int)
+    * object PositiveKey:
+    *   def fromInt(n: Int): Either[DecodeFailure, PositiveKey] =
+    *     Either.cond(n > 0, PositiveKey(n), DecodeFailure(s"Not positive: $n"))
+    *
+    * given JsonKeyCodec[PositiveKey] =
+    *   JsonKeyCodec[Int].narrow(PositiveKey.fromInt, _.value)
+    *
+    * // Map keys are validated on decode and rendered as their base Int on encode
+    * val json = JsonEncoder[Map[PositiveKey, String]].encode(Map(PositiveKey(1) -> "ok"))
+    * val roundtrip = JsonDecoder[Map[PositiveKey, String]].decode(json)
+    * ```
+    *
+    * @note If you need total conversions in both directions, prefer [[imap]].
+    *       If you need encode-time validation (L => Either[DecodeFailure, K]),
+    *       design your key type so that `from` is total, and validate on `to`.
+    */
+  final def narrow[L](to: K => Either[DecodeFailure, L], from: L => K): JsonKeyCodec[L] =
+    new JsonKeyCodec[L]:
+      def encodeKey(key: L): String = self.encodeKey(from(key))
+      def decodeKey(key: String): Either[DecodeFailure, L] =
+        self.decodeKey(key).flatMap(to)
+
 object JsonKeyCodec:
   /** Summons a key codec for the given type.
     *
