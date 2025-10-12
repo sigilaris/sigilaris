@@ -1,0 +1,236 @@
+[
+    {
+        "jmhVersion" : "1.37",
+        "benchmark" : "org.sigilaris.core.crypto.CryptoOpsBenchmark.fromPrivate",
+        "mode" : "thrpt",
+        "threads" : 1,
+        "forks" : 1,
+        "jvm" : "/Users/sungkmi/Library/Caches/Coursier/arc/https/github.com/adoptium/temurin23-binaries/releases/download/jdk-23.0.1%252B11/OpenJDK23U-jdk_aarch64_mac_hotspot_23.0.1_11.tar.gz/jdk-23.0.1+11/Contents/Home/bin/java",
+        "jvmArgs" : [
+            "-Xms2g",
+            "-Xmx2g"
+        ],
+        "jdkVersion" : "23.0.1",
+        "vmName" : "OpenJDK 64-Bit Server VM",
+        "vmVersion" : "23.0.1+11",
+        "warmupIterations" : 5,
+        "warmupTime" : "10 s",
+        "warmupBatchSize" : 1,
+        "measurementIterations" : 10,
+        "measurementTime" : "10 s",
+        "measurementBatchSize" : 1,
+        "primaryMetric" : {
+            "score" : 16597.578261822688,
+            "scoreError" : 50.36999041329708,
+            "scoreConfidence" : [
+                16547.208271409392,
+                16647.948252235983
+            ],
+            "scorePercentiles" : {
+                "0.0" : 16533.942024517444,
+                "50.0" : 16603.29671920836,
+                "90.0" : 16638.057253115974,
+                "95.0" : 16639.06544973521,
+                "99.0" : 16639.06544973521,
+                "99.9" : 16639.06544973521,
+                "99.99" : 16639.06544973521,
+                "99.999" : 16639.06544973521,
+                "99.9999" : 16639.06544973521,
+                "100.0" : 16639.06544973521
+            },
+            "scoreUnit" : "ops/s",
+            "rawData" : [
+                [
+                    16569.09207290131,
+                    16622.05329584205,
+                    16615.276164156116,
+                    16621.657236977193,
+                    16628.983483542837,
+                    16639.06544973521,
+                    16571.743164372285,
+                    16582.65245192182,
+                    16591.317274260604,
+                    16533.942024517444
+                ]
+            ]
+        },
+        "secondaryMetrics" : {
+        }
+    },
+    {
+        "jmhVersion" : "1.37",
+        "benchmark" : "org.sigilaris.core.crypto.CryptoOpsBenchmark.keccak256",
+        "mode" : "thrpt",
+        "threads" : 1,
+        "forks" : 1,
+        "jvm" : "/Users/sungkmi/Library/Caches/Coursier/arc/https/github.com/adoptium/temurin23-binaries/releases/download/jdk-23.0.1%252B11/OpenJDK23U-jdk_aarch64_mac_hotspot_23.0.1_11.tar.gz/jdk-23.0.1+11/Contents/Home/bin/java",
+        "jvmArgs" : [
+            "-Xms2g",
+            "-Xmx2g"
+        ],
+        "jdkVersion" : "23.0.1",
+        "vmName" : "OpenJDK 64-Bit Server VM",
+        "vmVersion" : "23.0.1+11",
+        "warmupIterations" : 5,
+        "warmupTime" : "10 s",
+        "warmupBatchSize" : 1,
+        "measurementIterations" : 10,
+        "measurementTime" : "10 s",
+        "measurementBatchSize" : 1,
+        "primaryMetric" : {
+            "score" : 4441965.317815242,
+            "scoreError" : 13909.533390355842,
+            "scoreConfidence" : [
+                4428055.784424886,
+                4455874.851205599
+            ],
+            "scorePercentiles" : {
+                "0.0" : 4425158.2446408365,
+                "50.0" : 4445188.658878454,
+                "90.0" : 4453632.9480904145,
+                "95.0" : 4454245.508587419,
+                "99.0" : 4454245.508587419,
+                "99.9" : 4454245.508587419,
+                "99.99" : 4454245.508587419,
+                "99.999" : 4454245.508587419,
+                "99.9999" : 4454245.508587419,
+                "100.0" : 4454245.508587419
+            },
+            "scoreUnit" : "ops/s",
+            "rawData" : [
+                [
+                    4448119.903617376,
+                    4446656.958654194,
+                    4445839.546311019,
+                    4425158.2446408365,
+                    4438338.428889714,
+                    4441037.292644779,
+                    4444537.771445889,
+                    4447841.83954323,
+                    4454245.508587419,
+                    4427877.683817967
+                ]
+            ]
+        },
+        "secondaryMetrics" : {
+        }
+    },
+    {
+        "jmhVersion" : "1.37",
+        "benchmark" : "org.sigilaris.core.crypto.CryptoOpsBenchmark.recover",
+        "mode" : "thrpt",
+        "threads" : 1,
+        "forks" : 1,
+        "jvm" : "/Users/sungkmi/Library/Caches/Coursier/arc/https/github.com/adoptium/temurin23-binaries/releases/download/jdk-23.0.1%252B11/OpenJDK23U-jdk_aarch64_mac_hotspot_23.0.1_11.tar.gz/jdk-23.0.1+11/Contents/Home/bin/java",
+        "jvmArgs" : [
+            "-Xms2g",
+            "-Xmx2g"
+        ],
+        "jdkVersion" : "23.0.1",
+        "vmName" : "OpenJDK 64-Bit Server VM",
+        "vmVersion" : "23.0.1+11",
+        "warmupIterations" : 5,
+        "warmupTime" : "10 s",
+        "warmupBatchSize" : 1,
+        "measurementIterations" : 10,
+        "measurementTime" : "10 s",
+        "measurementBatchSize" : 1,
+        "primaryMetric" : {
+            "score" : 3377.243458393355,
+            "scoreError" : 8.114914149834592,
+            "scoreConfidence" : [
+                3369.1285442435205,
+                3385.3583725431895
+            ],
+            "scorePercentiles" : {
+                "0.0" : 3368.596031510292,
+                "50.0" : 3378.6685594112914,
+                "90.0" : 3383.740551262932,
+                "95.0" : 3383.8223250421293,
+                "99.0" : 3383.8223250421293,
+                "99.9" : 3383.8223250421293,
+                "99.99" : 3383.8223250421293,
+                "99.999" : 3383.8223250421293,
+                "99.9999" : 3383.8223250421293,
+                "100.0" : 3383.8223250421293
+            },
+            "scoreUnit" : "ops/s",
+            "rawData" : [
+                [
+                    3368.599416765758,
+                    3383.004587250157,
+                    3376.8675687768728,
+                    3379.0007954829607,
+                    3383.8223250421293,
+                    3378.3363233396217,
+                    3368.596031510292,
+                    3380.3067708627755,
+                    3373.840503210038,
+                    3380.0602616929464
+                ]
+            ]
+        },
+        "secondaryMetrics" : {
+        }
+    },
+    {
+        "jmhVersion" : "1.37",
+        "benchmark" : "org.sigilaris.core.crypto.CryptoOpsBenchmark.sign",
+        "mode" : "thrpt",
+        "threads" : 1,
+        "forks" : 1,
+        "jvm" : "/Users/sungkmi/Library/Caches/Coursier/arc/https/github.com/adoptium/temurin23-binaries/releases/download/jdk-23.0.1%252B11/OpenJDK23U-jdk_aarch64_mac_hotspot_23.0.1_11.tar.gz/jdk-23.0.1+11/Contents/Home/bin/java",
+        "jvmArgs" : [
+            "-Xms2g",
+            "-Xmx2g"
+        ],
+        "jdkVersion" : "23.0.1",
+        "vmName" : "OpenJDK 64-Bit Server VM",
+        "vmVersion" : "23.0.1+11",
+        "warmupIterations" : 5,
+        "warmupTime" : "10 s",
+        "warmupBatchSize" : 1,
+        "measurementIterations" : 10,
+        "measurementTime" : "10 s",
+        "measurementBatchSize" : 1,
+        "primaryMetric" : {
+            "score" : 5501.601538481641,
+            "scoreError" : 15.694089045459693,
+            "scoreConfidence" : [
+                5485.907449436181,
+                5517.295627527101
+            ],
+            "scorePercentiles" : {
+                "0.0" : 5480.655905502392,
+                "50.0" : 5505.84651410801,
+                "90.0" : 5510.4323572284775,
+                "95.0" : 5510.5084870382025,
+                "99.0" : 5510.5084870382025,
+                "99.9" : 5510.5084870382025,
+                "99.99" : 5510.5084870382025,
+                "99.999" : 5510.5084870382025,
+                "99.9999" : 5510.5084870382025,
+                "100.0" : 5510.5084870382025
+            },
+            "scoreUnit" : "ops/s",
+            "rawData" : [
+                [
+                    5507.977342163191,
+                    5500.116428105774,
+                    5508.995561090814,
+                    5480.655905502392,
+                    5510.5084870382025,
+                    5500.258824105684,
+                    5503.773950354922,
+                    5509.7471889409535,
+                    5507.919077861097,
+                    5486.062619653389
+                ]
+            ]
+        },
+        "secondaryMetrics" : {
+        }
+    }
+]
+
+
