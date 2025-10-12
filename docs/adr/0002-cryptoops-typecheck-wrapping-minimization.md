@@ -1,7 +1,7 @@
 # ADR-0002: CryptoOps 타입체크/래핑 최소화 (Phase 2)
 
 ## Status
-Proposed
+Accepted
 
 ## Context
 - Phase 1(BigInteger 단일화) 이후 `recover` 경로는 크게 개선되었으나 `sign`/`fromPrivate`의 이득은 제한적이었습니다.
@@ -68,6 +68,54 @@ Proposed
   - `sign`/`fromPrivate`/`recover` 중 2개 이상에서 ns/op 5–10%+ 개선 또는 bytes/op ≥5% 감소.
   - 회귀 금지: 다른 경로 악화는 ±2% 이내 유지.
 - 아티팩트: JMH JSON/GC 리포트 보존(`benchmarks/reports/`).
+
+## Phase 2 결과 요약 (JMH, GC 프로파일 기준)
+
+- 환경: Temurin 23.0.1, `-Xms2g -Xmx2g`, Warmup 5×10s, Measure 10×10s, Fork 1, Threads 1
+- 비교 대상: 베이스라인(`..._baseline_4d0c557_jmh-gc.json`) ↔ 현재(`..._feature-crypto-operations_b453da1_jmh-gc.json`)
+- Throughput(ops/s) 및 할당(bytes/op, gc.alloc.rate.norm) 변화:
+  - fromPrivate: 16068.30 → 16424.02  (+2.2%), 95584.12 → 95816.12 B/op (+0.2%)
+  - sign: 5511.24 → 5450.17  (−1.1%), 334456.19 → 330568.19 B/op (−1.2%)
+  - recover: 2378.49 → 3339.96  (+40.4%), 805049.16 → 568000.41 B/op (−29.5%)
+  - keccak256: 4427303.29 → 4384596.56 (−1.0%), 544.00 → 544.00 B/op (동일)
+
+아티팩트 경로:
+- GC 포함: `benchmarks/reports/2025-10-12T10-15-40Z_feature-crypto-operations_b453da1_jmh-gc.json`
+- 일반: `benchmarks/reports/2025-10-12T10-15-40Z_feature-crypto-operations_b453da1_jmh.json`
+- 베이스라인(GC): `benchmarks/reports/2025-10-12T09-25-07Z_baseline_4d0c557_jmh-gc.json`
+
+## 평가 (Acceptance Criteria 대비)
+
+- 기준: `sign`/`fromPrivate`/`recover` 중 2개 이상에서 ns/op ≥5–10% 개선 또는 B/op ≥5% 감소.
+- 결과:
+  - recover: 기준 충족(ops/s +40.4%, B/op −29.5%).
+  - sign: 기준 미충족(ops/s −1.1%, B/op −1.2%).
+  - fromPrivate: 기준 미충족(ops/s +2.2%, B/op +0.2%).
+- 결론: Phase 2는 recover 경로에서 유의미한 개선을 유지/확대했으나, `sign`/`fromPrivate`는 기준에 미달. 전체 기준은 부분 충족 상태.
+
+## 해석
+
+- cats/shapeless 제거 및 비교/분기 단순화는 역복구 수학 경로(recover)에 추가 이득을 제공하며, 불필요한 래핑 감소로 B/op가 크게 개선됨.
+- sign은 Throughput이 통계적 변동 범위 내에서 소폭 하락했으나, B/op가 소폭 개선됨. 리플렉션/타입클래스 제거만으로는 서명 경로의 객체 생성/할당 지배 비용을 충분히 낮추지 못한 것으로 보임.
+- fromPrivate는 수치가 미세하게 개선/악화 혼재(ops/s +2.2%, B/op +0.2%). 캐싱 부재와 임시 객체 생성이 여전히 지배 가능성이 큼.
+- keccak256은 외부 해시 구현 비용이 지배적이어서 변화가 미미(의도된 비대상).
+
+## 다음 단계 제안 (Phase 3로 이관 추천)
+
+- 캐싱/할당 최적화:
+  - `X9IntegerConverter`, `FixedPointCombMultiplier`, `ECDomainParameters`(이미 상수화), `Keccak.Digest256`(가능 시 스레드로컬) 캐시 도입.
+  - 바이트 경로에서 재사용 가능한 버퍼/슬라이스 고려로 임시 배열 생성 최소화.
+- sign 경로 집중 개선:
+  - recId 탐색 중 중간 객체 생성을 최소화하고, 불필요한 자료형 래핑 제거가 추가 가능한지 검토.
+  - 내부 happy‑path 분기를 더 단순화(검증 경계화 유지)하고 인라이닝을 유도.
+- 측정/가드:
+  - 동일 벤치 파라미터로 JMH 재측정, GC 프로파일 포함 저장.
+  - CI에 JMH 아티팩트 보존 및 임계치 가드 추가(ops/s, B/op)로 회귀 방지.
+
+## 참고 (실행 메타데이터)
+
+- 커밋: `b453da1`
+- 타임스탬프(UTC): `2025-10-12T10-15-40Z`
 
 ## Security & Consistency
 - Low‑S 정규화/검증 경로 유지하되 중복 검증 제거.
