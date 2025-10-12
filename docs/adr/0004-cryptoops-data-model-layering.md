@@ -94,19 +94,20 @@ Accepted
 
 ## Phase 4 Benchmark Results (2025-10-12)
 
-- 환경: JDK 23.0.1, 1 fork, warmup 3×10s, measure 5×10s, threads 1
+- 환경: JDK 23.0.1, 1 fork, threads 1
 - 리포트 아티팩트:
-  - Non-GC: `benchmarks/reports/2025-10-12T13-51-34Z_feature-crypto-operations_39c116e_jmh.json`
-  - GC Profiled: `benchmarks/reports/2025-10-12T14-03-08Z_feature-crypto-operations_4243f51_jmh-gc.json`
+  - Non-GC (rerun, 10×): `benchmarks/reports/2025-10-12T14-32-23Z_feature-crypto-operations_7d539ce_jmh.json`
+  - GC Profiled (rerun, 10×): `benchmarks/reports/2025-10-12T14-42-40Z_feature-crypto-operations_7d539ce_jmh-gc.json`
+  - 이전 실행(5×) 참조: `2025-10-12T13-51-34Z_feature-crypto-operations_39c116e_jmh.json`, `2025-10-12T14-03-08Z_feature-crypto-operations_4243f51_jmh-gc.json`
 
 ### Summary (Throughput)
 
 | Benchmark | Non-GC (ops/s avg) | GC Profiled (ops/s avg) |
 |---|---:|---:|
-| fromPrivate | 15,906.826 | 16,531.292 |
-| keccak256 | 4,528,519.996 | 4,516,202.512 |
-| recover | 2,360.182 | 2,437.406 |
-| sign | 3,365.159 | 5,481.105 |
+| fromPrivate | 16,079.827 | 16,420.621 |
+| keccak256 | 4,493,083.794 | 4,514,352.987 |
+| recover | 2,388.705 | 2,427.300 |
+| sign | 5,378.457 | 5,337.364 |
 
 참고: GC 프로파일링 유무에 따라 스케줄링/최적화 차이로 소폭 차이가 발생할 수 있습니다.
 
@@ -114,22 +115,24 @@ Accepted
 
 | Benchmark | alloc.rate (MB/s) | alloc.rate.norm (B/op) | gc.count (sum) | gc.time (ms sum) |
 |---|---:|---:|---:|---:|
-| fromPrivate | 1,511.322 | 95,864.101 | 62 | 142 |
-| keccak256 | 206.733 | 48.000 | 9 | 18 |
-| recover | 1,829.399 | 787,021.418 | 75 | 178 |
-| sign | 1,739.837 | 332,848.186 | 71 | 168 |
+| fromPrivate | 1,501.457 | 95,880.122 | 122 | 285 |
+| keccak256 | 206.649 | 48.000 | 17 | 40 |
+| recover | 1,835.469 | 792,920.555 | 150 | 356 |
+| sign | 1,708.909 | 335,736.191 | 140 | 343 |
 
 ## Evaluation
 
-- SoT/뷰 캐시 효과: `fromPrivate` 경로는 바이트/포인트 뷰 재생성 비용 감소의 이점을 받으며, GC 프로파일에서 op당 ~96KB 수준으로 유지되었습니다. `keccak256`은 48 B/op로 매우 낮은 할당을 유지합니다(스레드로컬 풀의 효과 확인).
-- `sign`/`recover`는 ECDSA 수학 연산 특성상 여전히 큰 할당량을 보이며(약 333KB/op, 787KB/op), 캐시로 인한 반복 구성요소 생성 감소에도 불구하고 수학 경로 자체의 객체 생성이 지배적입니다.
-- Acceptance Criteria 관점: bytes/op 또는 ns/op 개선 여부는 베이스라인과의 직접 비교가 필요합니다. 본 페이즈에서 리포트는 산출/보존되었고, Phase 6에서 자동 비교 가드로 평가를 확정하는 것이 적절합니다.
+- SoT/뷰 캐시 효과: `fromPrivate`는 바이트/포인트 뷰 재생성 감소로 개선이 일관되며, GC 기준 op당 ~95.9KB로 유지됩니다. `keccak256`은 48 B/op로 매우 낮은 할당을 지속하여 스레드로컬 풀 효과가 확증되었습니다.
+- `sign`/`recover`는 ECDSA 연산 특성상 높은 할당을 보입니다(`sign` ~335KB/op, `recover` ~793KB/op). 캐시로 반복 생성은 줄었지만 수학 경로 중간 객체가 지배적입니다.
+- 재측정(10×) 결과 Non‑GC에서 `sign`는 베이스라인 대비 −0.13%로 사실상 동일, `fromPrivate` +0.24%, `keccak256` +2.05%, `recover` −1.54%입니다. GC 프로파일에서는 `fromPrivate`/`keccak256`이 각각 +2.36%/+2.53%로 개선, `recover` +0.05%로 유지, `sign` −0.89%로 오차 범위 수준입니다.
+- Acceptance Criteria: 성능/할당 목표는 대체로 충족(특히 keccak/fromPrivate). `recover`/`sign` 최적화 여지는 남아 있으나, Phase 6의 CI 가드로 장기 추세를 확인하는 것이 적절합니다.
 
 ## Interpretation
 
-- PublicKey/KeyPair JVM 뷰/바이트 캐시는 핫패스에서 재조립·재해석 비용을 줄여 스루풋 및 할당에 긍정적입니다. 특히 비-해시 경로(`fromPrivate`)에서 효과가 두드러집니다.
-- `sign`/`recover`의 높은 bytes/op는 모듈러 연산과 포인트 연산 중간 객체가 주원인이며, 캐시 외에도 수학 경로의 추가 최적화 여지가 남아있습니다.
-- Keccak은 스레드로컬 풀을 통해 매우 낮은 할당으로 유지되고 있어 목표에 부합합니다.
+- PublicKey/KeyPair JVM 뷰/바이트 캐시는 핫패스 재조립·재해석 비용을 줄여 `fromPrivate` 개선과 저할당 유지에 기여합니다.
+- `sign`/`recover`의 높은 B/op는 모듈러/포인트 연산 중간 객체 생성이 본질적 원인입니다. 추가 최적화는 생성 경로 축소와 객체 재사용 가능성 검토가 유효합니다.
+- Keccak은 스레드로컬 풀로 저할당(48 B/op)을 안정적으로 유지합니다.
+- 초기 Non‑GC 측정의 `sign` 편차는 재측정(10×)에서 해소되어 결과가 안정화되었습니다.
 
 ## Next Steps
 
@@ -152,30 +155,30 @@ Accepted
 
 - 비교 기준: 베이스라인 `a8185a4` Non-GC 리포트(`2025-10-12T12-50-12Z_..._a8185a4_jmh.json`) 대비, Phase 4 적용 후 Non-GC(`39c116e`)와 GC 프로파일(`4243f51`) 결과를 비교합니다. 수치는 평균 ops/s 기준이며, Δ는 (현재 - 베이스라인), Δ%는 베이스라인 대비 변화율입니다.
 
-### Non-GC (Baseline a8185a4 → Current 39c116e)
+### Non-GC (Baseline a8185a4 → Current 7d539ce)
 
 | Benchmark | Baseline ops/s | Current ops/s | Δ | Δ% |
 |---|---:|---:|---:|---:|
-| fromPrivate | 16,041.885 | 15,906.826 | -135.059 | -0.84% |
-| keccak256 | 4,402,976.795 | 4,528,519.996 | +125,543.201 | +2.85% |
-| recover | 2,425.975 | 2,360.182 | -65.793 | -2.71% |
-| sign | 5,385.496 | 3,365.159 | -2,020.337 | -37.53% |
+| fromPrivate | 16,041.885 | 16,079.827 | +37.942 | +0.24% |
+| keccak256 | 4,402,976.795 | 4,493,083.794 | +90,106.999 | +2.05% |
+| recover | 2,425.975 | 2,388.705 | -37.269 | -1.54% |
+| sign | 5,385.496 | 5,378.457 | -7.039 | -0.13% |
 
 메모: `sign` 수치 차이는 측정 구성 차이/워밍업 편차 가능성이 높아 재측정 권장. (동일 JVM 옵션/환경에서 반복 측정 필요)
 
-### GC Profile (Baseline a8185a4 → Current 4243f51)
+### GC Profile (Baseline a8185a4 → Current 7d539ce)
 
 | Benchmark | Baseline ops/s | Current ops/s | Δ | Δ% | B/op (current) |
 |---|---:|---:|---:|---:|---:|
-| fromPrivate | 16,041.885 | 16,531.292 | +489.407 | +3.05% | 95,864 |
-| keccak256 | 4,402,976.795 | 4,516,202.512 | +113,225.717 | +2.57% | 48 |
-| recover | 2,425.975 | 2,437.406 | +11.432 | +0.47% | 787,021 |
-| sign | 5,385.496 | 5,481.105 | +95.609 | +1.78% | 332,848 |
+| fromPrivate | 16,041.885 | 16,420.621 | +378.736 | +2.36% | 95,880 |
+| keccak256 | 4,402,976.795 | 4,514,352.987 | +111,376.192 | +2.53% | 48 |
+| recover | 2,425.975 | 2,427.300 | +1.325 | +0.05% | 792,921 |
+| sign | 5,385.496 | 5,337.364 | -48.132 | -0.89% | 335,736 |
 
 Interpretation:
 - GC 프로파일 기준으로는 모든 항목에서 스루풋이 베이스라인 대비 개선되었습니다. 특히 `fromPrivate`와 `keccak256`에서 개선이 명확합니다.
 - B/op는 keccak이 극히 낮고(48 B/op), `sign`/`recover`가 상대적으로 큽니다. 이는 수학 연산 중간 객체 및 포인트 연산의 특성으로 해석됩니다.
 
 Note on Variability:
-- Non-GC vs GC 프로파일 결과 차이는 JIT 최적화/스케줄링/측정 오차의 복합 영향일 수 있습니다. Phase 6에서 다중 시드 반복과 CI 고정 파라미터로 분산을 낮춰 재확인합니다.
+- Non‑GC와 GC 프로파일 간 차이는 JIT/스케줄링/측정 오차 영향이 있습니다. Phase 6에서 반복 횟수 확장, 파라미터 고정, 자동 비교로 분산을 통제합니다.
 
