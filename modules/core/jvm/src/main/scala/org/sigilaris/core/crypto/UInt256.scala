@@ -1,6 +1,7 @@
 package org.sigilaris.core
 package crypto
 
+import java.math.BigInteger
 import scala.util.Try
 
 import io.circe.{Decoder, Encoder}
@@ -64,3 +65,11 @@ object UInt256:
         refined <- UInt256.from(bigint).left.map(_.msg)
       yield refined,
     )
+
+  /** Fast-path constructor from unsigned java.math.BigInteger.
+    *
+    * Accepts only non-negative values that fit into 256 bits.
+    */
+  def fromBigIntegerUnsigned(value: BigInteger): Either[UInt256RefineFailure, UInt256BigInt] =
+    // BigInt(value) wraps the underlying BigInteger without byte roundtrip
+    from(BigInt(value))

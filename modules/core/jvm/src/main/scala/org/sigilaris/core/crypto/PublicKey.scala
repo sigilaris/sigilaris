@@ -1,6 +1,7 @@
 package org.sigilaris.core
 package crypto
 
+import java.math.BigInteger
 import cats.syntax.eq.*
 
 import scodec.bits.ByteVector
@@ -29,8 +30,8 @@ object PublicKey:
     else
       val (xArr, yArr) = array splitAt 32
       for
-        x <- UInt256.from(BigInt(1, xArr))
-        y <- UInt256.from(BigInt(1, yArr))
+        x <- UInt256.fromBigIntegerUnsigned(new BigInteger(1, xArr))
+        y <- UInt256.fromBigIntegerUnsigned(new BigInteger(1, yArr))
       yield PublicKey(x, y)
 
   inline given pubkeyByteEncoder: ByteEncoder[PublicKey] with

@@ -45,7 +45,7 @@ object CryptoOps:
     CurveParams.getN,
     CurveParams.getH,
   )
-  val HalfCurveOrder: BigInt = BigInt(CurveParams.getN) / 2
+  val HalfCurveOrder: BigInteger = CurveParams.getN.shiftRight(1)
 
   val secureRandom: SecureRandom = new SecureRandom()
 
@@ -58,7 +58,7 @@ object CryptoOps:
     (for
       bcecPrivate <- pair.getPrivate.cast[BCECPrivateKey]
       bcecPublic  <- pair.getPublic.cast[BCECPublicKey]
-      privateKey  <- UInt256.from(BigInt(bcecPrivate.getD)).toOption
+      privateKey  <- UInt256.fromBigIntegerUnsigned(bcecPrivate.getD).toOption
       publicKey <- PublicKey
         .fromByteArray(bcecPublic.getQ.getEncoded(false).tail)
         .toOption
@@ -95,12 +95,10 @@ object CryptoOps:
       new ECPrivateKeyParameters(keyPair.privateKey.bigInteger, Curve),
     )
     val Array(r, sValue) = signer.generateSignature(transactionHash)
-    val s =
-      if BigInt(sValue) > HalfCurveOrder then Curve.getN subtract sValue
-      else sValue
+    val sBig: BigInteger = if sValue.compareTo(HalfCurveOrder) > 0 then Curve.getN.subtract(sValue) else sValue
     for
-      r256 <- UInt256.from(BigInt(r)).leftMap(_.msg)
-      s256 <- UInt256.from(BigInt(s)).leftMap(_.msg)
+      r256 <- UInt256.fromBigIntegerUnsigned(r).leftMap(_.msg)
+      s256 <- UInt256.fromBigIntegerUnsigned(sBig).leftMap(_.msg)
       recId <- (0 until 4)
         .find { id =>
           recoverFromSignature(id, r256, s256, transactionHash) === Some(
