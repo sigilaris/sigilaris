@@ -91,3 +91,60 @@ Accepted
 - `docs/adr/0003-cryptoops-caching-and-allocation-optimization.md`
 - `docs/perf/criteria.md`
  
+
+## Phase 4 Benchmark Results (2025-10-12)
+
+- 환경: JDK 23.0.1, 1 fork, warmup 3×10s, measure 5×10s, threads 1
+- 리포트 아티팩트:
+  - Non-GC: `benchmarks/reports/2025-10-12T13-51-34Z_feature-crypto-operations_39c116e_jmh.json`
+  - GC Profiled: `benchmarks/reports/2025-10-12T14-03-08Z_feature-crypto-operations_4243f51_jmh-gc.json`
+
+### Summary (Throughput)
+
+| Benchmark | Non-GC (ops/s avg) | GC Profiled (ops/s avg) |
+|---|---:|---:|
+| fromPrivate | 15,906.826 | 16,531.292 |
+| keccak256 | 4,528,519.996 | 4,516,202.512 |
+| recover | 2,360.182 | 2,437.406 |
+| sign | 3,365.159 | 5,481.105 |
+
+참고: GC 프로파일링 유무에 따라 스케줄링/최적화 차이로 소폭 차이가 발생할 수 있습니다.
+
+### GC/Allocation (from -prof gc)
+
+| Benchmark | alloc.rate (MB/s) | alloc.rate.norm (B/op) | gc.count (sum) | gc.time (ms sum) |
+|---|---:|---:|---:|---:|
+| fromPrivate | 1,511.322 | 95,864.101 | 62 | 142 |
+| keccak256 | 206.733 | 48.000 | 9 | 18 |
+| recover | 1,829.399 | 787,021.418 | 75 | 178 |
+| sign | 1,739.837 | 332,848.186 | 71 | 168 |
+
+## Evaluation
+
+- SoT/뷰 캐시 효과: `fromPrivate` 경로는 바이트/포인트 뷰 재생성 비용 감소의 이점을 받으며, GC 프로파일에서 op당 ~96KB 수준으로 유지되었습니다. `keccak256`은 48 B/op로 매우 낮은 할당을 유지합니다(스레드로컬 풀의 효과 확인).
+- `sign`/`recover`는 ECDSA 수학 연산 특성상 여전히 큰 할당량을 보이며(약 333KB/op, 787KB/op), 캐시로 인한 반복 구성요소 생성 감소에도 불구하고 수학 경로 자체의 객체 생성이 지배적입니다.
+- Acceptance Criteria 관점: bytes/op 또는 ns/op 개선 여부는 베이스라인과의 직접 비교가 필요합니다. 본 페이즈에서 리포트는 산출/보존되었고, Phase 6에서 자동 비교 가드로 평가를 확정하는 것이 적절합니다.
+
+## Interpretation
+
+- PublicKey/KeyPair JVM 뷰/바이트 캐시는 핫패스에서 재조립·재해석 비용을 줄여 스루풋 및 할당에 긍정적입니다. 특히 비-해시 경로(`fromPrivate`)에서 효과가 두드러집니다.
+- `sign`/`recover`의 높은 bytes/op는 모듈러 연산과 포인트 연산 중간 객체가 주원인이며, 캐시 외에도 수학 경로의 추가 최적화 여지가 남아있습니다.
+- Keccak은 스레드로컬 풀을 통해 매우 낮은 할당으로 유지되고 있어 목표에 부합합니다.
+
+## Next Steps
+
+- Phase 5 (보안/일관성)
+  - Low‑S 정규화 테스트 강화 및 경계 조건(서명/복구) 케이스 추가
+  - 비밀 데이터 버퍼 제로화 경로 점검 및 적용(가능 시 `Array[Byte]` 재사용 후 zero-fill)
+  - 상수시간 비교 도입/검증(비밀 비교 지점)
+
+- Phase 6 (회귀 방지/문서화/CI)
+  - CI에 JMH 통합, Non-GC/GC 리포트 모두 보존; 임계치 가드(ops/s, B/op) 설정
+  - 리포트 자동 비교 스크립트 추가: 최근 실행 vs 베이스라인(브랜치/리비전 기준) p50 및 bytes/op 변화량 계산
+  - 사이트/문서에 성능 챕터 업데이트(측정 설정, 해석 가이드, 회귀 가드 설명)
+
+- 추가 최적화 후보(검토)
+  - ECDSA 경로에서 임시 `BigInteger`/포인트 객체 재사용 가능성 검토(안전성 전제)
+  - 서명 시 `ECDSASigner`/`HMacDSAKCalculator` 객체 수명 최적화(스레드 안전성 고려)
+  - `recover`에서 포인트 연산 조합 시 불필요한 배열 복사 제거 여부 재점검
+
