@@ -8,11 +8,7 @@ import java.util.Arrays
 
 import org.bouncycastle.asn1.x9.X9ECParameters
 import org.bouncycastle.crypto.digests.SHA256Digest
-import org.bouncycastle.crypto.ec.CustomNamedCurves
-import org.bouncycastle.crypto.params.{
-  ECDomainParameters,
-  ECPrivateKeyParameters,
-}
+import org.bouncycastle.crypto.params.ECDomainParameters
 import org.bouncycastle.crypto.signers.{ECDSASigner, HMacDSAKCalculator}
 import org.bouncycastle.jcajce.provider.asymmetric.ec.{
   BCECPrivateKey,
@@ -32,14 +28,10 @@ object CryptoOps:
     kecc.update(input, 0, input.length)
     kecc.digest()
 
-  val CurveParams: X9ECParameters = CustomNamedCurves.getByName("secp256k1")
-  val Curve: ECDomainParameters = new ECDomainParameters(
-    CurveParams.getCurve,
-    CurveParams.getG,
-    CurveParams.getN,
-    CurveParams.getH,
-  )
-  val HalfCurveOrder: BigInteger = CurveParams.getN.shiftRight(1)
+  // Use shared domain parameters from CryptoParams
+  private inline def CurveParams: X9ECParameters = CryptoParams.curveParams
+  private inline def Curve: ECDomainParameters = CryptoParams.curve
+  private inline def HalfCurveOrder: BigInteger = CryptoParams.halfCurveOrder
 
   val secureRandom: SecureRandom = new SecureRandom()
 
@@ -86,10 +78,7 @@ object CryptoOps:
   ): Either[String, Signature] =
 
     val signer = new ECDSASigner(new HMacDSAKCalculator(new SHA256Digest()))
-    signer.init(
-      true,
-      new ECPrivateKeyParameters(keyPair.privateKey.bigInteger, Curve),
-    )
+    signer.init(true, keyPair.privateParams())
     val Array(r, sValue) = signer.generateSignature(transactionHash)
     val sBig: BigInteger = if sValue.compareTo(HalfCurveOrder) > 0 then Curve.getN.subtract(sValue) else sValue
     for
