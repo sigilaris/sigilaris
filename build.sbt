@@ -109,6 +109,7 @@ lazy val root = (project in file("."))
   .aggregate(
     core.jvm,
     core.js,
+    benchmarks,
   )
   .dependsOn(core.jvm)
   .enablePlugins(TypelevelSitePlugin, ScalaUnidocPlugin)
@@ -177,3 +178,11 @@ lazy val core = crossProject(JSPlatform, JVMPlatform)
     project
       .enablePlugins(ScalaJSBundlerPlugin)
   }
+
+lazy val benchmarks = (project in file("benchmarks"))
+  .enablePlugins(JmhPlugin)
+  .dependsOn(core.jvm)
+  .settings(
+    publish / skip := true,
+    Test / fork := true,
+  )

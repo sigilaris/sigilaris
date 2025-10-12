@@ -210,3 +210,10 @@ profiler.sh -d 30 -f flame.svg <jmh_forked_jvm_pid>
 - CI 파이프라인: JMH 실행/보관, 회귀 알림
 
 
+
+---
+
+## Baseline Artifacts
+- Latest JSON: `benchmarks/reports/2025-10-12T06-13-14Z_feature-crypto-operations_4d0c557_jmh.json`
+- Bench guide: `benchmarks/README.md`
+- Guidelines: site `site/src/ko/performance/crypto-ops.md` (EN: `site/src/en/performance/crypto-ops.md`)
