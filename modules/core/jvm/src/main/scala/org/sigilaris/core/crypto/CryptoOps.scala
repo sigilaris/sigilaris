@@ -22,7 +22,11 @@ import org.bouncycastle.math.ec.{
 import org.bouncycastle.math.ec.custom.sec.SecP256K1Curve
 
 object CryptoOps:
-
+  /** Compute Keccak-256 hash.
+    *
+    * @param input message bytes (immutable by contract)
+    * @return 32-byte hash (copy)
+    */
   def keccak256(input: Array[Byte]): Array[Byte] =
     val kecc = KeccakPool.acquire()
     kecc.update(input, 0, input.length)
@@ -33,9 +37,14 @@ object CryptoOps:
   private inline def Curve: ECDomainParameters = CryptoParams.curve
   private inline def HalfCurveOrder: BigInteger = CryptoParams.halfCurveOrder
 
+  /** Non-deterministic source for key generation (JVM default provider). */
   val secureRandom: SecureRandom = new SecureRandom()
 
   @SuppressWarnings(Array("org.wartremover.warts.Throw", "org.wartremover.warts.Any"))
+  /** Generate a new secp256k1 key pair.
+    *
+    * @return freshly generated `KeyPair` with 32-byte private key and 64-byte public key (x||y), big-endian.
+    */
   def generate(): KeyPair =
     val gen  = KeyPairGenerator.getInstance("ECDSA", "BC")
     val spec = new ECGenParameterSpec("secp256k1")
@@ -57,6 +66,10 @@ object CryptoOps:
     }
 
   @SuppressWarnings(Array("org.wartremover.warts.Throw"))
+  /** Derive public key from a validated 32-byte private key.
+    *
+    * Pre-validated input assumed; length/endian checks are enforced at boundaries.
+    */
   def fromPrivate(privateKey: BigInt): KeyPair =
     val point: ECPoint = CryptoParams.fixedPointMultiplier
       .multiply(Curve.getG, privateKey.bigInteger mod Curve.getN)
@@ -72,6 +85,10 @@ object CryptoOps:
       case Right(keypair)                  => keypair
       case Left(UInt256RefineFailure(msg)) => throw new Exception(msg)
 
+  /** ECDSA sign with deterministic-k and Low-S normalization.
+    *
+    * Ensures `s` is normalized to ≤ N/2 (Low-S) using secp256k1 curve order.
+    */
   def sign(
       keyPair: KeyPair,
       transactionHash: Array[Byte],
@@ -95,6 +112,10 @@ object CryptoOps:
       v = recId + 27
     yield Signature(v, r256, s256)
 
+  /** Recover public key from a (v,r,s) signature and message hash.
+    *
+    * Accepts signatures with either High-S or Low-S; internally normalizes `s` to Low-S.
+    */
   def recover(
       signature: Signature,
       hashArray: Array[Byte],
@@ -129,7 +150,8 @@ object CryptoOps:
         val e        = new BigInteger(1, message)
         val eInv     = BigInteger.ZERO subtract e mod n
         val rInv     = r.bigInteger modInverse n
-        val srInv    = rInv multiply s.bigInteger mod n
+        val sNorm    = CryptoParams.normalizeS(s.bigInteger)
+        val srInv    = rInv multiply sNorm mod n
         val eInvrInv = rInv multiply eInv mod n
         val q: ECPoint =
           ECAlgorithms.sumOfTwoMultiplies(Curve.getG(), eInvrInv, R, srInv)

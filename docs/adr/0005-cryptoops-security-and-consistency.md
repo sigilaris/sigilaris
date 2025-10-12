@@ -89,3 +89,60 @@ Proposed
 - `docs/perf/criteria.md`
 
 
+
+## 결과 요약 (Phase 5 적용 후)
+- **변경 사항**
+  - `CryptoOps.recover` 경로에서 입력 서명의 `s`를 Low‑S로 정규화(≤ N/2)하도록 통합.
+  - `CryptoParams`에 상수시간 비교(`ConstTime.equalsBytes`)와 제로화 유틸(`ConstTime.zeroize`) 추가.
+  - 퍼블릭 API에 계약(정규화/엔디언/길이)에 대한 간단한 Scaladoc 명시.
+
+- **JMH(정상) 처리량 비교(ops/s, 상향이 좋음)**
+  - fromPrivate: 16041.9 → 16397.5  (약 +2.2%)
+  - keccak256: 4402976.8 → 4543378.2 (약 +3.2%)
+  - recover: 2426.0 → 3355.2 (약 +38.3%)
+  - sign: 5385.5 → 5485.1 (약 +1.9%)
+
+- **JMH(GC 프로파일) 주요 값(절대치, 평균)**
+  - fromPrivate: alloc.rate.norm ≈ 95,848 B/op, gc.time(합) ≈ 283 ms
+  - keccak256: alloc.rate.norm ≈ 48 B/op, gc.time(합) ≈ 44 ms
+  - recover: alloc.rate.norm ≈ 566,944 B/op, gc.time(합) ≈ 349 ms
+  - sign: alloc.rate.norm ≈ 334,288 B/op, gc.time(합) ≈ 327 ms
+
+> 아티팩트: `benchmarks/reports/2025-10-12T15-14-49Z_feature-crypto-operations_phase5_jmh.json`,
+> `benchmarks/reports/2025-10-12T15-25-14Z_feature-crypto-operations_phase5_jmh-gc.json`
+
+## 평가/해석
+- **수용 기준 충족 여부**
+  - 처리량(ops/s): `sign`/`fromPrivate`/`keccak256`는 ±2% 이내 또는 개선, `recover`는 정책 정규화 도입에도 유의미한 개선(+38% 내외). 요구 조건 충족.
+  - 할당(bytes/op): 상수시간 비교/제로화 유틸 추가는 핫패스에서 아직 직접 호출되지 않아 회귀 없음. 기존 경로의 bytes/op는 안정 유지.
+  - 문서화: 퍼블릭 API에 Low‑S/엔디언/길이 전제의 계약을 명시하여 일관성 강화.
+
+- **Low‑S 정책 영향**
+  - `sign`은 종전과 동일하게 Low‑S 보장. `recover`는 외부 입력에 대해서도 내부 계산 전에 Low‑S 정규화하여 상호운용성/일관성 향상.
+  - 정상/GC 벤치에서 `recover` 개선은 정규화 추가가 병목이 아님을 시사. 계산 경로 간 캐시/연산 단순화의 이득과 합쳐 개선 관측.
+
+- **보안 속성**
+  - 상수시간 비교 유틸 경로 확보로 향후 비밀값 비교 지점에서의 오용을 줄일 수 있음.
+  - 제로화 유틸 도입으로 스크래치/임시 버퍼 위생 경로를 표준화 가능.
+
+## 다음 단계 제안
+1) **테스트 강화(Phase 5 수용 기준 최종화)**
+   - Low‑S 경계조건(N/2, N/2±1, 0, 1, N−1, N, N+1 에러)을 프로퍼티/케이스로 추가.
+   - 상수시간 비교: 다양한 길이/내용 조합에서 논리만 동일하고 시간 기반 조기 종료가 없음을 검증(논리 테스트 중심).
+   - 제로화: 내부 버퍼 반환 전 제로화 간접 검증(외부 관찰 불변 확인).
+
+2) **상수시간 비교 유틸 적용 범위 확대**
+   - 개인키/nonce/MAC 등 비밀 비교 지점에서 `ConstTime.equalsBytes`를 단계적으로 사용.
+   - 리뷰 체크리스트에 비밀 비교 항목을 추가하여 회귀 방지.
+
+3) **제로화 경로 적용**
+   - ThreadLocal 스크래치/임시 버퍼 사용 지점에서 사용 직후 `zeroize` 호출.
+   - 퍼블릭 API에서 비밀 데이터는 사본으로만 반환하는지 점검하고 내부 버퍼는 즉시 제로화.
+
+4) **CI 벤치/가드 통합(Phase 6 연계)**
+   - 현재 JMH 구성을 CI에 통합하고, 결과 JSON을 아티팩트로 보존.
+   - 주요 벤치에 임계치 알림(±2% 이내 유지)을 설정하여 회귀 방지.
+
+5) **문서/사이트 반영**
+   - 사이트 성능/보안 페이지에 Low‑S 정책, 상수시간 비교/제로화 규약을 요약 추가.
+   - 퍼블릭 API Scaladoc에 계약/전제조건/실패 조건 세부화.
