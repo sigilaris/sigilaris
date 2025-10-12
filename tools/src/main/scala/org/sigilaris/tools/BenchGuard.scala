@@ -89,20 +89,22 @@ object BenchGuard:
         latest.headOption.map(_.toString)
 
   private def archive(cfg: Cfg, reports: java.nio.file.Path): String =
+    def sanitize(component: String): String =
+      // Replace any path separators or unsafe chars with '-'
+      component.replaceAll("[^A-Za-z0-9._-]", "-")
+
     val utc = ZonedDateTime
       .now(ZoneOffset.UTC)
       .format(DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH-mm-ss'Z'"))
-    val branch = sys.process
+    val branchRaw = sys.process
       .Process(Seq("git", "rev-parse", "--abbrev-ref", "HEAD"))
       .!!
-      .trimOption
-      .getOrElse("unknown")
-    val sha = sys.process
+    val branch = branchRaw.trimOption.map(sanitize).getOrElse("unknown")
+    val shaRaw = sys.process
       .Process(Seq("git", "rev-parse", "--short", "HEAD"))
       .!!
-      .trimOption
-      .getOrElse("unknown")
-    val tagPart = cfg.tag.filter(_.nonEmpty).map(t => s"_${t}").getOrElse("")
+    val sha = shaRaw.trimOption.map(sanitize).getOrElse("unknown")
+    val tagPart = cfg.tag.filter(_.nonEmpty).map(t => s"_${sanitize(t)}").getOrElse("")
     val suffix  = if cfg.enableGc then "_jmh-gc.json" else "_jmh.json"
     val dest    = reports.resolve(s"${utc}_${branch}_${sha}${tagPart}${suffix}")
     Files.copy(Paths.get(cfg.result), dest)
@@ -137,6 +139,12 @@ object BenchGuard:
   ): Boolean =
     val bAll = index(parse(baselinePath))
     val nAll = index(parse(resultPath))
+    def primaryScore(v: Value): Double =
+      v.obj
+        .get("primaryMetric")
+        .flatMap(_.obj.get("score"))
+        .map(_.num)
+        .getOrElse(Double.NaN)
     val filter: String => Boolean = cfg.include match
       case Some(s) if s.nonEmpty => (n: String) => n.contains(s)
       case _                     => (_: String) => true
@@ -167,8 +175,8 @@ object BenchGuard:
               s"${name}\tMISSING\tMISSING\tMISSING\tMISSING\tMISSING\tMISSING\tMISSING\tMISSING\tMISSING"
             ok = false
           case Some(n) =>
-            val bOps = b.obj.get("score").map(_.num).getOrElse(Double.NaN)
-            val nOps = n.obj.get("score").map(_.num).getOrElse(Double.NaN)
+            val bOps = primaryScore(b)
+            val nOps = primaryScore(n)
             val dOps = pctChange(nOps, bOps)
 
             val bBytes = sec(b, "gc.alloc.rate.norm")

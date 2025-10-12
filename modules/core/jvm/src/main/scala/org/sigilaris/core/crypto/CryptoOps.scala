@@ -133,7 +133,10 @@ object CryptoOps:
   ): Option[PublicKey] =
 
     val n = Curve.getN
-    val x = r.bigInteger add (n multiply BigInteger.valueOf(recId.toLong / 2))
+    // If we normalize S from High-S to Low-S, the y-parity must flip to keep the same public key.
+    val isHighS  = CryptoParams.isHighS(s.bigInteger)
+    val recIdAdj = if isHighS then recId ^ 1 else recId
+    val x = r.bigInteger add (n multiply BigInteger.valueOf(recIdAdj.toLong / 2))
     val prime = SecP256K1Curve.q
     if x.compareTo(prime) >= 0 then None
     else
@@ -144,7 +147,7 @@ object CryptoOps:
             x9.integerToBytes(xBN, 1 + x9.getByteLength(Curve.getCurve()))
           compEnc(0) = if yBit then 0x03 else 0x02
           Curve.getCurve().decodePoint(compEnc)
-        decompressKey(x, ((recId & 1) == 1))
+        decompressKey(x, ((recIdAdj & 1) == 1))
       if !R.multiply(n).isInfinity() then None
       else
         val e        = new BigInteger(1, message)

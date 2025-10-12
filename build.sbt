@@ -210,20 +210,20 @@ lazy val tools = (project in file("tools"))
 // Writes JMH JSON to target/jmh-result.json, then archives and compares via tools/BenchGuard
 addCommandAlias(
   "bench",
-  "benchmarks/jmh:run -i 10 -wi 5 -f1 -t1 .*CryptoOpsBenchmark.* -rf json -rff target/jmh-result.json ; tools/run --result target/jmh-result.json"
+  "benchmarks/jmh:run -i 10 -wi 5 -f1 -t1 .*CryptoOpsBenchmark.* -rf json -rff target/jmh-result.json ; tools/run --result benchmarks/target/jmh-result.json"
 )
 
 addCommandAlias(
   "benchGc",
-  "benchmarks/jmh:run -i 10 -wi 5 -f1 -t1 -prof gc .*CryptoOpsBenchmark.* -rf json -rff target/jmh-result.json ; tools/run --result target/jmh-result.json --gc"
+  "benchmarks/jmh:run -i 10 -wi 5 -f1 -t1 -prof gc .*CryptoOpsBenchmark.* -rf json -rff target/jmh-result.json ; tools/run --result benchmarks/target/jmh-result.json --gc"
 )
 
 addCommandAlias(
   "benchRecover",
-  "benchmarks/jmh:run -i 10 -wi 5 -f1 -t1 .*CryptoOpsBenchmark.*recover.* -rf json -rff target/jmh-result.json ; tools/run --result target/jmh-result.json --include recover"
+  "benchmarks/jmh:run -i 10 -wi 5 -f1 -t1 .*CryptoOpsBenchmark.*recover.* -rf json -rff target/jmh-result.json ; tools/run --result benchmarks/target/jmh-result.json --include recover"
 )
 
 addCommandAlias(
   "benchRecoverGc",
-  "benchmarks/jmh:run -i 10 -wi 5 -f1 -t1 -prof gc .*CryptoOpsBenchmark.*recover.* -rf json -rff target/jmh-result.json ; tools/run --result target/jmh-result.json --gc --include recover"
+  "benchmarks/jmh:run -i 10 -wi 5 -f1 -t1 -prof gc .*CryptoOpsBenchmark.*recover.* -rf json -rff target/jmh-result.json ; tools/run --result benchmarks/target/jmh-result.json --gc --include recover"
 )
