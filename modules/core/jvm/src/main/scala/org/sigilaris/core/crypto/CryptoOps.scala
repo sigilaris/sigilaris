@@ -6,10 +6,6 @@ import java.security.{KeyPairGenerator, SecureRandom}
 import java.security.spec.ECGenParameterSpec
 import java.util.Arrays
 
-import cats.Eq
-import cats.syntax.either.*
-import cats.syntax.eq.*
-
 import org.bouncycastle.asn1.x9.{X9ECParameters, X9IntegerConverter}
 import org.bouncycastle.crypto.digests.SHA256Digest
 import org.bouncycastle.crypto.ec.CustomNamedCurves
@@ -29,7 +25,6 @@ import org.bouncycastle.math.ec.{
   FixedPointCombMultiplier,
 }
 import org.bouncycastle.math.ec.custom.sec.SecP256K1Curve
-import shapeless3.typeable.syntax.typeable.cast
 
 object CryptoOps:
 
@@ -55,14 +50,18 @@ object CryptoOps:
     val spec = new ECGenParameterSpec("secp256k1")
     gen.initialize(spec, secureRandom)
     val pair = gen.generateKeyPair
-    (for
-      bcecPrivate <- pair.getPrivate.cast[BCECPrivateKey]
-      bcecPublic  <- pair.getPublic.cast[BCECPublicKey]
-      privateKey  <- UInt256.fromBigIntegerUnsigned(bcecPrivate.getD).toOption
-      publicKey <- PublicKey
-        .fromByteArray(bcecPublic.getQ.getEncoded(false).tail)
-        .toOption
-    yield KeyPair(privateKey, publicKey)).getOrElse {
+    val maybeKeyPair: Option[KeyPair] =
+      (pair.getPrivate, pair.getPublic) match
+        case (bcecPrivate: BCECPrivateKey, bcecPublic: BCECPublicKey) =>
+          for
+            privateKey <- UInt256.fromBigIntegerUnsigned(bcecPrivate.getD).toOption
+            publicKey <- PublicKey
+              .fromByteArray(bcecPublic.getQ.getEncoded(false).tail)
+              .toOption
+          yield KeyPair(privateKey, publicKey)
+        case _ => None
+
+    maybeKeyPair.getOrElse {
       throw new Exception(s"Wrong keypair result: $pair")
     }
 
@@ -82,8 +81,6 @@ object CryptoOps:
       case Right(keypair)                  => keypair
       case Left(UInt256RefineFailure(msg)) => throw new Exception(msg)
 
-  given Eq[Option[PublicKey]] = Eq.fromUniversalEquals
-
   def sign(
       keyPair: KeyPair,
       transactionHash: Array[Byte],
@@ -97,17 +94,16 @@ object CryptoOps:
     val Array(r, sValue) = signer.generateSignature(transactionHash)
     val sBig: BigInteger = if sValue.compareTo(HalfCurveOrder) > 0 then Curve.getN.subtract(sValue) else sValue
     for
-      r256 <- UInt256.fromBigIntegerUnsigned(r).leftMap(_.msg)
-      s256 <- UInt256.fromBigIntegerUnsigned(sBig).leftMap(_.msg)
+      r256 <- UInt256.fromBigIntegerUnsigned(r).left.map(_.msg)
+      s256 <- UInt256.fromBigIntegerUnsigned(sBig).left.map(_.msg)
       recId <- (0 until 4)
         .find { id =>
-          recoverFromSignature(id, r256, s256, transactionHash) === Some(
-            keyPair.publicKey,
-          )
+          recoverFromSignature(id, r256, s256, transactionHash)
+            .contains(keyPair.publicKey)
         }
-        .toRight {
-          "Could not construct a recoverable key. The credentials might not be valid."
-        }
+        .toRight(
+          "Could not construct a recoverable key. The credentials might not be valid.",
+        )
       v = recId + 27
     yield Signature(v, r256, s256)
 
@@ -139,7 +135,7 @@ object CryptoOps:
             x9.integerToBytes(xBN, 1 + x9.getByteLength(Curve.getCurve()))
           compEnc(0) = if yBit then 0x03 else 0x02
           Curve.getCurve().decodePoint(compEnc)
-        decompressKey(x, (recId & 1) === 1)
+        decompressKey(x, ((recId & 1) == 1))
       if !R.multiply(n).isInfinity() then None
       else
         val e        = new BigInteger(1, message)

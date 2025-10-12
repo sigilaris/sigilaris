@@ -2,7 +2,6 @@ package org.sigilaris.core
 package crypto
 
 import java.math.BigInteger
-import cats.syntax.eq.*
 
 import scodec.bits.ByteVector
 
@@ -23,7 +22,7 @@ object PublicKey:
   def fromByteArray(
       array: Array[Byte],
   ): Either[UInt256RefineFailure, PublicKey] =
-    if array.length =!= 64 then
+    if array.length != 64 then
       Left(
         UInt256RefineFailure(s"Public key array size are not 64: $array"),
       )
