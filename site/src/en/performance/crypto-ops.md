@@ -18,3 +18,32 @@
 - See the latest baseline under `benchmarks/reports/` in the repository.
 
 
+### Phase 6 — One command local regression guard (Scala)
+
+Run, archive, compare via sbt aliases:
+
+```bash
+sbt bench
+```
+
+With GC metrics:
+
+```bash
+sbt benchGc
+```
+
+Recover-only focus:
+
+```bash
+sbt benchRecover
+sbt benchRecoverGc
+```
+
+Notes:
+- Defaults: Throughput(ops/s), warmup 5, measurement 10, fork 1, threads 1, JVM `-Xms2g -Xmx2g`.
+- Thresholds (env vars): `OPS_DROP_PCT=2`, `BYTES_INCR_PCT=5`, `GC_TIME_INCR_PCT=5`.
+- Baseline auto-discovery under `benchmarks/reports/` (fallback to latest if no baseline-named file).
+
+See also `docs/adr/0006-cryptoops-regression-guard-and-ci-bench.md` and `benchmarks/README.md`.
+
+

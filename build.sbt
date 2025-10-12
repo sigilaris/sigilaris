@@ -110,6 +110,7 @@ lazy val root = (project in file("."))
     core.jvm,
     core.js,
     benchmarks,
+    tools,
   )
   .dependsOn(core.jvm)
   .enablePlugins(TypelevelSitePlugin, ScalaUnidocPlugin)
@@ -184,5 +185,45 @@ lazy val benchmarks = (project in file("benchmarks"))
   .dependsOn(core.jvm)
   .settings(
     publish / skip := true,
+    publishLocal / skip := true,
+    Compile / publishArtifact := false,
+    Test / publishArtifact := false,
+    Compile / packageDoc / publishArtifact := false,
+    Compile / packageSrc / publishArtifact := false,
     Test / fork := true,
   )
+
+lazy val tools = (project in file("tools"))
+  .settings(
+    publish / skip := true,
+    publishLocal / skip := true,
+    Compile / publishArtifact := false,
+    Test / publishArtifact := false,
+    Compile / packageDoc / publishArtifact := false,
+    Compile / packageSrc / publishArtifact := false,
+    libraryDependencies ++= Seq(
+      "com.lihaoyi" %% "ujson" % "3.3.1",
+    ),
+  )
+
+// One-command aliases for Phase 6 (Scala-based orchestrations)
+// Writes JMH JSON to target/jmh-result.json, then archives and compares via tools/BenchGuard
+addCommandAlias(
+  "bench",
+  "benchmarks/jmh:run -i 10 -wi 5 -f1 -t1 .*CryptoOpsBenchmark.* -rf json -rff target/jmh-result.json ; tools/run --result target/jmh-result.json"
+)
+
+addCommandAlias(
+  "benchGc",
+  "benchmarks/jmh:run -i 10 -wi 5 -f1 -t1 -prof gc .*CryptoOpsBenchmark.* -rf json -rff target/jmh-result.json ; tools/run --result target/jmh-result.json --gc"
+)
+
+addCommandAlias(
+  "benchRecover",
+  "benchmarks/jmh:run -i 10 -wi 5 -f1 -t1 .*CryptoOpsBenchmark.*recover.* -rf json -rff target/jmh-result.json ; tools/run --result target/jmh-result.json --include recover"
+)
+
+addCommandAlias(
+  "benchRecoverGc",
+  "benchmarks/jmh:run -i 10 -wi 5 -f1 -t1 -prof gc .*CryptoOpsBenchmark.*recover.* -rf json -rff target/jmh-result.json ; tools/run --result target/jmh-result.json --gc --include recover"
+)
