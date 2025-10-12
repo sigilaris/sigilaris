@@ -6,7 +6,7 @@ import java.security.{KeyPairGenerator, SecureRandom}
 import java.security.spec.ECGenParameterSpec
 import java.util.Arrays
 
-import org.bouncycastle.asn1.x9.{X9ECParameters, X9IntegerConverter}
+import org.bouncycastle.asn1.x9.X9ECParameters
 import org.bouncycastle.crypto.digests.SHA256Digest
 import org.bouncycastle.crypto.ec.CustomNamedCurves
 import org.bouncycastle.crypto.params.{
@@ -18,18 +18,17 @@ import org.bouncycastle.jcajce.provider.asymmetric.ec.{
   BCECPrivateKey,
   BCECPublicKey,
 }
-import org.bouncycastle.jcajce.provider.digest.Keccak
+ 
 import org.bouncycastle.math.ec.{
   ECAlgorithms,
   ECPoint,
-  FixedPointCombMultiplier,
 }
 import org.bouncycastle.math.ec.custom.sec.SecP256K1Curve
 
 object CryptoOps:
 
   def keccak256(input: Array[Byte]): Array[Byte] =
-    val kecc = new Keccak.Digest256()
+    val kecc = KeccakPool.acquire()
     kecc.update(input, 0, input.length)
     kecc.digest()
 
@@ -67,7 +66,7 @@ object CryptoOps:
 
   @SuppressWarnings(Array("org.wartremover.warts.Throw"))
   def fromPrivate(privateKey: BigInt): KeyPair =
-    val point: ECPoint = new FixedPointCombMultiplier()
+    val point: ECPoint = CryptoParams.fixedPointMultiplier
       .multiply(Curve.getG, privateKey.bigInteger mod Curve.getN)
     val encoded: Array[Byte] = point.getEncoded(false)
     val keypairEither: Either[UInt256RefineFailure, KeyPair] = for
@@ -130,7 +129,7 @@ object CryptoOps:
     else
       val R =
         def decompressKey(xBN: BigInteger, yBit: Boolean): ECPoint =
-          val x9 = new X9IntegerConverter()
+          val x9 = CryptoParams.x9
           val compEnc: Array[Byte] =
             x9.integerToBytes(xBN, 1 + x9.getByteLength(Curve.getCurve()))
           compEnc(0) = if yBit then 0x03 else 0x02

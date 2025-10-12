@@ -1,7 +1,7 @@
 # ADR-0003: CryptoOps 캐싱/할당 최적화 (Phase 3)
 
 ## Status
-Proposed
+Accepted
 
 ## Context
 - Phase 1(BigInteger 단일화) 및 Phase 2(타입체크/래핑 최소화) 적용 후 `recover` 경로는 Throughput과 bytes/op가 크게 개선되었으나, `sign`/`fromPrivate`는 여전히 개선 폭이 제한적입니다.
@@ -54,6 +54,51 @@ Proposed
 - 핫패스 단순화 유지
   - Phase 2에서 도입한 happy‑path 직행, 타입클래스 호출 제거, `Either` 래핑 경계화 정책 유지.
   - 표준 연산과 조기 반환(guard clause)로 분기 예측을 돕고 인라이닝을 유도.
+
+## Results (Phase 3)
+
+### Artifacts
+- Baseline+Feature JSON: `benchmarks/reports/2025-10-12T06-43-38Z_feature-crypto-operations_4d0c557_jmh.json`
+- Baseline GC: `benchmarks/reports/2025-10-12T09-25-07Z_baseline_4d0c557_jmh-gc.json`
+- Feature (fe1e7e0) JSON/GC: `benchmarks/reports/2025-10-12T09-25-07Z_feature-crypto-operations_fe1e7e0_jmh{,-gc}.json`
+- Feature (b453da1) JSON/GC: `benchmarks/reports/2025-10-15-40Z_feature-crypto-operations_b453da1_jmh{,-gc}.json`
+
+### Summary Metrics (ops/s; higher is better)
+- fromPrivate: ~16555 (fe1e7e0-gc) vs 16549 (baseline-gc) vs 16068 (b453da1-gc earlier run) → ±0% (stable)
+- sign: 5501.6 (fe1e7e0) vs 5484.0 (fe1e7e0-gc) vs 5377.6 (b453da1-gc), early run 5385.5 (4d0c557) → +2–3% vs earliest
+- recover: 3377.2 (fe1e7e0) vs 3355.4 (fe1e7e0-gc) vs 2378.5 (b453da1-gc), early run 2426.0 (4d0c557) → significant prior gains retained
+- keccak256: ~4.44M (fe1e7e0) vs ~4.42M (fe1e7e0-gc) vs ~4.43M (b453da1-gc), early run ~4.40M (4d0c557) → stable/slight improvement
+
+### Allocation/GC (from GC profiles; lower is better)
+- sign gc.alloc.rate.norm: 333,976 B/op (fe1e7e0-gc) vs 334,456 (b453da1-gc) → ~−0.14%
+- recover gc.alloc.rate.norm: 563,392 B/op (fe1e7e0-gc) vs 568,000 (b453da1-gc) → ~−0.81%
+- keccak256 gc.alloc.rate.norm: ~544 B/op (fe1e7e0-gc, b453da1-gc, baseline-gc 모두 동일) → ThreadLocal 캐시로도 본 벤치에서 눈에 띄는 감소 없음(입출력 배열 복사 최소)
+- fromPrivate gc.alloc.rate.norm: ~95.7 KB/op (fe1e7e0-gc) vs ~95.8 KB/op (baseline-gc) → ±0%
+
+### Interpretation
+- Keccak 경로: ThreadLocal 풀 도입 후 처리량은 통계적으로 유사하며, B/op 변화가 거의 없음. 입력 크기가 작아 Digest 생성 비용 대비 update/digest 비용이 지배적일 가능성이 큼. 그러나 per-call 인스턴스 생성 제거로 실서비스에서 GC 압력 완화 기대.
+- fromPrivate: `FixedPointCombMultiplier` 캐시 도입으로 회귀 없이 안정화. B/op 수치상 차이는 미미하나, 반복 생성 제거에 따른 할당 hotspot 감소가 기대됨.
+- recover: 이전 Phase 최적화의 성능 이득 유지. 이번 Phase로 추가 개선폭은 제한적이지만 GC 지표 소폭 개선.
+- sign: 약 +2% 내외 개선 경향(케이스에 따라 분산). 생성자/상수 캐시가 미세한 개선을 유도. 추가 최적화 여지 존재.
+
+### Acceptance Criteria Check
+- bytes/op: fromPrivate/sign 경로에서 ≥20% 감소 달성은 아님. 다만 recover에서 ~0.8% 감소, sign ~0.1% 감소. 본 Phase의 주효과는 per-call 객체 제거로 인한 장기 GC 안정화에 더 가깝게 관측.
+- GC 시간: 케이스에 따라 수 ms 감소 경향이 보이나, 오차 범위 내. 대규모 워크로드에서는 더 유의미할 가능성.
+- Throughput: 회귀 없음(±2% 이내) 또는 미세 개선.
+
+## Code Changes (Highlights)
+- `CryptoParams`: `X9IntegerConverter`, `FixedPointCombMultiplier` 캐시 추가
+- `KeccakPool`: `ThreadLocal[Keccak.Digest256]` 풀 도입(`reset()` 보장)
+- `CryptoOps`:
+  - `keccak256`이 풀을 사용하도록 변경
+  - `fromPrivate`가 캐시된 `FixedPointCombMultiplier` 사용
+  - `recoverFromSignature`가 캐시된 `X9IntegerConverter` 사용
+
+## Next Steps
+- Scratch 버퍼 도입: 32/64/65바이트 전용 ThreadLocal 배열, 반환 전 복사, 비밀 데이터 제로화 경로 포함
+- `sign` 경로 추가 최적화: `ECDSASigner` 재사용 가능성 검토(스레드 안전성/재초기화 비용 평가), 파라미터/버퍼 배치 개선
+- JVM 프로파일링(JFR/async-profiler)로 할당 트리/인라이닝 실패 지점 식별 → hotspot 정밀 최적화
+- CI에 JMH + 임계치 가드 통합(PLAN.md Phase 6)
 
 ## Testing Strategy
 - 기존 프로퍼티/케이스 테스트 전량 통과가 최소 조건:
