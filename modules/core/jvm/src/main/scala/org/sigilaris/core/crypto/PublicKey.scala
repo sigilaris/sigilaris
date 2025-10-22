@@ -13,7 +13,7 @@ import datatype.UInt256
 import failure.DecodeFailure
 import util.SafeStringInterp.*
 
-sealed trait PublicKey:
+sealed trait PublicKey extends PublicKeyLike:
   def toBytes: ByteVector
   def x: UInt256
   def y: UInt256

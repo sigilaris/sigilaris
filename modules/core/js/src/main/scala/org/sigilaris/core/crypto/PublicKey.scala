@@ -11,7 +11,7 @@ import failure.{DecodeFailure, UInt256Failure, UInt256Overflow}
 import facade.BasePoint
 import util.SafeStringInterp.*
 
-sealed trait PublicKey:
+sealed trait PublicKey extends PublicKeyLike:
   def toBytes: ByteVector
   def x: UInt256
   def y: UInt256
