@@ -9,14 +9,49 @@ import codec.byte.{ByteDecoder, ByteEncoder}
 import failure.DecodeFailure
 import org.sigilaris.core.util.SafeStringInterp.*
 import org.sigilaris.core.datatype.UInt256
+import facade.BasePoint
 
-final case class PublicKey(x: UInt256, y: UInt256):
-  def toBytes: ByteVector = x.bytes ++ y.bytes
-  def toBigInt: BigInt    = BigInt(1, toBytes.toArray)
+sealed trait PublicKey:
+  def toBytes: ByteVector
+  def x: UInt256
+  def y: UInt256
+  def toBigInt: BigInt = BigInt(1, toBytes.toArray)
 
+  @SuppressWarnings(Array("org.wartremover.warts.Any"))
   override def toString: String = ss"PublicKey(${toBytes.toHex})"
 
+  // Equality and hashCode are based strictly on the 64-byte x||y bytes
+  @SuppressWarnings(Array("org.wartremover.warts.Equals"))
+  override final def equals(other: Any): Boolean =
+    other match
+      case that: PublicKey => this.toBytes == that.toBytes
+      case _               => false
+
+  override final def hashCode(): Int = toBytes.hashCode
+
 object PublicKey:
+  final case class XY(x: UInt256, y: UInt256) extends PublicKey:
+    private lazy val xyBytes: ByteVector = x.bytes ++ y.bytes
+    override def toBytes: ByteVector      = xyBytes
+
+  final case class Point(p: BasePoint) extends PublicKey:
+    @SuppressWarnings(Array("org.wartremover.warts.Throw"))
+    override lazy val x: UInt256 =
+      val xHex = p.getX().toStringBase(16)
+      UInt256
+        .fromBigIntUnsigned(BigInt(xHex, 16))
+        .getOrElse(throw new Exception(ss"Wrong public key x: ${xHex}"))
+
+    @SuppressWarnings(Array("org.wartremover.warts.Throw"))
+    override lazy val y: UInt256 =
+      val yHex = p.getY().toStringBase(16)
+      UInt256
+        .fromBigIntUnsigned(BigInt(yHex, 16))
+        .getOrElse(throw new Exception(ss"Wrong public key y: ${yHex}"))
+
+    private lazy val xyBytes: ByteVector = x.bytes ++ y.bytes
+    override def toBytes: ByteVector      = xyBytes
+
   @SuppressWarnings(Array("org.wartremover.warts.Nothing"))
   def fromByteArray(
       array: Array[Byte],
@@ -30,7 +65,11 @@ object PublicKey:
       for
         x <- UInt256.fromBigIntUnsigned(BigInt(1, xArr))
         y <- UInt256.fromBigIntUnsigned(BigInt(1, yArr))
-      yield PublicKey(x, y)
+      yield XY(x, y)
+
+  def fromXY(x: UInt256, y: UInt256): PublicKey = XY(x, y)
+
+  def fromBasePoint(p: BasePoint): PublicKey = Point(p)
 
   inline given pubkeyByteEncoder: ByteEncoder[PublicKey] with
     def encode(pubkey: PublicKey): ByteVector = pubkey.toBytes

@@ -69,19 +69,7 @@ object CryptoOps:
       Array("org.wartremover.warts.Throw", "org.wartremover.warts.Overloading"),
     )
     def asScala: PublicKey =
-      val xHex    = pubKey.getX().toStringBase(16)
-      val yHex    = pubKey.getY().toStringBase(16)
-      val xBigInt = BigInt(xHex, 16)
-      val yBigInt = BigInt(yHex, 16)
-
-      val scalaPubKeyEither = for
-        x <- UInt256.fromBigIntUnsigned(xBigInt)
-        y <- UInt256.fromBigIntUnsigned(yBigInt)
-      yield PublicKey(x, y)
-
-      scalaPubKeyEither.getOrElse {
-        throw new Exception(ss"Wrong public key: (${xHex}, ${yHex})")
-      }
+      PublicKey.fromBasePoint(pubKey)
 
   @SuppressWarnings(Array("org.wartremover.warts.AsInstanceOf"))
   def sign(
