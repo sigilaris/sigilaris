@@ -45,12 +45,17 @@ Library-agnostic JSON encoding/decoding for blockchain APIs and configuration.
 - Use cases: RPC API serialization, node configuration, off-chain data interchange
 - Flexible backend support for seamless integration
 
+#### Crypto
+High-performance cryptographic primitives for blockchain applications.
+- [한국어 문서](ko/crypto/README.md) | [English Documentation](en/crypto/README.md)
+- Features: secp256k1 ECDSA, Keccak-256 hashing, signature recovery, Low-S normalization
+- Cross-platform: Unified API for JVM (BouncyCastle) and JS (elliptic.js)
+
 ### API Documentation
 - [Latest Release API](https://javadoc.io/doc/org.sigilaris/sigilaris-core_3/latest/index.html)
 - [Development API](https://sigilaris.github.io/sigilaris/api/index.html)
 
 ### Coming Soon
-- **Cryptographic Primitives**: Hashing, digital signatures, key management
 - **Merkle Tree**: Efficient state verification and proof generation
 - **Consensus Algorithms**: Pluggable consensus for private blockchain networks
 - **P2P Networking**: Node discovery and communication protocols
