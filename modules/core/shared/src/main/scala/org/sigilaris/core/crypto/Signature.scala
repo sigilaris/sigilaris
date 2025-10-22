@@ -1,8 +1,8 @@
 package org.sigilaris.core
 package crypto
 
-import org.sigilaris.core.util.SafeStringInterp.*
-import org.sigilaris.core.datatype.UInt256
+import util.SafeStringInterp.*
+import datatype.UInt256
 
 final case class Signature(
     v: Int,
@@ -11,3 +11,5 @@ final case class Signature(
 ):
   override lazy val toString: String =
     ss"Signature(${v.toString}, ${r.toHexLower}, ${s.toHexLower})"
+
+
