@@ -1,7 +1,9 @@
 package org.sigilaris.core.crypto
 
+import org.sigilaris.core.datatype.UInt256
+
 final case class Signature(
     v: Int,
-    r: UInt256BigInt,
-    s: UInt256BigInt,
+    r: UInt256,
+    s: UInt256,
 )

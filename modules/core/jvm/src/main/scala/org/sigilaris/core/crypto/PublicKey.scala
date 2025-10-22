@@ -4,16 +4,19 @@ package crypto
 import java.math.BigInteger
 import java.util.concurrent.atomic.AtomicReference
 
+import cats.syntax.either.*
 import org.bouncycastle.math.ec.ECPoint
 import scodec.bits.ByteVector
 
 import codec.byte.{ByteDecoder, ByteEncoder}
+import datatype.UInt256
 import failure.DecodeFailure
+import util.SafeStringInterp.*
 
 sealed trait PublicKey:
   def toBytes: ByteVector
-  def x: UInt256BigInt
-  def y: UInt256BigInt
+  def x: UInt256
+  def y: UInt256
   private[crypto] def asECPoint(): ECPoint
 
   @SuppressWarnings(Array("org.wartremover.warts.Any"))
@@ -29,7 +32,7 @@ sealed trait PublicKey:
   override final def hashCode(): Int = toBytes.hashCode
 
 object PublicKey:
-  final case class XY(x: UInt256BigInt, y: UInt256BigInt) extends PublicKey:
+  final case class XY(x: UInt256, y: UInt256) extends PublicKey:
     private val cachedXY64Ref: AtomicReference[Option[Array[Byte]]] =
       new AtomicReference[Option[Array[Byte]]](None)
     private val cachedPointRef: AtomicReference[Option[ECPoint]] =
@@ -46,8 +49,8 @@ object PublicKey:
         case Some(arr) => arr
         case None =>
           val combined =
-            val xb  = x.toBytes.toArray
-            val yb  = y.toBytes.toArray
+            val xb  = x.bytes.toArray
+            val yb  = y.bytes.toArray
             val out = new Array[Byte](64)
             System.arraycopy(xb, 0, out, 0, 32)
             System.arraycopy(yb, 0, out, 32, 32)
@@ -78,10 +81,10 @@ object PublicKey:
   final case class Point(p: ECPoint) extends PublicKey:
     private val cachedXY64Ref: AtomicReference[Option[Array[Byte]]] =
       new AtomicReference[Option[Array[Byte]]](None)
-    private val cachedXRef: AtomicReference[Option[UInt256BigInt]] =
-      new AtomicReference[Option[UInt256BigInt]](None)
-    private val cachedYRef: AtomicReference[Option[UInt256BigInt]] =
-      new AtomicReference[Option[UInt256BigInt]](None)
+    private val cachedXRef: AtomicReference[Option[UInt256]] =
+      new AtomicReference[Option[UInt256]](None)
+    private val cachedYRef: AtomicReference[Option[UInt256]] =
+      new AtomicReference[Option[UInt256]](None)
     private val cachedNormRef: AtomicReference[Option[ECPoint]] =
       new AtomicReference[Option[ECPoint]](None)
 
@@ -94,30 +97,28 @@ object PublicKey:
           np
 
     @SuppressWarnings(Array("org.wartremover.warts.Throw"))
-    override def x: UInt256BigInt =
+    override def x: UInt256 =
       cachedXRef.get() match
         case Some(v) => v
         case None =>
           val v =
             val np = asECPoint()
             UInt256.fromBigIntegerUnsigned(np.getAffineXCoord.toBigInteger) match
-              case Right(u)                         => u
-              case Left(UInt256RefineFailure(msg)) =>
-                throw new IllegalArgumentException(msg)
+              case Right(u) => u
+              case Left(e)  => throw new IllegalArgumentException(e.msg)
           if CryptoParams.CachePolicy.enabled then cachedXRef.set(Some(v))
           v
 
     @SuppressWarnings(Array("org.wartremover.warts.Throw"))
-    override def y: UInt256BigInt =
+    override def y: UInt256 =
       cachedYRef.get() match
         case Some(v) => v
         case None =>
           val v =
             val np = asECPoint()
             UInt256.fromBigIntegerUnsigned(np.getAffineYCoord.toBigInteger) match
-              case Right(u)                         => u
-              case Left(UInt256RefineFailure(msg)) =>
-                throw new IllegalArgumentException(msg)
+              case Right(u) => u
+              case Left(e)  => throw new IllegalArgumentException(e.msg)
           if CryptoParams.CachePolicy.enabled then cachedYRef.set(Some(v))
           v
 
@@ -125,8 +126,8 @@ object PublicKey:
       cachedXY64Ref.get() match
         case Some(arr) => arr
         case None =>
-          val xb  = x.toBytes.toArray
-          val yb  = y.toBytes.toArray
+          val xb  = x.bytes.toArray
+          val yb  = y.bytes.toArray
           val out = new Array[Byte](64)
           System.arraycopy(xb, 0, out, 0, 32)
           System.arraycopy(yb, 0, out, 32, 32)
@@ -137,12 +138,10 @@ object PublicKey:
       val arr = xy64Array()
       ByteVector.view(java.util.Arrays.copyOf(arr, arr.length))
 
-  @SuppressWarnings(
-    Array("org.wartremover.warts.Any", "org.wartremover.warts.Nothing"),
-  )
-  def fromByteArray(array: Array[Byte]): Either[UInt256RefineFailure, PublicKey] =
+  def fromByteArray(array: Array[Byte]): Either[failure.UInt256Failure, PublicKey] =
     if array.length != 64 then
-      Left(UInt256RefineFailure(s"Public key array size are not 64: $array"))
+      val len: String = array.length.toString
+      failure.UInt256Overflow(ss"Public key array size must be 64, got: ${len}").asLeft[PublicKey]
     else
       val (xArr, yArr) = array splitAt 32
       for
@@ -150,7 +149,7 @@ object PublicKey:
         y <- UInt256.fromBigIntegerUnsigned(new BigInteger(1, yArr))
       yield XY(x, y)
 
-  def fromXY(x: UInt256BigInt, y: UInt256BigInt): PublicKey = XY(x, y)
+  def fromXY(x: UInt256, y: UInt256): PublicKey = XY(x, y)
 
   def fromECPoint(p: ECPoint): PublicKey = Point(p)
 

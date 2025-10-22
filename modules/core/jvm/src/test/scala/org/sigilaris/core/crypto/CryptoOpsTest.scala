@@ -3,13 +3,15 @@ package crypto
 
 import cats.syntax.either.*
 
+import scodec.bits.*
+
 import Hash.ops.*
 import Recover.ops.*
+import Sign.ops.*
+import failure.SigilarisFailure
 
 import hedgehog.munit.HedgehogSuite
 import hedgehog.*
-
-import scodec.bits.*
 
 class CryptoOpsTest extends HedgehogSuite:
 
@@ -62,22 +64,18 @@ class CryptoOpsTest extends HedgehogSuite:
     .map(Hash.Value[datatype.Utf8](_))
     .forAll
 
-  def uint256(s: String): Either[String, UInt256BigInt] =
-    UInt256.from(BigInt(s, 16)).leftMap(_.msg)
+  def uint256(s: String): Either[SigilarisFailure, datatype.UInt256] =
+    datatype.UInt256.fromBigIntUnsigned(BigInt(s, 16))
 
   property("sign and recover"):
     genHashValue.map: dataHashValue =>
 
-      import Sign.ops.*
-
       val recoveredPublicKey = for
-        sig <- dataHashValue.signBy(keyPair)
-        publicKey <- dataHashValue
-          .recover(sig)
-          .toRight(s"unrecoverable signature: $sig")
+        sig       <- dataHashValue.signBy(keyPair)
+        publicKey <- dataHashValue.recover(sig)
       yield publicKey
 
-      keyPair.publicKey.asRight[String] ==== recoveredPublicKey
+      keyPair.publicKey.asRight[SigilarisFailure] ==== recoveredPublicKey
 
   test("recover case #1"):
     withMunitAssertions: assertions =>
@@ -93,14 +91,12 @@ class CryptoOpsTest extends HedgehogSuite:
       val dataHashValue = data.toHash
 
       val recoveredPublicKey = for
-        sig <- sigEither
-        publicKey <- dataHashValue
-          .recover(sig)
-          .toRight(s"unrecoverable signature: $sig")
+        sig       <- sigEither
+        publicKey <- dataHashValue.recover(sig)
       yield publicKey
 
       assertions.assertEquals(
-        keyPair.publicKey.asRight[String],
+        keyPair.publicKey.asRight[SigilarisFailure],
         recoveredPublicKey,
       )
 
@@ -118,13 +114,11 @@ class CryptoOpsTest extends HedgehogSuite:
       val dataHashValue = data.toHash
 
       val recoveredPublicKey = for
-        sig <- sigEither
-        publicKey <- dataHashValue
-          .recover(sig)
-          .toRight(s"unrecoverable signature: $sig")
+        sig       <- sigEither
+        publicKey <- dataHashValue.recover(sig)
       yield publicKey
 
       assertions.assertEquals(
-        keyPair.publicKey.asRight[String],
+        keyPair.publicKey.asRight[SigilarisFailure],
         recoveredPublicKey,
       )

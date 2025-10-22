@@ -1,14 +1,16 @@
 package org.sigilaris.core.crypto
 
+import org.sigilaris.core.failure.SigilarisFailure
+
 trait Sign[A]:
   def apply(a: A, keyPair: KeyPair)(using
       hash: Hash[A],
-  ): Either[String, Signature] = byHash(hash(a), keyPair)
+  ): Either[SigilarisFailure, Signature] = byHash(hash(a), keyPair)
 
   def byHash(
       hashValue: Hash.Value[A],
       keyPair: KeyPair,
-  ): Either[String, Signature]
+  ): Either[SigilarisFailure, Signature]
 
 object Sign:
   def apply[A: Sign]: Sign[A] = summon
@@ -20,10 +22,10 @@ object Sign:
 
   object ops:
     extension (keyPair: KeyPair)
-      def sign[A: Hash: Sign](a: A): Either[String, Signature] =
+      def sign[A: Hash: Sign](a: A): Either[SigilarisFailure, Signature] =
         Sign[A].apply(a, keyPair)
 
     extension [A](hashValue: Hash.Value[A])
       def signBy(keyPair: KeyPair)(using
           sign: Sign[A],
-      ): Either[String, Signature] = sign.byHash(hashValue, keyPair)
+      ): Either[SigilarisFailure, Signature] = sign.byHash(hashValue, keyPair)

@@ -1,7 +1,7 @@
 # ADR-0008: UInt256 도메인 타입 통일(shared) 및 BigInteger 빠른 경로
 
 ## Status
-Accepted
+Implemented
 
 ## Context
 - 프로젝트는 도메인 SoT(Source of Truth)를 고정 길이 바이트(32/64B, big-endian)로 두고, 수학 연산은 `java.math.BigInteger` 및 곡선 타입을 사용한다(ADR-0001, ADR-0004).
