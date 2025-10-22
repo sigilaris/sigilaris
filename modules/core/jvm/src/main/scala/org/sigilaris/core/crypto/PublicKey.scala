@@ -17,8 +17,8 @@ import util.SafeStringInterp.*
   *
   * Represents an uncompressed secp256k1 public key (64 bytes = x||y) with two
   * internal representations:
-  *   - [[XY]]: stores x and y coordinates directly
-  *   - [[Point]]: stores BouncyCastle [[ECPoint]] and lazily computes x/y
+  *   - [[PublicKey.XY]]: stores x and y coordinates directly
+  *   - [[PublicKey.Point]]: stores BouncyCastle ECPoint and lazily computes x/y
   *
   * Both representations cache intermediate values (byte arrays, coordinates, EC
   * points) for performance, controlled by
@@ -186,11 +186,11 @@ object PublicKey:
   /** Constructs a public key from x and y coordinates.
     *
     * @param x
-    *   x-coordinate as [[UInt256]]
+    *   x-coordinate as [[datatype.UInt256]]
     * @param y
-    *   y-coordinate as [[UInt256]]
+    *   y-coordinate as [[datatype.UInt256]]
     * @return
-    *   public key with [[XY]] representation
+    *   public key with [[PublicKey.XY]] representation
     */
   def fromXY(x: UInt256, y: UInt256): PublicKey = XY(x, y)
 

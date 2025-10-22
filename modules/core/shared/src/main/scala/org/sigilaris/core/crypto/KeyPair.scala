@@ -10,7 +10,7 @@ import util.SafeStringInterp.*
   * and recovering public keys from signatures.
   *
   * @param privateKey
-  *   32-byte private key as [[UInt256]], must be in range [1, n-1] where n is
+  *   32-byte private key as [[datatype.UInt256]], must be in range [1, n-1] where n is
   *   the secp256k1 curve order
   * @param publicKey
   *   corresponding 64-byte uncompressed public key (x||y coordinates)

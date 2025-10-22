@@ -14,9 +14,9 @@ import datatype.UInt256
   * @param v
   *   recovery parameter, typically 27 or 28 (27 + recId where recId is 0 or 1)
   * @param r
-  *   signature component r, 32-byte [[UInt256]]
+  *   signature component r, 32-byte [[datatype.UInt256]]
   * @param s
-  *   signature component s, 32-byte [[UInt256]], normalized to Low-S form (s ≤
+  *   signature component s, 32-byte [[datatype.UInt256]], normalized to Low-S form (s ≤
   *   n/2)
   *
   * @example

@@ -24,14 +24,14 @@ trait PublicKeyLike:
   /** X-coordinate of the elliptic curve point.
     *
     * @return
-    *   x-coordinate as 32-byte [[UInt256]]
+    *   x-coordinate as 32-byte [[datatype.UInt256]]
     */
   def x: UInt256
 
   /** Y-coordinate of the elliptic curve point.
     *
     * @return
-    *   y-coordinate as 32-byte [[UInt256]]
+    *   y-coordinate as 32-byte [[datatype.UInt256]]
     */
   def y: UInt256
 

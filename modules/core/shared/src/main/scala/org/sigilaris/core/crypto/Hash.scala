@@ -63,7 +63,7 @@ object Hash:
     */
   def apply[A: Hash]: Hash[A] = summon
 
-  /** Opaque type wrapping [[UInt256]] to track the source type of the hash.
+  /** Opaque type wrapping [[org.sigilaris.core.datatype.UInt256]] to track the source type of the hash.
     *
     * @tparam A
     *   the type that was hashed to produce this value
@@ -71,7 +71,7 @@ object Hash:
   opaque type Value[A] = UInt256
 
   object Value:
-    /** Constructs a hash value from a [[UInt256]].
+    /** Constructs a hash value from a [[org.sigilaris.core.datatype.UInt256]].
       *
       * @param uint256
       *   32-byte hash value
@@ -103,12 +103,12 @@ object Hash:
 
     given eqValue[A]: Eq[Value[A]] = UInt256.eq
 
-    /** Unwraps the hash value as [[UInt256]].
+    /** Unwraps the hash value as [[datatype.UInt256]].
       *
       * @param value
       *   tagged hash value
       * @return
-      *   underlying 32-byte [[UInt256]]
+      *   underlying 32-byte [[datatype.UInt256]]
       */
     extension [A](value: Value[A]) def toUInt256: UInt256 = value
 
@@ -125,17 +125,17 @@ object Hash:
       */
     extension [A](a: A) def toHash(using h: Hash[A]): Value[A] = h(a)
 
-  /** [[Contravariant]] instance for [[Hash]]. */
+  /** [[cats.Contravariant]] instance for [[Hash]]. */
   given contravariant: Contravariant[Hash] = new Contravariant[Hash]:
     override def contramap[A, B](fa: Hash[A])(f: B => A): Hash[B] =
       fa.contramap(f)
 
-  /** Builds a [[Hash]] instance for any type with a [[ByteEncoder]].
+  /** Builds a [[Hash]] instance for any type with a [[codec.byte.ByteEncoder]].
     *
     * Encodes the value to bytes and computes Keccak-256 hash.
     *
     * @tparam A
-    *   type to hash, must have a [[ByteEncoder]]
+    *   type to hash, must have a [[codec.byte.ByteEncoder]]
     * @return
     *   Hash instance using Keccak-256
     */
@@ -146,7 +146,7 @@ object Hash:
     val h     = CryptoOps.keccak256(a.toBytes.toArray)
     ByteVector.view(h).asInstanceOf[Value[A]]
 
-  /** Default [[Hash]] instance for [[Utf8]] strings. */
+  /** Default [[Hash]] instance for [[datatype.Utf8]] strings. */
   given Hash[Utf8] = build
 
 
