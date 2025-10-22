@@ -13,7 +13,7 @@ import datatype.UInt256
 import facade.{BasePoint, EC, JsKeyPair, Keccak256}
 import util.SafeStringInterp.*
 
-object CryptoOps:
+object CryptoOps extends CryptoOpsLike:
   @SuppressWarnings(Array("org.wartremover.warts.Throw"))
   def keccak256(input: Array[Byte]): Array[Byte] =
     val hexString: String = Keccak256.update(input.toUint8Array).hex()

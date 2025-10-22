@@ -19,7 +19,7 @@ import org.bouncycastle.math.ec.custom.sec.SecP256K1Curve
 import datatype.UInt256
 import util.SafeStringInterp.*
 
-object CryptoOps:
+object CryptoOps extends CryptoOpsLike:
   /** Compute Keccak-256 hash.
     *
     * @param input
