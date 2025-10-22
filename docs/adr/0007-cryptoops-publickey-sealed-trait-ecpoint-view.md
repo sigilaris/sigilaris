@@ -1,7 +1,7 @@
 # ADR-0007: PublicKey를 sealed trait로 분리하고 ECPoint 뷰를 추가
 
 ## Status
-Proposed
+Implemented
 
 ## Context
 - 현재 `PublicKey`는 `x: UInt256`, `y: UInt256`(64바이트 x||y, big-endian) SoT를 보관하며, 필요 시 JVM에서 `ECPoint` 뷰를 재구성한다.
@@ -40,9 +40,11 @@ Proposed
   - `final case class XY(x: UInt256, y: UInt256) extends PublicKey`
     - `lazy val xy64: Array[Byte]` 생성 및 캐시
     - `lazy val point: ECPoint` 생성 및 캐시(0x04 || x||y 디코드)
+    - `asECPoint()`는 항상 `normalize()`된 포인트를 반환하며 정규화 포인트를 별도 캐시
   - `final case class Point(p: ECPoint) extends PublicKey`
     - `lazy val xy64: Array[Byte]` 생성 및 캐시(곡선 좌표에서 바로 64B 구성: BigInteger → 32B 고정 채움)
-    - `lazy val x: UInt256`, `lazy val y: UInt256` 생성 및 캐시
+    - `lazy val x: UInt256`, `lazy val y: UInt256` 생성 및 캐시(항상 정규화된 포인트의 affine 좌표 사용)
+    - 내부 보관 포인트는 필요 시 `normalize()`하여 별도 캐시에 저장 후 재사용
 - 컴패니언:
   - `fromXY(x, y)`는 `XY`
   - `fromECPoint(p)`는 `Point`
@@ -76,6 +78,7 @@ Proposed
 - 표현 드리프트: equals/hash/코덱을 64B 값으로 고정하고 테스트로 보장.
 - 캐시 누락/과도한 할당: `lazy val`과 조건부 캐시(정책 플래그)로 제어.
 - JVM 종속 노출: ECPoint 기반 구현은 jvm 모듈에만 위치시키고, shared에 노출 금지.
+ - 비정규화 포인트 사용: `ECPoint#getAffineX/YCoord`는 정규화되지 않은 포인트에서 예외를 유발할 수 있음 → `asECPoint()`에서 항상 `normalize()`된 포인트를 반환하도록 강제하고 캐시.
 
 ## Rollback Strategy
 - 기능 토글(빌드 플래그/정책)로 `Point` 변형 생성을 비활성화하고, `XY`만 사용하도록 되돌릴 수 있음.

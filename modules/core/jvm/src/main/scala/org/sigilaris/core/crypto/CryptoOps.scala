@@ -4,7 +4,7 @@ package crypto
 import java.math.BigInteger
 import java.security.{KeyPairGenerator, SecureRandom}
 import java.security.spec.ECGenParameterSpec
-import java.util.Arrays
+ 
 
 import org.bouncycastle.asn1.x9.X9ECParameters
 import org.bouncycastle.crypto.digests.SHA256Digest
@@ -55,9 +55,7 @@ object CryptoOps:
         case (bcecPrivate: BCECPrivateKey, bcecPublic: BCECPublicKey) =>
           for
             privateKey <- UInt256.fromBigIntegerUnsigned(bcecPrivate.getD).toOption
-            publicKey <- PublicKey
-              .fromByteArray(bcecPublic.getQ.getEncoded(false).tail)
-              .toOption
+            publicKey = PublicKey.fromECPoint(bcecPublic.getQ)
           yield KeyPair(privateKey, publicKey)
         case _ => None
 
@@ -73,12 +71,9 @@ object CryptoOps:
   def fromPrivate(privateKey: BigInt): KeyPair =
     val point: ECPoint = CryptoParams.fixedPointMultiplier
       .multiply(Curve.getG, privateKey.bigInteger mod Curve.getN)
-    val encoded: Array[Byte] = point.getEncoded(false)
     val keypairEither: Either[UInt256RefineFailure, KeyPair] = for
       private256 <- UInt256.from(privateKey)
-      public <- PublicKey.fromByteArray(
-        Arrays.copyOfRange(encoded, 1, encoded.length),
-      )
+      public = PublicKey.fromECPoint(point)
     yield KeyPair(private256, public)
 
     keypairEither match
@@ -158,4 +153,4 @@ object CryptoOps:
         val eInvrInv = rInv multiply eInv mod n
         val q: ECPoint =
           ECAlgorithms.sumOfTwoMultiplies(Curve.getG(), eInvrInv, R, srInv)
-        PublicKey.fromByteArray(q.getEncoded(false).tail).toOption
+        Some(PublicKey.fromECPoint(q))
