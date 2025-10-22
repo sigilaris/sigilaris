@@ -13,10 +13,36 @@ import datatype.UInt256
 import failure.DecodeFailure
 import util.SafeStringInterp.*
 
+/** JVM implementation of secp256k1 public key with caching optimizations.
+  *
+  * Represents an uncompressed secp256k1 public key (64 bytes = x||y) with two
+  * internal representations:
+  *   - [[XY]]: stores x and y coordinates directly
+  *   - [[Point]]: stores BouncyCastle [[ECPoint]] and lazily computes x/y
+  *
+  * Both representations cache intermediate values (byte arrays, coordinates, EC
+  * points) for performance, controlled by
+  * [[org.sigilaris.core.crypto.internal.CryptoParams.CachePolicy]].
+  *
+  * @note
+  *   Equality and hashCode are based solely on the 64-byte x||y
+  *   representation, ensuring consistency across both internal forms.
+  *
+  * @see [[PublicKeyLike]] for the cross-platform interface
+  * @see [[org.sigilaris.core.crypto.internal.CryptoParams.CachePolicy]] for
+  *      caching behavior
+  */
 sealed trait PublicKey extends PublicKeyLike:
+  /** Returns the 64-byte uncompressed representation (x||y). */
   def toBytes: ByteVector
+
+  /** X-coordinate of the elliptic curve point. */
   def x: UInt256
+
+  /** Y-coordinate of the elliptic curve point. */
   def y: UInt256
+
+  /** Returns normalized BouncyCastle EC point (internal use). */
   private[crypto] def asECPoint(): ECPoint
 
   @SuppressWarnings(Array("org.wartremover.warts.Any"))
@@ -138,6 +164,14 @@ object PublicKey:
       val arr = xy64Array()
       ByteVector.view(java.util.Arrays.copyOf(arr, arr.length))
 
+  /** Decodes a public key from a 64-byte array (x||y).
+    *
+    * @param array
+    *   64-byte array: x (32 bytes) || y (32 bytes), big-endian
+    * @return
+    *   Right([[PublicKey]]) on success, Left(failure) if array length is not 64
+    *   or coordinates are invalid
+    */
   def fromByteArray(array: Array[Byte]): Either[failure.UInt256Failure, PublicKey] =
     if array.length != 64 then
       val len: String = array.length.toString
@@ -149,8 +183,28 @@ object PublicKey:
         y <- UInt256.fromBigIntegerUnsigned(new BigInteger(1, yArr))
       yield XY(x, y)
 
+  /** Constructs a public key from x and y coordinates.
+    *
+    * @param x
+    *   x-coordinate as [[UInt256]]
+    * @param y
+    *   y-coordinate as [[UInt256]]
+    * @return
+    *   public key with [[XY]] representation
+    */
   def fromXY(x: UInt256, y: UInt256): PublicKey = XY(x, y)
 
+  /** Constructs a public key from a BouncyCastle EC point.
+    *
+    * @param p
+    *   elliptic curve point
+    * @return
+    *   public key with [[Point]] representation
+    *
+    * @note
+    *   Used internally when deriving keys from private keys or recovering from
+    *   signatures
+    */
   def fromECPoint(p: ECPoint): PublicKey = Point(p)
 
   inline given pubkeyByteEncoder: ByteEncoder[PublicKey] with
