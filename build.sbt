@@ -59,6 +59,9 @@ val Dependencies = new {
     Compile / npmDevDependencies ++= Seq(
       "@types/node" -> "18.19.33",
     ),
+    // Share the same NPM deps with Test to avoid duplication
+    Test / npmDependencies := (Compile / npmDependencies).value,
+    Test / npmDevDependencies := (Compile / npmDevDependencies).value,
   )
 
   lazy val tests = Def.settings(
@@ -151,9 +154,12 @@ lazy val core = crossProject(JSPlatform, JVMPlatform)
   .jsSettings(Dependencies.coreJS)
   .jsSettings(
     useYarn := true,
-    Test / scalaJSLinkerConfig ~= {
-      _.withModuleKind(ModuleKind.ESModule)
-    },
+    // Tests run under Node: prefer CommonJS to support require()
+    Test / scalaJSLinkerConfig ~= (_.withModuleKind(ModuleKind.CommonJSModule)),
+    // Ensure webpack bundles tests so Node resolves NPM deps like 'elliptic'
+    Test / webpackBundlingMode := scalajsbundler.BundlingMode.LibraryAndApplication(),
+    Test / logBuffered := false,
+    Test / testOptions += Tests.Argument(TestFrameworks.MUnit, "-v"),
     scalacOptions ++= Seq(
       "-scalajs",
     ),
