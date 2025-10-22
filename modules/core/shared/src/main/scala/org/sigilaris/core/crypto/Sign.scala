@@ -29,3 +29,5 @@ object Sign:
       def signBy(keyPair: KeyPair)(using
           sign: Sign[A],
       ): Either[SigilarisFailure, Signature] = sign.byHash(hashValue, keyPair)
+
+

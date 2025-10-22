@@ -122,3 +122,5 @@ class CryptoOpsTest extends HedgehogSuite:
         keyPair.publicKey.asRight[SigilarisFailure],
         recoveredPublicKey,
       )
+
+
