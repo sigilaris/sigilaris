@@ -60,7 +60,7 @@ object CryptoOps:
   def sign(
       keyPair: KeyPair,
       transactionHash: Array[Byte],
-  ): Either[String, Signature] =
+  ): Either[failure.SigilarisFailure, Signature] =
     val jsSig = keyPair.toJs.sign(transactionHash.toUint8Array)
     val sigObj: js.Object = js.Dynamic.literal(
       "r" -> jsSig.r.toStringBase(16),
@@ -72,15 +72,17 @@ object CryptoOps:
     val pub1: PublicKey = ec
       .recoverPubKey(transactionHash.toUint8Array, sigObj, 1, scala.scalajs.js.undefined)
       .asScala
-    val recoveryParamEither: Either[String, Int] =
-      if pub0.toBigInt.equals(keyPair.publicKey.toBigInt) then 0.asRight[String]
-      else if pub1.toBigInt.equals(keyPair.publicKey.toBigInt) then 1.asRight[String]
-      else "Unable to determine recoveryParam".asLeft[Int]
+    val recoveryParamEither: Either[failure.SigilarisFailure, Int] =
+      if pub0.toBigInt.equals(keyPair.publicKey.toBigInt) then 0.asRight[failure.SigilarisFailure]
+      else if pub1.toBigInt.equals(keyPair.publicKey.toBigInt) then 1.asRight[failure.SigilarisFailure]
+      else failure.DecodeFailure("Unable to determine recoveryParam").asLeft[Int]
     for
       recoveryParam <- recoveryParamEither
       v = 27 + recoveryParam
-      r <- UInt256.fromBigIntUnsigned(BigInt(jsSig.r.toStringBase(16), 16)).left.map(_.msg)
-      s <- UInt256.fromBigIntUnsigned(BigInt(jsSig.s.toStringBase(16), 16)).left.map(_.msg)
+      r <- UInt256
+        .fromBigIntUnsigned(BigInt(jsSig.r.toStringBase(16), 16))
+      s <- UInt256
+        .fromBigIntUnsigned(BigInt(jsSig.s.toStringBase(16), 16))
     yield Signature(v, r, s)
 
   extension (keyPair: KeyPair)
@@ -90,7 +92,7 @@ object CryptoOps:
   def recover(
       signature: Signature,
       hashArray: Array[Byte],
-  ): Either[String, PublicKey] =
+  ): Either[failure.SigilarisFailure, PublicKey] =
     val jsSig: js.Object = js.Dynamic.literal(
       "r" -> signature.r.toHexLower,
       "s" -> signature.s.toHexLower,
@@ -99,4 +101,4 @@ object CryptoOps:
     val pub: PublicKey = ec
       .recoverPubKey(hashArray.toUint8Array, jsSig, signature.v - 27, js.undefined)
       .asScala
-    pub.asRight[String]
+    pub.asRight[failure.SigilarisFailure]

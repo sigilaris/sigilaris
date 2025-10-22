@@ -63,3 +63,5 @@ object Hash:
     ByteVector.view(h).asInstanceOf[Value[A]]
 
   given Hash[Utf8] = build
+
+

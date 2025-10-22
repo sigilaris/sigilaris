@@ -27,3 +27,5 @@ object Recover:
       def recover(signature: Signature)(using
           r: Recover[A],
       ): Either[SigilarisFailure, PublicKey] = r.fromHash(hashValue, signature)
+
+

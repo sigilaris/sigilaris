@@ -5,9 +5,9 @@ import cats.syntax.either.*
 
 import scodec.bits.*
 
-//import Hash.ops.*
-//import Recover.ops.*
-//import Sign.ops.*
+import Hash.ops.*
+import Recover.ops.*
+import Sign.ops.*
 import codec.byte.ByteEncoder.ops.*
 import failure.SigilarisFailure
 
@@ -61,17 +61,18 @@ class CryptoOpsTest extends HedgehogSuite:
     .flatMap:
       case Left(error)    => Gen.discard
       case Right(uint256) => Gen.element1(uint256)
+    .map(Hash.Value[datatype.Utf8](_))
     .forAll
 //
-  def uint256(s: String): Either[String, datatype.UInt256] =
-    datatype.UInt256.fromBigIntUnsigned(BigInt(s, 16)).leftMap(_.msg)
+  def uint256(s: String): Either[SigilarisFailure, datatype.UInt256] =
+    datatype.UInt256.fromBigIntUnsigned(BigInt(s, 16))
 //
   property("sign and recover"):
     genHashValue.map: dataHashValue =>
 
       val recoveredPublicKey = for
-        sig       <- CryptoOps.sign(keyPair, dataHashValue.bytes.toArray)
-        publicKey <- CryptoOps.recover(sig, dataHashValue.bytes.toArray)
+        sig       <- dataHashValue.signBy(keyPair)
+        publicKey <- dataHashValue.recover(sig)
       yield publicKey
 
       keyPair.publicKey.asRight[SigilarisFailure] ==== recoveredPublicKey
@@ -87,15 +88,15 @@ class CryptoOpsTest extends HedgehogSuite:
       yield Signature(v, r, s)
 
       val data          = datatype.Utf8("some-data")
-      val dataHashValue = CryptoOps.keccak256(data.toBytes.toArray)
+      val dataHashValue = data.toHash
 
       val recoveredPublicKey = for
         sig       <- sigEither
-        publicKey <- CryptoOps.recover(sig, dataHashValue)
+        publicKey <- dataHashValue.recover(sig)
       yield publicKey
 
       assertions.assertEquals(
-        keyPair.publicKey.asRight[String],
+        keyPair.publicKey.asRight[SigilarisFailure],
         recoveredPublicKey,
       )
 //
@@ -110,14 +111,14 @@ class CryptoOpsTest extends HedgehogSuite:
       yield Signature(v, r, s)
 
       val data          = datatype.Utf8("some-data")
-      val dataHashValue = CryptoOps.keccak256(data.toBytes.toArray)
+      val dataHashValue = data.toHash
 
       val recoveredPublicKey = for
         sig       <- sigEither
-        publicKey <- CryptoOps.recover(sig, dataHashValue)
+        publicKey <- dataHashValue.recover(sig)
       yield publicKey
 
       assertions.assertEquals(
-        keyPair.publicKey.asRight[String],
+        keyPair.publicKey.asRight[SigilarisFailure],
         recoveredPublicKey,
       )
