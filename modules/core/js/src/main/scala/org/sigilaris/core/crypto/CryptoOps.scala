@@ -1,6 +1,8 @@
 package org.sigilaris.core
 package crypto
 
+import facade.{BasePoint, EC, JsKeyPair, Keccak256}
+
 import scala.scalajs.js.JSConverters.*
 import scala.scalajs.js.typedarray.Uint8Array
 
