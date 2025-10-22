@@ -6,10 +6,10 @@ import cats.syntax.eq.*
 import scodec.bits.ByteVector
 
 import codec.byte.{ByteDecoder, ByteEncoder}
-import failure.DecodeFailure
-import org.sigilaris.core.util.SafeStringInterp.*
-import org.sigilaris.core.datatype.UInt256
+import datatype.UInt256
+import failure.{DecodeFailure, UInt256Failure, UInt256Overflow}
 import facade.BasePoint
+import util.SafeStringInterp.*
 
 sealed trait PublicKey:
   def toBytes: ByteVector
@@ -17,14 +17,12 @@ sealed trait PublicKey:
   def y: UInt256
   def toBigInt: BigInt = BigInt(1, toBytes.toArray)
 
-  @SuppressWarnings(Array("org.wartremover.warts.Any"))
   override def toString: String = ss"PublicKey(${toBytes.toHex})"
 
   // Equality and hashCode are based strictly on the 64-byte x||y bytes
-  @SuppressWarnings(Array("org.wartremover.warts.Equals"))
   override final def equals(other: Any): Boolean =
     other match
-      case that: PublicKey => this.toBytes == that.toBytes
+      case that: PublicKey => this.toBytes === that.toBytes
       case _               => false
 
   override final def hashCode(): Int = toBytes.hashCode
@@ -55,11 +53,10 @@ object PublicKey:
   @SuppressWarnings(Array("org.wartremover.warts.Nothing"))
   def fromByteArray(
       array: Array[Byte],
-  ): Either[failure.UInt256Failure, PublicKey] =
+  ): Either[UInt256Failure, PublicKey] =
     if array.length =!= 64 then
-      Left(
-        failure.UInt256Overflow(ss"Public key array size must be 64, got: ${array.length.toString}"),
-      )
+      Left:
+        UInt256Overflow(ss"Public key array size must be 64, got: ${array.length.toString}")
     else
       val (xArr, yArr) = array splitAt 32
       for
@@ -75,8 +72,7 @@ object PublicKey:
     def encode(pubkey: PublicKey): ByteVector = pubkey.toBytes
 
   given pubkeyByteDecoder: ByteDecoder[PublicKey] =
-    ByteDecoder.fromFixedSizeBytes(64)(identity).emap { bytes =>
+    ByteDecoder.fromFixedSizeBytes(64)(identity).emap: bytes =>
       fromByteArray(bytes.toArray).left.map(e => DecodeFailure(e.msg))
-    }
 
 //  inline given Hash[PublicKey] = Hash.build

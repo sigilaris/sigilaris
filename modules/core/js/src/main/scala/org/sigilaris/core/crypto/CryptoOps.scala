@@ -1,31 +1,21 @@
 package org.sigilaris.core
 package crypto
 
-import facade.{BasePoint, EC, JsKeyPair, Keccak256}
-
+import scala.scalajs.js
 import scala.scalajs.js.JSConverters.*
 import scala.scalajs.js.typedarray.Uint8Array
 
 import cats.syntax.either.*
  
-
 import scodec.bits.ByteVector
 
 import datatype.UInt256
+import facade.{BasePoint, EC, JsKeyPair, Keccak256}
 import util.SafeStringInterp.*
 
-//import typings.bnJs.bnJsStrings.hex
-//import typings.elliptic.mod.{ec as EC}
-//import typings.elliptic.mod.curve.base.BasePoint
-//import typings.elliptic.mod.ec.{KeyPair as JsKeyPair, Signature as JsSignature}
-//import typings.jsSha3.mod.{keccak256 as jsKeccak256}
-
-
 object CryptoOps:
-
   @SuppressWarnings(Array("org.wartremover.warts.Throw"))
   def keccak256(input: Array[Byte]): Array[Byte] =
-
     val hexString: String = Keccak256.update(input.toUint8Array).hex()
 
     ByteVector
@@ -36,19 +26,16 @@ object CryptoOps:
     def toUint8Array: Uint8Array =
       Uint8Array.from[Byte](byteArray.toJSArray, _.toShort)
 
-  @SuppressWarnings(Array("org.wartremover.warts.AsInstanceOf"))
-  val ec: EC =
-    val mod = scala.scalajs.js.Dynamic.global.require("elliptic")
-    val C   = mod.selectDynamic("ec")
-    scala.scalajs.js.Dynamic.newInstance(C)("secp256k1").asInstanceOf[EC]
+  val ec: EC = EC.secp256k1
 
   def generate(): KeyPair = ec.genKeyPair().asScala
 
   @SuppressWarnings(Array("org.wartremover.warts.Throw"))
   def fromPrivate(privateKey: BigInt): KeyPair =
-    val priv32 = UInt256.fromBigIntUnsigned(privateKey).getOrElse {
-      throw new Exception(ss"Invalid private key: ${privateKey.toString(16)}")
-    }.bytes
+    val priv32 = UInt256.fromBigIntUnsigned(privateKey)
+      .getOrElse:
+        throw new Exception(ss"Invalid private key: ${privateKey.toString(16)}")
+      .bytes
     ec.keyFromPrivate(priv32.toArray.toUint8Array).asScala
 
   extension (jsKeyPair: JsKeyPair)
@@ -58,9 +45,8 @@ object CryptoOps:
     def asScala: KeyPair =
       val privHex = jsKeyPair.getPrivate().toStringBase(16)
       val pBigInt = BigInt(privHex, 16)
-      val p: UInt256 = UInt256.fromBigIntUnsigned(pBigInt).getOrElse {
+      val p: UInt256 = UInt256.fromBigIntUnsigned(pBigInt).getOrElse:
         throw new Exception(ss"Wrong private key: ${privHex}")
-      }
 
       KeyPair(p, jsKeyPair.getPublic().asScala)
 
@@ -71,13 +57,12 @@ object CryptoOps:
     def asScala: PublicKey =
       PublicKey.fromBasePoint(pubKey)
 
-  @SuppressWarnings(Array("org.wartremover.warts.AsInstanceOf"))
   def sign(
       keyPair: KeyPair,
       transactionHash: Array[Byte],
   ): Either[String, Signature] =
     val jsSig = keyPair.toJs.sign(transactionHash.toUint8Array)
-    val sigObj: scala.scalajs.js.Object = scala.scalajs.js.Dynamic.literal(
+    val sigObj: js.Object = js.Dynamic.literal(
       "r" -> jsSig.r.toStringBase(16),
       "s" -> jsSig.s.toStringBase(16),
     )
@@ -102,17 +87,16 @@ object CryptoOps:
     def toJs: JsKeyPair =
       ec.keyFromPrivate(keyPair.privateKey.bytes.toArray.toUint8Array)
 
-  @SuppressWarnings(Array("org.wartremover.warts.AsInstanceOf"))
   def recover(
       signature: Signature,
       hashArray: Array[Byte],
   ): Either[String, PublicKey] =
-    val jsSig: scala.scalajs.js.Object = scala.scalajs.js.Dynamic.literal(
+    val jsSig: js.Object = js.Dynamic.literal(
       "r" -> signature.r.toHexLower,
       "s" -> signature.s.toHexLower,
     )
 
     val pub: PublicKey = ec
-      .recoverPubKey(hashArray.toUint8Array, jsSig, signature.v - 27, scala.scalajs.js.undefined)
+      .recoverPubKey(hashArray.toUint8Array, jsSig, signature.v - 27, js.undefined)
       .asScala
     pub.asRight[String]
