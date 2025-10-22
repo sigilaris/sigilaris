@@ -98,7 +98,11 @@ object CryptoOps:
   ): Either[failure.SigilarisFailure, Signature] =
 
     val signer = new ECDSASigner(new HMacDSAKCalculator(new SHA256Digest()))
-    signer.init(true, keyPair.privateParams())
+    val privParams = new org.bouncycastle.crypto.params.ECPrivateKeyParameters(
+      keyPair.privateKey.toJavaBigIntegerUnsigned,
+      CryptoParams.curve,
+    )
+    signer.init(true, privParams)
     val Array(r, sValue) = signer.generateSignature(transactionHash)
     val sBig: BigInteger =
       if sValue.compareTo(HalfCurveOrder) > 0 then Curve.getN.subtract(sValue)
