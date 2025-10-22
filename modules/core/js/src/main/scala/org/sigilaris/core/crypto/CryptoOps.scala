@@ -13,6 +13,40 @@ import datatype.UInt256
 import facade.{BasePoint, EC, JsKeyPair, Keccak256}
 import util.SafeStringInterp.*
 
+/** Scala.js implementation of cryptographic operations using elliptic.js and
+  * keccak.
+  *
+  * Provides secp256k1 elliptic curve operations including:
+  *   - Keccak-256 hashing via keccak npm package
+  *   - Key pair generation and derivation via elliptic.js
+  *   - ECDSA signing with recovery parameter computation
+  *   - Public key recovery from signatures
+  *
+  * All operations delegate to JavaScript libraries through Scala.js facades,
+  * providing the same API as the JVM implementation.
+  *
+  * @example
+  *   ```scala
+  *   // Generate a key pair
+  *   val keyPair = CryptoOps.generate()
+  *
+  *   // Hash and sign
+  *   val message = "hello".getBytes
+  *   val hash = CryptoOps.keccak256(message)
+  *   val sig = CryptoOps.sign(keyPair, hash).toOption.get
+  *
+  *   // Recover public key
+  *   val recovered = CryptoOps.recover(sig, hash)
+  *   assert(recovered.contains(keyPair.publicKey))
+  *   ```
+  *
+  * @note
+  *   This is the Scala.js-specific implementation. Cross-platform code should
+  *   use [[CryptoOpsLike]] interface.
+  *
+  * @see [[CryptoOpsLike]] for the cross-platform interface
+  * @see [[facade]] for JavaScript library facades
+  */
 object CryptoOps extends CryptoOpsLike:
   @SuppressWarnings(Array("org.wartremover.warts.Throw"))
   def keccak256(input: Array[Byte]): Array[Byte] =

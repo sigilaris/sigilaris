@@ -19,13 +19,53 @@ import org.bouncycastle.math.ec.custom.sec.SecP256K1Curve
 import datatype.UInt256
 import util.SafeStringInterp.*
 
+/** JVM implementation of cryptographic operations using BouncyCastle.
+  *
+  * Provides secp256k1 elliptic curve operations including:
+  *   - Keccak-256 hashing (thread-safe via pool)
+  *   - Key pair generation and derivation
+  *   - ECDSA signing with deterministic k (RFC 6979) and Low-S normalization
+  *   - Public key recovery from signatures
+  *
+  * All operations use BouncyCastle's secp256k1 implementation with performance
+  * optimizations including thread-local digest pooling and optional coordinate
+  * caching.
+  *
+  * @example
+  *   ```scala
+  *   // Generate a key pair
+  *   val keyPair = CryptoOps.generate()
+  *
+  *   // Hash and sign
+  *   val message = "hello".getBytes
+  *   val hash = CryptoOps.keccak256(message)
+  *   val sig = CryptoOps.sign(keyPair, hash).toOption.get
+  *
+  *   // Recover public key
+  *   val recovered = CryptoOps.recover(sig, hash)
+  *   assert(recovered.contains(keyPair.publicKey))
+  *   ```
+  *
+  * @note
+  *   This is the JVM-specific implementation. Cross-platform code should use
+  *   [[CryptoOpsLike]] interface.
+  *
+  * @see [[CryptoOpsLike]] for the cross-platform interface
+  * @see [[org.sigilaris.core.crypto.internal.CryptoParams]] for curve
+  *      parameters
+  * @see [[org.sigilaris.core.crypto.internal.KeccakPool]] for hashing
+  *      implementation
+  */
 object CryptoOps extends CryptoOpsLike:
-  /** Compute Keccak-256 hash.
+  /** Computes Keccak-256 hash using thread-local digest pool.
     *
     * @param input
-    *   message bytes (immutable by contract)
+    *   message bytes (not modified)
     * @return
-    *   32-byte hash (copy)
+    *   32-byte hash (freshly allocated copy)
+    *
+    * @note
+    *   Thread-safe via [[internal.KeccakPool]]
     */
   def keccak256(input: Array[Byte]): Array[Byte] =
     val kecc = internal.KeccakPool.acquire()
