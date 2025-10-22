@@ -55,7 +55,7 @@ object PublicKey:
             System.arraycopy(xb, 0, out, 0, 32)
             System.arraycopy(yb, 0, out, 32, 32)
             out
-          if CryptoParams.CachePolicy.enabled then cachedXY64Ref.set(Some(combined))
+          if internal.CryptoParams.CachePolicy.enabled then cachedXY64Ref.set(Some(combined))
           combined
 
     override private[crypto] def asECPoint(): ECPoint =
@@ -65,17 +65,17 @@ object PublicKey:
           val decoded = cachedPointRef.get() match
             case Some(p) => p
             case None =>
-              val point = CryptoParams.curve.getCurve.decodePoint({
+              val point = internal.CryptoParams.curve.getCurve.decodePoint({
                 val xy  = xy64Array()
                 val enc = new Array[Byte](65)
                 enc(0) = 0x04.toByte
                 System.arraycopy(xy, 0, enc, 1, 64)
                 enc
               })
-              if CryptoParams.CachePolicy.enabled then cachedPointRef.set(Some(point))
+              if internal.CryptoParams.CachePolicy.enabled then cachedPointRef.set(Some(point))
               point
           val normalized = if decoded.isNormalized then decoded else decoded.normalize()
-          if CryptoParams.CachePolicy.enabled then cachedPointNormRef.set(Some(normalized))
+          if internal.CryptoParams.CachePolicy.enabled then cachedPointNormRef.set(Some(normalized))
           normalized
 
   final case class Point(p: ECPoint) extends PublicKey:
@@ -93,7 +93,7 @@ object PublicKey:
         case Some(np) => np
         case None =>
           val np = if p.isNormalized then p else p.normalize()
-          if CryptoParams.CachePolicy.enabled then cachedNormRef.set(Some(np))
+          if internal.CryptoParams.CachePolicy.enabled then cachedNormRef.set(Some(np))
           np
 
     @SuppressWarnings(Array("org.wartremover.warts.Throw"))
@@ -106,7 +106,7 @@ object PublicKey:
             UInt256.fromBigIntegerUnsigned(np.getAffineXCoord.toBigInteger) match
               case Right(u) => u
               case Left(e)  => throw new IllegalArgumentException(e.msg)
-          if CryptoParams.CachePolicy.enabled then cachedXRef.set(Some(v))
+          if internal.CryptoParams.CachePolicy.enabled then cachedXRef.set(Some(v))
           v
 
     @SuppressWarnings(Array("org.wartremover.warts.Throw"))
@@ -119,7 +119,7 @@ object PublicKey:
             UInt256.fromBigIntegerUnsigned(np.getAffineYCoord.toBigInteger) match
               case Right(u) => u
               case Left(e)  => throw new IllegalArgumentException(e.msg)
-          if CryptoParams.CachePolicy.enabled then cachedYRef.set(Some(v))
+          if internal.CryptoParams.CachePolicy.enabled then cachedYRef.set(Some(v))
           v
 
     private def xy64Array(): Array[Byte] =
@@ -131,7 +131,7 @@ object PublicKey:
           val out = new Array[Byte](64)
           System.arraycopy(xb, 0, out, 0, 32)
           System.arraycopy(yb, 0, out, 32, 32)
-          if CryptoParams.CachePolicy.enabled then cachedXY64Ref.set(Some(out))
+          if internal.CryptoParams.CachePolicy.enabled then cachedXY64Ref.set(Some(out))
           out
 
     override def toBytes: ByteVector =

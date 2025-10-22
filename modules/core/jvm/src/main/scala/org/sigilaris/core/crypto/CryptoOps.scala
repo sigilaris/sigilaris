@@ -28,14 +28,14 @@ object CryptoOps extends CryptoOpsLike:
     *   32-byte hash (copy)
     */
   def keccak256(input: Array[Byte]): Array[Byte] =
-    val kecc = KeccakPool.acquire()
+    val kecc = internal.KeccakPool.acquire()
     kecc.update(input, 0, input.length)
     kecc.digest()
 
   // Use shared domain parameters from CryptoParams
-  private inline def CurveParams: X9ECParameters = CryptoParams.curveParams
-  private inline def Curve: ECDomainParameters   = CryptoParams.curve
-  private inline def HalfCurveOrder: BigInteger  = CryptoParams.halfCurveOrder
+  private inline def CurveParams: X9ECParameters = internal.CryptoParams.curveParams
+  private inline def Curve: ECDomainParameters   = internal.CryptoParams.curve
+  private inline def HalfCurveOrder: BigInteger  = internal.CryptoParams.halfCurveOrder
 
   /** Non-deterministic source for key generation (JVM default provider). */
   val secureRandom: SecureRandom = new SecureRandom()
@@ -75,7 +75,7 @@ object CryptoOps extends CryptoOpsLike:
     * boundaries.
     */
   def fromPrivate(privateKey: BigInt): KeyPair =
-    val point: ECPoint = CryptoParams.fixedPointMultiplier
+    val point: ECPoint = internal.CryptoParams.fixedPointMultiplier
       .multiply(Curve.getG, privateKey.bigInteger mod Curve.getN)
 
     UInt256
@@ -100,7 +100,7 @@ object CryptoOps extends CryptoOpsLike:
     val signer = new ECDSASigner(new HMacDSAKCalculator(new SHA256Digest()))
     val privParams = new org.bouncycastle.crypto.params.ECPrivateKeyParameters(
       keyPair.privateKey.toJavaBigIntegerUnsigned,
-      CryptoParams.curve,
+      internal.CryptoParams.curve,
     )
     signer.init(true, privParams)
     val Array(r, sValue) = signer.generateSignature(transactionHash)
@@ -153,7 +153,7 @@ object CryptoOps extends CryptoOpsLike:
 
     val n = Curve.getN
     // If we normalize S from High-S to Low-S, the y-parity must flip to keep the same public key.
-    val isHighS  = CryptoParams.isHighS(s)
+    val isHighS  = internal.CryptoParams.isHighS(s)
     val recIdAdj = if isHighS then recId ^ 1 else recId
     val x        = r add (n multiply BigInteger.valueOf(recIdAdj.toLong / 2))
     val prime    = SecP256K1Curve.q
@@ -161,7 +161,7 @@ object CryptoOps extends CryptoOpsLike:
     else
       val R =
         def decompressKey(xBN: BigInteger, yBit: Boolean): ECPoint =
-          val x9 = CryptoParams.x9
+          val x9 = internal.CryptoParams.x9
           val compEnc: Array[Byte] =
             x9.integerToBytes(xBN, 1 + x9.getByteLength(Curve.getCurve()))
           compEnc(0) = if yBit then 0x03 else 0x02
@@ -172,7 +172,7 @@ object CryptoOps extends CryptoOpsLike:
         val e        = new BigInteger(1, message)
         val eInv     = BigInteger.ZERO subtract e mod n
         val rInv     = r modInverse n
-        val sNorm    = CryptoParams.normalizeS(s)
+        val sNorm    = internal.CryptoParams.normalizeS(s)
         val srInv    = rInv multiply sNorm mod n
         val eInvrInv = rInv multiply eInv mod n
         val q: ECPoint =

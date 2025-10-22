@@ -1,5 +1,6 @@
 package org.sigilaris.core
 package crypto
+package internal
 
 import org.bouncycastle.jcajce.provider.digest.Keccak
 
