@@ -11,6 +11,7 @@ import cats.syntax.either.*
 
 import scodec.bits.ByteVector
 
+import datatype.UInt256
 import util.SafeStringInterp.*
 
 //import typings.bnJs.bnJsStrings.hex
@@ -45,9 +46,9 @@ object CryptoOps:
 
   @SuppressWarnings(Array("org.wartremover.warts.Throw"))
   def fromPrivate(privateKey: BigInt): KeyPair =
-    val priv32 = UInt256.from(privateKey).getOrElse {
+    val priv32 = UInt256.fromBigIntUnsigned(privateKey).getOrElse {
       throw new Exception(ss"Invalid private key: ${privateKey.toString(16)}")
-    }.toBytes
+    }.bytes
     ec.keyFromPrivate(priv32.toArray.toUint8Array).asScala
 
   extension (jsKeyPair: JsKeyPair)
@@ -57,7 +58,7 @@ object CryptoOps:
     def asScala: KeyPair =
       val privHex = jsKeyPair.getPrivate().toStringBase(16)
       val pBigInt = BigInt(privHex, 16)
-      val p: UInt256BigInt = UInt256.from(pBigInt).getOrElse {
+      val p: UInt256 = UInt256.fromBigIntUnsigned(pBigInt).getOrElse {
         throw new Exception(ss"Wrong private key: ${privHex}")
       }
 
@@ -74,8 +75,8 @@ object CryptoOps:
       val yBigInt = BigInt(yHex, 16)
 
       val scalaPubKeyEither = for
-        x <- UInt256.from(xBigInt)
-        y <- UInt256.from(yBigInt)
+        x <- UInt256.fromBigIntUnsigned(xBigInt)
+        y <- UInt256.fromBigIntUnsigned(yBigInt)
       yield PublicKey(x, y)
 
       scalaPubKeyEither.getOrElse {
@@ -105,13 +106,13 @@ object CryptoOps:
     for
       recoveryParam <- recoveryParamEither
       v = 27 + recoveryParam
-      r <- UInt256.from(BigInt(jsSig.r.toStringBase(16), 16)).left.map(_.msg)
-      s <- UInt256.from(BigInt(jsSig.s.toStringBase(16), 16)).left.map(_.msg)
+      r <- UInt256.fromBigIntUnsigned(BigInt(jsSig.r.toStringBase(16), 16)).left.map(_.msg)
+      s <- UInt256.fromBigIntUnsigned(BigInt(jsSig.s.toStringBase(16), 16)).left.map(_.msg)
     yield Signature(v, r, s)
 
   extension (keyPair: KeyPair)
     def toJs: JsKeyPair =
-      ec.keyFromPrivate(keyPair.privateKey.toBytes.toArray.toUint8Array)
+      ec.keyFromPrivate(keyPair.privateKey.bytes.toArray.toUint8Array)
 
   @SuppressWarnings(Array("org.wartremover.warts.AsInstanceOf"))
   def recover(
@@ -119,8 +120,8 @@ object CryptoOps:
       hashArray: Array[Byte],
   ): Either[String, PublicKey] =
     val jsSig: scala.scalajs.js.Object = scala.scalajs.js.Dynamic.literal(
-      "r" -> signature.r.toString(16),
-      "s" -> signature.s.toString(16),
+      "r" -> signature.r.toHexLower,
+      "s" -> signature.s.toHexLower,
     )
 
     val pub: PublicKey = ec

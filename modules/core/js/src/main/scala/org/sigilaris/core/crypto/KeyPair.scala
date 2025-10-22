@@ -2,6 +2,7 @@ package org.sigilaris.core
 package crypto
 
 import org.sigilaris.core.util.SafeStringInterp.*
-final case class KeyPair(privateKey: UInt256BigInt, publicKey: PublicKey):
+import org.sigilaris.core.datatype.UInt256
+final case class KeyPair(privateKey: UInt256, publicKey: PublicKey):
   override lazy val toString: String =
-    ss"KeyPair(${privateKey.toBytes.toHex}, ${publicKey.toString})"
+    ss"KeyPair(${privateKey.toHexLower}, ${publicKey.toString})"

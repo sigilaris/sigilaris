@@ -63,8 +63,8 @@ class CryptoOpsTest extends HedgehogSuite:
       case Right(uint256) => Gen.element1(uint256)
     .forAll
 //
-  def uint256(s: String): Either[String, UInt256BigInt] =
-    UInt256.from(BigInt(s, 16)).leftMap(_.msg)
+  def uint256(s: String): Either[String, datatype.UInt256] =
+    datatype.UInt256.fromBigIntUnsigned(BigInt(s, 16)).leftMap(_.msg)
 //
   property("sign and recover"):
     genHashValue.map: dataHashValue =>
