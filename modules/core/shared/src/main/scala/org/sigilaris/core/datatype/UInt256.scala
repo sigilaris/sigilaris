@@ -127,6 +127,38 @@ object UInt256:
       )
     yield value
 
+  /** Constructs a UInt256 from an unsigned java.math.BigInteger (JVM fast-path).
+    *
+    * This is a JVM-optimized fast-path for interoperability with BigInteger-based cryptographic operations.
+    * Validates that the input is non-negative and fits within 256 bits.
+    *
+    * @param value the unsigned BigInteger value (must satisfy 0 ≤ value < 2^256)
+    * @return `Right(UInt256)` if valid, `Left(UInt256Failure)` otherwise
+    *
+    * @example
+    * ```scala
+    * import java.math.BigInteger
+    *
+    * UInt256.fromBigIntegerUnsigned(BigInteger.valueOf(42))  // Right(UInt256)
+    * UInt256.fromBigIntegerUnsigned(BigInteger.ZERO)         // Right(UInt256)
+    * UInt256.fromBigIntegerUnsigned(BigInteger.valueOf(-1))  // Left(UInt256NegativeValue)
+    * UInt256.fromBigIntegerUnsigned(BigInteger.TWO.pow(256)) // Left(UInt256Overflow(...))
+    * ```
+    *
+    * @note Fails with [[org.sigilaris.core.failure.UInt256NegativeValue]] if value.signum < 0
+    * @note Fails with [[org.sigilaris.core.failure.UInt256Overflow]] if value.bitLength > 256
+    */
+  def fromBigIntegerUnsigned(value: java.math.BigInteger): Either[UInt256Failure, UInt256] =
+    for
+      nonNeg <- Either.cond(value.signum >= 0, value, UInt256NegativeValue)
+      validRange <- Either.cond(
+        nonNeg.bitLength <= 256,
+        nonNeg,
+        UInt256Overflow("BigInteger does not fit into 256 bits"),
+      )
+      arr = validRange.toByteArray.dropWhile(_ == 0.toByte)
+    yield leftPadTo32(ByteVector.view(arr))
+
   /** Creates a UInt256 from a hex string with flexible parsing.
     *
     * Accepts hex strings with optional `0x` prefix, whitespace, and underscores.
@@ -188,6 +220,22 @@ object UInt256:
       * @return BigInt in range [0, 2^256 - 1]
       */
     def toBigIntUnsigned: BigInt = BigInt(1, u.toArray)
+
+    /** Converts to unsigned java.math.BigInteger (JVM fast-path).
+      *
+      * This is a JVM-optimized fast-path for interoperability with BigInteger-based cryptographic operations.
+      * Converts the 32-byte big-endian representation to a non-negative BigInteger.
+      *
+      * @return BigInteger in range [0, 2^256 - 1]
+      *
+      * @example
+      * ```scala
+      * val u = UInt256.unsafeFromBigIntUnsigned(BigInt(255))
+      * u.toJavaBigIntegerUnsigned  // BigInteger with value 255
+      * ```
+      */
+    def toJavaBigIntegerUnsigned: java.math.BigInteger =
+      new java.math.BigInteger(1, u.toArray)
 
     /** Converts to lowercase hex string without `0x` prefix.
       *

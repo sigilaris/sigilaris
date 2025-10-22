@@ -12,6 +12,7 @@ val V = new {
 
   val bouncycastle = "1.70"
   val sway         = "0.16.2"
+  val shapeless    = "3.5.0"
 
   val scribe          = "3.17.0"
   val hedgehog        = "0.13.0"
@@ -34,6 +35,7 @@ val Dependencies = new {
       "io.github.iltotore" %%% "iron-circe"    % V.iron,
       "org.scodec"         %%% "scodec-bits"   % V.scodecBits,
       "co.fs2"             %%% "fs2-core"      % V.fs2,
+      "org.typelevel" %%% "shapeless3-typeable" % V.shapeless,
     ),
   )
 
@@ -107,6 +109,8 @@ lazy val root = (project in file("."))
   .aggregate(
     core.jvm,
     core.js,
+    benchmarks,
+    tools,
   )
   .dependsOn(core.jvm)
   .enablePlugins(TypelevelSitePlugin, ScalaUnidocPlugin)
@@ -175,3 +179,51 @@ lazy val core = crossProject(JSPlatform, JVMPlatform)
     project
       .enablePlugins(ScalaJSBundlerPlugin)
   }
+
+lazy val benchmarks = (project in file("benchmarks"))
+  .enablePlugins(JmhPlugin)
+  .dependsOn(core.jvm)
+  .settings(
+    publish / skip := true,
+    publishLocal / skip := true,
+    Compile / publishArtifact := false,
+    Test / publishArtifact := false,
+    Compile / packageDoc / publishArtifact := false,
+    Compile / packageSrc / publishArtifact := false,
+    Test / fork := true,
+  )
+
+lazy val tools = (project in file("tools"))
+  .settings(
+    publish / skip := true,
+    publishLocal / skip := true,
+    Compile / publishArtifact := false,
+    Test / publishArtifact := false,
+    Compile / packageDoc / publishArtifact := false,
+    Compile / packageSrc / publishArtifact := false,
+    libraryDependencies ++= Seq(
+      "com.lihaoyi" %% "ujson" % "3.3.1",
+    ),
+  )
+
+// One-command aliases for Phase 6 (Scala-based orchestrations)
+// Writes JMH JSON to target/jmh-result.json, then archives and compares via tools/BenchGuard
+addCommandAlias(
+  "bench",
+  "benchmarks/jmh:run -i 10 -wi 5 -f1 -t1 .*CryptoOpsBenchmark.* -rf json -rff target/jmh-result.json ; tools/run --result benchmarks/target/jmh-result.json"
+)
+
+addCommandAlias(
+  "benchGc",
+  "benchmarks/jmh:run -i 10 -wi 5 -f1 -t1 -prof gc .*CryptoOpsBenchmark.* -rf json -rff target/jmh-result.json ; tools/run --result benchmarks/target/jmh-result.json --gc"
+)
+
+addCommandAlias(
+  "benchRecover",
+  "benchmarks/jmh:run -i 10 -wi 5 -f1 -t1 .*CryptoOpsBenchmark.*recover.* -rf json -rff target/jmh-result.json ; tools/run --result benchmarks/target/jmh-result.json --include recover"
+)
+
+addCommandAlias(
+  "benchRecoverGc",
+  "benchmarks/jmh:run -i 10 -wi 5 -f1 -t1 -prof gc .*CryptoOpsBenchmark.*recover.* -rf json -rff target/jmh-result.json ; tools/run --result benchmarks/target/jmh-result.json --gc --include recover"
+)

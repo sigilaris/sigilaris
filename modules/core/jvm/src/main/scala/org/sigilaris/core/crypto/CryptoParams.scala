@@ -1,0 +1,83 @@
+package org.sigilaris.core
+package crypto
+
+import org.bouncycastle.asn1.x9.X9IntegerConverter
+import org.bouncycastle.math.ec.FixedPointCombMultiplier
+import org.bouncycastle.asn1.x9.X9ECParameters
+import org.bouncycastle.crypto.ec.CustomNamedCurves
+import org.bouncycastle.crypto.params.ECDomainParameters
+import java.math.BigInteger
+import java.util.Locale
+import java.util.Arrays
+
+object CryptoParams:
+  // Stateless, safe to cache
+  val x9: X9IntegerConverter = new X9IntegerConverter()
+
+  // Reusable multiplier for fixed-point operations on secp256k1
+  val fixedPointMultiplier: FixedPointCombMultiplier = new FixedPointCombMultiplier()
+
+  // Domain parameters for secp256k1 (safe to share)
+  val curveParams: X9ECParameters = CustomNamedCurves.getByName("secp256k1")
+  val curve: ECDomainParameters = new ECDomainParameters(
+    curveParams.getCurve,
+    curveParams.getG,
+    curveParams.getN,
+    curveParams.getH,
+  )
+  val halfCurveOrder: BigInteger = curveParams.getN.shiftRight(1)
+
+  // Inline helpers for Low-S handling on ECDSA signatures
+  inline def isHighS(s: BigInteger): Boolean = s.compareTo(halfCurveOrder) > 0
+  inline def normalizeS(s: BigInteger): BigInteger =
+    if isHighS(s) then curve.getN.subtract(s) else s
+
+  /** Constant-time byte array equality.
+    *
+    * - Runs in time independent of the first differing byte.
+    * - Accounts for length differences without early return.
+    * - Safe for comparing secret values (private keys, MACs, nonces).
+    */
+  object ConstTime:
+    import scala.annotation.tailrec
+
+    def equalsBytes(a: Array[Byte], b: Array[Byte]): Boolean =
+      val aLen = if java.util.Objects.isNull(a) then 0 else a.length
+      val bLen = if java.util.Objects.isNull(b) then 0 else b.length
+      val max  = if aLen > bLen then aLen else bLen
+
+      @tailrec def loop(i: Int, acc: Int): Int =
+        if i >= max then acc
+        else
+          val av = if i < aLen then a(i) else 0.toByte
+          val bv = if i < bLen then b(i) else 0.toByte
+          loop(i + 1, acc | ((av ^ bv) & 0xff))
+
+      val diff = loop(0, aLen ^ bLen)
+      (diff: Int) match
+        case 0 => true
+        case _ => false
+
+    /** Zeroize sensitive byte arrays in-place. Null-safe. */
+    def zeroize(arrays: Array[Byte]*): Unit =
+      import scala.annotation.tailrec
+      @tailrec def loop(i: Int): Unit =
+        if i >= arrays.length then ()
+        else
+          val arr = arrays(i)
+          if !java.util.Objects.isNull(arr) then Arrays.fill(arr, 0.toByte)
+          loop(i + 1)
+      loop(0)
+
+  object CachePolicy:
+    private val propKey = "sigilaris.crypto.cache"
+    // enabled when prop is missing or not explicitly set to "false"
+    val enabled: Boolean =
+      sys.props.get(propKey) match
+        case None => true
+        case Some(v) =>
+          v.toLowerCase(Locale.ROOT) match
+            case "false" => false
+            case _        => true
+
+
