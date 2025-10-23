@@ -1,0 +1,83 @@
+package org.sigilaris.core
+package merkle
+
+import cats.Eq
+import cats.syntax.either.*
+import cats.syntax.eq.given
+
+import io.github.iltotore.iron.{:|, assume, refineEither, refineUnsafe}
+import io.github.iltotore.iron.constraint.collection.Length
+import io.github.iltotore.iron.constraint.numeric.Multiple
+
+import scodec.bits.{BitVector, ByteVector}
+
+import codec.byte.{ByteDecoder, ByteEncoder}
+import codec.byte.ByteEncoder.ops.*
+import datatype.BigNat
+import failure.DecodeFailure
+import util.iron.given
+
+opaque type Nibbles = BitVector :| Nibbles.NibbleCond
+
+object Nibbles:
+  type NibbleCond = Length[Multiple[4L]]
+  val empty: Nibbles = BitVector.empty.assumeNibbles
+  def combine(nibbles: Nibbles*): Nibbles =
+    nibbles.foldLeft(BitVector.empty)(_ ++ _.value).assumeNibbles
+
+  extension (nibbles: Nibbles)
+    def value: BitVector  = nibbles
+    def bytes: ByteVector = nibbles.bytes
+    def nibbleSize: Long  = nibbles.size / 4L
+    def unCons: Option[(Int, Nibbles)] =
+      if nibbles.isEmpty then None
+      else
+        val head = nibbles.value.take(4).toInt(signed = false)
+        val tail = nibbles.value.drop(4).assumeNibbles
+        Some((head, tail))
+    def stripPrefix(prefix: Nibbles): Option[Nibbles] =
+      if nibbles.startsWith(prefix) then
+        Some(nibbles.drop(prefix.size).assumeNibbles)
+      else None
+
+    def compareTo(that: Nibbles): Int =
+      val thisBytes = nibbles.bytes
+      val thatBytes = that.bytes
+      val minSize   = thisBytes.size min thatBytes.size
+
+      (0L `until` minSize)
+        .find: i =>
+          thisBytes.get(i) =!= thatBytes.get(i)
+        .fold(thisBytes.size compareTo thatBytes.size): i =>
+          (thisBytes.get(i) & 0xff) compare (thatBytes.get(i) & 0xff)
+
+    def <=(that: Nibbles): Boolean = compareTo(that) <= 0
+    def <(that: Nibbles): Boolean  = compareTo(that) < 0
+    def >=(that: Nibbles): Boolean = compareTo(that) >= 0
+    def >(that: Nibbles): Boolean  = compareTo(that) > 0
+
+  extension (bitVector: BitVector)
+    def refineToNibble: Either[String, Nibbles] =
+      bitVector.refineEither[Length[Multiple[4L]]]
+    def assumeNibbles: Nibbles = bitVector.assume[Nibbles.NibbleCond]
+
+  extension (byteVector: ByteVector)
+    def toNibbles: Nibbles = byteVector.bits.refineUnsafe[Length[Multiple[4L]]]
+
+  given nibblesByteEncoder: ByteEncoder[Nibbles] = (nibbles: Nibbles) =>
+    BigNat.unsafeFromLong(nibbles.size / 4).toBytes ++ nibbles.bytes
+
+  given nibblesByteDecoder: ByteDecoder[Nibbles] =
+    ByteDecoder[BigNat].flatMap: nibbleSize =>
+      val nibbleSizeLong = nibbleSize.toBigInt.toLong
+      ByteDecoder
+        .fromFixedSizeBytes((nibbleSizeLong + 1) / 2): nibbleBytes =>
+          val bitsSize = nibbleSizeLong * 4
+          val padSize  = bitsSize - nibbleBytes.size * 8
+          val nibbleBits =
+            if padSize > 0 then nibbleBytes.bits.padLeft(padSize)
+            else nibbleBytes.bits
+          nibbleBits.take(bitsSize)
+        .emap(_.refineToNibble.leftMap(DecodeFailure(_)))
+
+  given nibblesEq: Eq[Nibbles] = Eq.fromUniversalEquals
