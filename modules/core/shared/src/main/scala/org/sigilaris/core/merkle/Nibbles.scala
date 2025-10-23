@@ -56,6 +56,8 @@ object Nibbles:
     def >=(that: Nibbles): Boolean = compareTo(that) >= 0
     def >(that: Nibbles): Boolean  = compareTo(that) > 0
 
+    def hex: String = value.toHex
+
   extension (bitVector: BitVector)
     def refineToNibble: Either[String, Nibbles] =
       bitVector.refineEither[Length[Multiple[4L]]]
