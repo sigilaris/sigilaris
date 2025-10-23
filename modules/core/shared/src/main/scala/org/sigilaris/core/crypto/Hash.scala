@@ -110,7 +110,9 @@ object Hash:
       * @return
       *   underlying 32-byte [[datatype.UInt256]]
       */
-    extension [A](value: Value[A]) def toUInt256: UInt256 = value
+    extension [A](value: Value[A])
+      def toUInt256: UInt256 = value
+      def hex: String = toUInt256.toHexLower
 
   /** Extension methods for hashing. */
   object ops:
