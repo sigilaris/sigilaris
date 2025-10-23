@@ -62,7 +62,7 @@ sealed trait MerkleTrieNode:
         .map: i =>
           f"${i}%x: ${childrenRefined(i)}"
         .mkString("[", ",", "]")
-    ss"MerkleTrieNode(${prefix.value.toHex}, $childrenString, ${getValue.fold("""""""")(_.toHex)})"
+    ss"MerkleTrieNode(${prefix.value.toHex}, $childrenString, ${getValue.fold("\"\"")(_.toHex)})"
 
 object MerkleTrieNode:
 

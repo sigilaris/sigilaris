@@ -1,6 +1,8 @@
-package org.sigilaris.core.merkle
+package org.sigilaris.core
+package merkle
 
 import MerkleTrieNode.MerkleHash
+import util.SafeStringInterp.*
 
 opaque type MerkleTrieStateDiff = Map[MerkleHash, (MerkleTrieNode, Int)]
 
@@ -45,4 +47,9 @@ object MerkleTrieStateDiff:
     def toList: List[(MerkleHash, (MerkleTrieNode, Int))] = diff.toList
 
     def toMap: Map[MerkleHash, (MerkleTrieNode, Int)] = diff
+
+    def string: String = diff
+      .map:
+        case (hash, (node, count)) => ss"${hash.hex} -> (${node.toString}, ${count.toString})"
+      .mkString("Diff(", ", ", ")")
   end extension

@@ -31,6 +31,9 @@ final case class MerkleTrieState(
       right,
       ss"Different base",
     )
+  override def toString: String =
+    def string(option: Option[MerkleRoot]): String = option.fold("\"\"")(_.hex)
+    ss"MerkleTrieState(root: ${string(root)}, base: ${string(base)}, diff: ${diff.string})"
 
 object MerkleTrieState:
   def empty: MerkleTrieState = MerkleTrieState(
