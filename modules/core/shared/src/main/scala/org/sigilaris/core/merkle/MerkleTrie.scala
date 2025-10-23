@@ -14,11 +14,38 @@ import util.SafeStringInterp.*
 import MerkleTrieNode.{Children, MerkleHash}
 import Nibbles.{given, *}
 
+/** Merkle Trie operations providing key-value storage with cryptographic verification.
+  *
+  * A Merkle Trie is a tree structure where:
+  *   - Keys are represented as Nibbles (4-bit sequences)
+  *   - Each node has a hash computed from its contents
+  *   - The root hash uniquely identifies the entire tree state
+  *
+  * All operations are effectful and maintain state through [[MerkleTrieState]],
+  * which tracks the root hash and accumulated differences.
+  *
+  * @see [[MerkleTrieNode]] for node structure
+  * @see [[MerkleTrieState]] for state management
+  * @see [[Nibbles]] for key representation
+  */
 object MerkleTrie:
 
+  /** Storage layer for retrieving nodes by hash.
+    *
+    * @tparam F the effect type
+    */
   type NodeStore[F[_]] =
     Kleisli[EitherT[F, String, *], MerkleHash, Option[MerkleTrieNode]]
 
+  /** Retrieves a value by key from the Merkle Trie.
+    *
+    * Traverses the trie from the root, following the nibble path to find
+    * the value associated with the given key.
+    *
+    * @tparam F the effect type
+    * @param key the key to look up
+    * @return stateful computation returning the value if found
+    */
   @SuppressWarnings(Array("org.wartremover.warts.Recursion"))
   def get[F[_]: Monad: NodeStore](
       key: Nibbles,
@@ -45,6 +72,16 @@ object MerkleTrie:
 
       optionT.value
 
+  /** Inserts or updates a key-value pair in the Merkle Trie.
+    *
+    * Updates the trie structure, creating or modifying nodes as needed.
+    * The state is updated with the new root hash and accumulated differences.
+    *
+    * @tparam F the effect type
+    * @param key the key to insert
+    * @param value the value to associate with the key
+    * @return stateful computation that updates the trie
+    */
   @SuppressWarnings(Array("org.wartremover.warts.Recursion"))
   def put[F[_]: Monad: NodeStore](
       key: Nibbles,
@@ -244,6 +281,15 @@ object MerkleTrie:
             case MerkleTrieNode.BranchWithData(_, children, _) =>
               putNode(children)
 
+  /** Removes a key-value pair from the Merkle Trie.
+    *
+    * Deletes the node at the given key and updates parent nodes.
+    * May collapse branches when they become unnecessary.
+    *
+    * @tparam F the effect type
+    * @param key the key to remove
+    * @return stateful computation returning true if key was found and removed
+    */
   @SuppressWarnings(Array("org.wartremover.warts.Recursion"))
   def remove[F[_]: Monad: NodeStore](
       key: Nibbles,
@@ -304,6 +350,14 @@ object MerkleTrie:
               yield state1
       optionT.value.map(_.fold((state, false))((_, true)))
 
+  /** Streams all key-value pairs starting from the given key.
+    *
+    * Returns pairs in lexicographic order by key.
+    *
+    * @tparam F the effect type
+    * @param key the starting key (inclusive)
+    * @return stateful computation returning a stream of (key, value) pairs
+    */
   @SuppressWarnings(Array("org.wartremover.warts.Overloading"))
   def streamFrom[F[_]: Monad: NodeStore](
       key: Nibbles,
@@ -314,7 +368,7 @@ object MerkleTrie:
     streamFrom[F](key, key)
 
   @SuppressWarnings(Array("org.wartremover.warts.Recursion"))
-  def streamFrom[F[_]: Monad: NodeStore](
+  private def streamFrom[F[_]: Monad: NodeStore](
       key: Nibbles,
       originalKey: Nibbles,
   ): StateT[EitherT[F, String, *], MerkleTrieState, Stream[
@@ -400,13 +454,15 @@ object MerkleTrie:
 //            scribe.info(s"#${count}\tNo node found for key: ${key.value.toHex}")
             Stream.empty
 
-  /** @param keyPrefix:
-    *   the key prefix to get the stream from. This prefix must be included.
-    * @param keySuffix:
-    *   optional key suffix. If this suffix is provided, the stream's key
-    *   iterates over values less than keyPrefix + keySuffix.
-    * @return
-    *   the stream of values starting with the given key prefix.
+  /** Streams key-value pairs in reverse lexicographic order.
+    *
+    * Returns pairs starting with keyPrefix, up to (but not including)
+    * keyPrefix + keySuffix if provided.
+    *
+    * @tparam F the effect type
+    * @param keyPrefix the key prefix (inclusive)
+    * @param keySuffix optional suffix to limit the range (exclusive)
+    * @return stateful computation returning a reverse stream of (key, value) pairs
     */
   @SuppressWarnings(Array("org.wartremover.warts.Recursion"))
   def reverseStreamFrom[F[_]: Monad: NodeStore](
@@ -541,6 +597,15 @@ object MerkleTrie:
         .value
         .map(_.getOrElse(Stream.empty))
 
+  /** Retrieves the root node and its hash from state.
+    *
+    * Checks the diff first, then falls back to the node store.
+    *
+    * @tparam F the effect type
+    * @param state the trie state
+    * @param ns the node store
+    * @return Some((node, hash)) if root exists, None otherwise
+    */
   def getNodeAndStateRoot[F[_]: Monad](state: MerkleTrieState)(using
       ns: NodeStore[F],
   ): EitherT[F, String, Option[(MerkleTrieNode, MerkleHash)]] =
@@ -550,6 +615,15 @@ object MerkleTrie:
         .fold(ns.run(root).map(_.map((_, root)))): node =>
           EitherT.rightT[F, String](Some((node, root)))
 
+  /** Retrieves the root node from state.
+    *
+    * Checks the diff first, then falls back to the node store.
+    *
+    * @tparam F the effect type
+    * @param state the trie state
+    * @param ns the node store
+    * @return Some(node) if root exists, None otherwise
+    */
   def getNode[F[_]: Monad](state: MerkleTrieState)(using
       ns: NodeStore[F],
   ): EitherT[F, String, Option[MerkleTrieNode]] =
@@ -559,6 +633,14 @@ object MerkleTrie:
         .fold(ns.run(root)): node =>
           EitherT.rightT[F, String](Some(node))
 
+  /** Computes the common prefix and remainders of two Nibbles.
+    *
+    * Finds the longest common prefix and splits both Nibbles accordingly.
+    *
+    * @param nibbles0 first Nibbles
+    * @param nibbles1 second Nibbles
+    * @return (common prefix, remainder0, remainder1)
+    */
   def getCommonPrefixNibbleAndRemainders(
       nibbles0: Nibbles,
       nibbles1: Nibbles,
