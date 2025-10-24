@@ -5,6 +5,7 @@ import cats.Monad
 import cats.data.{EitherT, StateT}
 
 import codec.byte.ByteCodec
+import codec.byte.ByteDecoder.ops.*
 import failure.{DecodeFailure, SigilarisFailure}
 import merkle.{MerkleTrie, MerkleTrieState}
 import merkle.Nibbles.*
@@ -131,8 +132,8 @@ object StateTable:
           MerkleTrie.get[F](fullKey).run(state).leftMap(DecodeFailure(_): SigilarisFailure).flatMap:
             case (nextState, None) => EitherT.rightT[F, SigilarisFailure]((nextState, None))
             case (nextState, Some(bytes)) =>
-              ByteCodec[V].decode(bytes) match
-                case Right(result) => EitherT.rightT[F, SigilarisFailure]((nextState, Some(result.value)))
+              bytes.to[V] match
+                case Right(value) => EitherT.rightT[F, SigilarisFailure]((nextState, Some(value)))
                 case Left(err) => EitherT.leftT[F, (MerkleTrieState, Option[V])]((err: SigilarisFailure))
 
       def put(k: Key, v: V): StoreF[F][Unit] =
