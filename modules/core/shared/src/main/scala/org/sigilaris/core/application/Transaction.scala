@@ -40,15 +40,15 @@ trait Tx:
   *
   * @tparam Txs the transaction types tuple
   */
-final class TxRegistry[Txs <: Tuple]
+final class TxRegistry[Txs <: Tuple]:
+  /** Combine this registry with another registry.
+    *
+    * @param other the other transaction registry
+    * @return a registry containing both transaction sets
+    */
+  def combine[T2 <: Tuple](@annotation.unused other: TxRegistry[T2]): TxRegistry[Txs ++ T2] =
+    new TxRegistry[Txs ++ T2]
 
 object TxRegistry:
   /** Create an empty transaction registry. */
   def empty: TxRegistry[EmptyTuple] = new TxRegistry[EmptyTuple]
-
-  /** Combine two transaction registries.
-    *
-    * @return a registry containing both transaction sets
-    */
-  def combine[T1 <: Tuple, T2 <: Tuple]: TxRegistry[Tuple.Concat[T1, T2]] =
-    new TxRegistry[Tuple.Concat[T1, T2]]
