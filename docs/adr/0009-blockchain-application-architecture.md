@@ -130,6 +130,11 @@ inline def encodePath[Path <: Tuple](acc: ByteVector = ByteVector.empty): ByteVe
 inline def tablePrefix[Path <: Tuple, Name <: String]: ByteVector =
   encodePath[Path] ++ encodeSegment[Name]
 
+final case class ModuleId(path: Tuple)
+
+trait ModuleRoutedTx extends Tx:
+  def moduleId: ModuleId
+
 // 경로 없는 설계도(Blueprint)와 장착(mount) 스케치
 trait StateReducer0[F[_], Schema <: Tuple]:
   def apply[T <: Tx](tx: T)(using Requires[T#Reads, Schema], Requires[T#Writes, Schema])
@@ -168,6 +173,9 @@ type Tables[F[_], Schema <: Tuple] = Tuple.Map[Schema, [E] =>> TableOf[F, E]]
 // 튜플 합성 별칭
 type ++[A <: Tuple, B <: Tuple] = Tuple.Concat[A, B]
 
+def tupleConcat[A <: Tuple, B <: Tuple](a: A, b: B): A ++ B =
+  Tuple.fromArray(a.toArray ++ b.toArray).asInstanceOf[A ++ B]
+
 // 두 설계도를 하나로 합성 (스키마/Tx/Deps ∪)
 def composeBlueprint[F[_], MOut <: String,
   M1 <: String, S1 <: Tuple, T1 <: Tuple, D1 <: Tuple,
@@ -175,16 +183,19 @@ def composeBlueprint[F[_], MOut <: String,
 ](
   a: ModuleBlueprint[F, M1, S1, T1, D1],
   b: ModuleBlueprint[F, M2, S2, T2, D2],
-)(using UniqueNames[S1 ++ S2]): ModuleBlueprint[F, MOut, S1 ++ S2, T1 ++ T2, (D1, D2)] =
-  new ModuleBlueprint[F, MOut, S1 ++ S2, T1 ++ T2, (D1, D2)](
-    tables   = (a.tables, b.tables).asInstanceOf[Tables[F, S1 ++ S2]],
-    // 라우팅/레지스트리 기반 합성 (Path 비의존)
+)(using UniqueNames[S1 ++ S2]): ModuleBlueprint[F, MOut, S1 ++ S2, T1 ++ T2, D1 ++ D2] =
+  new ModuleBlueprint[F, MOut, S1 ++ S2, T1 ++ T2, D1 ++ D2](
+    tables   = tupleConcat(a.tables, b.tables),
     reducer0 = new StateReducer0[F, S1 ++ S2]:
       def apply[X <: Tx](tx: X)(using Requires[X#Reads, S1 ++ S2], Requires[X#Writes, S1 ++ S2]) =
-        a.reducer0.apply(tx) // orElse b.reducer0.apply(tx) 등 정책에 맞게
+        val routed = tx.asInstanceOf[ModuleRoutedTx]
+        routed.moduleId.path match
+          case head *: _ if head == constValue[M1] => a.reducer0.apply(tx)
+          case head *: _ if head == constValue[M2] => b.reducer0.apply(tx)
+          case _                                   => sys.error("TxRouteMissing")
     ,
     txs      = a.txs.combine(b.txs),
-    deps     = (a.deps, b.deps),
+    deps     = tupleConcat(a.deps, b.deps),
   )
 
 // 베이스 경로 아래 하위 경로로 장착 (Base ++ Sub)
@@ -202,30 +213,41 @@ val AccountsBP: ModuleBlueprint[F, "accounts", AccountsSchema, AccountsTxs, Empt
 val GroupBP   : ModuleBlueprint[F, "group"   , GroupSchema   , GroupTxs   , EmptyTuple] = ??? // Requires[AccountsSchema, _]
 val TokenBP   : ModuleBlueprint[F, "token"   , TokenSchema   , TokenTxs   , EmptyTuple] = ??? // Requires[AccountsSchema, _]
 
-// 1) 공유 인스턴스: 하나의 Accounts를 공유하고 Group/Token을 조합
-val accounts = AccountsBP.mount[("app", "accounts")]
-val group    = GroupBP   .mount[("app", "group")]
-val token    = TokenBP   .mount[("app", "token")]
+// 1) 공유 인스턴스: 동일 Path에 장착하여 테이블만 구분
+val accountsShared = AccountsBP.mount[("app")]
+val groupShared    = GroupBP   .mount[("app")]
+val tokenShared    = TokenBP   .mount[("app")]
 
-val withGroup: StateModule[F, ("app",), AccountsSchema ++ GroupSchema, AccountsTxs ++ GroupTxs, ?] =
-  extend(accounts, group) // Requires[AccountsSchema, _] 충족
+val dappShared =
+  extend(extend(accountsShared, groupShared), tokenShared)
 
-val dappShared = extend(withGroup, token) // Token 역시 Accounts 요구, 이미 포함됨
+// 2) 샌드박스 인스턴스: 모듈별로 고유 Path를 사용
+val groupStack =
+  extend(
+    AccountsBP.mount[("app", "group")],
+    GroupBP.mount[("app", "group")],
+  )
 
-// 2) 샌드박스 인스턴스: 각 모듈이 자신만의 Accounts를 사용
-val accountsForGroup = AccountsBP.mount[("app", "group", "accounts")]
-val accountsForToken = AccountsBP.mount[("app", "token", "accounts")]
-
-val groupStack = extend(accountsForGroup, GroupBP.mount[("app", "group")])
-val tokenStack = extend(accountsForToken, TokenBP.mount[("app", "token")])
-
-val dappSandboxed = extend(groupStack, tokenStack)
+val tokenStack =
+  extend(
+    AccountsBP.mount[("app", "token")],
+    TokenBP.mount[("app", "token")],
+  )
 
 // 3) 설계도 합성 후 단일 장착 (대규모 조립에 유용)
 val CoreBP = composeBlueprint[F, "core"](AccountsBP, GroupBP)
 val DAppBP = composeBlueprint[F, "dapp"](CoreBP, TokenBP)
 val dappOnceMounted = DAppBP.mount[("app")]
 ```
+
+### Reducer Routing Strategy
+- 각 트랜잭션은 `ModuleRoutedTx`를 구현하여 모듈 경로(`moduleId.path`)를 담는다. 경로는 설계도 단계에선 `MName *: SubPath`, 장착 이후엔 `Path ++ (MName *: SubPath)` 형태로 확장된다.
+- `composeBlueprint`는 경로의 첫 세그먼트(`MName`)를 기준으로 라우팅한다. 트랜잭션 ADT는 `moduleId.path`를 정확히 채워야 하며, 잘못된 경로가 들어오면 즉시 실패한다.
+- 경로 기반 라우팅 외에, 필요 시 `TxRegistry`에 모듈별 PartialFunction을 등록한 뒤 `combine` 시 이를 합성해도 된다. 이 경우에도 실패 시점과 에러 형식을 표준화해야 한다.
+
+### Tuple Concatenation Semantics
+- `++` 별칭은 `Tuple.Concat`의 얕은(flat) 결합을 의도한다. 런타임에서도 `tupleConcat`을 사용해 동일한 평탄 구조를 유지해야 `Tables`, `Deps` 등 타입 수준 정보와 일치한다.
+- 설계도/모듈 조합 시 중첩 튜플을 남겨 두면 조회기(`Lookup`), 증거(`Requires`)가 모두 깨진다. 반드시 `tupleConcat` 계열 헬퍼로 합성한다.
 
 ## Assembly Flow Guidance
 - Compose-then-mount(권장, 기본)
