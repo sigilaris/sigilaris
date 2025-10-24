@@ -28,6 +28,13 @@ final case class DecodeFailure(msg: String) extends SigilarisFailure
   */
 final case class ParseFailure(msg: String) extends SigilarisFailure
 
+/** Merkle trie operation failed (e.g., node store access, structural issues).
+  *
+  * @param msg
+  *   the trie operation error description
+  */
+final case class TrieFailure(msg: String) extends SigilarisFailure
+
 // UInt256-specific failures must live in this file to satisfy the `sealed` restriction
 sealed trait UInt256Failure extends SigilarisFailure
 

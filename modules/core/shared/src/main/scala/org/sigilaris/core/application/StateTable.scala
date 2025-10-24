@@ -6,7 +6,7 @@ import cats.data.{EitherT, StateT}
 
 import codec.byte.ByteCodec
 import codec.byte.ByteDecoder.ops.*
-import failure.{DecodeFailure, SigilarisFailure}
+import failure.{SigilarisFailure, TrieFailure}
 import merkle.{MerkleTrie, MerkleTrieState}
 import merkle.Nibbles.*
 
@@ -118,18 +118,12 @@ object StateTable:
 
       val name: Name = valueOf[N]
 
-      private def liftError[A](
-          op: StateT[EitherT[F, String, *], MerkleTrieState, A],
-      ): StoreF[F][A] =
-        StateT: (state: MerkleTrieState) =>
-          op.run(state).leftMap(err => DecodeFailure(err): SigilarisFailure)
-
       def get(k: Key): StoreF[F][Option[V]] =
         val rawKey = KeyOf.unwrap(k)
         val fullKeyBytes = prefix ++ ByteCodec[K].encode(rawKey)
         val fullKey = fullKeyBytes.toNibbles
         StateT: (state: MerkleTrieState) =>
-          MerkleTrie.get[F](fullKey).run(state).leftMap(DecodeFailure(_): SigilarisFailure).flatMap:
+          MerkleTrie.get[F](fullKey).run(state).leftMap(TrieFailure(_): SigilarisFailure).flatMap:
             case (nextState, None) => EitherT.rightT[F, SigilarisFailure]((nextState, None))
             case (nextState, Some(bytes)) =>
               bytes.to[V] match
@@ -141,12 +135,14 @@ object StateTable:
         val fullKeyBytes = prefix ++ ByteCodec[K].encode(rawKey)
         val fullKey = fullKeyBytes.toNibbles
         val valueBytes = ByteCodec[V].encode(v)
-        liftError:
-          MerkleTrie.put[F](fullKey, valueBytes)
+        StateT: (state: MerkleTrieState) =>
+          MerkleTrie.put[F](fullKey, valueBytes).run(state)
+            .leftMap(err => TrieFailure(err): SigilarisFailure)
 
       def remove(k: Key): StoreF[F][Boolean] =
         val rawKey = KeyOf.unwrap(k)
         val fullKeyBytes = prefix ++ ByteCodec[K].encode(rawKey)
         val fullKey = fullKeyBytes.toNibbles
-        liftError:
-          MerkleTrie.remove[F](fullKey)
+        StateT: (state: MerkleTrieState) =>
+          MerkleTrie.remove[F](fullKey).run(state)
+            .leftMap(err => TrieFailure(err): SigilarisFailure)
