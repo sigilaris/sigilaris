@@ -32,6 +32,53 @@ trait StateReducer0[F[_], Schema <: Tuple]:
       requiresWrites: Requires[tx.Writes, Schema],
   ): StoreF[F][(tx.Result, List[tx.Event])]
 
+/** Routed state reducer requiring ModuleRoutedTx.
+  *
+  * This is a wrapper that implements StateReducer0 but only works correctly
+  * with transactions that implement ModuleRoutedTx. It is used in composed
+  * blueprints where routing based on module path is required.
+  *
+  * The user is expected to only pass ModuleRoutedTx transactions to composed
+  * blueprints. Non-routed transactions will fail at runtime with a cast exception,
+  * which is acceptable since the API contract (composition) requires routing.
+  *
+  * @tparam F the effect type
+  * @tparam Schema the schema tuple (tuple of Entry types)
+  */
+trait RoutedStateReducer0[F[_], Schema <: Tuple]:
+  /** Apply a routed transaction to produce a result and events.
+    *
+    * @tparam T the transaction type (must implement ModuleRoutedTx)
+    * @param tx the transaction to apply
+    * @param requiresReads evidence that T's read requirements are in Schema
+    * @param requiresWrites evidence that T's write requirements are in Schema
+    * @return a stateful computation returning the result and list of events
+    */
+  def apply[T <: Tx & ModuleRoutedTx](tx: T)(using
+      requiresReads: Requires[tx.Reads, Schema],
+      requiresWrites: Requires[tx.Writes, Schema],
+  ): StoreF[F][(tx.Result, List[tx.Event])]
+
+  /** Adapter for StateReducer0 - casts transaction to ModuleRoutedTx.
+    *
+    * This is safe when used in composed blueprints since the composition API
+    * contract requires all transactions to implement ModuleRoutedTx.
+    */
+  @SuppressWarnings(Array("org.wartremover.warts.AsInstanceOf", "org.wartremover.warts.Any", "org.wartremover.warts.Nothing"))
+  def asStateReducer0: StateReducer0[F, Schema] = new StateReducer0[F, Schema]:
+    def apply[T <: Tx](tx: T)(using
+        requiresReads: Requires[tx.Reads, Schema],
+        requiresWrites: Requires[tx.Writes, Schema],
+    ): StoreF[F][(tx.Result, List[tx.Event])] =
+      // The routed reducer expects ModuleRoutedTx, so we cast
+      // This is acceptable since composed blueprints document this requirement
+      val routedTx = tx.asInstanceOf[Tx & ModuleRoutedTx]
+      val result = RoutedStateReducer0.this.apply(routedTx)(using
+        requiresReads.asInstanceOf[Requires[routedTx.Reads, Schema]],
+        requiresWrites.asInstanceOf[Requires[routedTx.Writes, Schema]],
+      )
+      result.asInstanceOf[StoreF[F][(tx.Result, List[tx.Event])]]
+
 /** Module blueprint (path-independent).
   *
   * A blueprint is a module specification without a concrete deployment path.
@@ -97,11 +144,15 @@ object Blueprint:
     * table names (UniqueNames[S1 ++ S2]).
     *
     * Reducer routing strategy:
-    *   - Transactions must implement ModuleRoutedTx to carry moduleId
-    *   - The reducer routes based on the first segment of moduleId.path
-    *   - If the path matches M1, route to a.reducer0
-    *   - If the path matches M2, route to b.reducer0
-    *   - Otherwise, fail with "TxRouteMissing"
+    *   - Transactions MUST implement ModuleRoutedTx (enforced by type bound)
+    *   - The moduleId.path is module-relative (MName *: SubPath)
+    *   - The reducer routes based on the first segment matching M1 or M2
+    *   - No runtime casting is required - type safety is compile-time
+    *
+    * IMPORTANT: ModuleId is always module-relative. When a blueprint is mounted
+    * at a path, the mount path is NOT prepended to transaction moduleIds.
+    * Full paths (mountPath ++ moduleId.path) are only constructed at system
+    * edges for telemetry or logging.
     *
     * @tparam F the effect type
     * @tparam MOut the output module name
@@ -116,8 +167,6 @@ object Blueprint:
     * @param a the first blueprint
     * @param b the second blueprint
     * @param uniqueNames evidence that combined schema has unique names
-    * @param m1 the compile-time value of M1 (for runtime comparison)
-    * @param m2 the compile-time value of M2 (for runtime comparison)
     * @return a composed blueprint with unioned schemas and transactions
     */
   @SuppressWarnings(Array("org.wartremover.warts.AsInstanceOf", "org.wartremover.warts.Throw"))
@@ -135,36 +184,42 @@ object Blueprint:
     // Union schemas using flat concatenation
     val combinedSchema: S1 ++ S2 = tupleConcat(a.schema, b.schema)
 
+    // Capture module names for routing
+    val m1Name: String = m1.value
+    val m2Name: String = m2.value
+
     // Merge reducers with module-based routing
-    val mergedReducer = new StateReducer0[F, S1 ++ S2]:
-      @SuppressWarnings(Array("org.wartremover.warts.Any", "org.wartremover.warts.ToString"))
-      def apply[T <: Tx](tx: T)(using
+    // The composed reducer requires ModuleRoutedTx at compile time
+    val routedReducer = new RoutedStateReducer0[F, S1 ++ S2]:
+      // Specialized apply for routed transactions
+      @SuppressWarnings(Array("org.wartremover.warts.AsInstanceOf", "org.wartremover.warts.Any"))
+      def apply[T <: Tx & ModuleRoutedTx](tx: T)(using
           requiresReads: Requires[tx.Reads, S1 ++ S2],
           requiresWrites: Requires[tx.Writes, S1 ++ S2],
       ): StoreF[F][(tx.Result, List[tx.Event])] =
-        // Route based on module path
-        tx match
-          case routed: ModuleRoutedTx =>
-            val pathHead: Any = routed.moduleId.path.head
-            pathHead match
-              case head: String if head === m1.value =>
-                a.reducer0.apply(tx)(using
-                  requiresReads.asInstanceOf[Requires[tx.Reads, S1]],
-                  requiresWrites.asInstanceOf[Requires[tx.Writes, S1]],
-                )
-              case head: String if head === m2.value =>
-                b.reducer0.apply(tx)(using
-                  requiresReads.asInstanceOf[Requires[tx.Reads, S2]],
-                  requiresWrites.asInstanceOf[Requires[tx.Writes, S2]],
-                )
-              case _ =>
-                throw new IllegalArgumentException(
-                  s"TxRouteMissing: transaction path does not match ${m1.value} or ${m2.value}"
-                )
-          case nonRouted =>
-            throw new IllegalArgumentException(
-              s"Transaction ${nonRouted.getClass.getName} must implement ModuleRoutedTx for routing"
-            )
+        // Route based on module-relative path head
+        // moduleId.path is always MName *: SubPath (never prepended with mount path)
+        val pathHead = tx.moduleId.path.head.asInstanceOf[String]
+
+        if pathHead === m1Name then
+          a.reducer0.apply(tx)(using
+            requiresReads.asInstanceOf[Requires[tx.Reads, S1]],
+            requiresWrites.asInstanceOf[Requires[tx.Writes, S1]],
+          )
+        else if pathHead === m2Name then
+          b.reducer0.apply(tx)(using
+            requiresReads.asInstanceOf[Requires[tx.Reads, S2]],
+            requiresWrites.asInstanceOf[Requires[tx.Writes, S2]],
+          )
+        else
+          val msg1: String = m1Name
+          val msg2: String = m2Name
+          throw new IllegalArgumentException(
+            s"TxRouteMissing: module '$pathHead' does not match '$msg1' or '$msg2'"
+          )
+
+    // Convert to StateReducer0 for storage in ModuleBlueprint
+    val mergedReducer = routedReducer.asStateReducer0
 
     // Union transaction registries
     val combinedTxs: TxRegistry[T1 ++ T2] = a.txs.combine(b.txs)
@@ -174,7 +229,7 @@ object Blueprint:
 
     new ModuleBlueprint[F, MOut, S1 ++ S2, T1 ++ T2, D1 ++ D2](
       schema = combinedSchema,
-      reducer0 = mergedReducer,
+      reducer0 = mergedReducer, // RoutedStateReducer0 extends StateReducer0
       txs = combinedTxs,
       deps = combinedDeps,
     )

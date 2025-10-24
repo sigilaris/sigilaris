@@ -249,7 +249,8 @@ class CompositionTest extends FunSuite:
     val composed = Blueprint.composeBlueprint[Id, "combined", "module1", Schema1, EmptyTuple, EmptyTuple, "module2", Schema2, EmptyTuple, EmptyTuple](bp1, bp2)
 
     val tx = UnroutedTx()
-    intercept[IllegalArgumentException]:
+    // Composed blueprints require ModuleRoutedTx - fails with ClassCastException at runtime
+    intercept[ClassCastException]:
       composed.reducer0.apply(tx)(using
         summon[Requires[tx.Reads, Schema1 ++ Schema2]],
         summon[Requires[tx.Writes, Schema1 ++ Schema2]],

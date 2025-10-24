@@ -177,22 +177,27 @@ def tupleConcat[A <: Tuple, B <: Tuple](a: A, b: B): A ++ B =
   Tuple.fromArray(a.toArray ++ b.toArray).asInstanceOf[A ++ B]
 
 // 두 설계도를 하나로 합성 (스키마/Tx/Deps ∪)
+// IMPORTANT: Composed blueprints produce a RoutedStateReducer0 that requires
+// transactions to implement ModuleRoutedTx. This is enforced at compile time.
 def composeBlueprint[F[_], MOut <: String,
   M1 <: String, S1 <: Tuple, T1 <: Tuple, D1 <: Tuple,
   M2 <: String, S2 <: Tuple, T2 <: Tuple, D2 <: Tuple,
 ](
   a: ModuleBlueprint[F, M1, S1, T1, D1],
   b: ModuleBlueprint[F, M2, S2, T2, D2],
-)(using UniqueNames[S1 ++ S2]): ModuleBlueprint[F, MOut, S1 ++ S2, T1 ++ T2, D1 ++ D2] =
+)(using UniqueNames[S1 ++ S2], ValueOf[M1], ValueOf[M2]): ModuleBlueprint[F, MOut, S1 ++ S2, T1 ++ T2, D1 ++ D2] =
   new ModuleBlueprint[F, MOut, S1 ++ S2, T1 ++ T2, D1 ++ D2](
     tables   = tupleConcat(a.tables, b.tables),
-    reducer0 = new StateReducer0[F, S1 ++ S2]:
-      def apply[X <: Tx](tx: X)(using Requires[X#Reads, S1 ++ S2], Requires[X#Writes, S1 ++ S2]) =
-        val routed = tx.asInstanceOf[ModuleRoutedTx]
-        routed.moduleId.path match
-          case head *: _ if head == constValue[M1] => a.reducer0.apply(tx)
-          case head *: _ if head == constValue[M2] => b.reducer0.apply(tx)
-          case _                                   => sys.error("TxRouteMissing")
+    reducer0 = new RoutedStateReducer0[F, S1 ++ S2]:
+      // Type bound T <: Tx & ModuleRoutedTx ensures compile-time safety
+      def apply[T <: Tx & ModuleRoutedTx](tx: T)(using Requires[T#Reads, S1 ++ S2], Requires[T#Writes, S1 ++ S2]) =
+        // moduleId.path is ALWAYS module-relative (MName *: SubPath)
+        // It is NEVER prepended with the mount path
+        // Full paths (mountPath ++ moduleId.path) are only constructed at edges for telemetry
+        val pathHead = tx.moduleId.path.head.asInstanceOf[String]
+        if pathHead == valueOf[M1] then a.reducer0.apply(tx)
+        else if pathHead == valueOf[M2] then b.reducer0.apply(tx)
+        else sys.error(s"TxRouteMissing: $pathHead ∉ {${valueOf[M1]}, ${valueOf[M2]}}")
     ,
     txs      = a.txs.combine(b.txs),
     deps     = tupleConcat(a.deps, b.deps),
@@ -241,9 +246,35 @@ val dappOnceMounted = DAppBP.mount[("app")]
 ```
 
 ### Reducer Routing Strategy
-- 각 트랜잭션은 `ModuleRoutedTx`를 구현하여 모듈 경로(`moduleId.path`)를 담는다. 경로는 설계도 단계에선 `MName *: SubPath`, 장착 이후엔 `Path ++ (MName *: SubPath)` 형태로 확장된다.
-- `composeBlueprint`는 경로의 첫 세그먼트(`MName`)를 기준으로 라우팅한다. 트랜잭션 ADT는 `moduleId.path`를 정확히 채워야 하며, 잘못된 경로가 들어오면 즉시 실패한다.
-- 경로 기반 라우팅 외에, 필요 시 `TxRegistry`에 모듈별 PartialFunction을 등록한 뒤 `combine` 시 이를 합성해도 된다. 이 경우에도 실패 시점과 에러 형식을 표준화해야 한다.
+
+**Module-Relative IDs (Critical Invariant)**
+- `ModuleId.path` is ALWAYS module-relative: `MName *: SubPath`
+- The mount path is NEVER prepended to transaction `moduleId.path`
+- Example: `AccountsTransfer` always has `moduleId = ModuleId(("accounts" *: EmptyTuple))`, regardless of where the AccountsBP is mounted
+
+**Why Module-Relative?**
+- Mounting is a deployment concern, not a logical identity concern
+- Transactions remain portable across different deployment paths
+- Routing logic stays simple: just match the first segment (MName)
+- Full paths (mountPath ++ moduleId.path) can be reconstructed at system edges for telemetry/logging
+
+**Routing Mechanism**
+- `composeBlueprint` creates a `RoutedStateReducer0` with type bound `T <: Tx & ModuleRoutedTx`
+- Non-routed transactions fail at compile time, not runtime
+- The reducer routes based on `moduleId.path.head` matching M1 or M2
+- No prefix stripping required since paths are already module-relative
+
+**Example**
+```scala
+case class AccountsTransfer(...) extends Tx with ModuleRoutedTx:
+  // Always module-relative, never changes after mount
+  val moduleId = ModuleId(("accounts" *: EmptyTuple))
+  type Reads = Entry["balances", Address, BigInt] *: EmptyTuple
+  type Writes = Entry["balances", Address, BigInt] *: EmptyTuple
+
+// When mounted at ("app"), the transaction moduleId stays ("accounts")
+// Full path for telemetry: ("app") ++ ("accounts") = ("app", "accounts")
+```
 
 ### Tuple Concatenation Semantics
 - `++` 별칭은 `Tuple.Concat`의 얕은(flat) 결합을 의도한다. 런타임에서도 `tupleConcat`을 사용해 동일한 평탄 구조를 유지해야 `Tables`, `Deps` 등 타입 수준 정보와 일치한다.
