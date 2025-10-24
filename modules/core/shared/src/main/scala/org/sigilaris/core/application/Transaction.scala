@@ -1,6 +1,16 @@
 package org.sigilaris.core
 package application
 
+/** Module identifier carrying the module path.
+  *
+  * The path tuple identifies which module a transaction belongs to.
+  * During blueprint composition, the path is used to route transactions
+  * to the correct reducer.
+  *
+  * @param path the module path tuple (e.g., ("app", "accounts"))
+  */
+final case class ModuleId(path: Tuple)
+
 /** Transaction trait defining read/write requirements and result types.
   *
   * A transaction declares:
@@ -33,6 +43,27 @@ trait Tx:
 
   /** The event type emitted by this transaction. */
   type Event
+
+/** Transaction trait with module routing information.
+  *
+  * Transactions that implement this trait carry their module path,
+  * enabling proper routing in composed blueprints. The module path
+  * is used to dispatch transactions to the correct reducer.
+  *
+  * @example
+  * {{{
+  * case class AccountsTransfer(from: Address, to: Address, amount: BigInt)
+  *     extends Tx with ModuleRoutedTx:
+  *   val moduleId = ModuleId(("accounts" *: EmptyTuple))
+  *   type Reads = Entry["balances", Address, BigInt] *: EmptyTuple
+  *   type Writes = Entry["balances", Address, BigInt] *: EmptyTuple
+  *   type Result = Unit
+  *   type Event = TransferEvent
+  * }}}
+  */
+trait ModuleRoutedTx extends Tx:
+  /** The module identifier specifying which module this transaction belongs to. */
+  def moduleId: ModuleId
 
 /** Transaction registry holding a tuple of transaction types.
   *

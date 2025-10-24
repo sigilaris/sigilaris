@@ -1,6 +1,8 @@
 package org.sigilaris.core
 package application
 
+import cats.syntax.eq.*
+
 /** Path-agnostic state reducer.
   *
   * A StateReducer0 operates on transactions without knowledge of where it will
@@ -66,17 +68,40 @@ final class ModuleBlueprint[F[_], MName <: String, Schema <: Tuple, Txs <: Tuple
 )(using val uniqueNames: UniqueNames[Schema])
 
 object Blueprint:
+  /** Concatenate two tuples into a flat result.
+    *
+    * This helper ensures that tuple concatenation at runtime matches the
+    * type-level Tuple.Concat semantics. Without this, naive pairing like
+    * `(a, b)` creates nested tuples that break table lookups and evidence.
+    *
+    * @tparam A the first tuple type
+    * @tparam B the second tuple type
+    * @param a the first tuple
+    * @param b the second tuple
+    * @return a flat concatenated tuple of type A ++ B
+    */
+  @SuppressWarnings(Array("org.wartremover.warts.AsInstanceOf"))
+  def tupleConcat[A <: Tuple, B <: Tuple](a: A, b: B): Tuple.Concat[A, B] =
+    Tuple.fromArray(a.toArray ++ b.toArray).asInstanceOf[Tuple.Concat[A, B]]
+
   /** Compose two blueprints into a single blueprint.
     *
     * This is the core operation for Phase 3: combining two independent module
     * blueprints into a single blueprint with:
     *   - Unioned schemas (S1 ++ S2)
     *   - Unioned transaction sets (T1 ++ T2)
-    *   - Paired dependencies ((D1, D2))
-    *   - Merged reducer logic
+    *   - Concatenated dependencies (D1 ++ D2)
+    *   - Merged reducer logic with module-based routing
     *
     * The composed blueprint requires evidence that the combined schema has unique
     * table names (UniqueNames[S1 ++ S2]).
+    *
+    * Reducer routing strategy:
+    *   - Transactions must implement ModuleRoutedTx to carry moduleId
+    *   - The reducer routes based on the first segment of moduleId.path
+    *   - If the path matches M1, route to a.reducer0
+    *   - If the path matches M2, route to b.reducer0
+    *   - Otherwise, fail with "TxRouteMissing"
     *
     * @tparam F the effect type
     * @tparam MOut the output module name
@@ -91,42 +116,67 @@ object Blueprint:
     * @param a the first blueprint
     * @param b the second blueprint
     * @param uniqueNames evidence that combined schema has unique names
+    * @param m1 the compile-time value of M1 (for runtime comparison)
+    * @param m2 the compile-time value of M2 (for runtime comparison)
     * @return a composed blueprint with unioned schemas and transactions
     */
-  @SuppressWarnings(Array("org.wartremover.warts.AsInstanceOf"))
+  @SuppressWarnings(Array("org.wartremover.warts.AsInstanceOf", "org.wartremover.warts.Throw"))
   def composeBlueprint[F[_], MOut <: String,
     M1 <: String, S1 <: Tuple, T1 <: Tuple, D1 <: Tuple,
     M2 <: String, S2 <: Tuple, T2 <: Tuple, D2 <: Tuple,
   ](
     a: ModuleBlueprint[F, M1, S1, T1, D1],
     b: ModuleBlueprint[F, M2, S2, T2, D2],
-  )(using uniqueNames: UniqueNames[S1 ++ S2]): ModuleBlueprint[F, MOut, S1 ++ S2, T1 ++ T2, (D1, D2)] =
-    // Union schemas by concatenating runtime tuples
-    val combinedSchema: S1 ++ S2 = (a.schema ++ b.schema).asInstanceOf[S1 ++ S2]
+  )(using
+    uniqueNames: UniqueNames[S1 ++ S2],
+    m1: ValueOf[M1],
+    m2: ValueOf[M2],
+  ): ModuleBlueprint[F, MOut, S1 ++ S2, T1 ++ T2, D1 ++ D2] =
+    // Union schemas using flat concatenation
+    val combinedSchema: S1 ++ S2 = tupleConcat(a.schema, b.schema)
 
-    // Merge reducers: try first reducer, then second reducer
-    // Note: In a real implementation, this would use a registry-based dispatch
+    // Merge reducers with module-based routing
     val mergedReducer = new StateReducer0[F, S1 ++ S2]:
+      @SuppressWarnings(Array("org.wartremover.warts.Any", "org.wartremover.warts.ToString"))
       def apply[T <: Tx](tx: T)(using
           requiresReads: Requires[tx.Reads, S1 ++ S2],
           requiresWrites: Requires[tx.Writes, S1 ++ S2],
       ): StoreF[F][(tx.Result, List[tx.Event])] =
-        // For now, delegate to first reducer
-        // A full implementation would route based on transaction type
-        a.reducer0.apply(tx)(using
-          // Cast evidence - this is safe because S1 ++ S2 contains S1
-          requiresReads.asInstanceOf[Requires[tx.Reads, S1]],
-          requiresWrites.asInstanceOf[Requires[tx.Writes, S1]],
-        )
+        // Route based on module path
+        tx match
+          case routed: ModuleRoutedTx =>
+            val pathHead: Any = routed.moduleId.path.head
+            pathHead match
+              case head: String if head === m1.value =>
+                a.reducer0.apply(tx)(using
+                  requiresReads.asInstanceOf[Requires[tx.Reads, S1]],
+                  requiresWrites.asInstanceOf[Requires[tx.Writes, S1]],
+                )
+              case head: String if head === m2.value =>
+                b.reducer0.apply(tx)(using
+                  requiresReads.asInstanceOf[Requires[tx.Reads, S2]],
+                  requiresWrites.asInstanceOf[Requires[tx.Writes, S2]],
+                )
+              case _ =>
+                throw new IllegalArgumentException(
+                  s"TxRouteMissing: transaction path does not match ${m1.value} or ${m2.value}"
+                )
+          case nonRouted =>
+            throw new IllegalArgumentException(
+              s"Transaction ${nonRouted.getClass.getName} must implement ModuleRoutedTx for routing"
+            )
 
     // Union transaction registries
     val combinedTxs: TxRegistry[T1 ++ T2] = a.txs.combine(b.txs)
 
-    new ModuleBlueprint[F, MOut, S1 ++ S2, T1 ++ T2, (D1, D2)](
+    // Concatenate dependencies using flat concatenation
+    val combinedDeps: D1 ++ D2 = tupleConcat(a.deps, b.deps)
+
+    new ModuleBlueprint[F, MOut, S1 ++ S2, T1 ++ T2, D1 ++ D2](
       schema = combinedSchema,
       reducer0 = mergedReducer,
       txs = combinedTxs,
-      deps = (a.deps, b.deps),
+      deps = combinedDeps,
     )
 
   /** Mount a blueprint at a path composed from base and sub paths.
