@@ -1,0 +1,104 @@
+package org.sigilaris.core
+package application
+
+/** Evidence that all entries in Needs are present in Schema.
+  *
+  * This typeclass proves at compile-time that a subset relationship holds:
+  * every table required by a transaction (Needs) must exist in the module's
+  * schema (Schema).
+  *
+  * @tparam Needs the required tables (typically from Tx#Reads or Tx#Writes)
+  * @tparam Schema the available tables in the module
+  */
+trait Requires[Needs <: Tuple, Schema <: Tuple]
+
+object Requires:
+  /** EmptyTuple requires nothing from any schema. */
+  given emptyRequires[Schema <: Tuple]: Requires[EmptyTuple, Schema] =
+    new Requires[EmptyTuple, Schema] {}
+
+  /** Inductive case: if head H is in Schema and tail T is satisfied,
+    * then H *: T is satisfied.
+    */
+  given consRequires[H, T <: Tuple, Schema <: Tuple](using
+      headIn: Contains[H, Schema],
+      tailRequires: Requires[T, Schema],
+  ): Requires[H *: T, Schema] =
+    new Requires[H *: T, Schema] {}
+
+/** Evidence that element E is contained in tuple T.
+  *
+  * @tparam E the element type
+  * @tparam T the tuple type
+  */
+trait Contains[E, T <: Tuple]
+
+object Contains:
+  /** The element is at the head of the tuple. */
+  given head[E, Tail <: Tuple]: Contains[E, E *: Tail] =
+    new Contains[E, E *: Tail] {}
+
+  /** The element is in the tail of the tuple. */
+  given tail[E, H, Tail <: Tuple](using Contains[E, Tail]): Contains[E, H *: Tail] =
+    new Contains[E, H *: Tail] {}
+
+/** Evidence that all table names in Schema are unique.
+  *
+  * This ensures no two tables in a module have the same name, preventing
+  * prefix collisions.
+  *
+  * @tparam Schema the schema tuple
+  */
+trait UniqueNames[Schema <: Tuple]
+
+object UniqueNames:
+  /** EmptyTuple trivially has unique names. */
+  given emptyUnique: UniqueNames[EmptyTuple] =
+    new UniqueNames[EmptyTuple] {}
+
+  /** Single entry trivially has unique names. */
+  given singleUnique[Name <: String, K, V]: UniqueNames[Entry[Name, K, V] *: EmptyTuple] =
+    new UniqueNames[Entry[Name, K, V] *: EmptyTuple] {}
+
+  /** Inductive case: if head name is not in tail and tail is unique,
+    * then head *: tail is unique.
+    *
+    * Note: This is a simplified implementation. A full implementation would
+    * check that the name of the head entry does not appear in any tail entry.
+    * For now, we provide a permissive instance that will be refined in Phase 3.
+    */
+  given consUnique[Name <: String, K, V, Tail <: Tuple](using
+      UniqueNames[Tail],
+  ): UniqueNames[Entry[Name, K, V] *: Tail] =
+    new UniqueNames[Entry[Name, K, V] *: Tail] {}
+
+/** Evidence that all table prefixes in Schema are prefix-free when mounted at Path.
+  *
+  * This ensures that no table's full key prefix (encodePath(Path) ++ encodeSegment(Name))
+  * is a prefix of another table's prefix, preventing key space collisions.
+  *
+  * @tparam Path the mount path tuple
+  * @tparam Schema the schema tuple
+  */
+trait PrefixFreePath[Path <: Tuple, Schema <: Tuple]
+
+object PrefixFreePath:
+  /** EmptyTuple trivially has no prefix collisions. */
+  given emptyPrefixFree[Path <: Tuple]: PrefixFreePath[Path, EmptyTuple] =
+    new PrefixFreePath[Path, EmptyTuple] {}
+
+  /** Single entry trivially has no prefix collisions. */
+  given singlePrefixFree[Path <: Tuple, Name <: String, K, V]: PrefixFreePath[Path, Entry[Name, K, V] *: EmptyTuple] =
+    new PrefixFreePath[Path, Entry[Name, K, V] *: EmptyTuple] {}
+
+  /** Inductive case: if head prefix doesn't collide with tail prefixes and tail is prefix-free,
+    * then head *: tail is prefix-free.
+    *
+    * Note: This is a simplified implementation. A full implementation would
+    * compute actual prefixes and check the prefix-free property at compile-time.
+    * For now, we provide a permissive instance that will be refined in Phase 3.
+    */
+  given consPrefixFree[Path <: Tuple, Name <: String, K, V, Tail <: Tuple](using
+      PrefixFreePath[Path, Tail],
+  ): PrefixFreePath[Path, Entry[Name, K, V] *: Tail] =
+    new PrefixFreePath[Path, Entry[Name, K, V] *: Tail] {}

@@ -9,14 +9,14 @@ import datatype.Utf8
 class TablesTest extends FunSuite:
 
   test("Entry holds codec instances"):
-    val userEntry = new Entry["users", Utf8, Long]
-    val postEntry = new Entry["posts", Utf8, Long]
+    val userEntry = Entry["users", Utf8, Long]
+    val postEntry = Entry["posts", Utf8, Long]
 
     // Verify codecs are accessible
-    assert(userEntry.kCodec != null)
-    assert(userEntry.vCodec != null)
-    assert(postEntry.kCodec != null)
-    assert(postEntry.vCodec != null)
+    assert(userEntry.kCodec != null, "userEntry.kCodec should not be null")
+    assert(userEntry.vCodec != null, "userEntry.vCodec should not be null")
+    assert(postEntry.kCodec != null, "postEntry.kCodec should not be null")
+    assert(postEntry.vCodec != null, "postEntry.vCodec should not be null")
 
   test("TableOf type compiles correctly"):
     // This is a compile-time check - if it compiles, the test passes

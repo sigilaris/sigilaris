@@ -51,11 +51,48 @@ object KeyOf:
 
 /** Schema entry defining a table's name and key-value types.
   *
-  * This is a compile-time marker used for type-level schema definitions.
+  * This is both a compile-time marker for type-level schema definitions
+  * and a runtime value that can create StateTable instances.
+  *
   * Each Entry requires ByteCodec instances for both key and value types.
   *
   * @tparam Name the table name (literal String type)
   * @tparam K the key type
   * @tparam V the value type
   */
-final class Entry[Name <: String, K, V](using val kCodec: ByteCodec[K], val vCodec: ByteCodec[V])
+final class Entry[Name <: String, K, V](val tableName: Name)(using
+    val kCodec: ByteCodec[K],
+    val vCodec: ByteCodec[V],
+):
+  /** Create a StateTable instance at the given prefix.
+    *
+    * Re-exposes the codecs captured when this Entry was created, ensuring
+    * that the blueprint's codec choices are preserved across mounts regardless
+    * of what codecs are in scope at the mount call site.
+    *
+    * @param prefix the byte prefix for this table
+    * @param monad the Monad instance for F
+    * @param nodeStore the MerkleTrie node store
+    * @return a StateTable bound to the given prefix
+    */
+  def createTable[F[_]](prefix: scodec.bits.ByteVector)(using
+      monad: cats.Monad[F],
+      nodeStore: merkle.MerkleTrie.NodeStore[F],
+  ): StateTable[F] { type Name = Entry.this.Name; type K = Entry.this.K; type V = Entry.this.V } =
+    given ValueOf[Name] = ValueOf(tableName)
+    // Re-expose the captured codecs to implicit search so StateTable.atPrefix
+    // uses the exact codecs this Entry was created with, not whatever happens
+    // to be in scope at the mount call site
+    given ByteCodec[K] = kCodec
+    given ByteCodec[V] = vCodec
+    StateTable.atPrefix[F, Name, K, V](prefix)
+
+object Entry:
+  /** Create an Entry instance with inferred name from ValueOf.
+    *
+    * @tparam Name the table name (literal String type)
+    * @tparam K the key type
+    * @tparam V the value type
+    */
+  def apply[Name <: String: ValueOf, K: ByteCodec, V: ByteCodec]: Entry[Name, K, V] =
+    new Entry[Name, K, V](valueOf[Name])
