@@ -83,12 +83,9 @@ class Phase4Spec extends CatsEffectSuite:
     summon[Requires[TokenSchema, CombinedSchema]]
 
   test("Requires evidence: fails when entry missing from schema"):
-    // Uncommenting these should fail to compile:
-    // summon[Requires[Entry["tokens", Address, TokenInfo] *: EmptyTuple, AccountsSchema]]
-    // summon[Requires[TokenSchema, AccountsSchema]]
-
-    // This test verifies the above would fail by not including them
-    assert(true, "Negative test - ensuring missing entries don't compile")
+    // These compile errors verify that Requires rejects schemas missing required entries
+    compileErrors("summon[Requires[Entry[\"tokens\", Address, TokenInfo] *: EmptyTuple, AccountsSchema]]")
+    compileErrors("summon[Requires[TokenSchema, AccountsSchema]]")
 
   test("Lookup evidence: can lookup table at head of schema"):
     val lookup = summon[Lookup[AccountsSchema, "accounts", Address, Account]]
@@ -105,18 +102,14 @@ class Phase4Spec extends CatsEffectSuite:
     summon[Lookup[CombinedSchema, "tokens", Address, TokenInfo]]
 
   test("Lookup evidence: fails when table name not in schema"):
-    // Uncommenting these should fail to compile:
-    // summon[Lookup[AccountsSchema, "tokens", Address, TokenInfo]]
-    // summon[Lookup[TokenSchema, "accounts", Address, Account]]
-
-    assert(true, "Negative test - ensuring missing tables don't compile")
+    // These compile errors verify that Lookup rejects non-existent table names
+    compileErrors("summon[Lookup[AccountsSchema, \"tokens\", Address, TokenInfo]]")
+    compileErrors("summon[Lookup[TokenSchema, \"accounts\", Address, Account]]")
 
   test("Lookup evidence: fails when types mismatch"):
-    // Uncommenting these should fail to compile (wrong value type):
-    // summon[Lookup[AccountsSchema, "accounts", Address, BigInt]]
-    // summon[Lookup[AccountsSchema, "balances", Address, Account]]
-
-    assert(true, "Negative test - ensuring type mismatches don't compile")
+    // These compile errors verify that Lookup rejects type mismatches
+    compileErrors("summon[Lookup[AccountsSchema, \"accounts\", Address, BigInt]]")
+    compileErrors("summon[Lookup[AccountsSchema, \"balances\", Address, Account]]")
 
   // Runtime test: verify that Lookup can extract the correct table instance
   test("Lookup runtime: extract table from Tables tuple"):
@@ -148,15 +141,22 @@ class Phase4Spec extends CatsEffectSuite:
     // Verify it's the correct table instance
     assertEquals(extractedTable.name, "balances")
 
-  test("Cross-module access: reducer can access multiple module tables"):
+  test("Cross-module access: reducer can read/write using branded keys"):
     import merkle.{MerkleTrie, MerkleTrieNode}
     import cats.data.Kleisli
     import cats.data.EitherT
+    import cats.effect.unsafe.implicits.global
 
     // Create node store
     val store = scala.collection.mutable.Map.empty[MerkleTrieNode.MerkleHash, MerkleTrieNode]
     given MerkleTrie.NodeStore[IO] = Kleisli: hash =>
       EitherT.rightT[IO, String](store.get(hash))
+
+    // Helper to persist diff
+    def saveNodes(state: merkle.MerkleTrieState): Unit =
+      state.diff.toMap.foreach { case (hash, (node, _)) =>
+        store.put(hash, node)
+      }
 
     // Create tables for combined schema
     given cats.Monad[IO] = cats.effect.Async[IO]
@@ -170,9 +170,8 @@ class Phase4Spec extends CatsEffectSuite:
 
     val tables: Tables[IO, CombinedSchema] = (accountsTable, balancesTable, tokensTable)
 
-    // Simulate a reducer that needs both Accounts and Token schemas
-    // The key insight: we specify the exact K, V types in the Lookup summons,
-    // and then use pattern matching to refine the table type
+    // Simulate a reducer that reads from Accounts and writes to Token
+    // This demonstrates the Phase 4 requirement: "read from Accounts, write to Token using branded keys"
     def crossModuleOperation(using
         accountsReq: Requires[Entry["accounts", Address, Account] *: EmptyTuple, CombinedSchema],
         balancesReq: Requires[Entry["balances", Address, BigInt] *: EmptyTuple, CombinedSchema],
@@ -181,25 +180,80 @@ class Phase4Spec extends CatsEffectSuite:
         accountsLookup: Lookup[CombinedSchema, "accounts", Address, Account],
         balancesLookup: Lookup[CombinedSchema, "balances", Address, BigInt],
         tokensLookup: Lookup[CombinedSchema, "tokens", Address, TokenInfo],
-    ): IO[Unit] =
-      // Extract tables
+    ): StoreF[IO][Unit] =
+      // Extract tables - now the types are preserved!
       val accounts = accountsLookup.table[IO](tables)
       val balances = balancesLookup.table[IO](tables)
       val tokens = tokensLookup.table[IO](tables)
 
-      // Verify we got different table instances with correct names
-      assertEquals(accounts.name, "accounts")
-      assertEquals(balances.name, "balances")
-      assertEquals(tokens.name, "tokens")
+      // Create test data
+      val addr1 = Address(ByteVector(0x01, 0x02))
+      val addr2 = Address(ByteVector(0x03, 0x04))
 
-      // The Lookup type parameters K0, V0 carry the type information,
-      // even though the return type is existential.
-      // In a real reducer, we would use these tables within operations that
-      // accept StateTable[F] { type Name <: String; type K; type V },
-      // and the operations would work with the path-dependent types.
+      val account1 = Account(ByteVector(0xaa, 0xbb))
+      val balance1 = BigInt(1000)
+      val tokenInfo = TokenInfo(ByteVector(0xff, 0xee))
 
-      // Verify that we have the right number of Requires evidence
-      // (this ensures the compile-time checks are working)
-      IO.unit
+      // Brand keys with table-specific types - this is compile-time safe!
+      val accountKey1 = accounts.brand(addr1)
+      val accountKey2 = accounts.brand(addr2)
+      val balanceKey1 = balances.brand(addr1)
+      val tokenKey = tokens.brand(addr1)
 
-    crossModuleOperation
+      // The following would NOT compile (key type mismatch):
+      // balances.get(accountKey1)  // Error: accountKey1 is branded for accounts table
+      // accounts.get(balanceKey1)  // Error: balanceKey1 is branded for balances table
+
+      for
+        // Write to accounts table
+        _ <- accounts.put(accountKey1, account1)
+
+        // Read from accounts table
+        maybeAccount <- accounts.get(accountKey1)
+        _ = assertEquals(maybeAccount, Some(account1))
+
+        // Write to balances table
+        _ <- balances.put(balanceKey1, balance1)
+
+        // Read from balances table
+        maybeBalance <- balances.get(balanceKey1)
+        _ = assertEquals(maybeBalance, Some(balance1))
+
+        // Write to tokens table (different module)
+        _ <- tokens.put(tokenKey, tokenInfo)
+
+        // Read from tokens table
+        maybeToken <- tokens.get(tokenKey)
+        _ = assertEquals(maybeToken, Some(tokenInfo))
+
+        // Verify that non-existent keys return None
+        notFound <- accounts.get(accountKey2)
+        _ = assertEquals(notFound, None)
+
+      yield ()
+
+    // Execute the cross-module operation
+    val initialState = merkle.MerkleTrieState.empty
+    val result = crossModuleOperation.run(initialState).value.unsafeRunSync()
+
+    result match
+      case Right((finalState, ())) =>
+        // Persist the state changes
+        saveNodes(finalState)
+        // Verify we can read the persisted data
+        val accountsLookup = summon[Lookup[CombinedSchema, "accounts", Address, Account]]
+        val accounts = accountsLookup.table[IO](tables)
+        val addr = Address(ByteVector(0x01, 0x02))
+        val key = accounts.brand(addr)
+
+        val verifyRead = accounts.get(key).runA(finalState).value
+
+        val verified = verifyRead.unsafeRunSync()
+        verified match
+          case Right(Some(account)) =>
+            assertEquals(account, Account(ByteVector(0xaa, 0xbb)))
+          case other =>
+            fail(s"Expected Some(account), got $other")
+
+      case Left(error) =>
+        fail(s"Cross-module operation failed: $error")
