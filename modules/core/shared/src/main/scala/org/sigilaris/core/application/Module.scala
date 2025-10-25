@@ -243,7 +243,7 @@ object StateModule:
     * @param prefixFreePath evidence that combined schema is prefix-free at Path
     * @return a merged state module at the same Path
     */
-  def extend[F[_], Path <: Tuple, S1 <: Tuple, S2 <: Tuple, T1 <: Tuple, T2 <: Tuple, D1 <: Tuple, D2 <: Tuple, R1, R2](
+  def extend[F[_]: cats.Monad, Path <: Tuple, S1 <: Tuple, S2 <: Tuple, T1 <: Tuple, T2 <: Tuple, D1 <: Tuple, D2 <: Tuple, R1, R2](
       a: StateModule[F, Path, S1, T1, D1, R1],
       b: StateModule[F, Path, S2, T2, D2, R2],
   )(using
@@ -297,14 +297,15 @@ object StateModule:
     *
     * The merged reducer attempts to apply transactions using a fallback strategy:
     *   1. Try reducer r1 (if the transaction requires tables in S1)
-    *   2. If that fails or doesn't apply, try reducer r2 (if the transaction requires tables in S2)
+    *   2. If r1 returns empty events, try reducer r2 (if the transaction requires tables in S2)
     *
     * This is a Phase 5 MVP implementation. A production system would:
     *   - Use explicit transaction routing via ModuleRoutedTx
     *   - Maintain a reducer registry for efficient dispatch
     *   - Validate at compile time which reducer to use
     *
-    * For now, we simply attempt both reducers in order and return the first success.
+    * LIMITATION: This fallback strategy assumes that a reducer returning empty events
+    * means it couldn't handle the transaction. This is a heuristic and not foolproof.
     *
     * @tparam F the effect type
     * @tparam Path the mount path
@@ -314,8 +315,8 @@ object StateModule:
     * @param r2 the second reducer
     * @return a merged reducer for schema S1 ++ S2
     */
-  @SuppressWarnings(Array("org.wartremover.warts.AsInstanceOf", "org.wartremover.warts.Throw"))
-  private def mergeReducers[F[_], Path <: Tuple, S1 <: Tuple, S2 <: Tuple](
+  @SuppressWarnings(Array("org.wartremover.warts.AsInstanceOf"))
+  private def mergeReducers[F[_]: cats.Monad, Path <: Tuple, S1 <: Tuple, S2 <: Tuple](
       r1: StateReducer[F, Path, S1],
       r2: StateReducer[F, Path, S2],
   ): StateReducer[F, Path, S1 ++ S2] =
@@ -324,34 +325,32 @@ object StateModule:
           requiresReads: Requires[tx.Reads, S1 ++ S2],
           requiresWrites: Requires[tx.Writes, S1 ++ S2],
       ): StoreF[F][(tx.Result, List[tx.Event])] =
-        // Simplified Phase 5 strategy: attempt r1, fallback to r2
-        // This requires casting the evidence - in a production system,
-        // we'd use compile-time evidence to determine which reducer to use
+        // Simplified Phase 5 strategy: try r1, if it returns empty events, try r2
+        // This is a heuristic - we assume empty events means the reducer couldn't handle it
 
-        // For Phase 5 MVP, we'll use a simple heuristic:
-        // Try to determine at runtime which reducer can handle the transaction
-        // by checking if the required tables are in S1 or S2
+        // Try r1 first
+        val r1Result = r1.apply(tx)(using
+          requiresReads.asInstanceOf[Requires[tx.Reads, S1]],
+          requiresWrites.asInstanceOf[Requires[tx.Writes, S1]],
+        )
 
-        // As a first approximation, we'll try r1 first
-        // If there's a compile-time error about missing tables, we'll try r2
-        // This is not ideal but sufficient for Phase 5 demonstration
+        // Check if r1 returned empty events - if so, try r2
+        import cats.data.StateT
 
-        // TODO: In future phases, implement proper reducer selection via:
-        // - ModuleRoutedTx for composed blueprints
-        // - Reducer registry for explicit transaction-to-reducer mapping
-        // - Compile-time evidence for reducer selection
-
-        try
-          r1.apply(tx)(using
-            requiresReads.asInstanceOf[Requires[tx.Reads, S1]],
-            requiresWrites.asInstanceOf[Requires[tx.Writes, S1]],
-          )
-        catch
-          case _: ClassCastException =>
-            r2.apply(tx)(using
-              requiresReads.asInstanceOf[Requires[tx.Reads, S2]],
-              requiresWrites.asInstanceOf[Requires[tx.Writes, S2]],
-            )
+        StateT { (s: merkle.MerkleTrieState) =>
+          val monadEitherT = cats.Monad[cats.data.EitherT[F, failure.SigilarisFailure, *]]
+          monadEitherT.flatMap(r1Result.run(s)) {
+            case (s1, (result, events)) if events.isEmpty =>
+              // r1 returned empty events, try r2
+              r2.apply(tx)(using
+                requiresReads.asInstanceOf[Requires[tx.Reads, S2]],
+                requiresWrites.asInstanceOf[Requires[tx.Writes, S2]],
+              ).run(s)
+            case r1Success =>
+              // r1 succeeded with events, use its result
+              monadEitherT.pure(r1Success)
+          }
+        }
 
   /** Module factory for building modules at different paths.
     *

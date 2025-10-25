@@ -225,18 +225,146 @@ class Phase5Spec extends CatsEffectSuite:
     // Verify combined module has tables from both
     assertEquals(extended.tables.size, 4)
 
-  test("Reducer merging: transactions are routed to correct reducer"):
+  test("Reducer merging: r1 succeeds - transaction executed and result returned"):
     given merkle.MerkleTrie.NodeStore[IO] = createNodeStore()
     given cats.Monad[IO] = cats.effect.Async[IO]
 
-    val accountsBP = createAccountsBlueprint()
-    val groupBP = createGroupBlueprint()
+    // Create blueprints with actual transaction handling
+    val accountsEntry = Entry["accounts", Address, Account]
+    val balancesEntry = Entry["balances", Address, BigInt]
+    val accountsSchema: AccountsSchema = (accountsEntry, balancesEntry)
+
+    val accountsReducer = new StateReducer0[IO, AccountsSchema]:
+      def apply[T <: Tx](tx: T)(using
+          requiresReads: Requires[tx.Reads, AccountsSchema],
+          requiresWrites: Requires[tx.Writes, AccountsSchema],
+      ): StoreF[IO][(tx.Result, List[tx.Event])] =
+        tx match
+          case CreateAccount(addr, acc) =>
+            import cats.data.StateT
+            // Return a successful result with event
+            StateT.pure((().asInstanceOf[tx.Result], List(AccountCreated(addr).asInstanceOf[tx.Event])))
+          case _ =>
+            import cats.data.StateT
+            StateT.pure((().asInstanceOf[tx.Result], List.empty[tx.Event]))
+
+    val accountsBP = new ModuleBlueprint[IO, "accounts", AccountsSchema, EmptyTuple, EmptyTuple](
+      schema = accountsSchema,
+      reducer0 = accountsReducer,
+      txs = TxRegistry.empty,
+      deps = EmptyTuple,
+    )
+
+    val groupsEntry = Entry["groups", Address, GroupInfo]
+    val membersEntry = Entry["members", Address, BigInt]
+    val groupSchema: GroupSchema = (groupsEntry, membersEntry)
+
+    val groupReducer = new StateReducer0[IO, GroupSchema]:
+      def apply[T <: Tx](tx: T)(using
+          requiresReads: Requires[tx.Reads, GroupSchema],
+          requiresWrites: Requires[tx.Writes, GroupSchema],
+      ): StoreF[IO][(tx.Result, List[tx.Event])] =
+        import cats.data.StateT
+        StateT.pure((().asInstanceOf[tx.Result], List.empty[tx.Event]))
+
+    val groupBP = new ModuleBlueprint[IO, "group", GroupSchema, EmptyTuple, EmptyTuple](
+      schema = groupSchema,
+      reducer0 = groupReducer,
+      txs = TxRegistry.empty,
+      deps = EmptyTuple,
+    )
 
     val accountsModule = StateModule.mount[IO, "accounts", ("app" *: EmptyTuple), AccountsSchema, EmptyTuple, EmptyTuple](accountsBP)
     val groupModule = StateModule.mount[IO, "group", ("app" *: EmptyTuple), GroupSchema, EmptyTuple, EmptyTuple](groupBP)
 
     val extended = StateModule.extend(accountsModule, groupModule)
 
-    // The reducer should be able to handle transactions from either module
-    // This is a simplified test - in production, we'd verify actual transaction execution
-    assert(extended.reducer != null)
+    // Execute a transaction through the merged reducer
+    val tx = CreateAccount(Address(ByteVector(0x01)), Account(ByteVector(0xaa)))
+    val initialState = merkle.MerkleTrieState.empty
+
+    import cats.effect.unsafe.implicits.global
+    val result = extended.reducer.apply(tx).run(initialState).value.unsafeRunSync()
+
+    result match
+      case Right((finalState, ((), events))) =>
+        // Verify the transaction was executed and event was emitted
+        assertEquals(events.length, 1)
+        assert(events.head.isInstanceOf[AccountCreated])
+        val event = events.head.asInstanceOf[AccountCreated]
+        assertEquals(event.address, Address(ByteVector(0x01)))
+      case Left(error) =>
+        fail(s"Transaction execution failed: $error")
+
+  test("Reducer merging: r1 fails, r2 succeeds - fallback works"):
+    given merkle.MerkleTrie.NodeStore[IO] = createNodeStore()
+    given cats.Monad[IO] = cats.effect.Async[IO]
+
+    // Create accounts blueprint that will fail on CreateGroup
+    val accountsEntry = Entry["accounts", Address, Account]
+    val balancesEntry = Entry["balances", Address, BigInt]
+    val accountsSchema: AccountsSchema = (accountsEntry, balancesEntry)
+
+    val accountsReducer = new StateReducer0[IO, AccountsSchema]:
+      def apply[T <: Tx](tx: T)(using
+          requiresReads: Requires[tx.Reads, AccountsSchema],
+          requiresWrites: Requires[tx.Writes, AccountsSchema],
+      ): StoreF[IO][(tx.Result, List[tx.Event])] =
+        // This will fail for CreateGroup (wrong schema)
+        import cats.data.StateT
+        StateT.pure((().asInstanceOf[tx.Result], List.empty[tx.Event]))
+
+    val accountsBP = new ModuleBlueprint[IO, "accounts", AccountsSchema, EmptyTuple, EmptyTuple](
+      schema = accountsSchema,
+      reducer0 = accountsReducer,
+      txs = TxRegistry.empty,
+      deps = EmptyTuple,
+    )
+
+    // Create group blueprint that will succeed on CreateGroup
+    val groupsEntry = Entry["groups", Address, GroupInfo]
+    val membersEntry = Entry["members", Address, BigInt]
+    val groupSchema: GroupSchema = (groupsEntry, membersEntry)
+
+    val groupReducer = new StateReducer0[IO, GroupSchema]:
+      def apply[T <: Tx](tx: T)(using
+          requiresReads: Requires[tx.Reads, GroupSchema],
+          requiresWrites: Requires[tx.Writes, GroupSchema],
+      ): StoreF[IO][(tx.Result, List[tx.Event])] =
+        tx match
+          case CreateGroup(addr, grp) =>
+            import cats.data.StateT
+            // Return a successful result with event
+            StateT.pure((().asInstanceOf[tx.Result], List(GroupCreated(addr).asInstanceOf[tx.Event])))
+          case _ =>
+            import cats.data.StateT
+            StateT.pure((().asInstanceOf[tx.Result], List.empty[tx.Event]))
+
+    val groupBP = new ModuleBlueprint[IO, "group", GroupSchema, EmptyTuple, EmptyTuple](
+      schema = groupSchema,
+      reducer0 = groupReducer,
+      txs = TxRegistry.empty,
+      deps = EmptyTuple,
+    )
+
+    val accountsModule = StateModule.mount[IO, "accounts", ("app" *: EmptyTuple), AccountsSchema, EmptyTuple, EmptyTuple](accountsBP)
+    val groupModule = StateModule.mount[IO, "group", ("app" *: EmptyTuple), GroupSchema, EmptyTuple, EmptyTuple](groupBP)
+
+    val extended = StateModule.extend(accountsModule, groupModule)
+
+    // Execute a CreateGroup transaction - should fallback to r2
+    val tx = CreateGroup(Address(ByteVector(0x02)), GroupInfo(ByteVector(0xbb)))
+    val initialState = merkle.MerkleTrieState.empty
+
+    import cats.effect.unsafe.implicits.global
+    val result = extended.reducer.apply(tx).run(initialState).value.unsafeRunSync()
+
+    result match
+      case Right((finalState, ((), events))) =>
+        // Verify the transaction was executed via fallback and event was emitted
+        assertEquals(events.length, 1)
+        assert(events.head.isInstanceOf[GroupCreated])
+        val event = events.head.asInstanceOf[GroupCreated]
+        assertEquals(event.address, Address(ByteVector(0x02)))
+      case Left(error) =>
+        fail(s"Transaction execution failed: $error")
