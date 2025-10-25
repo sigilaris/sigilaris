@@ -102,3 +102,60 @@ object PrefixFreePath:
       PrefixFreePath[Path, Tail],
   ): PrefixFreePath[Path, Entry[Name, K, V] *: Tail] =
     new PrefixFreePath[Path, Entry[Name, K, V] *: Tail] {}
+
+/** Evidence for looking up a table by name in a schema.
+  *
+  * This typeclass provides compile-time schema lookup, extracting the key/value
+  * types and runtime table instance for a named table. This enables cross-module
+  * access where a reducer can depend on tables from other modules in the composed
+  * schema.
+  *
+  * The Lookup instance carries the type information (K0, V0) as type parameters,
+  * allowing callers to extract these types at compile time.
+  *
+  * @tparam S the schema tuple (tuple of Entry types)
+  * @tparam Name the table name to lookup (literal String type)
+  * @tparam K0 the key type of the named table
+  * @tparam V0 the value type of the named table
+  *
+  * @example
+  * {{{
+  * type Schema = Entry["accounts", Address, Account] *: Entry["balances", Address, BigInt] *: EmptyTuple
+  *
+  * // Lookup evidence is automatically summoned
+  * def useTable[F[_], S <: Tuple](tables: Tables[F, S])(using
+  *   lookup: Lookup[S, "balances", Address, BigInt]
+  * ): Unit =
+  *   val balancesTable = lookup.table(tables)
+  *   // balancesTable has type StateTable[F] { type Name = "balances"; type K = Address; type V = BigInt }
+  * }}}
+  */
+trait Lookup[S <: Tuple, Name <: String, K0, V0]:
+  /** Extract the concrete StateTable instance from a Tables tuple.
+    *
+    * The returned table is guaranteed to have Name, K, and V types matching
+    * the type parameters of this Lookup instance.
+    *
+    * @param tables the tuple of StateTable instances corresponding to schema S
+    * @tparam F the effect type
+    * @return the StateTable for the named table with the correct types
+    */
+  def table[F[_]](tables: Tables[F, S]): StateTable[F] { type Name <: String; type K; type V }
+
+object Lookup:
+  /** Base case: the named table is at the head of the schema. */
+  given head[Name0 <: String, K0, V0, Tail <: Tuple]: Lookup[Entry[Name0, K0, V0] *: Tail, Name0, K0, V0] =
+    new Lookup[Entry[Name0, K0, V0] *: Tail, Name0, K0, V0]:
+      def table[F[_]](tables: Tables[F, Entry[Name0, K0, V0] *: Tail]): StateTable[F] { type Name <: String; type K; type V } =
+        // The head of Tables[F, Entry[Name0, K0, V0] *: Tail] is guaranteed to be
+        // StateTable[F] { type Name = Name0; type K = K0; type V = V0 }
+        tables.head
+
+  /** Inductive case: the named table is in the tail of the schema. */
+  given tail[Name0 <: String, K0, V0, H, Tail <: Tuple](using
+      tailLookup: Lookup[Tail, Name0, K0, V0],
+  ): Lookup[H *: Tail, Name0, K0, V0] =
+    new Lookup[H *: Tail, Name0, K0, V0]:
+      def table[F[_]](tables: Tables[F, H *: Tail]): StateTable[F] { type Name <: String; type K; type V } =
+        // tables.tail has the correct type Tables[F, Tail] by Tuple.Map's definition
+        tailLookup.table[F](tables.tail)
