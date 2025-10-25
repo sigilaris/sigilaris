@@ -10,11 +10,14 @@ import codec.byte.ByteCodec
   *
   * Phase 4 deliverables:
   *   - Requires[Needs, S] evidence (Needs ⊆ S)
-  *   - Lookup[S, Name] typeclass to obtain a concrete StateTable instance
+  *   - Lookup[S, Name, K, V] typeclass to obtain a concrete StateTable instance
+  *     with exact Name/K/V types preserved for compile-time safety
   *   - Cross-module access pattern in reducers
   *
   * Criteria:
   *   - A reducer that needs Accounts + Token compiles only when S includes both
+  *   - Lookup.table returns StateTable[F] { type Name = Name; type K = K; type V = V }
+  *     enabling branded key operations without unsafe casts
   *   - Runtime: read from Accounts, write to Token using branded keys
   */
 class Phase4Spec extends CatsEffectSuite:

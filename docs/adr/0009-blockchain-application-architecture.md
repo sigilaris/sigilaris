@@ -383,9 +383,9 @@ trait PrefixFreeCombine[
 trait Requires[Needs <: Tuple, S <: Tuple]
 
 // 스키마 S 안에서 테이블 Name을 찾아 타입과 인스턴스를 제공하는 조회기
-trait Lookup[S <: Tuple, Name <: String]:
-  type K; type V
-  def table[F[_]](using Tables[F, S]): StateTable[F] { type Name = Name; type K = K; type V = V }
+// K, V는 타입 파라미터로 명시하여 table 메서드가 정확한 타입을 반환하도록 보장
+trait Lookup[S <: Tuple, Name <: String, K, V]:
+  def table[F[_]](tables: Tables[F, S]): StateTable[F] { type Name = Name; type K = K; type V = V }
 
 // 리듀서는 'S'에 대해 다형적이며, 필요한 모듈 스키마가 S의 부분집합임을 증거로 요구
 trait TokenReducer[F[_], Path <: Tuple, S <: Tuple](using
@@ -394,12 +394,12 @@ trait TokenReducer[F[_], Path <: Tuple, S <: Tuple](using
 ) extends StateReducer[F, Path, S]:
   def apply(tx: Transfer)(using
     tables: Tables[F, S],               // 결합된 테이블 값 레코드
-    acc: Lookup[S, "accounts"],        // 의존 모듈 테이블 조회
-    bal: Lookup[S, "balances"],        // 자체 모듈 테이블 조회
+    acc: Lookup[S, "accounts", Addr, Account],  // 의존 모듈 테이블 조회 (K, V 타입 명시)
+    bal: Lookup[S, "balances", Addr, BigInt],   // 자체 모듈 테이블 조회 (K, V 타입 명시)
     OrderedCodec[Addr],                 // 범위/정렬이 필요하다면
   ): StoreF[F, (Unit, List[Event])] =
-    val accounts = acc.table[F]
-    val balances = bal.table[F]
+    val accounts = acc.table[F](tables)  // tables를 명시적으로 전달
+    val balances = bal.table[F](tables)
     for
       maybeFrom <- accounts.get(accounts.brand(tx.from))
       _ <- maybeFrom.fold(StoreF.pure[F](())): _ =>
