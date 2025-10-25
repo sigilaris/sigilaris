@@ -358,10 +358,14 @@ object StateModule:
     * A ModuleFactory is a blueprint wrapper that can be instantiated
     * at different paths, enabling flexible assembly patterns.
     *
-    * This pattern is useful for:
+    * LIMITATION: Dependencies are discarded (Deps → EmptyTuple).
+    * This means factories cannot preserve cross-module dependencies that require
+    * Phase 4's Lookup patterns. Use factories only for:
+    *   - Self-contained modules (no cross-module dependencies)
     *   - Building the same module at multiple paths (sandboxing)
-    *   - Aggregating modules that will be deployed together
     *   - Creating module templates that can be customized per path
+    *
+    * For modules with cross-module dependencies, use direct mount or composeBlueprint.
     *
     * @tparam F the effect type
     * @tparam Schema the schema tuple
@@ -387,11 +391,16 @@ object StateModule:
   object ModuleFactory:
     /** Create a module factory from a blueprint.
       *
+      * WARNING: Dependencies are discarded during factory creation.
+      * The resulting factory will NOT preserve cross-module dependencies.
+      * Only use this for self-contained modules or modules that don't require
+      * Phase 4 Lookup patterns for accessing other module tables.
+      *
       * @tparam F the effect type
       * @tparam MName the module name
       * @tparam Schema the schema tuple
       * @tparam Txs the transaction types tuple
-      * @tparam Deps the dependency types tuple
+      * @tparam Deps the dependency types tuple (will be discarded → EmptyTuple)
       * @param blueprint the blueprint to wrap
       * @return a module factory that can build the module at different paths
       */
@@ -415,13 +424,22 @@ object StateModule:
             deps = EmptyTuple,
           )(using mounted.uniqueNames, mounted.prefixFreePath)
 
-  /** Aggregate two module factories into a single factory.
+  /** Aggregate two module factories into a single factory (EXPERIMENTAL).
+    *
+    * LIMITATIONS:
+    *   - Uses unsafe casts for SchemaMapper and PrefixFreePath evidence
+    *   - Only works at same path (not truly "aggregating independently deployed modules")
+    *   - May fail at runtime due to evidence casting issues
+    *   - Not recommended for production use
     *
     * The aggregated factory builds both modules at the same path and
-    * combines them using extend. This is useful for:
-    *   - Building composite applications from independent modules
-    *   - Creating module bundles that are always deployed together
+    * combines them using extend. This pattern is LIMITED to:
+    *   - Building module bundles that are always deployed together at same path
     *   - Shared assembly patterns where modules share the same state
+    *
+    * RECOMMENDED ALTERNATIVES:
+    *   - Prefer: composeBlueprint (Phase 3) → mount (Phase 2) for composed applications
+    *   - Alternative: mount → extend for post-deployment composition
     *
     * NOTE: This is a Phase 5 MVP implementation using unsafe casts for evidence.
     * A production system would properly derive subset evidence at compile time.
@@ -433,7 +451,7 @@ object StateModule:
     * @tparam T2 second transaction types tuple
     * @param m1 the first module factory
     * @param m2 the second module factory
-    * @return an aggregated module factory
+    * @return an aggregated module factory (may fail at runtime)
     */
   @SuppressWarnings(Array("org.wartremover.warts.AsInstanceOf"))
   def aggregate[F[_], S1 <: Tuple, S2 <: Tuple, T1 <: Tuple, T2 <: Tuple](
