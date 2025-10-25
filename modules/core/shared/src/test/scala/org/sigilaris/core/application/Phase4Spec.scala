@@ -1,8 +1,8 @@
 package org.sigilaris.core
 package application
 
-import cats.effect.IO
-import munit.CatsEffectSuite
+import cats.effect.SyncIO
+import munit.FunSuite
 
 import codec.byte.ByteCodec
 
@@ -19,8 +19,10 @@ import codec.byte.ByteCodec
   *   - Lookup.table returns StateTable[F] { type Name = Name; type K = K; type V = V }
   *     enabling branded key operations without unsafe casts
   *   - Runtime: read from Accounts, write to Token using branded keys
+  *
+  * Note: Uses SyncIO for cross-platform compatibility (JVM + JS).
   */
-class Phase4Spec extends CatsEffectSuite:
+class Phase4Spec extends FunSuite:
 
   // Define sample types for testing - use ByteVector as underlying type for simplicity
   import scodec.bits.ByteVector
@@ -122,24 +124,24 @@ class Phase4Spec extends CatsEffectSuite:
 
     // Create a simple in-memory node store
     val store = scala.collection.mutable.Map.empty[MerkleTrieNode.MerkleHash, MerkleTrieNode]
-    given MerkleTrie.NodeStore[IO] = Kleisli: hash =>
-      EitherT.rightT[IO, String](store.get(hash))
+    given MerkleTrie.NodeStore[SyncIO] = Kleisli: hash =>
+      EitherT.rightT[SyncIO, String](store.get(hash))
 
     // Create Entry instances (these capture codecs)
     val accountsEntry = Entry["accounts", Address, Account]
     val balancesEntry = Entry["balances", Address, BigInt]
 
     // Create tables at different prefixes
-    given cats.Monad[IO] = cats.effect.Async[IO]
-    val accountsTable = accountsEntry.createTable[IO](ByteVector(0x01))
-    val balancesTable = balancesEntry.createTable[IO](ByteVector(0x02))
+    given cats.Monad[SyncIO] = cats.effect.Sync[SyncIO]
+    val accountsTable = accountsEntry.createTable[SyncIO](ByteVector(0x01))
+    val balancesTable = balancesEntry.createTable[SyncIO](ByteVector(0x02))
 
     // Create Tables tuple
-    val tables: Tables[IO, AccountsSchema] = (accountsTable, balancesTable)
+    val tables: Tables[SyncIO, AccountsSchema] = (accountsTable, balancesTable)
 
     // Use Lookup to extract balances table
     val lookup = summon[Lookup[AccountsSchema, "balances", Address, BigInt]]
-    val extractedTable = lookup.table[IO](tables)
+    val extractedTable = lookup.table[SyncIO](tables)
 
     // Verify it's the correct table instance
     assertEquals(extractedTable.name, "balances")
@@ -148,12 +150,11 @@ class Phase4Spec extends CatsEffectSuite:
     import merkle.{MerkleTrie, MerkleTrieNode}
     import cats.data.Kleisli
     import cats.data.EitherT
-    import cats.effect.unsafe.implicits.global
 
     // Create node store
     val store = scala.collection.mutable.Map.empty[MerkleTrieNode.MerkleHash, MerkleTrieNode]
-    given MerkleTrie.NodeStore[IO] = Kleisli: hash =>
-      EitherT.rightT[IO, String](store.get(hash))
+    given MerkleTrie.NodeStore[SyncIO] = Kleisli: hash =>
+      EitherT.rightT[SyncIO, String](store.get(hash))
 
     // Helper to persist diff
     def saveNodes(state: merkle.MerkleTrieState): Unit =
@@ -162,16 +163,16 @@ class Phase4Spec extends CatsEffectSuite:
       }
 
     // Create tables for combined schema
-    given cats.Monad[IO] = cats.effect.Async[IO]
+    given cats.Monad[SyncIO] = cats.effect.Sync[SyncIO]
     val accountsEntry = Entry["accounts", Address, Account]
     val balancesEntry = Entry["balances", Address, BigInt]
     val tokensEntry = Entry["tokens", Address, TokenInfo]
 
-    val accountsTable = accountsEntry.createTable[IO](ByteVector(0x01))
-    val balancesTable = balancesEntry.createTable[IO](ByteVector(0x02))
-    val tokensTable = tokensEntry.createTable[IO](ByteVector(0x03))
+    val accountsTable = accountsEntry.createTable[SyncIO](ByteVector(0x01))
+    val balancesTable = balancesEntry.createTable[SyncIO](ByteVector(0x02))
+    val tokensTable = tokensEntry.createTable[SyncIO](ByteVector(0x03))
 
-    val tables: Tables[IO, CombinedSchema] = (accountsTable, balancesTable, tokensTable)
+    val tables: Tables[SyncIO, CombinedSchema] = (accountsTable, balancesTable, tokensTable)
 
     // Simulate a reducer that reads from Accounts and writes to Token
     // This demonstrates the Phase 4 requirement: "read from Accounts, write to Token using branded keys"
@@ -183,11 +184,11 @@ class Phase4Spec extends CatsEffectSuite:
         accountsLookup: Lookup[CombinedSchema, "accounts", Address, Account],
         balancesLookup: Lookup[CombinedSchema, "balances", Address, BigInt],
         tokensLookup: Lookup[CombinedSchema, "tokens", Address, TokenInfo],
-    ): StoreF[IO][Unit] =
+    ): StoreF[SyncIO][(Option[Account], Option[BigInt], Option[TokenInfo], Option[Account])] =
       // Extract tables - now the types are preserved!
-      val accounts = accountsLookup.table[IO](tables)
-      val balances = balancesLookup.table[IO](tables)
-      val tokens = tokensLookup.table[IO](tables)
+      val accounts = accountsLookup.table[SyncIO](tables)
+      val balances = balancesLookup.table[SyncIO](tables)
+      val tokens = tokensLookup.table[SyncIO](tables)
 
       // Create test data
       val addr1 = Address(ByteVector(0x01, 0x02))
@@ -213,45 +214,48 @@ class Phase4Spec extends CatsEffectSuite:
 
         // Read from accounts table
         maybeAccount <- accounts.get(accountKey1)
-        _ = assertEquals(maybeAccount, Some(account1))
 
         // Write to balances table
         _ <- balances.put(balanceKey1, balance1)
 
         // Read from balances table
         maybeBalance <- balances.get(balanceKey1)
-        _ = assertEquals(maybeBalance, Some(balance1))
 
         // Write to tokens table (different module)
         _ <- tokens.put(tokenKey, tokenInfo)
 
         // Read from tokens table
         maybeToken <- tokens.get(tokenKey)
-        _ = assertEquals(maybeToken, Some(tokenInfo))
 
         // Verify that non-existent keys return None
         notFound <- accounts.get(accountKey2)
-        _ = assertEquals(notFound, None)
 
-      yield ()
+      yield (maybeAccount, maybeBalance, maybeToken, notFound)
 
     // Execute the cross-module operation
     val initialState = merkle.MerkleTrieState.empty
     val result = crossModuleOperation.run(initialState).value.unsafeRunSync()
 
     result match
-      case Right((finalState, ())) =>
+      case Right((finalState, (maybeAccount, maybeBalance, maybeToken, notFound))) =>
+        // Verify all results
+        assertEquals(maybeAccount, Some(Account(ByteVector(0xaa, 0xbb))))
+        assertEquals(maybeBalance, Some(BigInt(1000)))
+        assertEquals(maybeToken, Some(TokenInfo(ByteVector(0xff, 0xee))))
+        assertEquals(notFound, None)
+
         // Persist the state changes
         saveNodes(finalState)
+
         // Verify we can read the persisted data
         val accountsLookup = summon[Lookup[CombinedSchema, "accounts", Address, Account]]
-        val accounts = accountsLookup.table[IO](tables)
+        val accounts = accountsLookup.table[SyncIO](tables)
         val addr = Address(ByteVector(0x01, 0x02))
         val key = accounts.brand(addr)
 
         val verifyRead = accounts.get(key).runA(finalState).value
-
         val verified = verifyRead.unsafeRunSync()
+
         verified match
           case Right(Some(account)) =>
             assertEquals(account, Account(ByteVector(0xaa, 0xbb)))
