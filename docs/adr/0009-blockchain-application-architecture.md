@@ -536,44 +536,61 @@ Phase 4 — Dependencies
   - Illegal access is a compile error; legal access runs and updates trie
 
 Phase 5 — Assembly (PARTIALLY COMPLETE)
-- Status: Core deliverables met, auxiliary features deferred or limited
-- Deliverables
+- Status: Core patterns demonstrated, production features require additional work
+- Completed Deliverables
   - ✅ `extend`: merge two StateModules at same Path (Module.scala:209-275)
-  - ✅ `mergeReducers`: fallback strategy (try r1, catch → r2) (Module.scala:296-354)
-  - ⚠️ `ModuleFactory`: implemented but limited (drops dependencies, Module.scala:356-416)
-  - ⚠️ `aggregate`: implemented but not fully functional (unsafe casts, not independently usable)
+    - Fully functional for merging modules mounted at same path
+    - Combines schemas, transactions, dependencies correctly
+    - Tests verify 4 combined tables from 2 modules
   - ✅ Shared vs Sandboxed assembly examples in Phase5Spec
-- Implemented Pattern: Mount-then-extend
-  - extend combines schemas (S1 ++ S2), transactions (T1 ++ T2), and dependencies at same Path
-  - Works for: merging independently mounted modules at same path
-  - Shared assembly: mount once, reference via Lookup (Phase 4)
-  - Sandboxed assembly: mount at different paths, isolated state
-- Deferred/Limited Features
-  - aggregate: requires proper subset evidence derivation, currently uses unsafe casts
-  - ModuleFactory: discards dependencies, limiting cross-module access patterns
-  - Full compose-then-mount: use Phase 3's composeBlueprint instead
-- Tests (Phase5Spec)
-  - ✅ extend: merge two modules at same path, verify 4 combined tables
-  - ✅ ModuleFactory: create from blueprint, build at path
-  - ✅ Shared: single Accounts mounted, tables accessible
-  - ✅ Sandboxed: two Accounts at different paths, verified isolation
-  - ⚠️ aggregate: type-checks but not executed (defers to manual extend)
-  - ⚠️ Reducer merging: only null check, no failure path or transaction execution
-- Known Limitations
-  - mergeReducers fallback path not tested (no regression protection)
-  - aggregate cannot actually aggregate independently deployed modules
-  - ModuleFactory loses dependencies, breaking cross-module Lookup patterns
-  - Tests do not execute transactions through merged reducers
-- Recommended Approach (per ADR Assembly Flow Guidance)
-  - Prefer: composeBlueprint (Phase 3) → mount (Phase 2) for composed applications
-  - Alternative: mount → extend for post-deployment composition
-  - Avoid: aggregate until proper evidence derivation is implemented
-- Future Work
-  - Add transaction execution tests for mergeReducers (success and fallback paths)
-  - Implement proper subset evidence derivation for aggregate
-  - Restore dependencies in ModuleFactory or document restrictions
-  - Reducer registry pattern for explicit transaction-to-reducer mapping
-  - AccessLog integration for conflict detection (Phase 8)
+    - Shared: single mount, Lookup-based access (Phase 4 pattern)
+    - Sandboxed: multiple mounts at different paths, verified isolation
+- Incomplete/Limited Deliverables
+  - ⚠️ `mergeReducers`: fallback strategy implemented but untested (Module.scala:296-354)
+    - Code: try r1.apply, catch ClassCastException → r2.apply
+    - Tests: only null check, no transaction execution or fallback verification
+    - Risk: fallback path unproven, may not preserve events/results correctly
+  - ⚠️ `ModuleFactory`: implemented but breaks cross-module dependencies (Module.scala:356-416)
+    - Discards dependencies (Deps → EmptyTuple) for reusability
+    - Consequence: cannot support Phase 4 Lookup patterns after factory build
+    - Use only for: self-contained modules, sandboxed deployment
+  - ⚠️ `aggregate`: type-checks but not production-ready (Module.scala:418-476)
+    - Uses unsafe casts for SchemaMapper/PrefixFreePath evidence
+    - Only works at same path (not truly aggregating independent deployments)
+    - Tests: compilation only, actual execution defers to manual extend
+    - Status: EXPERIMENTAL, avoid in production
+- What Actually Works (Mount-then-extend Pattern)
+  - ✅ Mount two blueprints independently at same path
+  - ✅ Use extend to merge them: schemas (S1 ++ S2), transactions (T1 ++ T2), dependencies
+  - ✅ Shared assembly: mount once, other modules access via Phase 4 Lookup
+  - ✅ Isolated assembly: mount same blueprint at different paths for sandboxing
+  - ✅ Tests verify table counts and isolation properties
+- What Doesn't Work Yet
+  - ❌ aggregate: cannot actually build and execute (only type-checks, then defers to manual extend)
+  - ❌ mergeReducers: fallback path never exercised (no test with actual transaction or failure)
+  - ❌ ModuleFactory cross-module deps: factories drop dependencies, breaking Lookup patterns
+  - ❌ Independent deployment aggregation: all modules must be at same path due to evidence casts
+- Production Recommendation (per Assembly Flow Guidance)
+  - **Prefer**: composeBlueprint (Phase 3) → mount (Phase 2)
+    - Single composition, single mount, all evidence derived correctly
+  - **Alternative**: mount each blueprint → extend for post-deployment merge
+    - Works when modules are independently mounted at same path
+  - **Avoid**: aggregate (EXPERIMENTAL, unsafe casts, not independently usable)
+  - **Avoid**: ModuleFactory for modules with cross-module dependencies
+- Required Future Work (to claim full Phase 5 completion)
+  1. Transaction execution tests for mergeReducers
+     - Test: r1 succeeds → verify result/events
+     - Test: r1 fails → r2 called → verify result/events
+     - Test: both fail → verify error propagation
+  2. Proper evidence derivation for aggregate
+     - Derive SchemaMapper[F, Path, S1] from SchemaMapper[F, Path, S1 ++ S2]
+     - Derive PrefixFreePath[Path, S1] from PrefixFreePath[Path, S1 ++ S2]
+     - Remove unsafe casts
+  3. Dependencies in ModuleFactory
+     - Either: preserve dependencies during build
+     - Or: restrict fromBlueprint to only accept blueprints with EmptyTuple deps
+  4. Reducer registry pattern (replace try-catch with explicit routing)
+  5. AccessLog integration (deferred to Phase 8)
 
 Phase 6 — Example Blueprints (Accounts, Group)
 - See ADR‑0010 (Blockchain Account Model and Key Management) and ADR‑0011 (Blockchain Account Group Management) for detailed schemas, transactions, and reducer rules.
