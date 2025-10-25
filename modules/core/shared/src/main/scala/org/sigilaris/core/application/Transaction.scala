@@ -1,13 +1,26 @@
 package org.sigilaris.core
 package application
 
-/** Module identifier carrying the module path.
+/** Module identifier carrying the module-relative path.
+  *
+  * IMPORTANT: The path is always module-relative (MName *: SubPath), never
+  * prefixed with the mount path. This ensures transactions remain portable
+  * across different deployment paths.
   *
   * The path tuple identifies which module a transaction belongs to.
   * During blueprint composition, the path is used to route transactions
-  * to the correct reducer.
+  * to the correct reducer by matching the first segment (module name).
   *
-  * @param path the module path tuple (e.g., ("app", "accounts"))
+  * @param path the module-relative path tuple (e.g., ("accounts" *: EmptyTuple) or ("accounts" *: "v1" *: EmptyTuple))
+  *
+  * @example
+  * {{{
+  * // A transaction for the "accounts" module
+  * val moduleId = ModuleId("accounts" *: EmptyTuple)
+  *
+  * // Even when the module is mounted at ("app"), the moduleId stays ("accounts")
+  * // The full path ("app", "accounts") is only constructed at system boundaries
+  * }}}
   */
 final case class ModuleId(path: Tuple)
 

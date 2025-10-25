@@ -4,12 +4,13 @@ package application
 import cats.Monad
 import merkle.MerkleTrie
 
-/** Path-bound state reducer.
+/** Path-bound state reducer for single modules.
   *
   * A StateReducer is a StateReducer0 bound to a specific Path. It knows
   * exactly where its tables are located in the trie.
   *
-  * This is created during module mounting when a blueprint is bound to a path.
+  * This is created during module mounting when a ModuleBlueprint is bound to a path.
+  * It accepts any transaction type T <: Tx.
   *
   * @tparam F the effect type
   * @tparam Path the mount path tuple
@@ -32,6 +33,35 @@ trait StateReducer[F[_], Path <: Tuple, Schema <: Tuple]:
       requiresWrites: Requires[tx.Writes, Schema],
   ): StoreF[F][(tx.Result, List[tx.Event])]
 
+/** Path-bound routed state reducer for composed modules.
+  *
+  * A RoutedStateReducer is a RoutedStateReducer0 bound to a specific Path.
+  * It REQUIRES all transactions to implement ModuleRoutedTx for routing.
+  *
+  * This is created during module mounting when a ComposedBlueprint is bound to a path.
+  * The type bound T <: Tx & ModuleRoutedTx enforces the routing requirement at compile time.
+  *
+  * @tparam F the effect type
+  * @tparam Path the mount path tuple
+  * @tparam Schema the schema tuple (tuple of Entry types)
+  */
+trait RoutedStateReducer[F[_], Path <: Tuple, Schema <: Tuple]:
+  /** Apply a routed transaction to produce a result and events.
+    *
+    * The type bound T <: Tx & ModuleRoutedTx ensures that only transactions
+    * implementing ModuleRoutedTx can be applied. This is enforced at compile time.
+    *
+    * @tparam T the transaction type (must implement ModuleRoutedTx)
+    * @param tx the transaction to apply
+    * @param requiresReads evidence that T's read requirements are in Schema
+    * @param requiresWrites evidence that T's write requirements are in Schema
+    * @return a stateful computation returning the result and list of events
+    */
+  def apply[T <: Tx & ModuleRoutedTx](tx: T)(using
+      requiresReads: Requires[tx.Reads, Schema],
+      requiresWrites: Requires[tx.Writes, Schema],
+  ): StoreF[F][(tx.Result, List[tx.Event])]
+
 /** State module (path-bound).
   *
   * A StateModule is a deployed module at a specific path. It combines:
@@ -41,13 +71,18 @@ trait StateReducer[F[_], Path <: Tuple, Schema <: Tuple]:
   *   - Transactions: the set of supported transaction types
   *   - Dependencies: other modules this module depends on
   *
-  * StateModule is created by mounting a ModuleBlueprint at a specific Path.
+  * StateModule is generic in the reducer type R, which can be either:
+  *   - StateReducer[F, Path, Schema] for single modules (accepts any Tx)
+  *   - RoutedStateReducer[F, Path, Schema] for composed modules (requires ModuleRoutedTx)
+  *
+  * This preserves compile-time type safety throughout the entire stack.
   *
   * @tparam F the effect type
   * @tparam Path the mount path tuple
   * @tparam Schema the schema tuple (tuple of Entry types)
   * @tparam Txs the transaction types tuple
   * @tparam Deps the dependency types tuple
+  * @tparam R the reducer type (covariant)
   * @param tables the table instances (with prefixes bound to Path)
   * @param reducer the path-bound reducer
   * @param txs the transaction registry
@@ -55,9 +90,9 @@ trait StateReducer[F[_], Path <: Tuple, Schema <: Tuple]:
   * @param uniqueNames evidence that table names are unique within Schema
   * @param prefixFreePath evidence that all table prefixes are prefix-free
   */
-final class StateModule[F[_], Path <: Tuple, Schema <: Tuple, Txs <: Tuple, Deps <: Tuple](
+final class StateModule[F[_], Path <: Tuple, Schema <: Tuple, Txs <: Tuple, Deps <: Tuple, +R](
     val tables: Tables[F, Schema],
-    val reducer: StateReducer[F, Path, Schema],
+    val reducer: R,
     val txs: TxRegistry[Txs],
     val deps: Deps,
 )(using
@@ -99,7 +134,7 @@ object StateModule:
       prefixFreePath: PrefixFreePath[Path, Schema],
       @annotation.unused nodeStore: MerkleTrie.NodeStore[F],
       schemaMapper: SchemaMapper[F, Path, Schema],
-  ): StateModule[F, Path, Schema, Txs, Deps] =
+  ): StateModule[F, Path, Schema, Txs, Deps, StateReducer[F, Path, Schema]] =
     // Instantiate fresh tables with path-specific prefixes from Entry instances
     // Note: monad and nodeStore are used implicitly by the SchemaMapper derivation
     val tables: Tables[F, Schema] =
@@ -113,7 +148,7 @@ object StateModule:
         // Delegate to the path-agnostic reducer
         blueprint.reducer0.apply(tx)
 
-    new StateModule[F, Path, Schema, Txs, Deps](
+    new StateModule[F, Path, Schema, Txs, Deps, StateReducer[F, Path, Schema]](
       tables = tables,
       reducer = pathBoundReducer,
       txs = blueprint.txs,
@@ -124,6 +159,10 @@ object StateModule:
     *
     * This method handles ComposedBlueprint specifically, which uses RoutedStateReducer0.
     * The mounted module's reducer will only accept transactions implementing ModuleRoutedTx.
+    *
+    * The key difference from mount() is that this returns a StateModule with a
+    * RoutedStateReducer, preserving the compile-time type safety requirement for
+    * ModuleRoutedTx throughout the entire stack.
     *
     * @tparam F the effect type
     * @tparam MName the module name
@@ -136,7 +175,7 @@ object StateModule:
     * @param prefixFreePath evidence that the path+schema combination is prefix-free
     * @param nodeStore the MerkleTrie node store
     * @param schemaMapper the schema mapper for instantiating tables
-    * @return a mounted state module with path-bound tables
+    * @return a mounted state module with RoutedStateReducer (compile-time safe)
     */
   def mountComposed[F[_], MName <: String, Path <: Tuple, Schema <: Tuple, Txs <: Tuple, Deps <: Tuple](
       blueprint: ComposedBlueprint[F, MName, Schema, Txs, Deps],
@@ -145,26 +184,22 @@ object StateModule:
       prefixFreePath: PrefixFreePath[Path, Schema],
       @annotation.unused nodeStore: MerkleTrie.NodeStore[F],
       schemaMapper: SchemaMapper[F, Path, Schema],
-  ): StateModule[F, Path, Schema, Txs, Deps] =
+  ): StateModule[F, Path, Schema, Txs, Deps, RoutedStateReducer[F, Path, Schema]] =
     // Instantiate fresh tables with path-specific prefixes from Entry instances
     val tables: Tables[F, Schema] =
       SchemaInstantiation.instantiateTablesFromEntries[F, Path, Schema](blueprint.schema)
 
-    val pathBoundReducer = new StateReducer[F, Path, Schema]:
-      @SuppressWarnings(Array("org.wartremover.warts.AsInstanceOf"))
-      def apply[T <: Tx](tx: T)(using
+    // Create a RoutedStateReducer (path-bound version of RoutedStateReducer0)
+    // NO CAST NEEDED - type safety is preserved!
+    val pathBoundReducer = new RoutedStateReducer[F, Path, Schema]:
+      def apply[T <: Tx & ModuleRoutedTx](tx: T)(using
           requiresReads: Requires[tx.Reads, Schema],
           requiresWrites: Requires[tx.Writes, Schema],
       ): StoreF[F][(tx.Result, List[tx.Event])] =
-        // RoutedStateReducer0 requires ModuleRoutedTx, so we cast
-        // This is safe at module boundaries since users control what they pass
-        val routedTx = tx.asInstanceOf[T & ModuleRoutedTx]
-        blueprint.reducer0.apply(routedTx)(using
-          requiresReads.asInstanceOf[Requires[routedTx.Reads, Schema]],
-          requiresWrites.asInstanceOf[Requires[routedTx.Writes, Schema]],
-        ).asInstanceOf[StoreF[F][(tx.Result, List[tx.Event])]]
+        // Delegate to the path-agnostic routed reducer
+        blueprint.reducer0.apply(tx)
 
-    new StateModule[F, Path, Schema, Txs, Deps](
+    new StateModule[F, Path, Schema, Txs, Deps, RoutedStateReducer[F, Path, Schema]](
       tables = tables,
       reducer = pathBoundReducer,
       txs = blueprint.txs,

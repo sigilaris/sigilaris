@@ -116,8 +116,8 @@ class CompositionTest extends FunSuite:
     type Sub = "v1" *: EmptyTuple
     val module = Blueprint.mountAt[Id, "module1", Base, Sub, Schema1, EmptyTuple, EmptyTuple](bp)
 
-    // Should have correct path type
-    val _: StateModule[Id, Base ++ Sub, Schema1, EmptyTuple, EmptyTuple] = module
+    // Should have correct path type (includes reducer type parameter)
+    val _: StateModule[Id, Base ++ Sub, Schema1, EmptyTuple, EmptyTuple, StateReducer[Id, Base ++ Sub, Schema1]] = module
     assertEquals(module.tables.size, 1)
 
   test("PrefixFreePath validation for composed schema"):

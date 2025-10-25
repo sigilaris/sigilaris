@@ -298,5 +298,5 @@ object Blueprint:
     prefixFreePath: PrefixFreePath[Base ++ Sub, Schema],
     @annotation.unused nodeStore: merkle.MerkleTrie.NodeStore[F],
     schemaMapper: SchemaMapper[F, Base ++ Sub, Schema],
-  ): StateModule[F, Base ++ Sub, Schema, Txs, Deps] =
+  ): StateModule[F, Base ++ Sub, Schema, Txs, Deps, StateReducer[F, Base ++ Sub, Schema]] =
     StateModule.mount[F, MName, Base ++ Sub, Schema, Txs, Deps](blueprint)

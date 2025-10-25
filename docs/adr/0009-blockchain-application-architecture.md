@@ -258,9 +258,13 @@ val dappOnceMounted = DAppBP.mount[("app")]
 - Routing logic stays simple: just match the first segment (MName)
 - Full paths (mountPath ++ moduleId.path) can be reconstructed at system edges for telemetry/logging
 
-**Routing Mechanism**
-- `composeBlueprint` creates a `RoutedStateReducer0` with type bound `T <: Tx & ModuleRoutedTx`
-- Non-routed transactions fail at compile time, not runtime
+**Routing Mechanism and Compile-Time Safety**
+- `composeBlueprint` creates a `ComposedBlueprint` with `RoutedStateReducer0`
+- `StateModule.mountComposed` returns `StateModule[..., RoutedStateReducer[F, Path, Schema]]`
+- **Compile-time safety throughout the entire stack**:
+  - Attempting to apply a non-routed transaction to a composed module's reducer will fail at compile time
+  - Type bound `T <: Tx & ModuleRoutedTx` is enforced by both `RoutedStateReducer0` and `RoutedStateReducer`
+  - No unsafe casts needed - type safety is preserved from blueprint to mounted module
 - The reducer routes based on `moduleId.path.head` matching M1 or M2
 - No prefix stripping required since paths are already module-relative
 
