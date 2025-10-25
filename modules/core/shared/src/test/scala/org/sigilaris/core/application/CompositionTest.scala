@@ -72,8 +72,8 @@ class CompositionTest extends FunSuite:
 
     // Verify schema is concatenated
     assertEquals(composed.schema.size, 2)
-    // Verify it compiles - composed is of correct type
-    val _: ModuleBlueprint[Id, "combined", Schema1 ++ Schema2, EmptyTuple ++ EmptyTuple, EmptyTuple] = composed
+    // Verify it compiles - composed is of correct type (ComposedBlueprint, not ModuleBlueprint)
+    val _: ComposedBlueprint[Id, "combined", Schema1 ++ Schema2, EmptyTuple ++ EmptyTuple, EmptyTuple] = composed
 
   test("composeBlueprint preserves UniqueNames evidence for disjoint schemas"):
     val bp1 = createBlueprint1()
@@ -91,10 +91,10 @@ class CompositionTest extends FunSuite:
     val bp2 = createBlueprint2()
     val composed = Blueprint.composeBlueprint[Id, "combined", "module1", Schema1, EmptyTuple, EmptyTuple, "module2", Schema2, EmptyTuple, EmptyTuple](bp1, bp2)
 
-    // Should be able to mount composed blueprint
+    // Should be able to mount composed blueprint using mountComposed
     type Path = "app" *: EmptyTuple
     type Combined = Schema1 ++ Schema2
-    val module = StateModule.mount[Id, "combined", Path, Combined, EmptyTuple, EmptyTuple](composed)
+    val module = StateModule.mountComposed[Id, "combined", Path, Combined, EmptyTuple, EmptyTuple](composed)
 
     // Verify tables are created
     assertEquals(module.tables.size, 2)
@@ -243,18 +243,21 @@ class CompositionTest extends FunSuite:
       case Left(err) =>
         fail(s"Expected success but got error: $err")
 
-  test("composeBlueprint fails for transaction without ModuleRoutedTx"):
-    val bp1 = createRoutingBlueprint1()
-    val bp2 = createRoutingBlueprint2()
-    val composed = Blueprint.composeBlueprint[Id, "combined", "module1", Schema1, EmptyTuple, EmptyTuple, "module2", Schema2, EmptyTuple, EmptyTuple](bp1, bp2)
-
-    val tx = UnroutedTx()
-    // Composed blueprints require ModuleRoutedTx - fails with ClassCastException at runtime
-    intercept[ClassCastException]:
-      composed.reducer0.apply(tx)(using
-        summon[Requires[tx.Reads, Schema1 ++ Schema2]],
-        summon[Requires[tx.Writes, Schema1 ++ Schema2]],
-      ).run(null).value
+  // NOTE: The following test is commented out because it now fails at COMPILE TIME,
+  // which is the desired behavior. ComposedBlueprint's reducer requires ModuleRoutedTx,
+  // so non-routed transactions are rejected by the type system.
+  //
+  // test("composeBlueprint fails for transaction without ModuleRoutedTx"):
+  //   val bp1 = createRoutingBlueprint1()
+  //   val bp2 = createRoutingBlueprint2()
+  //   val composed = Blueprint.composeBlueprint[Id, "combined", "module1", Schema1, EmptyTuple, EmptyTuple, "module2", Schema2, EmptyTuple, EmptyTuple](bp1, bp2)
+  //
+  //   val tx = UnroutedTx()
+  //   // This now fails at COMPILE TIME with type error - compile-time safety achieved!
+  //   composed.reducer0.apply(tx)(using
+  //     summon[Requires[tx.Reads, Schema1 ++ Schema2]],
+  //     summon[Requires[tx.Writes, Schema1 ++ Schema2]],
+  //   ).run(null).value
 
   test("composeBlueprint fails for transaction with wrong module path"):
     val bp1 = createRoutingBlueprint1()

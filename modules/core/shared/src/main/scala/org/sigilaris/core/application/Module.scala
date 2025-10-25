@@ -66,16 +66,15 @@ final class StateModule[F[_], Path <: Tuple, Schema <: Tuple, Txs <: Tuple, Deps
 )
 
 object StateModule:
-  /** Mount a blueprint at a specific path, creating a StateModule.
+  /** Mount a single-module blueprint at a specific path, creating a StateModule.
     *
-    * This is the key operation in Phase 2: it takes a path-independent blueprint
-    * and binds it to a concrete path, computing table prefixes and creating
-    * usable table instances.
+    * This is the key operation in Phase 2: it takes a path-independent ModuleBlueprint
+    * and binds it to a concrete path, computing table prefixes and creating usable table instances.
     *
     * The mounting process:
     *   1. Computes the prefix for each table: encodePath(Path) ++ encodeSegment(TableName)
     *   2. Creates fresh StateTable instances bound to these prefixes
-    *   3. Wraps the StateReducer0 to create a path-aware StateReducer
+    *   3. Wraps the reducer (StateReducer0) to create a path-aware StateReducer
     *
     * Each mount produces a completely independent set of tables, ensuring that
     * mounting the same blueprint at different paths results in isolated keyspaces.
@@ -86,7 +85,7 @@ object StateModule:
     * @tparam Schema the schema tuple
     * @tparam Txs the transaction types tuple
     * @tparam Deps the dependency types tuple
-    * @param blueprint the blueprint to mount
+    * @param blueprint the module blueprint to mount
     * @param monad the Monad instance for F (used by SchemaMapper derivation)
     * @param prefixFreePath evidence that the path+schema combination is prefix-free
     * @param nodeStore the MerkleTrie node store (used by SchemaMapper derivation)
@@ -113,6 +112,57 @@ object StateModule:
       ): StoreF[F][(tx.Result, List[tx.Event])] =
         // Delegate to the path-agnostic reducer
         blueprint.reducer0.apply(tx)
+
+    new StateModule[F, Path, Schema, Txs, Deps](
+      tables = tables,
+      reducer = pathBoundReducer,
+      txs = blueprint.txs,
+      deps = blueprint.deps,
+    )(using blueprint.uniqueNames, prefixFreePath)
+
+  /** Mount a composed blueprint at a specific path, creating a StateModule.
+    *
+    * This method handles ComposedBlueprint specifically, which uses RoutedStateReducer0.
+    * The mounted module's reducer will only accept transactions implementing ModuleRoutedTx.
+    *
+    * @tparam F the effect type
+    * @tparam MName the module name
+    * @tparam Path the mount path
+    * @tparam Schema the schema tuple
+    * @tparam Txs the transaction types tuple
+    * @tparam Deps the dependency types tuple
+    * @param blueprint the composed blueprint to mount
+    * @param monad the Monad instance for F
+    * @param prefixFreePath evidence that the path+schema combination is prefix-free
+    * @param nodeStore the MerkleTrie node store
+    * @param schemaMapper the schema mapper for instantiating tables
+    * @return a mounted state module with path-bound tables
+    */
+  def mountComposed[F[_], MName <: String, Path <: Tuple, Schema <: Tuple, Txs <: Tuple, Deps <: Tuple](
+      blueprint: ComposedBlueprint[F, MName, Schema, Txs, Deps],
+  )(using
+      @annotation.unused monad: Monad[F],
+      prefixFreePath: PrefixFreePath[Path, Schema],
+      @annotation.unused nodeStore: MerkleTrie.NodeStore[F],
+      schemaMapper: SchemaMapper[F, Path, Schema],
+  ): StateModule[F, Path, Schema, Txs, Deps] =
+    // Instantiate fresh tables with path-specific prefixes from Entry instances
+    val tables: Tables[F, Schema] =
+      SchemaInstantiation.instantiateTablesFromEntries[F, Path, Schema](blueprint.schema)
+
+    val pathBoundReducer = new StateReducer[F, Path, Schema]:
+      @SuppressWarnings(Array("org.wartremover.warts.AsInstanceOf"))
+      def apply[T <: Tx](tx: T)(using
+          requiresReads: Requires[tx.Reads, Schema],
+          requiresWrites: Requires[tx.Writes, Schema],
+      ): StoreF[F][(tx.Result, List[tx.Event])] =
+        // RoutedStateReducer0 requires ModuleRoutedTx, so we cast
+        // This is safe at module boundaries since users control what they pass
+        val routedTx = tx.asInstanceOf[T & ModuleRoutedTx]
+        blueprint.reducer0.apply(routedTx)(using
+          requiresReads.asInstanceOf[Requires[routedTx.Reads, Schema]],
+          requiresWrites.asInstanceOf[Requires[routedTx.Writes, Schema]],
+        ).asInstanceOf[StoreF[F][(tx.Result, List[tx.Event])]]
 
     new StateModule[F, Path, Schema, Txs, Deps](
       tables = tables,
