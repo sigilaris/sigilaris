@@ -311,9 +311,17 @@ class Phase5Spec extends FunSuite:
           requiresReads: Requires[tx.Reads, AccountsSchema],
           requiresWrites: Requires[tx.Writes, AccountsSchema],
       ): StoreF[SyncIO][(tx.Result, List[tx.Event])] =
-        // This will fail for CreateGroup (wrong schema)
-        import cats.data.StateT
-        StateT.pure((().asInstanceOf[tx.Result], List.empty[tx.Event]))
+        tx match
+          case _: CreateGroup =>
+            // Explicitly fail for CreateGroup transactions
+            import cats.data.StateT
+            import cats.data.EitherT
+            StateT.liftF(EitherT.leftT[SyncIO, (tx.Result, List[tx.Event])](
+              failure.TrieFailure("Accounts module cannot handle CreateGroup")
+            ))
+          case _ =>
+            import cats.data.StateT
+            StateT.pure((().asInstanceOf[tx.Result], List.empty[tx.Event]))
 
     val accountsBP = new ModuleBlueprint[SyncIO, "accounts", AccountsSchema, EmptyTuple, EmptyTuple](
       schema = accountsSchema,
@@ -368,3 +376,70 @@ class Phase5Spec extends FunSuite:
         assertEquals(event.address, Address(ByteVector(0x02)))
       case Left(error) =>
         fail(s"Transaction execution failed: $error")
+
+  test("Reducer merging: r1 succeeds with empty events - no fallback to r2"):
+    given merkle.MerkleTrie.NodeStore[SyncIO] = createNodeStore()
+    given cats.Monad[SyncIO] = cats.effect.Sync[SyncIO]
+
+    val accountsEntry = Entry["accounts", Address, Account]
+    val balancesEntry = Entry["balances", Address, BigInt]
+    val accountsSchema: AccountsSchema = (accountsEntry, balancesEntry)
+
+    // r1 always succeeds but returns NO events (e.g., a query operation)
+    val accountsReducer = new StateReducer0[SyncIO, AccountsSchema]:
+      def apply[T <: Tx](tx: T)(using
+          requiresReads: Requires[tx.Reads, AccountsSchema],
+          requiresWrites: Requires[tx.Writes, AccountsSchema],
+      ): StoreF[SyncIO][(tx.Result, List[tx.Event])] =
+        import cats.data.StateT
+        // Successfully handle transaction with NO events
+        StateT.pure((().asInstanceOf[tx.Result], List.empty[tx.Event]))
+
+    val accountsBP = new ModuleBlueprint[SyncIO, "accounts", AccountsSchema, EmptyTuple, EmptyTuple](
+      schema = accountsSchema,
+      reducer0 = accountsReducer,
+      txs = TxRegistry.empty,
+      deps = EmptyTuple,
+    )
+
+    val groupsEntry = Entry["groups", Address, GroupInfo]
+    val membersEntry = Entry["members", Address, BigInt]
+    val groupSchema: GroupSchema = (groupsEntry, membersEntry)
+
+    // r2 should NOT be called if r1 succeeds
+    var r2Called = false
+    val groupReducer = new StateReducer0[SyncIO, GroupSchema]:
+      def apply[T <: Tx](tx: T)(using
+          requiresReads: Requires[tx.Reads, GroupSchema],
+          requiresWrites: Requires[tx.Writes, GroupSchema],
+      ): StoreF[SyncIO][(tx.Result, List[tx.Event])] =
+        r2Called = true  // Track if r2 was called
+        import cats.data.StateT
+        StateT.pure((().asInstanceOf[tx.Result], List.empty[tx.Event]))
+
+    val groupBP = new ModuleBlueprint[SyncIO, "group", GroupSchema, EmptyTuple, EmptyTuple](
+      schema = groupSchema,
+      reducer0 = groupReducer,
+      txs = TxRegistry.empty,
+      deps = EmptyTuple,
+    )
+
+    val accountsModule = StateModule.mount[SyncIO, "accounts", ("app" *: EmptyTuple), AccountsSchema, EmptyTuple, EmptyTuple](accountsBP)
+    val groupModule = StateModule.mount[SyncIO, "group", ("app" *: EmptyTuple), GroupSchema, EmptyTuple, EmptyTuple](groupBP)
+
+    val extended = StateModule.extend(accountsModule, groupModule)
+
+    // Execute CreateAccount - should succeed in r1 with empty events, NOT fallback to r2
+    val tx = CreateAccount(Address(ByteVector(0x03)), Account(ByteVector(0xcc)))
+    val initialState = merkle.MerkleTrieState.empty
+
+    val result = extended.reducer.apply(tx).run(initialState).value.unsafeRunSync()
+
+    result match
+      case Right((finalState, (txResult, txEvents))) =>
+        // Verify r1 handled it successfully with empty events
+        assertEquals(txEvents.length, 0)
+        // Verify r2 was NOT called (no fallback on empty events)
+        assertEquals(r2Called, false, "r2 should not be called when r1 succeeds with empty events")
+      case Left(err) =>
+        fail(s"Transaction execution failed: $err")

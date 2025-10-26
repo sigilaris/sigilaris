@@ -296,16 +296,22 @@ object StateModule:
   /** Merge two reducers into a single reducer.
     *
     * The merged reducer attempts to apply transactions using a fallback strategy:
-    *   1. Try reducer r1 (if the transaction requires tables in S1)
-    *   2. If r1 returns empty events, try reducer r2 (if the transaction requires tables in S2)
+    *   1. Try reducer r1 first
+    *   2. If r1 fails (returns Left), try reducer r2
+    *   3. If both fail, return r2's error
+    *   4. If r1 succeeds, return r1's result (even if events are empty)
+    *
+    * This fallback approach is safer than checking for empty events, as it allows
+    * reducers to legitimately return no events (e.g., query-only transactions).
     *
     * This is a Phase 5 MVP implementation. A production system would:
     *   - Use explicit transaction routing via ModuleRoutedTx
     *   - Maintain a reducer registry for efficient dispatch
     *   - Validate at compile time which reducer to use
     *
-    * LIMITATION: This fallback strategy assumes that a reducer returning empty events
-    * means it couldn't handle the transaction. This is a heuristic and not foolproof.
+    * LIMITATION: Both reducers will be attempted for unhandled transactions,
+    * which may cause duplicate work. Use explicit routing (ModuleRoutedTx)
+    * for production systems.
     *
     * @tparam F the effect type
     * @tparam Path the mount path
@@ -325,30 +331,25 @@ object StateModule:
           requiresReads: Requires[tx.Reads, S1 ++ S2],
           requiresWrites: Requires[tx.Writes, S1 ++ S2],
       ): StoreF[F][(tx.Result, List[tx.Event])] =
-        // Simplified Phase 5 strategy: try r1, if it returns empty events, try r2
-        // This is a heuristic - we assume empty events means the reducer couldn't handle it
-
         // Try r1 first
         val r1Result = r1.apply(tx)(using
           requiresReads.asInstanceOf[Requires[tx.Reads, S1]],
           requiresWrites.asInstanceOf[Requires[tx.Writes, S1]],
         )
 
-        // Check if r1 returned empty events - if so, try r2
+        // If r1 fails, try r2 as fallback
         import cats.data.StateT
+        import cats.data.EitherT
 
         StateT { (s: merkle.MerkleTrieState) =>
-          val monadEitherT = cats.Monad[cats.data.EitherT[F, failure.SigilarisFailure, *]]
-          monadEitherT.flatMap(r1Result.run(s)) {
-            case (s1, (result, events)) if events.isEmpty =>
-              // r1 returned empty events, try r2
+          // r1Result.run(s) returns EitherT[F, Failure, (State, (Result, Events))]
+          r1Result.run(s).recoverWith {
+            case _r1Error =>
+              // r1 failed, try r2 as fallback
               r2.apply(tx)(using
                 requiresReads.asInstanceOf[Requires[tx.Reads, S2]],
                 requiresWrites.asInstanceOf[Requires[tx.Writes, S2]],
               ).run(s)
-            case r1Success =>
-              // r1 succeeded with events, use its result
-              monadEitherT.pure(r1Success)
           }
         }
 
@@ -390,21 +391,23 @@ object StateModule:
   object ModuleFactory:
     /** Create a module factory from a blueprint.
       *
-      * WARNING: Dependencies are discarded during factory creation.
-      * The resulting factory will NOT preserve cross-module dependencies.
-      * Only use this for self-contained modules or modules that don't require
-      * Phase 4 Lookup patterns for accessing other module tables.
+      * COMPILE-TIME SAFETY: Only blueprints with EmptyTuple dependencies are accepted.
+      * This ensures that factories cannot be created from modules that require
+      * Phase 4 Lookup patterns for cross-module dependencies.
+      *
+      * Modules with dependencies must be deployed using:
+      *   - Direct mount: StateModule.mount(blueprint)
+      *   - Composition: composeBlueprint(...) → mount
       *
       * @tparam F the effect type
       * @tparam MName the module name
       * @tparam Schema the schema tuple
       * @tparam Txs the transaction types tuple
-      * @tparam Deps the dependency types tuple (will be discarded → EmptyTuple)
-      * @param blueprint the blueprint to wrap
+      * @param blueprint the blueprint to wrap (must have Deps = EmptyTuple)
       * @return a module factory that can build the module at different paths
       */
-    def fromBlueprint[F[_], MName <: String, Schema <: Tuple, Txs <: Tuple, Deps <: Tuple](
-        blueprint: ModuleBlueprint[F, MName, Schema, Txs, Deps],
+    def fromBlueprint[F[_], MName <: String, Schema <: Tuple, Txs <: Tuple](
+        blueprint: ModuleBlueprint[F, MName, Schema, Txs, EmptyTuple],
     ): ModuleFactory[F, Schema, Txs] =
       new ModuleFactory[F, Schema, Txs]:
         def build[Path <: Tuple](using
@@ -413,15 +416,10 @@ object StateModule:
             @annotation.unused nodeStore: merkle.MerkleTrie.NodeStore[F],
             schemaMapper: SchemaMapper[F, Path, Schema],
         ): StateModule[F, Path, Schema, Txs, EmptyTuple, StateReducer[F, Path, Schema]] =
-          // Mount the blueprint, then discard dependencies
-          val mounted = StateModule.mount[F, MName, Path, Schema, Txs, Deps](blueprint)
-          // Create a new module without dependencies for factory pattern
-          new StateModule[F, Path, Schema, Txs, EmptyTuple, StateReducer[F, Path, Schema]](
-            tables = mounted.tables,
-            reducer = mounted.reducer,
-            txs = mounted.txs,
-            deps = EmptyTuple,
-          )(using mounted.uniqueNames, mounted.prefixFreePath)
+          // Mount the blueprint - dependencies are already EmptyTuple
+          val mounted = StateModule.mount[F, MName, Path, Schema, Txs, EmptyTuple](blueprint)
+          // Return the mounted module directly (already has EmptyTuple deps)
+          mounted
 
   /** Aggregate two module factories into a single factory (EXPERIMENTAL).
     *
