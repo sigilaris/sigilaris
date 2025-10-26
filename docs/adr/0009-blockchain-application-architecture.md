@@ -554,21 +554,12 @@ Phase 5 — Assembly (PARTIAL: Core Patterns Proven, Advanced Features Experimen
     - Shared: single mount, Lookup-based access (Phase 4 pattern)
     - Sandboxed: multiple mounts at different paths, verified isolation
 - **Limited Feature (Safe but Niche)**
-  - ⚠️ `ModuleFactory`: **LIMITED** - safe signature but limited use cases (Module.scala:390-421)
+  - ⚠️ `ModuleFactory`: **LIMITED** - safe signature but limited use cases (Module.scala:390-422)
     - ✅ **Fixed**: fromBlueprint now requires `Deps = EmptyTuple` (compile-time enforcement)
     - ✅ Prevents factory creation from blueprints with cross-module dependencies
     - ✅ Safe for: self-contained modules, sandboxed deployment (multiple paths)
     - ⚠️ **Limitation**: Useful only for modules without Phase 4 Lookup dependencies
     - **Recommendation**: Use direct mount or composeBlueprint for dependent modules
-- **Removed from Public API** (Blocked on Subset Derivation)
-  - ❌ `aggregate`: **NOT A DELIVERABLE** - now `private[application]` (Module.scala:424-493)
-    - Made internal-only because it fabricates evidence via `asInstanceOf` casts
-    - **Blocker**: Requires proper subset derivation to be production-ready:
-      - `given deriveSubsetMapper[S1, S2]: SchemaMapper[F, Path, S1] from SchemaMapper[F, Path, S1 ++ S2]`
-      - `given deriveSubsetPrefixFree[S1, S2]: PrefixFreePath[Path, S1] from PrefixFreePath[Path, S1 ++ S2]`
-      - `given deriveUniqueNames[S1, S2]: UniqueNames[S1 ++ S2] from (UniqueNames[S1], UniqueNames[S2])`
-    - **Status**: Kept in codebase for future work, but hidden from public API
-    - **Use instead**: mount → extend pattern (production-ready, tested)
 - What Actually Works (Mount-then-extend Pattern)
   - ✅ Mount two blueprints independently at same path
   - ✅ Use extend to merge them: schemas (S1 ++ S2), transactions (T1 ++ T2), dependencies
@@ -605,11 +596,14 @@ Phase 5 — Assembly (PARTIAL: Core Patterns Proven, Advanced Features Experimen
      - ✅ Changed from "empty events = unhandled" to "Left = failed, try r2"
      - ✅ Allows legitimate empty-event transactions (queries, no-op operations)
      - ✅ Comprehensive tests cover all three scenarios
-  4. Proper evidence derivation for aggregate (deferred - use extend instead)
-     - Derive SchemaMapper[F, Path, S1] from SchemaMapper[F, Path, S1 ++ S2]
-     - Derive PrefixFreePath[Path, S1] from PrefixFreePath[Path, S1 ++ S2]
-     - Remove unsafe casts
-     - **Status**: Kept experimental, recommend hiding or gating behind explicit preconditions
+  4. ⛔ `aggregate` function (REMOVED from Phase 5 - deferred to future work)
+     - **Why removed**: Fabricates evidence via asInstanceOf (SchemaMapper, PrefixFreePath, UniqueNames)
+     - **Blocker**: Requires proper subset derivation:
+       - `given deriveSubsetMapper[S1, S2]: SchemaMapper[F, Path, S1] from SchemaMapper[F, Path, S1 ++ S2]`
+       - `given deriveSubsetPrefixFree[S1, S2]: PrefixFreePath[Path, S1] from PrefixFreePath[Path, S1 ++ S2]`
+       - `given deriveUniqueNames[S1, S2]: UniqueNames[S1 ++ S2] from (UniqueNames[S1], UniqueNames[S2])`
+     - **Alternative**: Use mount → extend pattern (production-ready, delivered in Phase 5)
+     - **Status**: Deleted from codebase (cannot be made safe without subset derivation)
   5. Reducer registry pattern (future enhancement - current fallback works)
      - Replace error-based fallback with explicit transaction-to-reducer mapping
      - Use ModuleRoutedTx for explicit routing (eliminates duplicate work)

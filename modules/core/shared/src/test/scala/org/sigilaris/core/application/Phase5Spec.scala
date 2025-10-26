@@ -220,9 +220,6 @@ class Phase5Spec extends FunSuite:
     // Verify combined module has tables from both
     assertEquals(extended.tables.size, 4)
 
-    // Note: StateModule.aggregate exists but is private[application] (fabricates evidence)
-    // It remains internal until proper subset derivation is implemented
-
   test("Reducer merging: r1 succeeds - transaction executed and result returned"):
     given merkle.MerkleTrie.NodeStore[SyncIO] = createNodeStore()
     given cats.Monad[SyncIO] = cats.effect.Sync[SyncIO]
