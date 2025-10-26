@@ -537,6 +537,8 @@ Phase 4 — Dependencies
   - Illegal access is a compile error; legal access runs and updates trie
 
 Phase 5 — Assembly (PARTIAL: Core Patterns Proven, ModuleFactory Limited)
+- **Deliverables**: `extend`, `mergeReducers`, `ModuleFactory` (limited to self-contained modules)
+- **Removed/Deferred**: ⛔ `aggregate` function (blocked on subset derivation, see #4 in Optional Future Enhancements)
 - **Status**: Mount-then-extend pattern is production-ready; ModuleFactory limited to self-contained modules
 - **Production-Ready Core**
   - ✅ `extend`: merge two StateModules at same Path (Module.scala:246-275)
