@@ -436,16 +436,17 @@ def mergeReducers[F[_], Path <: Tuple, S1 <: Tuple, S2 <: Tuple](
     // 전략 2) Reducer Registry로 명시적 디스패치
     r1.apply(tx) // orElse r2.apply(tx) 등 정책에 맞게 설계
 
-// 집합 결합(aggregate): 팩토리로 모듈을 Path-매개화하여 동일 Path로 빌드 후 extend로 결합
-// blueprint-first를 선호한다면: 여러 blueprint를 composeBlueprint로 합친 뒤 최종적으로 한 번 mount.
+// ModuleFactory: 팩토리로 모듈을 Path-매개화하여 다른 Path에서 재사용
+// LIMITATION: Deps = EmptyTuple로 제한 (교차 모듈 의존성 없는 모듈만 가능)
 trait ModuleFactory[F[_], S <: Tuple, T <: Tuple]:
   def build[Path <: Tuple]: StateModule[F, Path, S, T, EmptyTuple]
 
-def aggregate[F[_], S1 <: Tuple, S2 <: Tuple, T1 <: Tuple, T2 <: Tuple](
-  m1: ModuleFactory[F, S1, T1],
-  m2: ModuleFactory[F, S2, T2],
-): ModuleFactory[F, S1 ++ S2, T1 ++ T2] = new:
-  def build[Path <: Tuple] = extend(m1.build[Path], m2.build[Path])
+// 집합 결합: mount → extend 패턴 사용 (production-ready)
+val module1 = StateModule.mount(blueprint1)
+val module2 = StateModule.mount(blueprint2)
+val combined = StateModule.extend(module1, module2)
+
+// blueprint-first를 선호한다면: 여러 blueprint를 composeBlueprint로 합친 뒤 최종적으로 한 번 mount.
 ```
 
 ## Consequences
@@ -535,8 +536,8 @@ Phase 4 — Dependencies
 - Criteria
   - Illegal access is a compile error; legal access runs and updates trie
 
-Phase 5 — Assembly (PARTIAL: Core Patterns Proven, Advanced Features Experimental)
-- **Status**: Mount-then-extend pattern is production-ready; ModuleFactory/aggregate remain experimental
+Phase 5 — Assembly (PARTIAL: Core Patterns Proven, ModuleFactory Limited)
+- **Status**: Mount-then-extend pattern is production-ready; ModuleFactory limited to self-contained modules
 - **Production-Ready Core**
   - ✅ `extend`: merge two StateModules at same Path (Module.scala:246-275)
     - **Fully functional**: merges modules mounted at same path

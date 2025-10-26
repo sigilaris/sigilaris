@@ -6,21 +6,22 @@ import munit.FunSuite
 
 import codec.byte.ByteCodec
 
-/** Tests for Phase 5: Assembly (extend, aggregate, ModuleFactory).
+/** Tests for Phase 5: Assembly (extend, mergeReducers, ModuleFactory).
   *
   * Phase 5 deliverables:
   *   - extend: merge two StateModules at the same Path
-  *   - aggregate: combine ModuleFactories for flexible deployment
-  *   - mergeReducers: strategy for combining reducers
+  *   - mergeReducers: error-based fallback strategy for combining reducers
+  *   - ModuleFactory: safe for self-contained modules (Deps = EmptyTuple enforced)
   *   - Shared vs Sandboxed assembly examples
   *
-  * Criteria:
-  *   - Shared: one module mounted, both use same tables
+  * Production-ready patterns tested:
+  *   - Shared: one module mounted, others access via Phase 4 Lookup
   *   - Sandboxed: same blueprint mounted at different paths, isolated state
-  *   - extend combines schemas, transactions, and reducers correctly
-  *   - aggregate enables reusable module combinations
+  *   - extend combines schemas, transactions, dependencies, and reducers correctly
+  *   - Factory pattern: build → build → extend (for self-contained modules)
   *
   * Note: Uses SyncIO for cross-platform compatibility (JVM + JS).
+  * Note: aggregate was removed (blocked on subset derivation, see ADR-0009).
   */
 class Phase5Spec extends FunSuite:
 
