@@ -586,31 +586,33 @@ Phase 5 — Assembly (PARTIAL: Core Patterns Proven, ModuleFactory Limited)
   - ✅ **Limited use**: ModuleFactory for self-contained modules only
     - Safe signature (Deps = EmptyTuple enforced)
     - Useful for sandboxed deployment (same module at different paths)
-- Optional Future Enhancements (not required for Phase 5)
-  1. ✅ ~~Transaction execution tests for mergeReducers~~ (COMPLETED)
-     - ✅ r1 succeeds → CreateAccount → AccountCreated event verified
-     - ✅ r1 fails → r2 succeeds → CreateGroup → GroupCreated event verified
-     - ✅ r1 succeeds with empty events → no fallback to r2 (verified with flag)
-  2. ✅ ~~Dependencies in ModuleFactory~~ (FIXED with compile-time enforcement)
-     - ✅ fromBlueprint now requires `Deps = EmptyTuple` (signature changed)
-     - ✅ Blueprints with dependencies cannot become factories (won't compile)
-     - ✅ Safe for self-contained modules only
-  3. ✅ ~~mergeReducers fallback strategy~~ (FIXED - error-based, not empty-events)
-     - ✅ Changed from "empty events = unhandled" to "Left = failed, try r2"
-     - ✅ Allows legitimate empty-event transactions (queries, no-op operations)
-     - ✅ Comprehensive tests cover all three scenarios
-  4. ⛔ `aggregate` function (REMOVED from Phase 5 - deferred to future work)
-     - **Why removed**: Fabricates evidence via asInstanceOf (SchemaMapper, PrefixFreePath, UniqueNames)
-     - **Blocker**: Requires proper subset derivation:
-       - `given deriveSubsetMapper[S1, S2]: SchemaMapper[F, Path, S1] from SchemaMapper[F, Path, S1 ++ S2]`
-       - `given deriveSubsetPrefixFree[S1, S2]: PrefixFreePath[Path, S1] from PrefixFreePath[Path, S1 ++ S2]`
-       - `given deriveUniqueNames[S1, S2]: UniqueNames[S1 ++ S2] from (UniqueNames[S1], UniqueNames[S2])`
-     - **Alternative**: Use mount → extend pattern (production-ready, delivered in Phase 5)
-     - **Status**: Deleted from codebase (cannot be made safe without subset derivation)
-  5. Reducer registry pattern (future enhancement - current fallback works)
-     - Replace error-based fallback with explicit transaction-to-reducer mapping
-     - Use ModuleRoutedTx for explicit routing (eliminates duplicate work)
-  6. AccessLog integration (deferred to Phase 8)
+- **Phase 5 Follow-up Work Completed**
+  1. Transaction execution tests for mergeReducers
+     - r1 succeeds → CreateAccount → AccountCreated event verified
+     - r1 fails → r2 succeeds → CreateGroup → GroupCreated event verified
+     - r1 succeeds with empty events → no fallback to r2 (verified with flag)
+  2. Dependencies in ModuleFactory - enforced at compile time
+     - fromBlueprint now requires `Deps = EmptyTuple` (signature changed)
+     - Blueprints with dependencies cannot become factories (won't compile)
+     - Safe for self-contained modules only
+  3. mergeReducers fallback strategy - fixed to use error-based routing
+     - Changed from "empty events = unhandled" to "Left = failed, try r2"
+     - Allows legitimate empty-event transactions (queries, no-op operations)
+     - Comprehensive tests cover all three scenarios
+- **Removed/Deferred (Not Part of Phase 5)**
+  - ⛔ `aggregate` function - **DELETED** (blocked on subset derivation)
+    - **Why removed**: Fabricates evidence via asInstanceOf (SchemaMapper, PrefixFreePath, UniqueNames)
+    - **Blocker**: Requires proper subset derivation to be production-ready:
+      - `given deriveSubsetMapper[S1, S2]: SchemaMapper[F, Path, S1] from SchemaMapper[F, Path, S1 ++ S2]`
+      - `given deriveSubsetPrefixFree[S1, S2]: PrefixFreePath[Path, S1] from PrefixFreePath[Path, S1 ++ S2]`
+      - `given deriveUniqueNames[S1, S2]: UniqueNames[S1 ++ S2] from (UniqueNames[S1], UniqueNames[S2])`
+    - **Alternative**: Use mount → extend pattern (production-ready, delivered in Phase 5)
+    - **Status**: Deleted from codebase; will not be implemented until subset derivation exists
+- **Future Enhancements** (beyond Phase 5 scope)
+  - Reducer registry pattern
+    - Replace error-based fallback with explicit transaction-to-reducer mapping
+    - Use ModuleRoutedTx for explicit routing (eliminates duplicate work)
+  - AccessLog integration (deferred to Phase 8)
 
 Phase 6 — Example Blueprints (Accounts, Group)
 - See ADR‑0010 (Blockchain Account Model and Key Management) and ADR‑0011 (Blockchain Account Group Management) for detailed schemas, transactions, and reducer rules.
