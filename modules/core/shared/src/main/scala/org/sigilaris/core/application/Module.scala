@@ -421,25 +421,34 @@ object StateModule:
           // Return the mounted module directly (already has EmptyTuple deps)
           mounted
 
-  /** Aggregate two module factories into a single factory (EXPERIMENTAL).
+  /** Aggregate two module factories into a single factory.
     *
-    * LIMITATIONS:
-    *   - Uses unsafe casts for SchemaMapper and PrefixFreePath evidence
-    *   - Only works at same path (not truly "aggregating independently deployed modules")
-    *   - May fail at runtime due to evidence casting issues
-    *   - Not recommended for production use
+    * ⚠️ **EXPERIMENTAL - UNSAFE - DO NOT USE IN PRODUCTION** ⚠️
     *
-    * The aggregated factory builds both modules at the same path and
-    * combines them using extend. This pattern is LIMITED to:
-    *   - Building module bundles that are always deployed together at same path
-    *   - Shared assembly patterns where modules share the same state
+    * **CRITICAL SAFETY ISSUES**:
+    *   - ❌ Fabricates evidence via `asInstanceOf` casts (SchemaMapper, PrefixFreePath, UniqueNames)
+    *   - ❌ If either factory reuses table names, compiles but fails at runtime in extend
+    *   - ❌ Cannot verify at compile time that schemas S1 and S2 are disjoint
+    *   - ❌ UniqueNames[S1 ++ S2] fabricated - no actual uniqueness check
+    *   - ❌ Only works at same path (defeats "aggregate independent modules" goal)
     *
-    * RECOMMENDED ALTERNATIVES:
-    *   - Prefer: composeBlueprint (Phase 3) → mount (Phase 2) for composed applications
-    *   - Alternative: mount → extend for post-deployment composition
+    * **WHY THIS EXISTS**:
+    *   - Phase 5 MVP demonstration of factory aggregation concept
+    *   - Requires proper subset derivation for production use:
+    *     - `given deriveSubsetMapper[S1, S2]: SchemaMapper[F, Path, S1] from SchemaMapper[F, Path, S1 ++ S2]`
+    *     - `given deriveSubsetPrefixFree[S1, S2]: PrefixFreePath[Path, S1] from PrefixFreePath[Path, S1 ++ S2]`
+    *     - `given deriveUniqueNames[S1, S2]: UniqueNames[S1 ++ S2] from (UniqueNames[S1], UniqueNames[S2])`
     *
-    * NOTE: This is a Phase 5 MVP implementation using unsafe casts for evidence.
-    * A production system would properly derive subset evidence at compile time.
+    * **REQUIRED PRECONDITIONS FOR SAFE USE** (not enforced):
+    *   1. S1 and S2 must have disjoint table names (UniqueNames[S1 ++ S2] must hold)
+    *   2. Both factories must be built at the same Path
+    *   3. Schemas must not conflict (no overlapping table definitions)
+    *
+    * **RECOMMENDED ALTERNATIVES** (use these instead):
+    *   - **Prefer**: `composeBlueprint` (Phase 3) → `mount` (Phase 2)
+    *     - Single composition, all evidence derived correctly at compile time
+    *   - **Alternative**: `mount` each blueprint → `extend` for post-deployment merge
+    *     - Proven pattern with transaction execution tests
     *
     * @tparam F the effect type
     * @tparam S1 first schema tuple
@@ -448,8 +457,9 @@ object StateModule:
     * @tparam T2 second transaction types tuple
     * @param m1 the first module factory
     * @param m2 the second module factory
-    * @return an aggregated module factory (may fail at runtime)
+    * @return an aggregated module factory (UNSAFE - may fail at runtime)
     */
+  @deprecated("UNSAFE: Uses asInstanceOf casts for evidence. Use mount → extend pattern instead.", since = "0.1.0")
   @SuppressWarnings(Array("org.wartremover.warts.AsInstanceOf"))
   def aggregate[F[_], S1 <: Tuple, S2 <: Tuple, T1 <: Tuple, T2 <: Tuple](
       m1: ModuleFactory[F, S1, T1],

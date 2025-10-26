@@ -535,35 +535,39 @@ Phase 4 — Dependencies
 - Criteria
   - Illegal access is a compile error; legal access runs and updates trie
 
-Phase 5 — Assembly (CORE COMPLETE, EXTENSIONS DEFERRED)
-- Status: Core mount-then-extend pattern proven with transaction execution tests
-- Completed Deliverables
+Phase 5 — Assembly (PARTIAL: Core Patterns Proven, Advanced Features Experimental)
+- **Status**: Mount-then-extend pattern is production-ready; ModuleFactory/aggregate remain experimental
+- **Production-Ready Core**
   - ✅ `extend`: merge two StateModules at same Path (Module.scala:246-275)
-    - Fully functional for merging modules mounted at same path
-    - Combines schemas, transactions, dependencies correctly
+    - **Fully functional**: merges modules mounted at same path
+    - Combines schemas (S1 ++ S2), transactions (T1 ++ T2), dependencies ((D1, D2))
     - Tests verify 4 combined tables from 2 modules
-  - ✅ `mergeReducers`: fallback strategy with transaction execution tests (Module.scala:296-354)
-    - Strategy: try r1, if empty events → try r2
-    - Tests: r1 succeeds (CreateAccount → AccountCreated event)
-    - Tests: r1 returns empty → r2 succeeds (CreateGroup → GroupCreated event)
-    - Verified: events/results correctly preserved through fallback path
-    - Limitation: uses "empty events" heuristic (not foolproof, but tested)
+    - **Requirement**: Both modules must already be mounted at the same path
+  - ✅ `mergeReducers`: error-based fallback with transaction execution tests (Module.scala:296-356)
+    - **Strategy**: try r1 first; if r1 fails (Left) → try r2 as fallback
+    - **Fixed**: r1 succeeds with 0 events → no fallback (query-only transactions work)
+    - Tests: r1 succeeds → CreateAccount → AccountCreated event verified
+    - Tests: r1 fails → r2 succeeds → CreateGroup → GroupCreated event verified
+    - Tests: r1 succeeds with empty events → r2 NOT called (verified with flag)
+    - **Limitation**: May attempt both reducers for unhandled transactions (use ModuleRoutedTx for explicit routing)
   - ✅ Shared vs Sandboxed assembly examples in Phase5Spec
     - Shared: single mount, Lookup-based access (Phase 4 pattern)
     - Sandboxed: multiple mounts at different paths, verified isolation
-- Limited/Experimental Deliverables
-  - ✅ `ModuleFactory`: **NOW SAFE** with enforced constraints (Module.scala:390-421)
-    - **Compile-time enforcement**: fromBlueprint requires `Deps = EmptyTuple`
-    - Prevents creation of factories from blueprints with cross-module dependencies
-    - Blueprints with dependencies cannot compile as factories
-    - Safe for: self-contained modules, sandboxed deployment (multiple paths)
-    - Use direct mount or composition for modules with dependencies
-  - ⚠️ `aggregate`: **EXPERIMENTAL** - type-checks but uses unsafe casts (Module.scala:423-493)
-    - Uses unsafe casts for SchemaMapper/PrefixFreePath/UniqueNames evidence
-    - Only works at same path (not truly aggregating independent deployments)
-    - Tests: compilation only, actual execution defers to manual extend
-    - **RECOMMENDATION**: Hidden/experimental until proper subset derivation exists
-    - **ALTERNATIVE**: Use mount → extend pattern (proven, tested, safe)
+- **Experimental/Limited Features** (NOT Production-Ready)
+  - ⚠️ `ModuleFactory`: **LIMITED** - safe signature but limited use cases (Module.scala:390-421)
+    - ✅ **Fixed**: fromBlueprint now requires `Deps = EmptyTuple` (compile-time enforcement)
+    - ✅ Prevents factory creation from blueprints with cross-module dependencies
+    - ✅ Safe for: self-contained modules, sandboxed deployment (multiple paths)
+    - ⚠️ **Limitation**: Useful only for modules without Phase 4 Lookup dependencies
+    - **Recommendation**: Use direct mount or composeBlueprint for dependent modules
+  - ❌ `aggregate`: **UNSAFE - DO NOT USE** - fabricates evidence via casts (Module.scala:423-493)
+    - ❌ Manufactures SchemaMapper/PrefixFreePath/UniqueNames via `asInstanceOf`
+    - ❌ If factories reuse table names, compiles but extend fails at runtime
+    - ❌ Only works at same path (defeats purpose of "aggregating independent modules")
+    - ❌ Test only checks non-null (Phase5Spec:204-229), doesn't exercise unsafe paths
+    - **Status**: Should be internal/experimental-only or require explicit evidence from caller
+    - **BLOCKER**: Requires proper subset derivation (SchemaMapper[S1] from SchemaMapper[S1++S2])
+    - **ALTERNATIVE**: Use proven mount → extend pattern instead
 - What Actually Works (Mount-then-extend Pattern)
   - ✅ Mount two blueprints independently at same path
   - ✅ Use extend to merge them: schemas (S1 ++ S2), transactions (T1 ++ T2), dependencies

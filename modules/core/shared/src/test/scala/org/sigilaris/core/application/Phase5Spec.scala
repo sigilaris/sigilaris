@@ -201,7 +201,7 @@ class Phase5Spec extends FunSuite:
     // The tables are independent - different prefixes mean isolated state
     // This is verified by the prefix encoding in PathEncoding
 
-  test("aggregate: combine two factories"):
+  test("aggregate: DEPRECATED/EXPERIMENTAL - compilation only"):
     given merkle.MerkleTrie.NodeStore[SyncIO] = createNodeStore()
     given cats.Monad[SyncIO] = cats.effect.Sync[SyncIO]
 
@@ -211,20 +211,22 @@ class Phase5Spec extends FunSuite:
     val accountsFactory = StateModule.ModuleFactory.fromBlueprint(accountsBP)
     val groupFactory = StateModule.ModuleFactory.fromBlueprint(groupBP)
 
-    // For Phase 5 MVP, test the aggregate function exists and compiles
-    // The actual execution would require proper schema mapper derivation
-    // which is beyond the scope of Phase 5
+    // ⚠️ EXPERIMENTAL: aggregate is deprecated and unsafe (uses asInstanceOf casts)
+    // This test only verifies compilation - does NOT exercise the unsafe evidence paths
+    // DO NOT use aggregate in production - use mount → extend pattern instead
+    @annotation.nowarn("msg=deprecated")
     val aggregated = StateModule.aggregate(accountsFactory, groupFactory)
+
+    // Verify it returns a factory (but don't call build - would hit unsafe casts)
     assert(aggregated != null)
 
-    // As an alternative demonstration, we can manually combine them using extend:
-    // 1. Build both at the same path
-    // 2. Extend them
+    // ✅ RECOMMENDED PATTERN: Use extend instead of aggregate
+    // This is the proven, safe approach with transaction execution tests
     val accounts = accountsFactory.build[("app" *: EmptyTuple)]
     val group = groupFactory.build[("app" *: EmptyTuple)]
     val extended = StateModule.extend(accounts, group)
 
-    // Verify combined module has tables from both
+    // Verify combined module has tables from both (proven safe pattern)
     assertEquals(extended.tables.size, 4)
 
   test("Reducer merging: r1 succeeds - transaction executed and result returned"):
