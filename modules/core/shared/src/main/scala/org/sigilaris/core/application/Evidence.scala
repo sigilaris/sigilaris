@@ -10,6 +10,21 @@ package application
   * @tparam Needs the required tables (typically from Tx#Reads or Tx#Writes)
   * @tparam Schema the available tables in the module
   */
+@scala.annotation.implicitNotFound(
+  """Cannot prove that all required tables are in the schema.
+  |Required tables: ${Needs}
+  |Available schema: ${Schema}
+  |
+  |Possible causes:
+  |  - Transaction requires a table that doesn't exist in the module
+  |  - Table names don't match exactly (check spelling and case)
+  |  - Module hasn't been composed with the required dependency module
+  |
+  |To fix:
+  |  - Ensure all tables in Reads/Writes are defined in the module's schema
+  |  - If using cross-module dependencies, compose modules with extend or composeBlueprint
+  |  - Check that Entry names match between transaction and schema definitions"""
+)
 trait Requires[Needs <: Tuple, Schema <: Tuple]
 
 object Requires:
@@ -49,6 +64,19 @@ object Contains:
   *
   * @tparam Schema the schema tuple
   */
+@scala.annotation.implicitNotFound(
+  """Cannot prove that all table names in the schema are unique.
+  |Schema: ${Schema}
+  |
+  |Possible causes:
+  |  - Two or more tables have the same name
+  |  - Module composition includes duplicate table names from different modules
+  |
+  |To fix:
+  |  - Ensure each table in the schema has a unique name
+  |  - When composing modules, check for name conflicts
+  |  - Consider using different table names or mounting modules at different paths"""
+)
 trait UniqueNames[Schema <: Tuple]
 
 object UniqueNames:
@@ -80,6 +108,21 @@ object UniqueNames:
   * @tparam Path the mount path tuple
   * @tparam Schema the schema tuple
   */
+@scala.annotation.implicitNotFound(
+  """Cannot prove that all table prefixes are prefix-free at the given path.
+  |Path: ${Path}
+  |Schema: ${Schema}
+  |
+  |Possible causes:
+  |  - One table's prefix is a prefix of another table's prefix
+  |  - Path segments or table names create prefix collisions
+  |  - Module composition creates overlapping key spaces
+  |
+  |To fix:
+  |  - Choose table names that don't create prefix relationships
+  |  - Mount modules at different paths to avoid collisions
+  |  - Check that path + table name combinations are unique"""
+)
 trait PrefixFreePath[Path <: Tuple, Schema <: Tuple]
 
 object PrefixFreePath:
@@ -133,6 +176,23 @@ object PrefixFreePath:
   *   balancesTable.get(key)  // Type-safe access
   * }}}
   */
+@scala.annotation.implicitNotFound(
+  """Cannot find table "${Name0}" with key type ${K0} and value type ${V0} in schema.
+  |Schema: ${S}
+  |Looking for: Entry["${Name0}", ${K0}, ${V0}]
+  |
+  |Possible causes:
+  |  - Table "${Name0}" doesn't exist in the schema
+  |  - Table exists but with different key/value types
+  |  - Table name doesn't match exactly (check spelling and case)
+  |  - Module hasn't been composed with the module containing this table
+  |
+  |To fix:
+  |  - Check that the table is defined in the module's schema
+  |  - Verify the key and value types match exactly
+  |  - If the table is in a dependency module, ensure modules are composed with extend
+  |  - Check the Lookup type parameters match the Entry definition"""
+)
 trait Lookup[S <: Tuple, Name0 <: String, K0, V0]:
   /** Extract the concrete StateTable instance from a Tables tuple.
     *
