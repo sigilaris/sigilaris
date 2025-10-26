@@ -553,21 +553,22 @@ Phase 5 — Assembly (PARTIAL: Core Patterns Proven, Advanced Features Experimen
   - ✅ Shared vs Sandboxed assembly examples in Phase5Spec
     - Shared: single mount, Lookup-based access (Phase 4 pattern)
     - Sandboxed: multiple mounts at different paths, verified isolation
-- **Experimental/Limited Features** (NOT Production-Ready)
+- **Limited Feature (Safe but Niche)**
   - ⚠️ `ModuleFactory`: **LIMITED** - safe signature but limited use cases (Module.scala:390-421)
     - ✅ **Fixed**: fromBlueprint now requires `Deps = EmptyTuple` (compile-time enforcement)
     - ✅ Prevents factory creation from blueprints with cross-module dependencies
     - ✅ Safe for: self-contained modules, sandboxed deployment (multiple paths)
     - ⚠️ **Limitation**: Useful only for modules without Phase 4 Lookup dependencies
     - **Recommendation**: Use direct mount or composeBlueprint for dependent modules
-  - ❌ `aggregate`: **UNSAFE - DO NOT USE** - fabricates evidence via casts (Module.scala:423-493)
-    - ❌ Manufactures SchemaMapper/PrefixFreePath/UniqueNames via `asInstanceOf`
-    - ❌ If factories reuse table names, compiles but extend fails at runtime
-    - ❌ Only works at same path (defeats purpose of "aggregating independent modules")
-    - ❌ Test only checks non-null (Phase5Spec:204-229), doesn't exercise unsafe paths
-    - **Status**: Should be internal/experimental-only or require explicit evidence from caller
-    - **BLOCKER**: Requires proper subset derivation (SchemaMapper[S1] from SchemaMapper[S1++S2])
-    - **ALTERNATIVE**: Use proven mount → extend pattern instead
+- **Removed from Public API** (Blocked on Subset Derivation)
+  - ❌ `aggregate`: **NOT A DELIVERABLE** - now `private[application]` (Module.scala:424-493)
+    - Made internal-only because it fabricates evidence via `asInstanceOf` casts
+    - **Blocker**: Requires proper subset derivation to be production-ready:
+      - `given deriveSubsetMapper[S1, S2]: SchemaMapper[F, Path, S1] from SchemaMapper[F, Path, S1 ++ S2]`
+      - `given deriveSubsetPrefixFree[S1, S2]: PrefixFreePath[Path, S1] from PrefixFreePath[Path, S1 ++ S2]`
+      - `given deriveUniqueNames[S1, S2]: UniqueNames[S1 ++ S2] from (UniqueNames[S1], UniqueNames[S2])`
+    - **Status**: Kept in codebase for future work, but hidden from public API
+    - **Use instead**: mount → extend pattern (production-ready, tested)
 - What Actually Works (Mount-then-extend Pattern)
   - ✅ Mount two blueprints independently at same path
   - ✅ Use extend to merge them: schemas (S1 ++ S2), transactions (T1 ++ T2), dependencies
@@ -577,20 +578,20 @@ Phase 5 — Assembly (PARTIAL: Core Patterns Proven, Advanced Features Experimen
   - ✅ Shared assembly: mount once, other modules access via Phase 4 Lookup
   - ✅ Isolated assembly: mount same blueprint at different paths for sandboxing
   - ✅ Tests verify table counts, isolation, and transaction execution
-- What Remains Limited
-  - ⚠️ aggregate: type-checks but uses unsafe casts (deferred, use extend instead)
-  - ⚠️ mergeReducers: error-based fallback may attempt both reducers for unhandled transactions
+- **Known Limitation** (mergeReducers)
+  - ⚠️ Error-based fallback may attempt both reducers for unhandled transactions
     - **Fixed**: no longer breaks on empty events (query-only transactions work)
     - **Limitation**: both reducers may be attempted, causing duplicate work
-    - **Production alternative**: Use ModuleRoutedTx for explicit routing
-- Production Recommendation (per Assembly Flow Guidance)
-  - **Prefer**: composeBlueprint (Phase 3) → mount (Phase 2)
-    - Single composition, single mount, all evidence derived correctly
-  - **Alternative**: mount each blueprint → extend for post-deployment merge
+    - **Production alternative**: Use ModuleRoutedTx for explicit routing (Phase 3)
+- **Production Recommendation**
+  - ✅ **Best**: composeBlueprint (Phase 3) → mount (Phase 2)
+    - Single composition, single mount, all evidence derived correctly at compile time
+  - ✅ **Good**: mount blueprint1 → mount blueprint2 → extend
     - Works when modules are independently mounted at same path
     - Proven with transaction execution tests (Phase5Spec)
-  - **Avoid**: aggregate (EXPERIMENTAL, unsafe casts, not independently usable)
-  - **Avoid**: ModuleFactory for modules with cross-module dependencies
+  - ✅ **Limited use**: ModuleFactory for self-contained modules only
+    - Safe signature (Deps = EmptyTuple enforced)
+    - Useful for sandboxed deployment (same module at different paths)
 - Optional Future Enhancements (not required for Phase 5)
   1. ✅ ~~Transaction execution tests for mergeReducers~~ (COMPLETED)
      - ✅ r1 succeeds → CreateAccount → AccountCreated event verified

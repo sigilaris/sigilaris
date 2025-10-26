@@ -423,32 +423,27 @@ object StateModule:
 
   /** Aggregate two module factories into a single factory.
     *
-    * ⚠️ **EXPERIMENTAL - UNSAFE - DO NOT USE IN PRODUCTION** ⚠️
+    * ⚠️ **INTERNAL/EXPERIMENTAL - NOT A PUBLIC API** ⚠️
     *
-    * **CRITICAL SAFETY ISSUES**:
-    *   - ❌ Fabricates evidence via `asInstanceOf` casts (SchemaMapper, PrefixFreePath, UniqueNames)
-    *   - ❌ If either factory reuses table names, compiles but fails at runtime in extend
-    *   - ❌ Cannot verify at compile time that schemas S1 and S2 are disjoint
-    *   - ❌ UniqueNames[S1 ++ S2] fabricated - no actual uniqueness check
-    *   - ❌ Only works at same path (defeats "aggregate independent modules" goal)
+    * This function is `private[application]` because it fabricates critical evidence
+    * via unsafe `asInstanceOf` casts. It will remain internal until proper subset
+    * derivation is implemented.
     *
-    * **WHY THIS EXISTS**:
-    *   - Phase 5 MVP demonstration of factory aggregation concept
-    *   - Requires proper subset derivation for production use:
-    *     - `given deriveSubsetMapper[S1, S2]: SchemaMapper[F, Path, S1] from SchemaMapper[F, Path, S1 ++ S2]`
-    *     - `given deriveSubsetPrefixFree[S1, S2]: PrefixFreePath[Path, S1] from PrefixFreePath[Path, S1 ++ S2]`
-    *     - `given deriveUniqueNames[S1, S2]: UniqueNames[S1 ++ S2] from (UniqueNames[S1], UniqueNames[S2])`
+    * **BLOCKER FOR PUBLIC USE**:
+    *   - Requires `given deriveSubsetMapper[S1, S2]: SchemaMapper[F, Path, S1] from SchemaMapper[F, Path, S1 ++ S2]`
+    *   - Requires `given deriveSubsetPrefixFree[S1, S2]: PrefixFreePath[Path, S1] from PrefixFreePath[Path, S1 ++ S2]`
+    *   - Requires `given deriveUniqueNames[S1, S2]: UniqueNames[S1 ++ S2] from (UniqueNames[S1], UniqueNames[S2])`
     *
-    * **REQUIRED PRECONDITIONS FOR SAFE USE** (not enforced):
-    *   1. S1 and S2 must have disjoint table names (UniqueNames[S1 ++ S2] must hold)
-    *   2. Both factories must be built at the same Path
-    *   3. Schemas must not conflict (no overlapping table definitions)
+    * **CURRENT UNSAFE IMPLEMENTATION**:
+    *   - ❌ Fabricates SchemaMapper[F, Path, S1] via `asInstanceOf`
+    *   - ❌ Fabricates PrefixFreePath[Path, S1] via `asInstanceOf`
+    *   - ❌ Fabricates UniqueNames[S1 ++ S2] via `asInstanceOf`
+    *   - ❌ If factories share table names → compiles but extend fails at runtime
+    *   - ❌ No compile-time verification of schema disjointness
     *
-    * **RECOMMENDED ALTERNATIVES** (use these instead):
-    *   - **Prefer**: `composeBlueprint` (Phase 3) → `mount` (Phase 2)
-    *     - Single composition, all evidence derived correctly at compile time
-    *   - **Alternative**: `mount` each blueprint → `extend` for post-deployment merge
-    *     - Proven pattern with transaction execution tests
+    * **USE THE PRODUCTION-READY ALTERNATIVE**:
+    *   - `mount` blueprint1 at path → `mount` blueprint2 at same path → `extend`
+    *   - Proven pattern with transaction execution tests (Phase5Spec)
     *
     * @tparam F the effect type
     * @tparam S1 first schema tuple
@@ -459,9 +454,8 @@ object StateModule:
     * @param m2 the second module factory
     * @return an aggregated module factory (UNSAFE - may fail at runtime)
     */
-  @deprecated("UNSAFE: Uses asInstanceOf casts for evidence. Use mount → extend pattern instead.", since = "0.1.0")
   @SuppressWarnings(Array("org.wartremover.warts.AsInstanceOf"))
-  def aggregate[F[_], S1 <: Tuple, S2 <: Tuple, T1 <: Tuple, T2 <: Tuple](
+  private[application] def aggregate[F[_], S1 <: Tuple, S2 <: Tuple, T1 <: Tuple, T2 <: Tuple](
       m1: ModuleFactory[F, S1, T1],
       m2: ModuleFactory[F, S2, T2],
   ): ModuleFactory[F, S1 ++ S2, T1 ++ T2] =

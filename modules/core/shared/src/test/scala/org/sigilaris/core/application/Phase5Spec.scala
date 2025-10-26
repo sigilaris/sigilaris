@@ -201,7 +201,7 @@ class Phase5Spec extends FunSuite:
     // The tables are independent - different prefixes mean isolated state
     // This is verified by the prefix encoding in PathEncoding
 
-  test("aggregate: DEPRECATED/EXPERIMENTAL - compilation only"):
+  test("Factory pattern: build at same path, then extend"):
     given merkle.MerkleTrie.NodeStore[SyncIO] = createNodeStore()
     given cats.Monad[SyncIO] = cats.effect.Sync[SyncIO]
 
@@ -211,23 +211,17 @@ class Phase5Spec extends FunSuite:
     val accountsFactory = StateModule.ModuleFactory.fromBlueprint(accountsBP)
     val groupFactory = StateModule.ModuleFactory.fromBlueprint(groupBP)
 
-    // ⚠️ EXPERIMENTAL: aggregate is deprecated and unsafe (uses asInstanceOf casts)
-    // This test only verifies compilation - does NOT exercise the unsafe evidence paths
-    // DO NOT use aggregate in production - use mount → extend pattern instead
-    @annotation.nowarn("msg=deprecated")
-    val aggregated = StateModule.aggregate(accountsFactory, groupFactory)
-
-    // Verify it returns a factory (but don't call build - would hit unsafe casts)
-    assert(aggregated != null)
-
-    // ✅ RECOMMENDED PATTERN: Use extend instead of aggregate
+    // ✅ PRODUCTION-READY PATTERN: Build factories at same path, then extend
     // This is the proven, safe approach with transaction execution tests
     val accounts = accountsFactory.build[("app" *: EmptyTuple)]
     val group = groupFactory.build[("app" *: EmptyTuple)]
     val extended = StateModule.extend(accounts, group)
 
-    // Verify combined module has tables from both (proven safe pattern)
+    // Verify combined module has tables from both
     assertEquals(extended.tables.size, 4)
+
+    // Note: StateModule.aggregate exists but is private[application] (fabricates evidence)
+    // It remains internal until proper subset derivation is implemented
 
   test("Reducer merging: r1 succeeds - transaction executed and result returned"):
     given merkle.MerkleTrie.NodeStore[SyncIO] = createNodeStore()
