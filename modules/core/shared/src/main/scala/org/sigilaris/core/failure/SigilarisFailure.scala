@@ -35,6 +35,13 @@ final case class ParseFailure(msg: String) extends SigilarisFailure
   */
 final case class TrieFailure(msg: String) extends SigilarisFailure
 
+/** Transaction routing failed (e.g., module not found in composed blueprint).
+  *
+  * @param msg
+  *   the routing error description
+  */
+final case class RoutingFailure(msg: String) extends SigilarisFailure
+
 // UInt256-specific failures must live in this file to satisfy the `sealed` restriction
 sealed trait UInt256Failure extends SigilarisFailure
 

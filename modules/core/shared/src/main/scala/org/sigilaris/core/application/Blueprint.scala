@@ -1,7 +1,10 @@
 package org.sigilaris.core
 package application
 
+import cats.data.{EitherT, StateT}
 import cats.syntax.eq.*
+import failure.RoutingFailure
+import util.SafeStringInterp.ss
 
 /** Path-agnostic state reducer.
   *
@@ -209,8 +212,8 @@ object Blueprint:
     * @param uniqueNames evidence that combined schema has unique names
     * @return a ComposedBlueprint with RoutedStateReducer0
     */
-  @SuppressWarnings(Array("org.wartremover.warts.AsInstanceOf", "org.wartremover.warts.Throw"))
-  def composeBlueprint[F[_], MOut <: String,
+  @SuppressWarnings(Array("org.wartremover.warts.AsInstanceOf"))
+  def composeBlueprint[F[_]: cats.Monad, MOut <: String,
     M1 <: String, S1 <: Tuple, T1 <: Tuple, D1 <: Tuple,
     M2 <: String, S2 <: Tuple, T2 <: Tuple, D2 <: Tuple,
   ](
@@ -232,7 +235,7 @@ object Blueprint:
     // The composed reducer requires ModuleRoutedTx at compile time
     val routedReducer = new RoutedStateReducer0[F, S1 ++ S2]:
       // Specialized apply for routed transactions
-      @SuppressWarnings(Array("org.wartremover.warts.AsInstanceOf", "org.wartremover.warts.Any"))
+      @SuppressWarnings(Array("org.wartremover.warts.AsInstanceOf"))
       def apply[T <: Tx & ModuleRoutedTx](tx: T)(using
           requiresReads: Requires[tx.Reads, S1 ++ S2],
           requiresWrites: Requires[tx.Writes, S1 ++ S2],
@@ -254,9 +257,9 @@ object Blueprint:
         else
           val msg1: String = m1Name
           val msg2: String = m2Name
-          throw new IllegalArgumentException(
-            s"TxRouteMissing: module '$pathHead' does not match '$msg1' or '$msg2'"
-          )
+          StateT.liftF:
+            EitherT.leftT[F, (tx.Result, List[tx.Event])]:
+              RoutingFailure(ss"TxRouteMissing: module '$pathHead' does not match '$msg1' or '$msg2'")
 
     // Union transaction registries
     val combinedTxs: TxRegistry[T1 ++ T2] = a.txs.combine(b.txs)

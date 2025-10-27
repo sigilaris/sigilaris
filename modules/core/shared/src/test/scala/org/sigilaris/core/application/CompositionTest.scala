@@ -7,6 +7,7 @@ import cats.data.{EitherT, Kleisli, StateT}
 import munit.FunSuite
 
 import datatype.Utf8
+import failure.RoutingFailure
 import merkle.{MerkleTrie, MerkleTrieNode}
 
 @SuppressWarnings(Array("org.wartremover.warts.Null", "org.wartremover.warts.AsInstanceOf"))
@@ -265,11 +266,19 @@ class CompositionTest extends FunSuite:
     val composed = Blueprint.composeBlueprint[Id, "combined", "module1", Schema1, EmptyTuple, EmptyTuple, "module2", Schema2, EmptyTuple, EmptyTuple](bp1, bp2)
 
     val tx = WrongPathTx()
-    intercept[IllegalArgumentException]:
-      composed.reducer0.apply(tx)(using
-        summon[Requires[tx.Reads, Schema1 ++ Schema2]],
-        summon[Requires[tx.Writes, Schema1 ++ Schema2]],
-      ).run(null).value
+    val result = composed.reducer0.apply(tx)(using
+      summon[Requires[tx.Reads, Schema1 ++ Schema2]],
+      summon[Requires[tx.Writes, Schema1 ++ Schema2]],
+    ).run(null).value
+
+    result match
+      case Left(failure: RoutingFailure) =>
+        assert(failure.msg.contains("module3"), s"Expected error message to mention 'module3' but got: ${failure.msg}")
+        assert(failure.msg.contains("TxRouteMissing"), s"Expected error message to contain 'TxRouteMissing' but got: ${failure.msg}")
+      case Left(other) =>
+        fail(s"Expected RoutingFailure but got ${other.getClass}: ${other.msg}")
+      case Right(_) =>
+        fail("Expected Left for wrong module path but got Right")
 
   test("tupleConcat produces flat concatenation"):
     val tuple1 = ("a", 1) *: EmptyTuple
