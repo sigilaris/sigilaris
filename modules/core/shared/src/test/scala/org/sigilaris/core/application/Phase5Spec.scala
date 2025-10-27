@@ -25,50 +25,22 @@ import codec.byte.ByteCodec
   */
 class Phase5Spec extends FunSuite:
 
-  // Define sample types for testing
-  import scodec.bits.ByteVector
-  import codec.byte.{ByteEncoder, ByteDecoder}
-  import codec.byte.DecodeResult
-  import cats.syntax.either.*
+  // Use built-in types with existing codecs - no custom codec implementation needed!
+  import datatype.{Utf8, BigNat}
 
-  case class Address(bytes: ByteVector)
-  case class Account(bytes: ByteVector)
-  case class Balance(amount: BigInt)
-  case class GroupInfo(bytes: ByteVector)
-
-  // ByteCodec instances
-  given ByteCodec[ByteVector] = new ByteCodec[ByteVector]:
-    def encode(value: ByteVector): ByteVector = value
-    def decode(bytes: ByteVector) = DecodeResult(bytes, ByteVector.empty).asRight
-
-  given ByteCodec[Address] = new ByteCodec[Address]:
-    def encode(value: Address): ByteVector = value.bytes
-    def decode(bytes: ByteVector) = DecodeResult(Address(bytes), ByteVector.empty).asRight
-
-  given ByteCodec[Account] = new ByteCodec[Account]:
-    def encode(value: Account): ByteVector = value.bytes
-    def decode(bytes: ByteVector) = DecodeResult(Account(bytes), ByteVector.empty).asRight
-
-  given ByteCodec[Balance] = new ByteCodec[Balance]:
-    def encode(value: Balance): ByteVector = ByteEncoder.bigintByteEncoder.encode(value.amount)
-    def decode(bytes: ByteVector) =
-      ByteDecoder.bigintByteDecoder.decode(bytes).map(r => r.copy(value = Balance(r.value)))
-
-  given ByteCodec[BigInt] = new ByteCodec[BigInt]:
-    def encode(value: BigInt): ByteVector = ByteEncoder.bigintByteEncoder.encode(value)
-    def decode(bytes: ByteVector) = ByteDecoder.bigintByteDecoder.decode(bytes)
-
-  given ByteCodec[GroupInfo] = new ByteCodec[GroupInfo]:
-    def encode(value: GroupInfo): ByteVector = value.bytes
-    def decode(bytes: ByteVector) = DecodeResult(GroupInfo(bytes), ByteVector.empty).asRight
+  // Define sample types - codecs will be auto-derived from field codecs
+  case class Address(value: Utf8)
+  case class Account(data: Utf8)
+  case class Balance(amount: BigNat)
+  case class GroupInfo(info: Utf8)
 
   // Define sample schemas
   type AccountsSchema = Entry["accounts", Address, Account] *:
-                         Entry["balances", Address, BigInt] *:
+                         Entry["balances", Address, BigNat] *:
                          EmptyTuple
 
   type GroupSchema = Entry["groups", Address, GroupInfo] *:
-                      Entry["members", Address, BigInt] *:
+                      Entry["members", Address, BigNat] *:
                       EmptyTuple
 
   // Sample transactions
@@ -99,7 +71,7 @@ class Phase5Spec extends FunSuite:
   // Helper to create sample blueprints
   def createAccountsBlueprint(): ModuleBlueprint[SyncIO, "accounts", AccountsSchema, EmptyTuple, EmptyTuple] =
     val accountsEntry = Entry["accounts", Address, Account]
-    val balancesEntry = Entry["balances", Address, BigInt]
+    val balancesEntry = Entry["balances", Address, BigNat]
     val schema: AccountsSchema = (accountsEntry, balancesEntry)
 
     val reducer = new StateReducer0[SyncIO, AccountsSchema]:
@@ -120,7 +92,7 @@ class Phase5Spec extends FunSuite:
 
   def createGroupBlueprint(): ModuleBlueprint[SyncIO, "group", GroupSchema, EmptyTuple, EmptyTuple] =
     val groupsEntry = Entry["groups", Address, GroupInfo]
-    val membersEntry = Entry["members", Address, BigInt]
+    val membersEntry = Entry["members", Address, BigNat]
     val schema: GroupSchema = (groupsEntry, membersEntry)
 
     val reducer = new StateReducer0[SyncIO, GroupSchema]:
@@ -227,7 +199,7 @@ class Phase5Spec extends FunSuite:
 
     // Create blueprints with actual transaction handling
     val accountsEntry = Entry["accounts", Address, Account]
-    val balancesEntry = Entry["balances", Address, BigInt]
+    val balancesEntry = Entry["balances", Address, BigNat]
     val accountsSchema: AccountsSchema = (accountsEntry, balancesEntry)
 
     val accountsReducer = new StateReducer0[SyncIO, AccountsSchema]:
@@ -252,7 +224,7 @@ class Phase5Spec extends FunSuite:
     )
 
     val groupsEntry = Entry["groups", Address, GroupInfo]
-    val membersEntry = Entry["members", Address, BigInt]
+    val membersEntry = Entry["members", Address, BigNat]
     val groupSchema: GroupSchema = (groupsEntry, membersEntry)
 
     val groupReducer = new StateReducer0[SyncIO, GroupSchema]:
@@ -276,7 +248,7 @@ class Phase5Spec extends FunSuite:
     val extended = StateModule.extend(accountsModule, groupModule)
 
     // Execute a transaction through the merged reducer
-    val tx = CreateAccount(Address(ByteVector(0x01)), Account(ByteVector(0xaa)))
+    val tx = CreateAccount(Address(Utf8("addr1")), Account(Utf8("account1")))
     val initialState = merkle.MerkleTrieState.empty
 
     val result = extended.reducer.apply(tx).run(initialState).value.unsafeRunSync()
@@ -287,7 +259,7 @@ class Phase5Spec extends FunSuite:
         assertEquals(events.length, 1)
         assert(events.head.isInstanceOf[AccountCreated])
         val event = events.head.asInstanceOf[AccountCreated]
-        assertEquals(event.address, Address(ByteVector(0x01)))
+        assertEquals(event.address, Address(Utf8("addr1")))
       case Left(error) =>
         fail(s"Transaction execution failed: $error")
 
@@ -297,7 +269,7 @@ class Phase5Spec extends FunSuite:
 
     // Create accounts blueprint that will fail on CreateGroup
     val accountsEntry = Entry["accounts", Address, Account]
-    val balancesEntry = Entry["balances", Address, BigInt]
+    val balancesEntry = Entry["balances", Address, BigNat]
     val accountsSchema: AccountsSchema = (accountsEntry, balancesEntry)
 
     val accountsReducer = new StateReducer0[SyncIO, AccountsSchema]:
@@ -326,7 +298,7 @@ class Phase5Spec extends FunSuite:
 
     // Create group blueprint that will succeed on CreateGroup
     val groupsEntry = Entry["groups", Address, GroupInfo]
-    val membersEntry = Entry["members", Address, BigInt]
+    val membersEntry = Entry["members", Address, BigNat]
     val groupSchema: GroupSchema = (groupsEntry, membersEntry)
 
     val groupReducer = new StateReducer0[SyncIO, GroupSchema]:
@@ -356,7 +328,7 @@ class Phase5Spec extends FunSuite:
     val extended = StateModule.extend(accountsModule, groupModule)
 
     // Execute a CreateGroup transaction - should fallback to r2
-    val tx = CreateGroup(Address(ByteVector(0x02)), GroupInfo(ByteVector(0xbb)))
+    val tx = CreateGroup(Address(Utf8("addr2")), GroupInfo(Utf8("group1")))
     val initialState = merkle.MerkleTrieState.empty
 
     val result = extended.reducer.apply(tx).run(initialState).value.unsafeRunSync()
@@ -367,7 +339,7 @@ class Phase5Spec extends FunSuite:
         assertEquals(events.length, 1)
         assert(events.head.isInstanceOf[GroupCreated])
         val event = events.head.asInstanceOf[GroupCreated]
-        assertEquals(event.address, Address(ByteVector(0x02)))
+        assertEquals(event.address, Address(Utf8("addr2")))
       case Left(error) =>
         fail(s"Transaction execution failed: $error")
 
@@ -376,7 +348,7 @@ class Phase5Spec extends FunSuite:
     given cats.Monad[SyncIO] = cats.effect.Sync[SyncIO]
 
     val accountsEntry = Entry["accounts", Address, Account]
-    val balancesEntry = Entry["balances", Address, BigInt]
+    val balancesEntry = Entry["balances", Address, BigNat]
     val accountsSchema: AccountsSchema = (accountsEntry, balancesEntry)
 
     // r1 always succeeds but returns NO events (e.g., a query operation)
@@ -397,7 +369,7 @@ class Phase5Spec extends FunSuite:
     )
 
     val groupsEntry = Entry["groups", Address, GroupInfo]
-    val membersEntry = Entry["members", Address, BigInt]
+    val membersEntry = Entry["members", Address, BigNat]
     val groupSchema: GroupSchema = (groupsEntry, membersEntry)
 
     // r2 should NOT be called if r1 succeeds
@@ -424,7 +396,7 @@ class Phase5Spec extends FunSuite:
     val extended = StateModule.extend(accountsModule, groupModule)
 
     // Execute CreateAccount - should succeed in r1 with empty events, NOT fallback to r2
-    val tx = CreateAccount(Address(ByteVector(0x03)), Account(ByteVector(0xcc)))
+    val tx = CreateAccount(Address(Utf8("addr3")), Account(Utf8("account3")))
     val initialState = merkle.MerkleTrieState.empty
 
     val result = extended.reducer.apply(tx).run(initialState).value.unsafeRunSync()
