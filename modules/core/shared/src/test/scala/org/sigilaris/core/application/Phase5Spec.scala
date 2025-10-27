@@ -146,8 +146,8 @@ class Phase5Spec extends FunSuite:
     val accountsBP = createAccountsBlueprint()
     val groupBP = createGroupBlueprint()
 
-    val accountsModule = StateModule.mount[SyncIO, "accounts", ("app" *: EmptyTuple), AccountsSchema, EmptyTuple, EmptyTuple](accountsBP)
-    val groupModule = StateModule.mount[SyncIO, "group", ("app" *: EmptyTuple), GroupSchema, EmptyTuple, EmptyTuple](groupBP)
+    val accountsModule = StateModule.mount[("app" *: EmptyTuple)](accountsBP)
+    val groupModule = StateModule.mount[("app" *: EmptyTuple)](groupBP)
 
     // Extend them
     val extended = StateModule.extend(accountsModule, groupModule)
@@ -174,7 +174,7 @@ class Phase5Spec extends FunSuite:
     // Mount accounts once
     val accountsBP = createAccountsBlueprint()
 
-    val accountsModule = StateModule.mount[SyncIO, "accounts", ("app" *: EmptyTuple), AccountsSchema, EmptyTuple, EmptyTuple](accountsBP)
+    val accountsModule = StateModule.mount[("app" *: EmptyTuple)](accountsBP)
 
     // Verify tables exist and can be accessed
     val tables = accountsModule.tables
@@ -270,8 +270,8 @@ class Phase5Spec extends FunSuite:
       deps = EmptyTuple,
     )
 
-    val accountsModule = StateModule.mount[SyncIO, "accounts", ("app" *: EmptyTuple), AccountsSchema, EmptyTuple, EmptyTuple](accountsBP)
-    val groupModule = StateModule.mount[SyncIO, "group", ("app" *: EmptyTuple), GroupSchema, EmptyTuple, EmptyTuple](groupBP)
+    val accountsModule = StateModule.mount[("app" *: EmptyTuple)](accountsBP)
+    val groupModule = StateModule.mount[("app" *: EmptyTuple)](groupBP)
 
     val extended = StateModule.extend(accountsModule, groupModule)
 
@@ -350,8 +350,8 @@ class Phase5Spec extends FunSuite:
       deps = EmptyTuple,
     )
 
-    val accountsModule = StateModule.mount[SyncIO, "accounts", ("app" *: EmptyTuple), AccountsSchema, EmptyTuple, EmptyTuple](accountsBP)
-    val groupModule = StateModule.mount[SyncIO, "group", ("app" *: EmptyTuple), GroupSchema, EmptyTuple, EmptyTuple](groupBP)
+    val accountsModule = StateModule.mount[("app" *: EmptyTuple)](accountsBP)
+    val groupModule = StateModule.mount[("app" *: EmptyTuple)](groupBP)
 
     val extended = StateModule.extend(accountsModule, groupModule)
 
@@ -418,8 +418,8 @@ class Phase5Spec extends FunSuite:
       deps = EmptyTuple,
     )
 
-    val accountsModule = StateModule.mount[SyncIO, "accounts", ("app" *: EmptyTuple), AccountsSchema, EmptyTuple, EmptyTuple](accountsBP)
-    val groupModule = StateModule.mount[SyncIO, "group", ("app" *: EmptyTuple), GroupSchema, EmptyTuple, EmptyTuple](groupBP)
+    val accountsModule = StateModule.mount[("app" *: EmptyTuple)](accountsBP)
+    val groupModule = StateModule.mount[("app" *: EmptyTuple)](groupBP)
 
     val extended = StateModule.extend(accountsModule, groupModule)
 

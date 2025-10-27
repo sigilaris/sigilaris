@@ -114,12 +114,10 @@ object StateModule:
     * Each mount produces a completely independent set of tables, ensuring that
     * mounting the same blueprint at different paths results in isolated keyspaces.
     *
-    * @tparam F the effect type
-    * @tparam MName the module name
-    * @tparam Path the mount path
-    * @tparam Schema the schema tuple
-    * @tparam Txs the transaction types tuple
-    * @tparam Deps the dependency types tuple
+    * Type inference: Only Path needs to be specified explicitly. All other types
+    * (F, MName, Schema, Txs, Deps) are inferred from the blueprint parameter.
+    *
+    * @tparam Path the mount path (only type parameter that needs explicit specification)
     * @param blueprint the module blueprint to mount
     * @param monad the Monad instance for F (used by SchemaMapper derivation)
     * @param prefixFreePath evidence that the path+schema combination is prefix-free
@@ -127,7 +125,26 @@ object StateModule:
     * @param schemaMapper the schema mapper for instantiating tables
     * @return a mounted state module with path-bound tables
     */
-  def mount[F[_], MName <: String, Path <: Tuple, Schema <: Tuple, Txs <: Tuple, Deps <: Tuple](
+  @SuppressWarnings(Array("org.wartremover.warts.AsInstanceOf"))
+  def mount[Path <: Tuple](
+      blueprint: ModuleBlueprint[?, ?, ?, ?, ?],
+  )(using
+      @annotation.unused monad: Monad[blueprint.EffectType],
+      prefixFreePath: PrefixFreePath[Path, blueprint.SchemaType],
+      @annotation.unused nodeStore: MerkleTrie.NodeStore[blueprint.EffectType],
+      schemaMapper: SchemaMapper[blueprint.EffectType, Path, blueprint.SchemaType],
+  ): StateModule[blueprint.EffectType, Path, blueprint.SchemaType, blueprint.TxsType, blueprint.DepsType, StateReducer[blueprint.EffectType, Path, blueprint.SchemaType]] =
+    type F[A] = blueprint.EffectType[A]
+    type MName = blueprint.ModuleName
+    type Schema = blueprint.SchemaType
+    type Txs = blueprint.TxsType
+    type Deps = blueprint.DepsType
+
+    mountImpl[F, MName, Path, Schema, Txs, Deps](
+      blueprint.asInstanceOf[ModuleBlueprint[F, MName, Schema, Txs, Deps]]
+    )
+
+  private def mountImpl[F[_], MName <: String, Path <: Tuple, Schema <: Tuple, Txs <: Tuple, Deps <: Tuple](
       blueprint: ModuleBlueprint[F, MName, Schema, Txs, Deps],
   )(using
       @annotation.unused monad: Monad[F],
@@ -164,12 +181,10 @@ object StateModule:
     * RoutedStateReducer, preserving the compile-time type safety requirement for
     * ModuleRoutedTx throughout the entire stack.
     *
-    * @tparam F the effect type
-    * @tparam MName the module name
-    * @tparam Path the mount path
-    * @tparam Schema the schema tuple
-    * @tparam Txs the transaction types tuple
-    * @tparam Deps the dependency types tuple
+    * Type inference: Only Path needs to be specified explicitly. All other types
+    * (F, MName, Schema, Txs, Deps) are inferred from the blueprint parameter.
+    *
+    * @tparam Path the mount path (only type parameter that needs explicit specification)
     * @param blueprint the composed blueprint to mount
     * @param monad the Monad instance for F
     * @param prefixFreePath evidence that the path+schema combination is prefix-free
@@ -177,7 +192,26 @@ object StateModule:
     * @param schemaMapper the schema mapper for instantiating tables
     * @return a mounted state module with RoutedStateReducer (compile-time safe)
     */
-  def mountComposed[F[_], MName <: String, Path <: Tuple, Schema <: Tuple, Txs <: Tuple, Deps <: Tuple](
+  @SuppressWarnings(Array("org.wartremover.warts.AsInstanceOf"))
+  def mountComposed[Path <: Tuple](
+      blueprint: ComposedBlueprint[?, ?, ?, ?, ?],
+  )(using
+      @annotation.unused monad: Monad[blueprint.EffectType],
+      prefixFreePath: PrefixFreePath[Path, blueprint.SchemaType],
+      @annotation.unused nodeStore: MerkleTrie.NodeStore[blueprint.EffectType],
+      schemaMapper: SchemaMapper[blueprint.EffectType, Path, blueprint.SchemaType],
+  ): StateModule[blueprint.EffectType, Path, blueprint.SchemaType, blueprint.TxsType, blueprint.DepsType, RoutedStateReducer[blueprint.EffectType, Path, blueprint.SchemaType]] =
+    type F[A] = blueprint.EffectType[A]
+    type MName = blueprint.ModuleName
+    type Schema = blueprint.SchemaType
+    type Txs = blueprint.TxsType
+    type Deps = blueprint.DepsType
+
+    mountComposedImpl[F, MName, Path, Schema, Txs, Deps](
+      blueprint.asInstanceOf[ComposedBlueprint[F, MName, Schema, Txs, Deps]]
+    )
+
+  private def mountComposedImpl[F[_], MName <: String, Path <: Tuple, Schema <: Tuple, Txs <: Tuple, Deps <: Tuple](
       blueprint: ComposedBlueprint[F, MName, Schema, Txs, Deps],
   )(using
       @annotation.unused monad: Monad[F],
@@ -417,6 +451,4 @@ object StateModule:
             schemaMapper: SchemaMapper[F, Path, Schema],
         ): StateModule[F, Path, Schema, Txs, EmptyTuple, StateReducer[F, Path, Schema]] =
           // Mount the blueprint - dependencies are already EmptyTuple
-          val mounted = StateModule.mount[F, MName, Path, Schema, Txs, EmptyTuple](blueprint)
-          // Return the mounted module directly (already has EmptyTuple deps)
-          mounted
+          StateModule.mount[Path](blueprint)

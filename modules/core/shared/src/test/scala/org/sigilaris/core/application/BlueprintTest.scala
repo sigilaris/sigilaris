@@ -47,7 +47,7 @@ class BlueprintTest extends FunSuite:
 
     // Mount at path ("app", "v1")
     type Path1 = ("app", "v1")
-    val module1 = StateModule.mount[Id, "simple", Path1, SimpleSchema, EmptyTuple, EmptyTuple](blueprint)
+    val module1 = StateModule.mount[Path1](blueprint)
 
     // Verify module is created
     assert(module1 != null)
@@ -61,8 +61,8 @@ class BlueprintTest extends FunSuite:
     type Path1 = ("app", "v1")
     type Path2 = ("app", "v2")
 
-    val module1 = StateModule.mount[Id, "simple", Path1, SimpleSchema, EmptyTuple, EmptyTuple](blueprint)
-    val module2 = StateModule.mount[Id, "simple", Path2, SimpleSchema, EmptyTuple, EmptyTuple](blueprint)
+    val module1 = StateModule.mount[Path1](blueprint)
+    val module2 = StateModule.mount[Path2](blueprint)
 
     // Verify they are different instances
     assert(module1 ne module2, "Modules should be different instances")
@@ -188,8 +188,8 @@ class BlueprintTest extends FunSuite:
     type Path1 = ("app", "v1")
     type Path2 = ("app", "v2")
 
-    val module1 = StateModule.mount[Id, "simple", Path1, SimpleSchema, EmptyTuple, EmptyTuple](blueprint)
-    val module2 = StateModule.mount[Id, "simple", Path2, SimpleSchema, EmptyTuple, EmptyTuple](blueprint)
+    val module1 = StateModule.mount[Path1](blueprint)
+    val module2 = StateModule.mount[Path2](blueprint)
 
     // Extract the first (and only) table from each module
     // The type is Tables[Id, SimpleSchema] = TableOf[Id, BalancesEntry] *: EmptyTuple
@@ -222,7 +222,7 @@ class BlueprintTest extends FunSuite:
     val blueprint = createSimpleBlueprint()
 
     type Path = ("app", "prod")
-    val module = StateModule.mount[Id, "simple", Path, SimpleSchema, EmptyTuple, EmptyTuple](blueprint)
+    val module = StateModule.mount[Path](blueprint)
 
     // The expected prefix for "balances" table at path ("app", "prod")
     val expectedPrefix = tablePrefix[Path, "balances"]

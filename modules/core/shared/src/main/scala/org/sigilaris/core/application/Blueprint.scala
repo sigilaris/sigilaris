@@ -80,6 +80,7 @@ trait RoutedStateReducer0[F[_], Schema <: Tuple]:
   * @tparam R the reducer type (covariant)
   */
 sealed trait Blueprint[F[_], MName <: String, Schema <: Tuple, Txs <: Tuple, Deps <: Tuple, +R]:
+  type EffectType[A] = F[A]
   type ModuleName = MName
   type SchemaType = Schema
   type TxsType = Txs
@@ -334,4 +335,4 @@ object Blueprint:
     @annotation.unused nodeStore: merkle.MerkleTrie.NodeStore[F],
     schemaMapper: SchemaMapper[F, Base ++ Sub, Schema],
   ): StateModule[F, Base ++ Sub, Schema, Txs, Deps, StateReducer[F, Base ++ Sub, Schema]] =
-    StateModule.mount[F, MName, Base ++ Sub, Schema, Txs, Deps](blueprint)
+    StateModule.mount[Base ++ Sub](blueprint)

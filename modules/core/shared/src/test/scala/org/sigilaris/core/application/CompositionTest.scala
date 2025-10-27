@@ -94,8 +94,7 @@ class CompositionTest extends FunSuite:
 
     // Should be able to mount composed blueprint using mountComposed
     type Path = "app" *: EmptyTuple
-    type Combined = Schema1 ++ Schema2
-    val module = StateModule.mountComposed[Id, "combined", Path, Combined, EmptyTuple, EmptyTuple](composed)
+    val module = StateModule.mountComposed[Path](composed)
 
     // Verify tables are created
     assertEquals(module.tables.size, 2)
