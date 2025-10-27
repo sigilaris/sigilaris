@@ -51,9 +51,9 @@ class Phase4Spec extends FunSuite:
 
   test("Requires evidence: single entry requires that entry in schema"):
     // These should compile - the required entry exists in the schema
-    summon[Requires[Entry["accounts", Address, Account] *: EmptyTuple, AccountsSchema]]
-    summon[Requires[Entry["balances", Address, BigNat] *: EmptyTuple, AccountsSchema]]
-    summon[Requires[Entry["tokens", Address, TokenInfo] *: EmptyTuple, TokenSchema]]
+    summon[Requires[EntryTuple["accounts", Address, Account], AccountsSchema]]
+    summon[Requires[EntryTuple["balances", Address, BigNat], AccountsSchema]]
+    summon[Requires[EntryTuple["tokens", Address, TokenInfo], TokenSchema]]
 
   test("Requires evidence: multiple entries require all in schema"):
     // This should compile - both required entries exist in AccountsSchema
@@ -65,7 +65,7 @@ class Phase4Spec extends FunSuite:
 
   test("Requires evidence: fails when entry missing from schema"):
     // These compile errors verify that Requires rejects schemas missing required entries
-    val err1 = compileErrors("summon[Requires[Entry[\"tokens\", Address, TokenInfo] *: EmptyTuple, AccountsSchema]]")
+    val err1 = compileErrors("summon[Requires[EntryTuple[\"tokens\", Address, TokenInfo], AccountsSchema]]")
     assert(err1.contains("Cannot prove that all required tables are in the schema"))
     assert(err1.contains("Required tables"))
     assert(err1.contains("Available schema"))
@@ -168,9 +168,9 @@ class Phase4Spec extends FunSuite:
     // Simulate a reducer that reads from Accounts and writes to Token
     // This demonstrates the Phase 4 requirement: "read from Accounts, write to Token using branded keys"
     def crossModuleOperation(using
-        accountsReq: Requires[Entry["accounts", Address, Account] *: EmptyTuple, CombinedSchema],
-        balancesReq: Requires[Entry["balances", Address, BigNat] *: EmptyTuple, CombinedSchema],
-        tokensReq: Requires[Entry["tokens", Address, TokenInfo] *: EmptyTuple, CombinedSchema],
+        accountsReq: Requires[EntryTuple["accounts", Address, Account], CombinedSchema],
+        balancesReq: Requires[EntryTuple["balances", Address, BigNat], CombinedSchema],
+        tokensReq: Requires[EntryTuple["tokens", Address, TokenInfo], CombinedSchema],
     )(using
         accountsLookup: Lookup[CombinedSchema, "accounts", Address, Account],
         balancesLookup: Lookup[CombinedSchema, "balances", Address, BigNat],

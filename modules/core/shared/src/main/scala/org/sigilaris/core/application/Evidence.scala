@@ -85,8 +85,8 @@ object UniqueNames:
     new UniqueNames[EmptyTuple] {}
 
   /** Single entry trivially has unique names. */
-  given singleUnique[Name <: String, K, V]: UniqueNames[Entry[Name, K, V] *: EmptyTuple] =
-    new UniqueNames[Entry[Name, K, V] *: EmptyTuple] {}
+  given singleUnique[Name <: String, K, V]: UniqueNames[EntryTuple[Name, K, V]] =
+    new UniqueNames[EntryTuple[Name, K, V]] {}
 
   /** Inductive case: if head name is not in tail and tail is unique,
     * then head *: tail is unique.
@@ -187,8 +187,8 @@ object PrefixFreePath:
     new PrefixFreePath[Path, EmptyTuple] {}
 
   /** Single entry trivially has no prefix collisions. */
-  given singlePrefixFree[Path <: Tuple, Name <: String, K, V]: PrefixFreePath[Path, Entry[Name, K, V] *: EmptyTuple] =
-    new PrefixFreePath[Path, Entry[Name, K, V] *: EmptyTuple] {}
+  given singlePrefixFree[Path <: Tuple, Name <: String, K, V]: PrefixFreePath[Path, EntryTuple[Name, K, V]] =
+    new PrefixFreePath[Path, EntryTuple[Name, K, V]] {}
 
   /** Inductive case: if head prefix doesn't collide with tail prefixes and tail is prefix-free,
     * then head *: tail is prefix-free.

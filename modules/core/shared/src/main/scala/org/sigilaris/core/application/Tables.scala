@@ -1,6 +1,24 @@
 package org.sigilaris.core
 package application
 
+/** Type alias for a single-element string tuple.
+  *
+  * Simplifies common pattern `"name" *: EmptyTuple` to `Path["name"]`.
+  *
+  * @tparam S the string literal type
+  */
+type Path[S <: String] = S *: EmptyTuple
+
+/** Type alias for a single-entry schema tuple.
+  *
+  * Simplifies common pattern `Entry["name", K, V] *: EmptyTuple` to `EntryTuple["name", K, V]`.
+  *
+  * @tparam N the table name
+  * @tparam K the key type
+  * @tparam V the value type
+  */
+type EntryTuple[N <: String, K, V] = Entry[N, K, V] *: EmptyTuple
+
 /** Type-level mapping from an Entry to its corresponding StateTable type.
   *
   * This match type converts schema entries (Entry[Name, K, V]) into their

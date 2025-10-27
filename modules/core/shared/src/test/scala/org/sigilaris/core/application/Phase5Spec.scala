@@ -46,7 +46,7 @@ class Phase5Spec extends FunSuite:
   // Sample transactions
   case class CreateAccount(address: Address, account: Account) extends Tx:
     type Reads = EmptyTuple
-    type Writes = Entry["accounts", Address, Account] *: EmptyTuple
+    type Writes = EntryTuple["accounts", Address, Account]
     type Result = Unit
     type Event = AccountCreated
 
@@ -54,7 +54,7 @@ class Phase5Spec extends FunSuite:
 
   case class CreateGroup(address: Address, group: GroupInfo) extends Tx:
     type Reads = EmptyTuple
-    type Writes = Entry["groups", Address, GroupInfo] *: EmptyTuple
+    type Writes = EntryTuple["groups", Address, GroupInfo]
     type Result = Unit
     type Event = GroupCreated
 
@@ -118,8 +118,8 @@ class Phase5Spec extends FunSuite:
     val accountsBP = createAccountsBlueprint()
     val groupBP = createGroupBlueprint()
 
-    val accountsModule = StateModule.mount[("app" *: EmptyTuple)](accountsBP)
-    val groupModule = StateModule.mount[("app" *: EmptyTuple)](groupBP)
+    val accountsModule = StateModule.mount[Path["app"]](accountsBP)
+    val groupModule = StateModule.mount[Path["app"]](groupBP)
 
     // Extend them
     val extended = StateModule.extend(accountsModule, groupModule)
@@ -136,7 +136,7 @@ class Phase5Spec extends FunSuite:
     val factory = StateModule.ModuleFactory.fromBlueprint(accountsBP)
 
     // Build at one path
-    val module1 = factory.build[("app" *: EmptyTuple)]
+    val module1 = factory.build[Path["app"]]
     assert(module1.tables.size == 2)
 
   test("Shared assembly: single Accounts mounted, both modules use same tables"):
@@ -146,7 +146,7 @@ class Phase5Spec extends FunSuite:
     // Mount accounts once
     val accountsBP = createAccountsBlueprint()
 
-    val accountsModule = StateModule.mount[("app" *: EmptyTuple)](accountsBP)
+    val accountsModule = StateModule.mount[Path["app"]](accountsBP)
 
     // Verify tables exist and can be accessed
     val tables = accountsModule.tables
@@ -186,8 +186,8 @@ class Phase5Spec extends FunSuite:
 
     // ✅ PRODUCTION-READY PATTERN: Build factories at same path, then extend
     // This is the proven, safe approach with transaction execution tests
-    val accounts = accountsFactory.build[("app" *: EmptyTuple)]
-    val group = groupFactory.build[("app" *: EmptyTuple)]
+    val accounts = accountsFactory.build[Path["app"]]
+    val group = groupFactory.build[Path["app"]]
     val extended = StateModule.extend(accounts, group)
 
     // Verify combined module has tables from both
@@ -242,8 +242,8 @@ class Phase5Spec extends FunSuite:
       deps = EmptyTuple,
     )
 
-    val accountsModule = StateModule.mount[("app" *: EmptyTuple)](accountsBP)
-    val groupModule = StateModule.mount[("app" *: EmptyTuple)](groupBP)
+    val accountsModule = StateModule.mount[Path["app"]](accountsBP)
+    val groupModule = StateModule.mount[Path["app"]](groupBP)
 
     val extended = StateModule.extend(accountsModule, groupModule)
 
@@ -322,8 +322,8 @@ class Phase5Spec extends FunSuite:
       deps = EmptyTuple,
     )
 
-    val accountsModule = StateModule.mount[("app" *: EmptyTuple)](accountsBP)
-    val groupModule = StateModule.mount[("app" *: EmptyTuple)](groupBP)
+    val accountsModule = StateModule.mount[Path["app"]](accountsBP)
+    val groupModule = StateModule.mount[Path["app"]](groupBP)
 
     val extended = StateModule.extend(accountsModule, groupModule)
 
@@ -390,8 +390,8 @@ class Phase5Spec extends FunSuite:
       deps = EmptyTuple,
     )
 
-    val accountsModule = StateModule.mount[("app" *: EmptyTuple)](accountsBP)
-    val groupModule = StateModule.mount[("app" *: EmptyTuple)](groupBP)
+    val accountsModule = StateModule.mount[Path["app"]](accountsBP)
+    val groupModule = StateModule.mount[Path["app"]](groupBP)
 
     val extended = StateModule.extend(accountsModule, groupModule)
 
