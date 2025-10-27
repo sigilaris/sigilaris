@@ -9,6 +9,15 @@ package application
   */
 type Path[S <: String] = S *: EmptyTuple
 
+/** Type alias for a two-element string tuple.
+  *
+  * Simplifies common pattern `"s1" *: "s2" *: EmptyTuple` to `Path2["s1", "s2"]`.
+  *
+  * @tparam S1 the first string literal type
+  * @tparam S2 the second string literal type
+  */
+type Path2[S1 <: String, S2 <: String] = S1 *: S2 *: EmptyTuple
+
 /** Type alias for a single-entry schema tuple.
   *
   * Simplifies common pattern `Entry["name", K, V] *: EmptyTuple` to `EntryTuple["name", K, V]`.

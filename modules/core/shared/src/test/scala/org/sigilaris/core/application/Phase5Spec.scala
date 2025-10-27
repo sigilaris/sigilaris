@@ -164,8 +164,8 @@ class Phase5Spec extends FunSuite:
     val factory = StateModule.ModuleFactory.fromBlueprint(accountsBP)
 
     // Build at two different paths
-    val groupAccounts = factory.build[("app" *: "group" *: EmptyTuple)]
-    val tokenAccounts = factory.build[("app" *: "token" *: EmptyTuple)]
+    val groupAccounts = factory.build[Path2["app", "group"]]
+    val tokenAccounts = factory.build[Path2["app", "token"]]
 
     // Verify both have tables, but at different prefixes
     assertEquals(groupAccounts.tables.size, 2)
