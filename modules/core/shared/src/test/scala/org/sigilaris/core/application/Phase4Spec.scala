@@ -24,46 +24,22 @@ import codec.byte.ByteCodec
   */
 class Phase4Spec extends FunSuite:
 
-  // Define sample types for testing - use ByteVector as underlying type for simplicity
+  // Use built-in types with existing codecs - no custom codec implementation needed!
+  import datatype.{Utf8, BigNat}
   import scodec.bits.ByteVector
 
-  case class Address(bytes: ByteVector)
-  case class Account(bytes: ByteVector)
-  case class TokenInfo(bytes: ByteVector)
-
-  // Simple ByteCodec instances for testing
-  import scodec.bits.ByteVector
-  import codec.byte.{ByteEncoder, ByteDecoder}
-  import codec.byte.DecodeResult
-  import cats.syntax.either.*
-
-  given ByteCodec[ByteVector] = new ByteCodec[ByteVector]:
-    def encode(value: ByteVector): ByteVector = value
-    def decode(bytes: ByteVector) = DecodeResult(bytes, ByteVector.empty).asRight
-
-  given ByteCodec[Address] = new ByteCodec[Address]:
-    def encode(value: Address): ByteVector = value.bytes
-    def decode(bytes: ByteVector) = DecodeResult(Address(bytes), ByteVector.empty).asRight
-
-  given ByteCodec[Account] = new ByteCodec[Account]:
-    def encode(value: Account): ByteVector = value.bytes
-    def decode(bytes: ByteVector) = DecodeResult(Account(bytes), ByteVector.empty).asRight
-
-  given ByteCodec[TokenInfo] = new ByteCodec[TokenInfo]:
-    def encode(value: TokenInfo): ByteVector = value.bytes
-    def decode(bytes: ByteVector) = DecodeResult(TokenInfo(bytes), ByteVector.empty).asRight
-
-  given ByteCodec[BigInt] = new ByteCodec[BigInt]:
-    def encode(value: BigInt): ByteVector = ByteEncoder.bigintByteEncoder.encode(value)
-    def decode(bytes: ByteVector) = ByteDecoder.bigintByteDecoder.decode(bytes)
+  // Define sample types - codecs will be auto-derived from field codecs
+  case class Address(value: Utf8)
+  case class Account(data: Utf8)
+  case class TokenInfo(info: Utf8)
 
   // Define sample schemas
-  type AccountsSchema = Entry["accounts", Address, Account] *: Entry["balances", Address, BigInt] *: EmptyTuple
-  type TokenSchema = Entry["tokens", Address, TokenInfo] *: Entry["balances", Address, BigInt] *: EmptyTuple
+  type AccountsSchema = Entry["accounts", Address, Account] *: Entry["balances", Address, BigNat] *: EmptyTuple
+  type TokenSchema = Entry["tokens", Address, TokenInfo] *: Entry["balances", Address, BigNat] *: EmptyTuple
 
   // Combined schema (what would result from composition)
   type CombinedSchema = Entry["accounts", Address, Account] *:
-                         Entry["balances", Address, BigInt] *:
+                         Entry["balances", Address, BigNat] *:
                          Entry["tokens", Address, TokenInfo] *:
                          EmptyTuple
 
@@ -76,7 +52,7 @@ class Phase4Spec extends FunSuite:
   test("Requires evidence: single entry requires that entry in schema"):
     // These should compile - the required entry exists in the schema
     summon[Requires[Entry["accounts", Address, Account] *: EmptyTuple, AccountsSchema]]
-    summon[Requires[Entry["balances", Address, BigInt] *: EmptyTuple, AccountsSchema]]
+    summon[Requires[Entry["balances", Address, BigNat] *: EmptyTuple, AccountsSchema]]
     summon[Requires[Entry["tokens", Address, TokenInfo] *: EmptyTuple, TokenSchema]]
 
   test("Requires evidence: multiple entries require all in schema"):
@@ -89,32 +65,47 @@ class Phase4Spec extends FunSuite:
 
   test("Requires evidence: fails when entry missing from schema"):
     // These compile errors verify that Requires rejects schemas missing required entries
-    compileErrors("summon[Requires[Entry[\"tokens\", Address, TokenInfo] *: EmptyTuple, AccountsSchema]]")
-    compileErrors("summon[Requires[TokenSchema, AccountsSchema]]")
+    val err1 = compileErrors("summon[Requires[Entry[\"tokens\", Address, TokenInfo] *: EmptyTuple, AccountsSchema]]")
+    assert(err1.contains("Cannot prove that all required tables are in the schema"))
+    assert(err1.contains("Required tables"))
+    assert(err1.contains("Available schema"))
+
+    val err2 = compileErrors("summon[Requires[TokenSchema, AccountsSchema]]")
+    assert(err2.contains("Cannot prove that all required tables are in the schema"))
+    assert(err2.contains("Transaction requires a table that doesn't exist in the module"))
 
   test("Lookup evidence: can lookup table at head of schema"):
     val lookup = summon[Lookup[AccountsSchema, "accounts", Address, Account]]
     assert(lookup != null, "Lookup instance should be summoned")
 
   test("Lookup evidence: can lookup table in tail of schema"):
-    val lookup = summon[Lookup[AccountsSchema, "balances", Address, BigInt]]
+    val lookup = summon[Lookup[AccountsSchema, "balances", Address, BigNat]]
     assert(lookup != null, "Lookup instance should be summoned")
 
   test("Lookup evidence: can lookup in combined schema"):
     // All tables from both schemas should be findable
     summon[Lookup[CombinedSchema, "accounts", Address, Account]]
-    summon[Lookup[CombinedSchema, "balances", Address, BigInt]]
+    summon[Lookup[CombinedSchema, "balances", Address, BigNat]]
     summon[Lookup[CombinedSchema, "tokens", Address, TokenInfo]]
 
   test("Lookup evidence: fails when table name not in schema"):
     // These compile errors verify that Lookup rejects non-existent table names
-    compileErrors("summon[Lookup[AccountsSchema, \"tokens\", Address, TokenInfo]]")
-    compileErrors("summon[Lookup[TokenSchema, \"accounts\", Address, Account]]")
+    val err1 = compileErrors("summon[Lookup[AccountsSchema, \"tokens\", Address, TokenInfo]]")
+    assert(err1.contains("Cannot find table"))
+    assert(err1.contains("doesn't exist in the schema"))
+
+    val err2 = compileErrors("summon[Lookup[TokenSchema, \"accounts\", Address, Account]]")
+    assert(err2.contains("Cannot find table"))
 
   test("Lookup evidence: fails when types mismatch"):
     // These compile errors verify that Lookup rejects type mismatches
-    compileErrors("summon[Lookup[AccountsSchema, \"accounts\", Address, BigInt]]")
-    compileErrors("summon[Lookup[AccountsSchema, \"balances\", Address, Account]]")
+    val err1 = compileErrors("summon[Lookup[AccountsSchema, \"accounts\", Address, BigNat]]")
+    assert(err1.contains("Cannot find table"))
+    assert(err1.contains("Table exists but with different key/value types"))
+
+    val err2 = compileErrors("summon[Lookup[AccountsSchema, \"balances\", Address, Account]]")
+    assert(err2.contains("Cannot find table"))
+    assert(err2.contains("Table exists but with different key/value types"))
 
   // Runtime test: verify that Lookup can extract the correct table instance
   test("Lookup runtime: extract table from Tables tuple"):
@@ -129,7 +120,7 @@ class Phase4Spec extends FunSuite:
 
     // Create Entry instances (these capture codecs)
     val accountsEntry = Entry["accounts", Address, Account]
-    val balancesEntry = Entry["balances", Address, BigInt]
+    val balancesEntry = Entry["balances", Address, BigNat]
 
     // Create tables at different prefixes
     given cats.Monad[SyncIO] = cats.effect.Sync[SyncIO]
@@ -140,7 +131,7 @@ class Phase4Spec extends FunSuite:
     val tables: Tables[SyncIO, AccountsSchema] = (accountsTable, balancesTable)
 
     // Use Lookup to extract balances table
-    val lookup = summon[Lookup[AccountsSchema, "balances", Address, BigInt]]
+    val lookup = summon[Lookup[AccountsSchema, "balances", Address, BigNat]]
     val extractedTable = lookup.table[SyncIO](tables)
 
     // Verify it's the correct table instance
@@ -165,7 +156,7 @@ class Phase4Spec extends FunSuite:
     // Create tables for combined schema
     given cats.Monad[SyncIO] = cats.effect.Sync[SyncIO]
     val accountsEntry = Entry["accounts", Address, Account]
-    val balancesEntry = Entry["balances", Address, BigInt]
+    val balancesEntry = Entry["balances", Address, BigNat]
     val tokensEntry = Entry["tokens", Address, TokenInfo]
 
     val accountsTable = accountsEntry.createTable[SyncIO](ByteVector(0x01))
@@ -178,25 +169,25 @@ class Phase4Spec extends FunSuite:
     // This demonstrates the Phase 4 requirement: "read from Accounts, write to Token using branded keys"
     def crossModuleOperation(using
         accountsReq: Requires[Entry["accounts", Address, Account] *: EmptyTuple, CombinedSchema],
-        balancesReq: Requires[Entry["balances", Address, BigInt] *: EmptyTuple, CombinedSchema],
+        balancesReq: Requires[Entry["balances", Address, BigNat] *: EmptyTuple, CombinedSchema],
         tokensReq: Requires[Entry["tokens", Address, TokenInfo] *: EmptyTuple, CombinedSchema],
     )(using
         accountsLookup: Lookup[CombinedSchema, "accounts", Address, Account],
-        balancesLookup: Lookup[CombinedSchema, "balances", Address, BigInt],
+        balancesLookup: Lookup[CombinedSchema, "balances", Address, BigNat],
         tokensLookup: Lookup[CombinedSchema, "tokens", Address, TokenInfo],
-    ): StoreF[SyncIO][(Option[Account], Option[BigInt], Option[TokenInfo], Option[Account])] =
+    ): StoreF[SyncIO][(Option[Account], Option[BigNat], Option[TokenInfo], Option[Account])] =
       // Extract tables - now the types are preserved!
       val accounts = accountsLookup.table[SyncIO](tables)
       val balances = balancesLookup.table[SyncIO](tables)
       val tokens = tokensLookup.table[SyncIO](tables)
 
       // Create test data
-      val addr1 = Address(ByteVector(0x01, 0x02))
-      val addr2 = Address(ByteVector(0x03, 0x04))
+      val addr1 = Address(Utf8("addr1"))
+      val addr2 = Address(Utf8("addr2"))
 
-      val account1 = Account(ByteVector(0xaa, 0xbb))
-      val balance1 = BigInt(1000)
-      val tokenInfo = TokenInfo(ByteVector(0xff, 0xee))
+      val account1 = Account(Utf8("account_data_1"))
+      val balance1 = BigNat.unsafeFromLong(1000L)
+      val tokenInfo = TokenInfo(Utf8("token_info_1"))
 
       // Brand keys with table-specific types - this is compile-time safe!
       val accountKey1 = accounts.brand(addr1)
@@ -239,9 +230,9 @@ class Phase4Spec extends FunSuite:
     result match
       case Right((finalState, (maybeAccount, maybeBalance, maybeToken, notFound))) =>
         // Verify all results
-        assertEquals(maybeAccount, Some(Account(ByteVector(0xaa, 0xbb))))
-        assertEquals(maybeBalance, Some(BigInt(1000)))
-        assertEquals(maybeToken, Some(TokenInfo(ByteVector(0xff, 0xee))))
+        assertEquals(maybeAccount, Some(Account(Utf8("account_data_1"))))
+        assertEquals(maybeBalance, Some(BigNat.unsafeFromLong(1000L)))
+        assertEquals(maybeToken, Some(TokenInfo(Utf8("token_info_1"))))
         assertEquals(notFound, None)
 
         // Persist the state changes
@@ -250,7 +241,7 @@ class Phase4Spec extends FunSuite:
         // Verify we can read the persisted data
         val accountsLookup = summon[Lookup[CombinedSchema, "accounts", Address, Account]]
         val accounts = accountsLookup.table[SyncIO](tables)
-        val addr = Address(ByteVector(0x01, 0x02))
+        val addr = Address(Utf8("addr1"))
         val key = accounts.brand(addr)
 
         val verifyRead = accounts.get(key).runA(finalState).value
@@ -258,7 +249,7 @@ class Phase4Spec extends FunSuite:
 
         verified match
           case Right(Some(account)) =>
-            assertEquals(account, Account(ByteVector(0xaa, 0xbb)))
+            assertEquals(account, Account(Utf8("account_data_1")))
           case other =>
             fail(s"Expected Some(account), got $other")
 
