@@ -106,5 +106,24 @@ class StateTableTest extends FunSuite:
     val _ = scores.get(scoreKey).runA(initialState).value
 
     // The following should NOT compile - keys are branded with different table types
-    compileErrors("balances.get(scoreKey)")
-    compileErrors("scores.get(balanceKey)")
+    // Verify that using scoreKey with balances table fails at compile time
+    assertNoDiff(
+      compileErrors("balances.get(scoreKey)"),
+      """|error:
+         |Found:    (scoreKey : scores.Key)
+         |Required: balances.Key
+         |balances.get(scoreKey)
+         |            ^
+         |""".stripMargin
+    )
+
+    // Verify that using balanceKey with scores table fails at compile time
+    assertNoDiff(
+      compileErrors("scores.get(balanceKey)"),
+      """|error:
+         |Found:    (balanceKey : balances.Key)
+         |Required: scores.Key
+         |scores.get(balanceKey)
+         |          ^
+         |""".stripMargin
+    )

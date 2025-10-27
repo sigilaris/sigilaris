@@ -244,21 +244,45 @@ class CompositionTest extends FunSuite:
       case Left(err) =>
         fail(s"Expected success but got error: $err")
 
-  // NOTE: The following test is commented out because it now fails at COMPILE TIME,
-  // which is the desired behavior. ComposedBlueprint's reducer requires ModuleRoutedTx,
-  // so non-routed transactions are rejected by the type system.
-  //
-  // test("composeBlueprint fails for transaction without ModuleRoutedTx"):
-  //   val bp1 = createRoutingBlueprint1()
-  //   val bp2 = createRoutingBlueprint2()
-  //   val composed = Blueprint.composeBlueprint[Id, "combined"](bp1, bp2)
-  //
-  //   val tx = UnroutedTx()
-  //   // This now fails at COMPILE TIME with type error - compile-time safety achieved!
-  //   composed.reducer0.apply(tx)(using
-  //     summon[Requires[tx.Reads, Schema1 ++ Schema2]],
-  //     summon[Requires[tx.Writes, Schema1 ++ Schema2]],
-  //   ).run(null).value
+  test("composeBlueprint enforces ModuleRoutedTx constraint at compile time"):
+    val bp1 = createRoutingBlueprint1()
+    val bp2 = createRoutingBlueprint2()
+    val composed = Blueprint.composeBlueprint[Id, "combined"](bp1, bp2)
+
+    // Verify that UnroutedTx does NOT compile with composed reducer
+    // ComposedBlueprint's reducer requires T <: ModuleRoutedTx constraint
+    val errors = compileErrors("""
+      val tx = UnroutedTx()
+      composed.reducer0.apply(tx)(using
+        summon[Requires[tx.Reads, Schema1 ++ Schema2]],
+        summon[Requires[tx.Writes, Schema1 ++ Schema2]],
+      )
+    """)
+
+    // Verify error message indicates the ModuleRoutedTx constraint is not satisfied
+    assertNoDiff(
+      errors,
+      """|error:
+         |Found:    (tx : CompositionTest.this.UnroutedTx)
+         |Required: org.sigilaris.core.application.Tx &
+         |  org.sigilaris.core.application.ModuleRoutedTx
+         |      composed.reducer0.apply(tx)(using
+         |                             ^
+         |""".stripMargin
+    )
+
+    // Verify that routed transactions DO compile and work correctly
+    val routedTx = Module1Tx(100L)
+    val result = composed.reducer0.apply(routedTx)(using
+      summon[Requires[routedTx.Reads, Schema1 ++ Schema2]],
+      summon[Requires[routedTx.Writes, Schema1 ++ Schema2]],
+    ).run(null).value
+
+    result match
+      case Right((_, (value, _))) =>
+        assertEquals(value, 100L)
+      case Left(err) =>
+        fail(s"Routed transaction should succeed: $err")
 
   test("composeBlueprint fails for transaction with wrong module path"):
     val bp1 = createRoutingBlueprint1()
