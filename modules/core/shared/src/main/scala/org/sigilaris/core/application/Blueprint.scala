@@ -313,13 +313,11 @@ object Blueprint:
     * This is a convenience helper for Phase 3 that simplifies mounting a
     * blueprint at a nested path.
     *
-    * @tparam F the effect type
-    * @tparam MName the module name
-    * @tparam Base the base path tuple
-    * @tparam Sub the sub-path tuple
-    * @tparam Schema the schema tuple
-    * @tparam Txs the transaction types tuple
-    * @tparam Deps the dependency types tuple
+    * Type inference: Only Base and Sub need to be specified explicitly. All other types
+    * (F, MName, Schema, Txs, Deps) are inferred from the blueprint parameter.
+    *
+    * @tparam Base the base path tuple (needs explicit specification)
+    * @tparam Sub the sub-path tuple (needs explicit specification)
     * @param blueprint the blueprint to mount
     * @param monad the Monad instance for F
     * @param prefixFreePath evidence that Base ++ Sub with Schema is prefix-free
@@ -327,12 +325,12 @@ object Blueprint:
     * @param schemaMapper the schema mapper for instantiating tables
     * @return a state module mounted at Base ++ Sub
     */
-  def mountAt[F[_], MName <: String, Base <: Tuple, Sub <: Tuple, Schema <: Tuple, Txs <: Tuple, Deps <: Tuple](
-    blueprint: ModuleBlueprint[F, MName, Schema, Txs, Deps],
+  def mountAt[Base <: Tuple, Sub <: Tuple](
+    blueprint: ModuleBlueprint[?, ?, ?, ?, ?],
   )(using
-    @annotation.unused monad: cats.Monad[F],
-    prefixFreePath: PrefixFreePath[Base ++ Sub, Schema],
-    @annotation.unused nodeStore: merkle.MerkleTrie.NodeStore[F],
-    schemaMapper: SchemaMapper[F, Base ++ Sub, Schema],
-  ): StateModule[F, Base ++ Sub, Schema, Txs, Deps, StateReducer[F, Base ++ Sub, Schema]] =
+    @annotation.unused monad: cats.Monad[blueprint.EffectType],
+    prefixFreePath: PrefixFreePath[Base ++ Sub, blueprint.SchemaType],
+    @annotation.unused nodeStore: merkle.MerkleTrie.NodeStore[blueprint.EffectType],
+    schemaMapper: SchemaMapper[blueprint.EffectType, Base ++ Sub, blueprint.SchemaType],
+  ): StateModule[blueprint.EffectType, Base ++ Sub, blueprint.SchemaType, blueprint.TxsType, blueprint.DepsType, StateReducer[blueprint.EffectType, Base ++ Sub, blueprint.SchemaType]] =
     StateModule.mount[Base ++ Sub](blueprint)

@@ -114,7 +114,7 @@ class CompositionTest extends FunSuite:
     // Mount at base path ("app",) with sub-path ("v1",)
     type Base = "app" *: EmptyTuple
     type Sub = "v1" *: EmptyTuple
-    val module = Blueprint.mountAt[Id, "module1", Base, Sub, Schema1, EmptyTuple, EmptyTuple](bp)
+    val module = Blueprint.mountAt[Base, Sub](bp)
 
     // Should have correct path type (includes reducer type parameter)
     val _: StateModule[Id, Base ++ Sub, Schema1, EmptyTuple, EmptyTuple, StateReducer[Id, Base ++ Sub, Schema1]] = module
