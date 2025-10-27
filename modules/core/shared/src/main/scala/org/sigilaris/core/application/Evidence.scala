@@ -91,14 +91,70 @@ object UniqueNames:
   /** Inductive case: if head name is not in tail and tail is unique,
     * then head *: tail is unique.
     *
-    * Note: This is a simplified implementation. A full implementation would
-    * check that the name of the head entry does not appear in any tail entry.
-    * For now, we provide a permissive instance that will be refined in Phase 3.
+    * This implementation requires:
+    * 1. The tail has unique names (recursive)
+    * 2. The head name does not appear in the tail (NameNotInSchema)
     */
   given consUnique[Name <: String, K, V, Tail <: Tuple](using
-      UniqueNames[Tail],
+      tailUnique: UniqueNames[Tail],
+      notInTail: NameNotInSchema[Name, Tail],
   ): UniqueNames[Entry[Name, K, V] *: Tail] =
     new UniqueNames[Entry[Name, K, V] *: Tail] {}
+
+/** Evidence that a table name does not appear in a schema.
+  *
+  * This is used to enforce uniqueness of table names.
+  *
+  * @tparam Name the table name to check
+  * @tparam Schema the schema to search
+  */
+@scala.annotation.implicitNotFound(
+  """Table name "${Name}" already exists in the schema.
+  |Schema: ${Schema}
+  |
+  |This is a duplicate table name, which would cause prefix collisions.
+  |
+  |To fix:
+  |  - Use a different table name
+  |  - Check if you're composing modules with conflicting table names"""
+)
+trait NameNotInSchema[Name <: String, Schema <: Tuple]
+
+object NameNotInSchema:
+  /** EmptyTuple does not contain any name. */
+  given empty[Name <: String]: NameNotInSchema[Name, EmptyTuple] =
+    new NameNotInSchema[Name, EmptyTuple] {}
+
+  /** If the head name is different and tail doesn't contain the name,
+    * then the name is not in the schema.
+    *
+    * We use DifferentNames to ensure the name doesn't match the head,
+    * and recursively check the tail.
+    */
+  given cons[Name <: String, OtherName <: String, K, V, Tail <: Tuple](using
+      namesDifferent: DifferentNames[Name, OtherName],
+      notInTail: NameNotInSchema[Name, Tail],
+  ): NameNotInSchema[Name, Entry[OtherName, K, V] *: Tail] =
+    new NameNotInSchema[Name, Entry[OtherName, K, V] *: Tail] {}
+
+/** Evidence that two table names are different.
+  *
+  * This is a type alias for NotGiven that provides semantic clarity in error messages.
+  * While we cannot override NotGiven's @implicitNotFound message, having
+  * "DifferentNames" in the error trace makes it clearer what constraint failed.
+  *
+  * The actual validation happens through NotGiven, which will show:
+  * "But no implicit values were found that match type scala.util.NotGiven[...]"
+  *
+  * This is still valuable because:
+  * 1. Error messages show "DifferentNames[Name1, Name2]" in the trace
+  * 2. Code is more self-documenting (DifferentNames vs raw NotGiven)
+  * 3. Future Scala versions might allow better customization
+  *
+  * @tparam Name1 the first table name
+  * @tparam Name2 the second table name
+  */
+type DifferentNames[Name1 <: String, Name2 <: String] = scala.util.NotGiven[Name1 =:= Name2]
 
 /** Evidence that all table prefixes in Schema are prefix-free when mounted at Path.
   *
@@ -137,12 +193,12 @@ object PrefixFreePath:
   /** Inductive case: if head prefix doesn't collide with tail prefixes and tail is prefix-free,
     * then head *: tail is prefix-free.
     *
-    * Note: This is a simplified implementation. A full implementation would
-    * compute actual prefixes and check the prefix-free property at compile-time.
-    * For now, we provide a permissive instance that will be refined in Phase 3.
+    * This implementation requires UniqueNames evidence, which ensures that table names
+    * are distinct. With length-prefix encoding, distinct names guarantee prefix-free prefixes.
     */
-  given consPrefixFree[Path <: Tuple, Name <: String, K, V, Tail <: Tuple](using
-      PrefixFreePath[Path, Tail],
+  given consPrefixFree[Path <: Tuple, Name <: String, K, V, Tail <: Tuple, Schema <: Tuple](using
+      tailPrefixFree: PrefixFreePath[Path, Tail],
+      uniqueNames: UniqueNames[Entry[Name, K, V] *: Tail],
   ): PrefixFreePath[Path, Entry[Name, K, V] *: Tail] =
     new PrefixFreePath[Path, Entry[Name, K, V] *: Tail] {}
 
