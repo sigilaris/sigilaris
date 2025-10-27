@@ -1,9 +1,12 @@
 package org.sigilaris.core
 package application
 
+import cats.Monad
 import cats.data.{EitherT, StateT}
 import cats.syntax.eq.*
+
 import failure.RoutingFailure
+import merkle.MerkleTrie.NodeStore
 import util.SafeStringInterp.ss
 
 /** Path-agnostic state reducer.
@@ -15,20 +18,28 @@ import util.SafeStringInterp.ss
   * This allows writing reusable module logic that can be deployed at different
   * paths in different applications.
   *
-  * @tparam F the effect type
-  * @tparam Schema the schema tuple (tuple of Entry types)
+  * @tparam F
+  *   the effect type
+  * @tparam Schema
+  *   the schema tuple (tuple of Entry types)
   */
 trait StateReducer0[F[_], Schema <: Tuple]:
   /** Apply a transaction to produce a result and events.
     *
     * The reducer is polymorphic over the transaction type T, requiring only
-    * that T's read and write requirements are satisfied by this reducer's Schema.
+    * that T's read and write requirements are satisfied by this reducer's
+    * Schema.
     *
-    * @tparam T the transaction type
-    * @param tx the transaction to apply
-    * @param requiresReads evidence that T's read requirements are in Schema
-    * @param requiresWrites evidence that T's write requirements are in Schema
-    * @return a stateful computation returning the result and list of events
+    * @tparam T
+    *   the transaction type
+    * @param tx
+    *   the transaction to apply
+    * @param requiresReads
+    *   evidence that T's read requirements are in Schema
+    * @param requiresWrites
+    *   evidence that T's write requirements are in Schema
+    * @return
+    *   a stateful computation returning the result and list of events
     */
   def apply[T <: Tx](tx: T)(using
       requiresReads: Requires[tx.Reads, Schema],
@@ -42,23 +53,32 @@ trait StateReducer0[F[_], Schema <: Tuple]:
   * blueprints where routing based on module path is required.
   *
   * The user is expected to only pass ModuleRoutedTx transactions to composed
-  * blueprints. Non-routed transactions will fail at runtime with a cast exception,
-  * which is acceptable since the API contract (composition) requires routing.
+  * blueprints. Non-routed transactions will fail at runtime with a cast
+  * exception, which is acceptable since the API contract (composition) requires
+  * routing.
   *
-  * @tparam F the effect type
-  * @tparam Schema the schema tuple (tuple of Entry types)
+  * @tparam F
+  *   the effect type
+  * @tparam Schema
+  *   the schema tuple (tuple of Entry types)
   */
 trait RoutedStateReducer0[F[_], Schema <: Tuple]:
   /** Apply a routed transaction to produce a result and events.
     *
     * The type bound T <: Tx & ModuleRoutedTx ensures that only transactions
-    * implementing ModuleRoutedTx can be applied. This is enforced at compile time.
+    * implementing ModuleRoutedTx can be applied. This is enforced at compile
+    * time.
     *
-    * @tparam T the transaction type (must implement ModuleRoutedTx)
-    * @param tx the transaction to apply
-    * @param requiresReads evidence that T's read requirements are in Schema
-    * @param requiresWrites evidence that T's write requirements are in Schema
-    * @return a stateful computation returning the result and list of events
+    * @tparam T
+    *   the transaction type (must implement ModuleRoutedTx)
+    * @param tx
+    *   the transaction to apply
+    * @param requiresReads
+    *   evidence that T's read requirements are in Schema
+    * @param requiresWrites
+    *   evidence that T's write requirements are in Schema
+    * @return
+    *   a stateful computation returning the result and list of events
     */
   def apply[T <: Tx & ModuleRoutedTx](tx: T)(using
       requiresReads: Requires[tx.Reads, Schema],
@@ -72,19 +92,27 @@ trait RoutedStateReducer0[F[_], Schema <: Tuple]:
   * blueprints (StateReducer0) and composed blueprints (RoutedStateReducer0) to
   * be treated uniformly where appropriate.
   *
-  * @tparam F the effect type
-  * @tparam MName the module name (literal String type)
-  * @tparam Schema the schema tuple (tuple of Entry types)
-  * @tparam Txs the transaction types tuple
-  * @tparam Deps the dependency types tuple
-  * @tparam R the reducer type (covariant)
+  * @tparam F
+  *   the effect type
+  * @tparam MName
+  *   the module name (literal String type)
+  * @tparam Schema
+  *   the schema tuple (tuple of Entry types)
+  * @tparam Txs
+  *   the transaction types tuple
+  * @tparam Deps
+  *   the dependency types tuple
+  * @tparam R
+  *   the reducer type (covariant)
   */
-sealed trait Blueprint[F[_], MName <: String, Schema <: Tuple, Txs <: Tuple, Deps <: Tuple, +R]:
+sealed trait Blueprint[F[
+    _,
+], MName <: String, Schema <: Tuple, Txs <: Tuple, Deps <: Tuple, +R]:
   type EffectType[A] = F[A]
-  type ModuleName = MName
-  type SchemaType = Schema
-  type TxsType = Txs
-  type DepsType = Deps
+  type ModuleName    = MName
+  type SchemaType    = Schema
+  type TxsType       = Txs
+  type DepsType      = Deps
 
   /** The Entry instances (runtime values that can create tables). */
   def schema: Schema
@@ -107,61 +135,85 @@ sealed trait Blueprint[F[_], MName <: String, Schema <: Tuple, Txs <: Tuple, Dep
 /** Single-module blueprint (path-independent).
   *
   * A module blueprint is a specification for a single, self-contained module.
-  * It uses StateReducer0, which can process any transaction type (T <: Tx)
-  * that satisfies the schema requirements.
+  * It uses StateReducer0, which can process any transaction type (T <: Tx) that
+  * satisfies the schema requirements.
   *
-  * Module blueprints are designed with the assumption that they don't know where
-  * they will be deployed. The mounting process (Phase 2) binds a blueprint to a
-  * specific Path, computing prefixes and using Entry instances to create
-  * concrete StateTable instances.
+  * Module blueprints are designed with the assumption that they don't know
+  * where they will be deployed. The mounting process (Phase 2) binds a
+  * blueprint to a specific Path, computing prefixes and using Entry instances
+  * to create concrete StateTable instances.
   *
-  * IMPORTANT: Blueprint contains Entry instances (runtime values), not StateTable
-  * instances. Each Entry can create a StateTable when given a prefix.
+  * IMPORTANT: Blueprint contains Entry instances (runtime values), not
+  * StateTable instances. Each Entry can create a StateTable when given a
+  * prefix.
   *
-  * @tparam F the effect type
-  * @tparam MName the module name (literal String type)
-  * @tparam Schema the schema tuple (tuple of Entry types)
-  * @tparam Txs the transaction types tuple
-  * @tparam Deps the dependency types tuple
-  * @param schema the Entry instances (runtime values)
-  * @param reducer0 the path-agnostic reducer (accepts any Tx)
-  * @param txs the transaction registry
-  * @param deps the dependencies
-  * @param uniqueNames evidence that table names are unique within Schema
+  * @tparam F
+  *   the effect type
+  * @tparam MName
+  *   the module name (literal String type)
+  * @tparam Schema
+  *   the schema tuple (tuple of Entry types)
+  * @tparam Txs
+  *   the transaction types tuple
+  * @tparam Deps
+  *   the dependency types tuple
+  * @param schema
+  *   the Entry instances (runtime values)
+  * @param reducer0
+  *   the path-agnostic reducer (accepts any Tx)
+  * @param txs
+  *   the transaction registry
+  * @param deps
+  *   the dependencies
+  * @param uniqueNames
+  *   evidence that table names are unique within Schema
   */
-final class ModuleBlueprint[F[_], MName <: String, Schema <: Tuple, Txs <: Tuple, Deps <: Tuple](
-    val schema: Schema,  // Runtime tuple of Entry instances
+final class ModuleBlueprint[F[
+    _,
+], MName <: String, Schema <: Tuple, Txs <: Tuple, Deps <: Tuple](
+    val schema: Schema, // Runtime tuple of Entry instances
     val reducer0: StateReducer0[F, Schema],
     val txs: TxRegistry[Txs],
     val deps: Deps,
 )(using
     val uniqueNames: UniqueNames[Schema],
     val moduleValue: ValueOf[MName],
-)
-    extends Blueprint[F, MName, Schema, Txs, Deps, StateReducer0[F, Schema]]
+) extends Blueprint[F, MName, Schema, Txs, Deps, StateReducer0[F, Schema]]
 
 /** Composed blueprint (path-independent).
   *
-  * A composed blueprint is the result of combining two or more module blueprints.
-  * It uses RoutedStateReducer0, which REQUIRES all transactions to implement
-  * ModuleRoutedTx for routing purposes.
+  * A composed blueprint is the result of combining two or more module
+  * blueprints. It uses RoutedStateReducer0, which REQUIRES all transactions to
+  * implement ModuleRoutedTx for routing purposes.
   *
   * The type system enforces this requirement at compile time: attempting to
-  * apply a non-routed transaction to a ComposedBlueprint's reducer will be
-  * a compile error.
+  * apply a non-routed transaction to a ComposedBlueprint's reducer will be a
+  * compile error.
   *
-  * @tparam F the effect type
-  * @tparam MName the module name (literal String type)
-  * @tparam Schema the schema tuple (tuple of Entry types)
-  * @tparam Txs the transaction types tuple
-  * @tparam Deps the dependency types tuple
-  * @param schema the Entry instances (runtime values)
-  * @param reducer0 the routed reducer (requires ModuleRoutedTx)
-  * @param txs the transaction registry
-  * @param deps the dependencies
-  * @param uniqueNames evidence that table names are unique within Schema
+  * @tparam F
+  *   the effect type
+  * @tparam MName
+  *   the module name (literal String type)
+  * @tparam Schema
+  *   the schema tuple (tuple of Entry types)
+  * @tparam Txs
+  *   the transaction types tuple
+  * @tparam Deps
+  *   the dependency types tuple
+  * @param schema
+  *   the Entry instances (runtime values)
+  * @param reducer0
+  *   the routed reducer (requires ModuleRoutedTx)
+  * @param txs
+  *   the transaction registry
+  * @param deps
+  *   the dependencies
+  * @param uniqueNames
+  *   evidence that table names are unique within Schema
   */
-final class ComposedBlueprint[F[_], MName <: String, Schema <: Tuple, Txs <: Tuple, Deps <: Tuple](
+final class ComposedBlueprint[F[
+    _,
+], MName <: String, Schema <: Tuple, Txs <: Tuple, Deps <: Tuple](
     val schema: Schema,
     val reducer0: RoutedStateReducer0[F, Schema],
     val txs: TxRegistry[Txs],
@@ -169,21 +221,25 @@ final class ComposedBlueprint[F[_], MName <: String, Schema <: Tuple, Txs <: Tup
 )(using
     val uniqueNames: UniqueNames[Schema],
     val moduleValue: ValueOf[MName],
-)
-    extends Blueprint[F, MName, Schema, Txs, Deps, RoutedStateReducer0[F, Schema]]
+) extends Blueprint[F, MName, Schema, Txs, Deps, RoutedStateReducer0[F, Schema]]
 
 object Blueprint:
   /** Concatenate two tuples into a flat result.
     *
     * This helper ensures that tuple concatenation at runtime matches the
-    * type-level Tuple.Concat semantics. Without this, naive pairing like
-    * `(a, b)` creates nested tuples that break table lookups and evidence.
+    * type-level Tuple.Concat semantics. Without this, naive pairing like `(a,
+    * b)` creates nested tuples that break table lookups and evidence.
     *
-    * @tparam A the first tuple type
-    * @tparam B the second tuple type
-    * @param a the first tuple
-    * @param b the second tuple
-    * @return a flat concatenated tuple of type A ++ B
+    * @tparam A
+    *   the first tuple type
+    * @tparam B
+    *   the second tuple type
+    * @param a
+    *   the first tuple
+    * @param b
+    *   the second tuple
+    * @return
+    *   a flat concatenated tuple of type A ++ B
     */
   @SuppressWarnings(Array("org.wartremover.warts.AsInstanceOf"))
   def tupleConcat[A <: Tuple, B <: Tuple](a: A, b: B): Tuple.Concat[A, B] =
@@ -198,44 +254,65 @@ object Blueprint:
     *   - Concatenated dependencies (D1 ++ D2)
     *   - Merged reducer logic with module-based routing
     *
-    * The composed blueprint requires evidence that the combined schema has unique
-    * table names (UniqueNames[S1 ++ S2]).
+    * The composed blueprint requires evidence that the combined schema has
+    * unique table names (UniqueNames[S1 ++ S2]).
     *
     * Reducer routing strategy:
-    *   - Transactions MUST implement ModuleRoutedTx (enforced by RoutedStateReducer0 type)
+    *   - Transactions MUST implement ModuleRoutedTx (enforced by
+    *     RoutedStateReducer0 type)
     *   - The moduleId.path is module-relative (MName *: SubPath)
     *   - The reducer routes based on the first segment matching M1 or M2
     *   - Type safety is compile-time: non-routed transactions will not compile
     *
     * IMPORTANT: ModuleId is always module-relative. When a blueprint is mounted
-    * at a path, the mount path is NOT prepended to transaction moduleIds.
-    * Full paths (mountPath ++ moduleId.path) are only constructed at system
-    * edges for telemetry or logging.
+    * at a path, the mount path is NOT prepended to transaction moduleIds. Full
+    * paths (mountPath ++ moduleId.path) are only constructed at system edges
+    * for telemetry or logging.
     *
-    * @tparam F the effect type
-    * @tparam MOut the output module name
-    * @tparam M1 first module name
-    * @tparam S1 first schema tuple
-    * @tparam T1 first transaction types tuple
-    * @tparam D1 first dependencies tuple
-    * @tparam M2 second module name
-    * @tparam S2 second schema tuple
-    * @tparam T2 second transaction types tuple
-    * @tparam D2 second dependencies tuple
-    * @param a the first blueprint
-    * @param b the second blueprint
-    * @param uniqueNames evidence that combined schema has unique names
-    * @return a ComposedBlueprint with RoutedStateReducer0
+    * @tparam F
+    *   the effect type
+    * @tparam MOut
+    *   the output module name
+    * @tparam M1
+    *   first module name
+    * @tparam S1
+    *   first schema tuple
+    * @tparam T1
+    *   first transaction types tuple
+    * @tparam D1
+    *   first dependencies tuple
+    * @tparam M2
+    *   second module name
+    * @tparam S2
+    *   second schema tuple
+    * @tparam T2
+    *   second transaction types tuple
+    * @tparam D2
+    *   second dependencies tuple
+    * @param a
+    *   the first blueprint
+    * @param b
+    *   the second blueprint
+    * @param uniqueNames
+    *   evidence that combined schema has unique names
+    * @return
+    *   a ComposedBlueprint with RoutedStateReducer0
     */
   @SuppressWarnings(Array("org.wartremover.warts.AsInstanceOf"))
   def composeBlueprint[F[_], MOut <: String](
-    a: ModuleBlueprint[F, ?, ?, ?, ?],
-    b: ModuleBlueprint[F, ?, ?, ?, ?],
+      a: ModuleBlueprint[F, ?, ?, ?, ?],
+      b: ModuleBlueprint[F, ?, ?, ?, ?],
   )(using
-    monadF: cats.Monad[F],
-    moduleOut: ValueOf[MOut],
-    uniqueNames0: UniqueNames[a.SchemaType ++ b.SchemaType],
-  ): ComposedBlueprint[F, MOut, a.SchemaType ++ b.SchemaType, a.TxsType ++ b.TxsType, a.DepsType ++ b.DepsType] =
+      monadF: cats.Monad[F],
+      moduleOut: ValueOf[MOut],
+      uniqueNames0: UniqueNames[a.SchemaType ++ b.SchemaType],
+  ): ComposedBlueprint[
+    F,
+    MOut,
+    a.SchemaType ++ b.SchemaType,
+    a.TxsType ++ b.TxsType,
+    a.DepsType ++ b.DepsType,
+  ] =
     type M1 = a.ModuleName
     type S1 = a.SchemaType
     type T1 = a.TxsType
@@ -253,20 +330,19 @@ object Blueprint:
       b.asInstanceOf[ModuleBlueprint[F, M2, S2, T2, D2]],
     )(using monadF, moduleOut, uniqueNames)
 
-  private def composeBlueprintImpl[F[_], MOut <: String,
-    M1 <: String, S1 <: Tuple, T1 <: Tuple, D1 <: Tuple,
-    M2 <: String, S2 <: Tuple, T2 <: Tuple, D2 <: Tuple,
-  ](
-    a: ModuleBlueprint[F, M1, S1, T1, D1],
-    b: ModuleBlueprint[F, M2, S2, T2, D2],
+  private def composeBlueprintImpl[F[
+      _,
+  ], MOut <: String, M1 <: String, S1 <: Tuple, T1 <: Tuple, D1 <: Tuple, M2 <: String, S2 <: Tuple, T2 <: Tuple, D2 <: Tuple](
+      a: ModuleBlueprint[F, M1, S1, T1, D1],
+      b: ModuleBlueprint[F, M2, S2, T2, D2],
   )(using
-    monadF: cats.Monad[F],
-    moduleOut: ValueOf[MOut],
-    uniqueNames: UniqueNames[S1 ++ S2],
+      monadF: Monad[F],
+      moduleOut: ValueOf[MOut],
+      uniqueNames: UniqueNames[S1 ++ S2],
   ): ComposedBlueprint[F, MOut, S1 ++ S2, T1 ++ T2, D1 ++ D2] =
-    given cats.Monad[F] = monadF
+    given Monad[F]              = monadF
     given UniqueNames[S1 ++ S2] = uniqueNames
-    given ValueOf[MOut] = moduleOut
+    given ValueOf[MOut]         = moduleOut
 
     val m1Name: String = a.moduleValue.value
     val m2Name: String = b.moduleValue.value
@@ -296,10 +372,11 @@ object Blueprint:
           val msg2: String = m2Name
           StateT.liftF:
             EitherT.leftT[F, (tx.Result, List[tx.Event])]:
-              RoutingFailure(ss"TxRouteMissing: module '$pathHead' does not match '$msg1' or '$msg2'")
+              RoutingFailure:
+                ss"TxRouteMissing: module '$pathHead' does not match '$msg1' or '$msg2'"
 
     val combinedTxs: TxRegistry[T1 ++ T2] = a.txs.combine(b.txs)
-    val combinedDeps = tupleConcat[D1, D2](a.deps, b.deps)
+    val combinedDeps                      = tupleConcat[D1, D2](a.deps, b.deps)
 
     new ComposedBlueprint[F, MOut, S1 ++ S2, T1 ++ T2, D1 ++ D2](
       schema = combinedSchema,
@@ -313,24 +390,44 @@ object Blueprint:
     * This is a convenience helper for Phase 3 that simplifies mounting a
     * blueprint at a nested path.
     *
-    * Type inference: Only Base and Sub need to be specified explicitly. All other types
-    * (F, MName, Schema, Txs, Deps) are inferred from the blueprint parameter.
+    * Type inference: Only Base and Sub need to be specified explicitly. All
+    * other types (F, MName, Schema, Txs, Deps) are inferred from the blueprint
+    * parameter.
     *
-    * @tparam Base the base path tuple (needs explicit specification)
-    * @tparam Sub the sub-path tuple (needs explicit specification)
-    * @param blueprint the blueprint to mount
-    * @param monad the Monad instance for F
-    * @param prefixFreePath evidence that Base ++ Sub with Schema is prefix-free
-    * @param nodeStore the MerkleTrie node store
-    * @param schemaMapper the schema mapper for instantiating tables
-    * @return a state module mounted at Base ++ Sub
+    * @tparam Base
+    *   the base path tuple (needs explicit specification)
+    * @tparam Sub
+    *   the sub-path tuple (needs explicit specification)
+    * @param blueprint
+    *   the blueprint to mount
+    * @param monad
+    *   the Monad instance for F
+    * @param prefixFreePath
+    *   evidence that Base ++ Sub with Schema is prefix-free
+    * @param nodeStore
+    *   the MerkleTrie node store
+    * @param schemaMapper
+    *   the schema mapper for instantiating tables
+    * @return
+    *   a state module mounted at Base ++ Sub
     */
   def mountAt[Base <: Tuple, Sub <: Tuple](
-    blueprint: ModuleBlueprint[?, ?, ?, ?, ?],
+      blueprint: ModuleBlueprint[?, ?, ?, ?, ?],
   )(using
-    @annotation.unused monad: cats.Monad[blueprint.EffectType],
-    prefixFreePath: PrefixFreePath[Base ++ Sub, blueprint.SchemaType],
-    @annotation.unused nodeStore: merkle.MerkleTrie.NodeStore[blueprint.EffectType],
-    schemaMapper: SchemaMapper[blueprint.EffectType, Base ++ Sub, blueprint.SchemaType],
-  ): StateModule[blueprint.EffectType, Base ++ Sub, blueprint.SchemaType, blueprint.TxsType, blueprint.DepsType, StateReducer[blueprint.EffectType, Base ++ Sub, blueprint.SchemaType]] =
+      @annotation.unused monad: Monad[blueprint.EffectType],
+      prefixFreePath: PrefixFreePath[Base ++ Sub, blueprint.SchemaType],
+      @annotation.unused nodeStore: NodeStore[blueprint.EffectType],
+      schemaMapper: SchemaMapper[
+        blueprint.EffectType,
+        Base ++ Sub,
+        blueprint.SchemaType,
+      ],
+  ): StateModule[
+    blueprint.EffectType,
+    Base ++ Sub,
+    blueprint.SchemaType,
+    blueprint.TxsType,
+    blueprint.DepsType,
+    StateReducer[blueprint.EffectType, Base ++ Sub, blueprint.SchemaType],
+  ] =
     StateModule.mount[Base ++ Sub](blueprint)
