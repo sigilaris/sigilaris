@@ -179,28 +179,40 @@ def tupleConcat[A <: Tuple, B <: Tuple](a: A, b: B): A ++ B =
 // 두 설계도를 하나로 합성 (스키마/Tx/Deps ∪)
 // IMPORTANT: Composed blueprints produce a RoutedStateReducer0 that requires
 // transactions to implement ModuleRoutedTx. This is enforced at compile time.
-def composeBlueprint[F[_], MOut <: String,
-  M1 <: String, S1 <: Tuple, T1 <: Tuple, D1 <: Tuple,
-  M2 <: String, S2 <: Tuple, T2 <: Tuple, D2 <: Tuple,
-](
-  a: ModuleBlueprint[F, M1, S1, T1, D1],
-  b: ModuleBlueprint[F, M2, S2, T2, D2],
-)(using UniqueNames[S1 ++ S2], ValueOf[M1], ValueOf[M2]): ModuleBlueprint[F, MOut, S1 ++ S2, T1 ++ T2, D1 ++ D2] =
-  new ModuleBlueprint[F, MOut, S1 ++ S2, T1 ++ T2, D1 ++ D2](
-    tables   = tupleConcat(a.tables, b.tables),
-    reducer0 = new RoutedStateReducer0[F, S1 ++ S2]:
-      // Type bound T <: Tx & ModuleRoutedTx ensures compile-time safety
-      def apply[T <: Tx & ModuleRoutedTx](tx: T)(using Requires[T#Reads, S1 ++ S2], Requires[T#Writes, S1 ++ S2]) =
-        // moduleId.path is ALWAYS module-relative (MName *: SubPath)
-        // It is NEVER prepended with the mount path
-        // Full paths (mountPath ++ moduleId.path) are only constructed at edges for telemetry
-        val pathHead = tx.moduleId.path.head.asInstanceOf[String]
-        if pathHead == valueOf[M1] then a.reducer0.apply(tx)
-        else if pathHead == valueOf[M2] then b.reducer0.apply(tx)
-        else sys.error(s"TxRouteMissing: $pathHead ∉ {${valueOf[M1]}, ${valueOf[M2]}}")
-    ,
-    txs      = a.txs.combine(b.txs),
-    deps     = tupleConcat(a.deps, b.deps),
+def composeBlueprint[F[_], MOut <: String](
+  a: ModuleBlueprint[F, ?, ?, ?, ?],
+  b: ModuleBlueprint[F, ?, ?, ?, ?],
+)(using
+  cats.Monad[F],
+  ValueOf[MOut],
+  UniqueNames[a.SchemaType ++ b.SchemaType],
+): ComposedBlueprint[F, MOut, a.SchemaType ++ b.SchemaType, a.TxsType ++ b.TxsType, a.DepsType ++ b.DepsType] =
+  type S1 = a.SchemaType
+  type S2 = b.SchemaType
+  type T1 = a.TxsType
+  type T2 = b.TxsType
+  type D1 = a.DepsType
+  type D2 = b.DepsType
+
+  val combinedSchema = tupleConcat(a.schema, b.schema)
+  val m1Name = a.moduleValue.value
+  val m2Name = b.moduleValue.value
+
+  val routedReducer = new RoutedStateReducer0[F, S1 ++ S2]:
+    def apply[T <: Tx & ModuleRoutedTx](tx: T)(using Requires[tx.Reads, S1 ++ S2], Requires[tx.Writes, S1 ++ S2]) =
+      val pathHead = tx.moduleId.path.head.asInstanceOf[String]
+      if pathHead == m1Name then
+        a.reducer0.apply(tx)(using summon[Requires[tx.Reads, S1]], summon[Requires[tx.Writes, S1]])
+      else if pathHead == m2Name then
+        b.reducer0.apply(tx)(using summon[Requires[tx.Reads, S2]], summon[Requires[tx.Writes, S2]])
+      else
+        sys.error(s"TxRouteMissing: $pathHead ∉ {$m1Name, $m2Name}")
+
+  new ComposedBlueprint[F, MOut, S1 ++ S2, T1 ++ T2, D1 ++ D2](
+    schema = combinedSchema,
+    reducer0 = routedReducer,
+    txs = a.txs.combine(b.txs),
+    deps = tupleConcat(a.deps, b.deps),
   )
 
 // 베이스 경로 아래 하위 경로로 장착 (Base ++ Sub)

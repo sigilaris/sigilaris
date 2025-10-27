@@ -69,7 +69,7 @@ class CompositionTest extends FunSuite:
     val bp2 = createBlueprint2()
 
     // Should compile: schemas have different table names
-    val composed = Blueprint.composeBlueprint[Id, "combined", "module1", Schema1, EmptyTuple, EmptyTuple, "module2", Schema2, EmptyTuple, EmptyTuple](bp1, bp2)
+    val composed = Blueprint.composeBlueprint[Id, "combined"](bp1, bp2)
 
     // Verify schema is concatenated
     assertEquals(composed.schema.size, 2)
@@ -81,7 +81,7 @@ class CompositionTest extends FunSuite:
     val bp2 = createBlueprint2()
 
     // Should summon UniqueNames for combined schema - just check it compiles
-    val composed = Blueprint.composeBlueprint[Id, "combined", "module1", Schema1, EmptyTuple, EmptyTuple, "module2", Schema2, EmptyTuple, EmptyTuple](bp1, bp2)
+    val composed = Blueprint.composeBlueprint[Id, "combined"](bp1, bp2)
 
     // Verify evidence can be summoned and composed blueprint is correct
     assert(summon[UniqueNames[Schema1 ++ Schema2]] != null)
@@ -90,7 +90,7 @@ class CompositionTest extends FunSuite:
   test("composed blueprint can be mounted"):
     val bp1 = createBlueprint1()
     val bp2 = createBlueprint2()
-    val composed = Blueprint.composeBlueprint[Id, "combined", "module1", Schema1, EmptyTuple, EmptyTuple, "module2", Schema2, EmptyTuple, EmptyTuple](bp1, bp2)
+    val composed = Blueprint.composeBlueprint[Id, "combined"](bp1, bp2)
 
     // Should be able to mount composed blueprint using mountComposed
     type Path = "app" *: EmptyTuple
@@ -103,7 +103,7 @@ class CompositionTest extends FunSuite:
   test("composed blueprint has correct dependencies"):
     val bp1 = createBlueprint1()
     val bp2 = createBlueprint2()
-    val composed = Blueprint.composeBlueprint[Id, "combined", "module1", Schema1, EmptyTuple, EmptyTuple, "module2", Schema2, EmptyTuple, EmptyTuple](bp1, bp2)
+    val composed = Blueprint.composeBlueprint[Id, "combined"](bp1, bp2)
 
     // Dependencies should be concatenated using tupleConcat
     val deps: EmptyTuple = composed.deps
@@ -124,7 +124,7 @@ class CompositionTest extends FunSuite:
   test("PrefixFreePath validation for composed schema"):
     val bp1 = createBlueprint1()
     val bp2 = createBlueprint2()
-    val composed = Blueprint.composeBlueprint[Id, "combined", "module1", Schema1, EmptyTuple, EmptyTuple, "module2", Schema2, EmptyTuple, EmptyTuple](bp1, bp2)
+    val composed = Blueprint.composeBlueprint[Id, "combined"](bp1, bp2)
 
     // Should summon PrefixFreePath for mounted path
     type Path = "app" *: EmptyTuple
@@ -209,7 +209,7 @@ class CompositionTest extends FunSuite:
   test("composeBlueprint routes Module1Tx to first reducer"):
     val bp1 = createRoutingBlueprint1()
     val bp2 = createRoutingBlueprint2()
-    val composed = Blueprint.composeBlueprint[Id, "combined", "module1", Schema1, EmptyTuple, EmptyTuple, "module2", Schema2, EmptyTuple, EmptyTuple](bp1, bp2)
+    val composed = Blueprint.composeBlueprint[Id, "combined"](bp1, bp2)
 
     val tx = Module1Tx(42L)
     val result = composed.reducer0.apply(tx)(using
@@ -228,7 +228,7 @@ class CompositionTest extends FunSuite:
   test("composeBlueprint routes Module2Tx to second reducer"):
     val bp1 = createRoutingBlueprint1()
     val bp2 = createRoutingBlueprint2()
-    val composed = Blueprint.composeBlueprint[Id, "combined", "module1", Schema1, EmptyTuple, EmptyTuple, "module2", Schema2, EmptyTuple, EmptyTuple](bp1, bp2)
+    val composed = Blueprint.composeBlueprint[Id, "combined"](bp1, bp2)
 
     val tx = Module2Tx("test")
     val result = composed.reducer0.apply(tx)(using
@@ -251,7 +251,7 @@ class CompositionTest extends FunSuite:
   // test("composeBlueprint fails for transaction without ModuleRoutedTx"):
   //   val bp1 = createRoutingBlueprint1()
   //   val bp2 = createRoutingBlueprint2()
-  //   val composed = Blueprint.composeBlueprint[Id, "combined", "module1", Schema1, EmptyTuple, EmptyTuple, "module2", Schema2, EmptyTuple, EmptyTuple](bp1, bp2)
+  //   val composed = Blueprint.composeBlueprint[Id, "combined"](bp1, bp2)
   //
   //   val tx = UnroutedTx()
   //   // This now fails at COMPILE TIME with type error - compile-time safety achieved!
@@ -263,7 +263,7 @@ class CompositionTest extends FunSuite:
   test("composeBlueprint fails for transaction with wrong module path"):
     val bp1 = createRoutingBlueprint1()
     val bp2 = createRoutingBlueprint2()
-    val composed = Blueprint.composeBlueprint[Id, "combined", "module1", Schema1, EmptyTuple, EmptyTuple, "module2", Schema2, EmptyTuple, EmptyTuple](bp1, bp2)
+    val composed = Blueprint.composeBlueprint[Id, "combined"](bp1, bp2)
 
     val tx = WrongPathTx()
     val result = composed.reducer0.apply(tx)(using

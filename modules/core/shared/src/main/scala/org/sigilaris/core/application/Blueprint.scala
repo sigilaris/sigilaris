@@ -80,6 +80,11 @@ trait RoutedStateReducer0[F[_], Schema <: Tuple]:
   * @tparam R the reducer type (covariant)
   */
 sealed trait Blueprint[F[_], MName <: String, Schema <: Tuple, Txs <: Tuple, Deps <: Tuple, +R]:
+  type ModuleName = MName
+  type SchemaType = Schema
+  type TxsType = Txs
+  type DepsType = Deps
+
   /** The Entry instances (runtime values that can create tables). */
   def schema: Schema
 
@@ -94,6 +99,9 @@ sealed trait Blueprint[F[_], MName <: String, Schema <: Tuple, Txs <: Tuple, Dep
 
   /** Evidence that table names are unique within Schema. */
   def uniqueNames: UniqueNames[Schema]
+
+  /** Literal module name for this blueprint. */
+  def moduleValue: ValueOf[MName]
 
 /** Single-module blueprint (path-independent).
   *
@@ -125,7 +133,10 @@ final class ModuleBlueprint[F[_], MName <: String, Schema <: Tuple, Txs <: Tuple
     val reducer0: StateReducer0[F, Schema],
     val txs: TxRegistry[Txs],
     val deps: Deps,
-)(using val uniqueNames: UniqueNames[Schema])
+)(using
+    val uniqueNames: UniqueNames[Schema],
+    val moduleValue: ValueOf[MName],
+)
     extends Blueprint[F, MName, Schema, Txs, Deps, StateReducer0[F, Schema]]
 
 /** Composed blueprint (path-independent).
@@ -154,7 +165,10 @@ final class ComposedBlueprint[F[_], MName <: String, Schema <: Tuple, Txs <: Tup
     val reducer0: RoutedStateReducer0[F, Schema],
     val txs: TxRegistry[Txs],
     val deps: Deps,
-)(using val uniqueNames: UniqueNames[Schema])
+)(using
+    val uniqueNames: UniqueNames[Schema],
+    val moduleValue: ValueOf[MName],
+)
     extends Blueprint[F, MName, Schema, Txs, Deps, RoutedStateReducer0[F, Schema]]
 
 object Blueprint:
@@ -213,35 +227,57 @@ object Blueprint:
     * @return a ComposedBlueprint with RoutedStateReducer0
     */
   @SuppressWarnings(Array("org.wartremover.warts.AsInstanceOf"))
-  def composeBlueprint[F[_]: cats.Monad, MOut <: String,
+  def composeBlueprint[F[_], MOut <: String](
+    a: ModuleBlueprint[F, ?, ?, ?, ?],
+    b: ModuleBlueprint[F, ?, ?, ?, ?],
+  )(using
+    monadF: cats.Monad[F],
+    moduleOut: ValueOf[MOut],
+    uniqueNames0: UniqueNames[a.SchemaType ++ b.SchemaType],
+  ): ComposedBlueprint[F, MOut, a.SchemaType ++ b.SchemaType, a.TxsType ++ b.TxsType, a.DepsType ++ b.DepsType] =
+    type M1 = a.ModuleName
+    type S1 = a.SchemaType
+    type T1 = a.TxsType
+    type D1 = a.DepsType
+    type M2 = b.ModuleName
+    type S2 = b.SchemaType
+    type T2 = b.TxsType
+    type D2 = b.DepsType
+
+    type CombinedSchema = S1 ++ S2
+    val uniqueNames: UniqueNames[CombinedSchema] = uniqueNames0
+
+    composeBlueprintImpl[F, MOut, M1, S1, T1, D1, M2, S2, T2, D2](
+      a.asInstanceOf[ModuleBlueprint[F, M1, S1, T1, D1]],
+      b.asInstanceOf[ModuleBlueprint[F, M2, S2, T2, D2]],
+    )(using monadF, moduleOut, uniqueNames)
+
+  private def composeBlueprintImpl[F[_], MOut <: String,
     M1 <: String, S1 <: Tuple, T1 <: Tuple, D1 <: Tuple,
     M2 <: String, S2 <: Tuple, T2 <: Tuple, D2 <: Tuple,
   ](
     a: ModuleBlueprint[F, M1, S1, T1, D1],
     b: ModuleBlueprint[F, M2, S2, T2, D2],
   )(using
+    monadF: cats.Monad[F],
+    moduleOut: ValueOf[MOut],
     uniqueNames: UniqueNames[S1 ++ S2],
-    m1: ValueOf[M1],
-    m2: ValueOf[M2],
   ): ComposedBlueprint[F, MOut, S1 ++ S2, T1 ++ T2, D1 ++ D2] =
-    // Union schemas using flat concatenation
-    val combinedSchema: S1 ++ S2 = tupleConcat(a.schema, b.schema)
+    given cats.Monad[F] = monadF
+    given UniqueNames[S1 ++ S2] = uniqueNames
+    given ValueOf[MOut] = moduleOut
 
-    // Capture module names for routing
-    val m1Name: String = m1.value
-    val m2Name: String = m2.value
+    val m1Name: String = a.moduleValue.value
+    val m2Name: String = b.moduleValue.value
 
-    // Merge reducers with module-based routing
-    // The composed reducer requires ModuleRoutedTx at compile time
+    val combinedSchema = tupleConcat[S1, S2](a.schema, b.schema)
+
     val routedReducer = new RoutedStateReducer0[F, S1 ++ S2]:
-      // Specialized apply for routed transactions
       @SuppressWarnings(Array("org.wartremover.warts.AsInstanceOf"))
       def apply[T <: Tx & ModuleRoutedTx](tx: T)(using
           requiresReads: Requires[tx.Reads, S1 ++ S2],
           requiresWrites: Requires[tx.Writes, S1 ++ S2],
       ): StoreF[F][(tx.Result, List[tx.Event])] =
-        // Route based on module-relative path head
-        // moduleId.path is always MName *: SubPath (never prepended with mount path)
         val pathHead = tx.moduleId.path.head.asInstanceOf[String]
 
         if pathHead === m1Name then
@@ -261,16 +297,12 @@ object Blueprint:
             EitherT.leftT[F, (tx.Result, List[tx.Event])]:
               RoutingFailure(ss"TxRouteMissing: module '$pathHead' does not match '$msg1' or '$msg2'")
 
-    // Union transaction registries
     val combinedTxs: TxRegistry[T1 ++ T2] = a.txs.combine(b.txs)
+    val combinedDeps = tupleConcat[D1, D2](a.deps, b.deps)
 
-    // Concatenate dependencies using flat concatenation
-    val combinedDeps: D1 ++ D2 = tupleConcat(a.deps, b.deps)
-
-    // Return ComposedBlueprint with RoutedStateReducer0 (no cast needed!)
     new ComposedBlueprint[F, MOut, S1 ++ S2, T1 ++ T2, D1 ++ D2](
       schema = combinedSchema,
-      reducer0 = routedReducer,  // Type: RoutedStateReducer0[F, S1 ++ S2]
+      reducer0 = routedReducer,
       txs = combinedTxs,
       deps = combinedDeps,
     )
