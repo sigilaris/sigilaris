@@ -26,20 +26,22 @@ class BlueprintTest extends FunSuite:
     val balancesEntry = Entry["balances", Utf8, Long]
     val schema: SimpleSchema = balancesEntry *: EmptyTuple
 
-    val reducer = new StateReducer0[Id, SimpleSchema]:
+    val reducer = new StateReducer0[Id, SimpleSchema, EmptyTuple]:
       def apply[T <: Tx](tx: T)(using
-          Requires[tx.Reads, SimpleSchema],
-          Requires[tx.Writes, SimpleSchema],
+          requiresReads: Requires[tx.Reads, SimpleSchema],
+          requiresWrites: Requires[tx.Writes, SimpleSchema],
+          ownsTables: Tables[Id, SimpleSchema],
+          provider: TablesProvider[Id, EmptyTuple],
       ): StoreF[Id][(tx.Result, List[tx.Event])] =
         // Trivial implementation for testing
         import cats.data.StateT
         StateT.pure((null.asInstanceOf[tx.Result], List.empty[tx.Event]))
 
     new ModuleBlueprint[Id, "simple", SimpleSchema, EmptyTuple, EmptyTuple](
-      schema = schema,
+      owns = schema,
       reducer0 = reducer,
       txs = TxRegistry.empty,
-      deps = EmptyTuple,
+      provider = TablesProvider.empty[Id],
     )
 
   test("mount creates StateModule with path binding"):

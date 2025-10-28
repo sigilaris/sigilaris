@@ -154,37 +154,41 @@ class PrefixCollisionTest extends FunSuite:
       val bp1Entry = Entry["data", Utf8, Long]
       val schema1: Schema1 = bp1Entry *: EmptyTuple
 
-      val reducer1 = new StateReducer0[Id, Schema1]:
+      val reducer1 = new StateReducer0[Id, Schema1, EmptyTuple]:
         def apply[T <: Tx](tx: T)(using
-            Requires[tx.Reads, Schema1],
-            Requires[tx.Writes, Schema1],
+            requiresReads: Requires[tx.Reads, Schema1],
+            requiresWrites: Requires[tx.Writes, Schema1],
+            ownsTables: Tables[Id, Schema1],
+            provider: TablesProvider[Id, EmptyTuple],
         ): StoreF[Id][(tx.Result, List[tx.Event])] =
           import cats.data.StateT
           StateT.pure((null.asInstanceOf[tx.Result], List.empty[tx.Event]))
 
       val bp1 = new ModuleBlueprint[Id, "module1", Schema1, EmptyTuple, EmptyTuple](
-        schema = schema1,
+        owns = schema1,
         reducer0 = reducer1,
         txs = TxRegistry.empty,
-        deps = EmptyTuple,
+        provider = TablesProvider.empty[Id],
       )
 
       val bp2Entry = Entry["data", Utf8, Utf8]
       val schema2: Schema2 = bp2Entry *: EmptyTuple
 
-      val reducer2 = new StateReducer0[Id, Schema2]:
+      val reducer2 = new StateReducer0[Id, Schema2, EmptyTuple]:
         def apply[T <: Tx](tx: T)(using
-            Requires[tx.Reads, Schema2],
-            Requires[tx.Writes, Schema2],
+            requiresReads: Requires[tx.Reads, Schema2],
+            requiresWrites: Requires[tx.Writes, Schema2],
+            ownsTables: Tables[Id, Schema2],
+            provider: TablesProvider[Id, EmptyTuple],
         ): StoreF[Id][(tx.Result, List[tx.Event])] =
           import cats.data.StateT
           StateT.pure((null.asInstanceOf[tx.Result], List.empty[tx.Event]))
 
       val bp2 = new ModuleBlueprint[Id, "module2", Schema2, EmptyTuple, EmptyTuple](
-        schema = schema2,
+        owns = schema2,
         reducer0 = reducer2,
         txs = TxRegistry.empty,
-        deps = EmptyTuple,
+        provider = TablesProvider.empty[Id],
       )
 
       Blueprint.composeBlueprint[Id, "combined"](bp1, bp2)

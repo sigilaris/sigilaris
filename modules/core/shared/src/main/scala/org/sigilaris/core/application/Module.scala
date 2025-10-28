@@ -12,25 +12,28 @@ import merkle.MerkleTrie
   * This is created during module mounting when a ModuleBlueprint is bound to a path.
   * It accepts any transaction type T <: Tx.
   *
+  * Phase 5.5 update: Now explicitly models Owns and Needs like StateReducer0.
+  *
   * @tparam F the effect type
   * @tparam Path the mount path tuple
-  * @tparam Schema the schema tuple (tuple of Entry types)
+  * @tparam Owns the owned schema tuple (tuple of Entry types)
+  * @tparam Needs the needed schema tuple (tuple of Entry types)
   */
-trait StateReducer[F[_], Path <: Tuple, Schema <: Tuple]:
+trait StateReducer[F[_], Path <: Tuple, Owns <: Tuple, Needs <: Tuple]:
   /** Apply a transaction to produce a result and events.
     *
     * The reducer is polymorphic over the transaction type T, requiring only
-    * that T's read and write requirements are satisfied by this reducer's Schema.
+    * that T's read and write requirements are satisfied by this reducer's combined schema.
     *
     * @tparam T the transaction type
     * @param tx the transaction to apply
-    * @param requiresReads evidence that T's read requirements are in Schema
-    * @param requiresWrites evidence that T's write requirements are in Schema
+    * @param requiresReads evidence that T's read requirements are in Owns ++ Needs
+    * @param requiresWrites evidence that T's write requirements are in Owns ++ Needs
     * @return a stateful computation returning the result and list of events
     */
   def apply[T <: Tx](tx: T)(using
-      requiresReads: Requires[tx.Reads, Schema],
-      requiresWrites: Requires[tx.Writes, Schema],
+      requiresReads: Requires[tx.Reads, Owns ++ Needs],
+      requiresWrites: Requires[tx.Writes, Owns ++ Needs],
   ): StoreF[F][(tx.Result, List[tx.Event])]
 
 /** Path-bound routed state reducer for composed modules.
@@ -41,11 +44,14 @@ trait StateReducer[F[_], Path <: Tuple, Schema <: Tuple]:
   * This is created during module mounting when a ComposedBlueprint is bound to a path.
   * The type bound T <: Tx & ModuleRoutedTx enforces the routing requirement at compile time.
   *
+  * Phase 5.5 update: Now explicitly models Owns and Needs like RoutedStateReducer0.
+  *
   * @tparam F the effect type
   * @tparam Path the mount path tuple
-  * @tparam Schema the schema tuple (tuple of Entry types)
+  * @tparam Owns the owned schema tuple (tuple of Entry types)
+  * @tparam Needs the needed schema tuple (tuple of Entry types)
   */
-trait RoutedStateReducer[F[_], Path <: Tuple, Schema <: Tuple]:
+trait RoutedStateReducer[F[_], Path <: Tuple, Owns <: Tuple, Needs <: Tuple]:
   /** Apply a routed transaction to produce a result and events.
     *
     * The type bound T <: Tx & ModuleRoutedTx ensures that only transactions
@@ -53,51 +59,54 @@ trait RoutedStateReducer[F[_], Path <: Tuple, Schema <: Tuple]:
     *
     * @tparam T the transaction type (must implement ModuleRoutedTx)
     * @param tx the transaction to apply
-    * @param requiresReads evidence that T's read requirements are in Schema
-    * @param requiresWrites evidence that T's write requirements are in Schema
+    * @param requiresReads evidence that T's read requirements are in Owns ++ Needs
+    * @param requiresWrites evidence that T's write requirements are in Owns ++ Needs
     * @return a stateful computation returning the result and list of events
     */
   def apply[T <: Tx & ModuleRoutedTx](tx: T)(using
-      requiresReads: Requires[tx.Reads, Schema],
-      requiresWrites: Requires[tx.Writes, Schema],
+      requiresReads: Requires[tx.Reads, Owns ++ Needs],
+      requiresWrites: Requires[tx.Writes, Owns ++ Needs],
   ): StoreF[F][(tx.Result, List[tx.Event])]
 
 /** State module (path-bound).
   *
   * A StateModule is a deployed module at a specific path. It combines:
   *   - Path: the deployment location
-  *   - Schema: the set of tables (now with computed prefixes)
+  *   - Owns: the set of owned tables (now with computed prefixes)
+  *   - Needs: the set of needed external tables
   *   - Reducer: the transaction processing logic (now path-aware)
   *   - Transactions: the set of supported transaction types
-  *   - Dependencies: other modules this module depends on
+  *   - TablesProvider: provider for external table dependencies
   *
   * StateModule is generic in the reducer type R, which can be either:
-  *   - StateReducer[F, Path, Schema] for single modules (accepts any Tx)
-  *   - RoutedStateReducer[F, Path, Schema] for composed modules (requires ModuleRoutedTx)
+  *   - StateReducer[F, Path, Owns, Needs] for single modules (accepts any Tx)
+  *   - RoutedStateReducer[F, Path, Owns, Needs] for composed modules (requires ModuleRoutedTx)
   *
   * This preserves compile-time type safety throughout the entire stack.
   *
+  * Phase 5.5 update: Schema split into Owns/Needs, Deps replaced by TablesProvider.
+  *
   * @tparam F the effect type
   * @tparam Path the mount path tuple
-  * @tparam Schema the schema tuple (tuple of Entry types)
+  * @tparam Owns the owned schema tuple (tuple of Entry types)
+  * @tparam Needs the needed schema tuple (tuple of Entry types)
   * @tparam Txs the transaction types tuple
-  * @tparam Deps the dependency types tuple
   * @tparam R the reducer type (covariant)
-  * @param tables the table instances (with prefixes bound to Path)
+  * @param tables the owned table instances (with prefixes bound to Path)
   * @param reducer the path-bound reducer
   * @param txs the transaction registry
-  * @param deps the dependencies
-  * @param uniqueNames evidence that table names are unique within Schema
-  * @param prefixFreePath evidence that all table prefixes are prefix-free
+  * @param tablesProvider the provider for external table dependencies
+  * @param uniqueNames evidence that table names are unique within Owns
+  * @param prefixFreePath evidence that all owned table prefixes are prefix-free
   */
-final class StateModule[F[_], Path <: Tuple, Schema <: Tuple, Txs <: Tuple, Deps <: Tuple, +R](
-    val tables: Tables[F, Schema],
+final class StateModule[F[_], Path <: Tuple, Owns <: Tuple, Needs <: Tuple, Txs <: Tuple, +R](
+    val tables: Tables[F, Owns],
     val reducer: R,
     val txs: TxRegistry[Txs],
-    val deps: Deps,
+    val tablesProvider: TablesProvider[F, Needs],
 )(using
-    val uniqueNames: UniqueNames[Schema],
-    val prefixFreePath: PrefixFreePath[Path, Schema],
+    val uniqueNames: UniqueNames[Owns],
+    val prefixFreePath: PrefixFreePath[Path, Owns],
 )
 
 object StateModule:
@@ -107,22 +116,24 @@ object StateModule:
     * and binds it to a concrete path, computing table prefixes and creating usable table instances.
     *
     * The mounting process:
-    *   1. Computes the prefix for each table: encodePath(Path) ++ encodeSegment(TableName)
+    *   1. Computes the prefix for each owned table: encodePath(Path) ++ encodeSegment(TableName)
     *   2. Creates fresh StateTable instances bound to these prefixes
     *   3. Wraps the reducer (StateReducer0) to create a path-aware StateReducer
     *
     * Each mount produces a completely independent set of tables, ensuring that
     * mounting the same blueprint at different paths results in isolated keyspaces.
     *
+    * Phase 5.5 update: Mounts Owns tables, passes through TablesProvider for Needs.
+    *
     * Type inference: Only Path needs to be specified explicitly. All other types
-    * (F, MName, Schema, Txs, Deps) are inferred from the blueprint parameter.
+    * (F, MName, Owns, Needs, Txs) are inferred from the blueprint parameter.
     *
     * @tparam Path the mount path (only type parameter that needs explicit specification)
     * @param blueprint the module blueprint to mount
     * @param monad the Monad instance for F (used by SchemaMapper derivation)
-    * @param prefixFreePath evidence that the path+schema combination is prefix-free
+    * @param prefixFreePath evidence that the path+owns combination is prefix-free
     * @param nodeStore the MerkleTrie node store (used by SchemaMapper derivation)
-    * @param schemaMapper the schema mapper for instantiating tables
+    * @param schemaMapper the schema mapper for instantiating owned tables
     * @return a mounted state module with path-bound tables
     */
   @SuppressWarnings(Array("org.wartremover.warts.AsInstanceOf"))
@@ -130,46 +141,51 @@ object StateModule:
       blueprint: ModuleBlueprint[?, ?, ?, ?, ?],
   )(using
       @annotation.unused monad: Monad[blueprint.EffectType],
-      prefixFreePath: PrefixFreePath[Path, blueprint.SchemaType],
+      prefixFreePath: PrefixFreePath[Path, blueprint.OwnsType],
       @annotation.unused nodeStore: MerkleTrie.NodeStore[blueprint.EffectType],
-      schemaMapper: SchemaMapper[blueprint.EffectType, Path, blueprint.SchemaType],
-  ): StateModule[blueprint.EffectType, Path, blueprint.SchemaType, blueprint.TxsType, blueprint.DepsType, StateReducer[blueprint.EffectType, Path, blueprint.SchemaType]] =
+      schemaMapper: SchemaMapper[blueprint.EffectType, Path, blueprint.OwnsType],
+  ): StateModule[blueprint.EffectType, Path, blueprint.OwnsType, blueprint.NeedsType, blueprint.TxsType, StateReducer[blueprint.EffectType, Path, blueprint.OwnsType, blueprint.NeedsType]] =
     type F[A] = blueprint.EffectType[A]
     type MName = blueprint.ModuleName
-    type Schema = blueprint.SchemaType
+    type Owns = blueprint.OwnsType
+    type Needs = blueprint.NeedsType
     type Txs = blueprint.TxsType
-    type Deps = blueprint.DepsType
 
-    mountImpl[F, MName, Path, Schema, Txs, Deps](
-      blueprint.asInstanceOf[ModuleBlueprint[F, MName, Schema, Txs, Deps]]
+    mountImpl[F, MName, Path, Owns, Needs, Txs](
+      blueprint.asInstanceOf[ModuleBlueprint[F, MName, Owns, Needs, Txs]]
     )
 
-  private def mountImpl[F[_], MName <: String, Path <: Tuple, Schema <: Tuple, Txs <: Tuple, Deps <: Tuple](
-      blueprint: ModuleBlueprint[F, MName, Schema, Txs, Deps],
+  private def mountImpl[F[_], MName <: String, Path <: Tuple, Owns <: Tuple, Needs <: Tuple, Txs <: Tuple](
+      blueprint: ModuleBlueprint[F, MName, Owns, Needs, Txs],
   )(using
       @annotation.unused monad: Monad[F],
-      prefixFreePath: PrefixFreePath[Path, Schema],
+      prefixFreePath: PrefixFreePath[Path, Owns],
       @annotation.unused nodeStore: MerkleTrie.NodeStore[F],
-      schemaMapper: SchemaMapper[F, Path, Schema],
-  ): StateModule[F, Path, Schema, Txs, Deps, StateReducer[F, Path, Schema]] =
-    // Instantiate fresh tables with path-specific prefixes from Entry instances
+      schemaMapper: SchemaMapper[F, Path, Owns],
+  ): StateModule[F, Path, Owns, Needs, Txs, StateReducer[F, Path, Owns, Needs]] =
+    // Instantiate fresh owned tables with path-specific prefixes from Entry instances
     // Note: monad and nodeStore are used implicitly by the SchemaMapper derivation
-    val tables: Tables[F, Schema] =
-      SchemaInstantiation.instantiateTablesFromEntries[F, Path, Schema](blueprint.schema)
+    val ownsTables: Tables[F, Owns] =
+      SchemaInstantiation.instantiateTablesFromEntries[F, Path, Owns](blueprint.owns)
 
-    val pathBoundReducer = new StateReducer[F, Path, Schema]:
+    val pathBoundReducer = new StateReducer[F, Path, Owns, Needs]:
       def apply[T <: Tx](tx: T)(using
-          requiresReads: Requires[tx.Reads, Schema],
-          requiresWrites: Requires[tx.Writes, Schema],
+          requiresReads: Requires[tx.Reads, Owns ++ Needs],
+          requiresWrites: Requires[tx.Writes, Owns ++ Needs],
       ): StoreF[F][(tx.Result, List[tx.Event])] =
-        // Delegate to the path-agnostic reducer
-        blueprint.reducer0.apply(tx)
+        // Delegate to the path-agnostic reducer with owns tables and provider
+        blueprint.reducer0.apply(tx)(using
+          requiresReads,
+          requiresWrites,
+          ownsTables,
+          blueprint.provider,
+        )
 
-    new StateModule[F, Path, Schema, Txs, Deps, StateReducer[F, Path, Schema]](
-      tables = tables,
+    new StateModule[F, Path, Owns, Needs, Txs, StateReducer[F, Path, Owns, Needs]](
+      tables = ownsTables,
       reducer = pathBoundReducer,
       txs = blueprint.txs,
-      deps = blueprint.deps,
+      tablesProvider = blueprint.provider,
     )(using blueprint.uniqueNames, prefixFreePath)
 
   /** Mount a composed blueprint at a specific path, creating a StateModule.
@@ -181,15 +197,17 @@ object StateModule:
     * RoutedStateReducer, preserving the compile-time type safety requirement for
     * ModuleRoutedTx throughout the entire stack.
     *
+    * Phase 5.5 update: Mounts Owns tables, passes through TablesProvider for Needs.
+    *
     * Type inference: Only Path needs to be specified explicitly. All other types
-    * (F, MName, Schema, Txs, Deps) are inferred from the blueprint parameter.
+    * (F, MName, Owns, Needs, Txs) are inferred from the blueprint parameter.
     *
     * @tparam Path the mount path (only type parameter that needs explicit specification)
     * @param blueprint the composed blueprint to mount
     * @param monad the Monad instance for F
-    * @param prefixFreePath evidence that the path+schema combination is prefix-free
+    * @param prefixFreePath evidence that the path+owns combination is prefix-free
     * @param nodeStore the MerkleTrie node store
-    * @param schemaMapper the schema mapper for instantiating tables
+    * @param schemaMapper the schema mapper for instantiating owned tables
     * @return a mounted state module with RoutedStateReducer (compile-time safe)
     */
   @SuppressWarnings(Array("org.wartremover.warts.AsInstanceOf"))
@@ -197,61 +215,65 @@ object StateModule:
       blueprint: ComposedBlueprint[?, ?, ?, ?, ?],
   )(using
       @annotation.unused monad: Monad[blueprint.EffectType],
-      prefixFreePath: PrefixFreePath[Path, blueprint.SchemaType],
+      prefixFreePath: PrefixFreePath[Path, blueprint.OwnsType],
       @annotation.unused nodeStore: MerkleTrie.NodeStore[blueprint.EffectType],
-      schemaMapper: SchemaMapper[blueprint.EffectType, Path, blueprint.SchemaType],
-  ): StateModule[blueprint.EffectType, Path, blueprint.SchemaType, blueprint.TxsType, blueprint.DepsType, RoutedStateReducer[blueprint.EffectType, Path, blueprint.SchemaType]] =
+      schemaMapper: SchemaMapper[blueprint.EffectType, Path, blueprint.OwnsType],
+  ): StateModule[blueprint.EffectType, Path, blueprint.OwnsType, blueprint.NeedsType, blueprint.TxsType, RoutedStateReducer[blueprint.EffectType, Path, blueprint.OwnsType, blueprint.NeedsType]] =
     type F[A] = blueprint.EffectType[A]
     type MName = blueprint.ModuleName
-    type Schema = blueprint.SchemaType
+    type Owns = blueprint.OwnsType
+    type Needs = blueprint.NeedsType
     type Txs = blueprint.TxsType
-    type Deps = blueprint.DepsType
 
-    mountComposedImpl[F, MName, Path, Schema, Txs, Deps](
-      blueprint.asInstanceOf[ComposedBlueprint[F, MName, Schema, Txs, Deps]]
+    mountComposedImpl[F, MName, Path, Owns, Needs, Txs](
+      blueprint.asInstanceOf[ComposedBlueprint[F, MName, Owns, Needs, Txs]]
     )
 
-  private def mountComposedImpl[F[_], MName <: String, Path <: Tuple, Schema <: Tuple, Txs <: Tuple, Deps <: Tuple](
-      blueprint: ComposedBlueprint[F, MName, Schema, Txs, Deps],
+  private def mountComposedImpl[F[_], MName <: String, Path <: Tuple, Owns <: Tuple, Needs <: Tuple, Txs <: Tuple](
+      blueprint: ComposedBlueprint[F, MName, Owns, Needs, Txs],
   )(using
       @annotation.unused monad: Monad[F],
-      prefixFreePath: PrefixFreePath[Path, Schema],
+      prefixFreePath: PrefixFreePath[Path, Owns],
       @annotation.unused nodeStore: MerkleTrie.NodeStore[F],
-      schemaMapper: SchemaMapper[F, Path, Schema],
-  ): StateModule[F, Path, Schema, Txs, Deps, RoutedStateReducer[F, Path, Schema]] =
-    // Instantiate fresh tables with path-specific prefixes from Entry instances
-    val tables: Tables[F, Schema] =
-      SchemaInstantiation.instantiateTablesFromEntries[F, Path, Schema](blueprint.schema)
+      schemaMapper: SchemaMapper[F, Path, Owns],
+  ): StateModule[F, Path, Owns, Needs, Txs, RoutedStateReducer[F, Path, Owns, Needs]] =
+    // Instantiate fresh owned tables with path-specific prefixes from Entry instances
+    val ownsTables: Tables[F, Owns] =
+      SchemaInstantiation.instantiateTablesFromEntries[F, Path, Owns](blueprint.owns)
 
     // Create a RoutedStateReducer (path-bound version of RoutedStateReducer0)
     // NO CAST NEEDED - type safety is preserved!
-    val pathBoundReducer = new RoutedStateReducer[F, Path, Schema]:
+    val pathBoundReducer = new RoutedStateReducer[F, Path, Owns, Needs]:
       def apply[T <: Tx & ModuleRoutedTx](tx: T)(using
-          requiresReads: Requires[tx.Reads, Schema],
-          requiresWrites: Requires[tx.Writes, Schema],
+          requiresReads: Requires[tx.Reads, Owns ++ Needs],
+          requiresWrites: Requires[tx.Writes, Owns ++ Needs],
       ): StoreF[F][(tx.Result, List[tx.Event])] =
-        // Delegate to the path-agnostic routed reducer
-        blueprint.reducer0.apply(tx)
+        // Delegate to the path-agnostic routed reducer with owns tables and provider
+        blueprint.reducer0.apply(tx)(using
+          requiresReads,
+          requiresWrites,
+          ownsTables,
+          blueprint.provider,
+        )
 
-    new StateModule[F, Path, Schema, Txs, Deps, RoutedStateReducer[F, Path, Schema]](
-      tables = tables,
+    new StateModule[F, Path, Owns, Needs, Txs, RoutedStateReducer[F, Path, Owns, Needs]](
+      tables = ownsTables,
       reducer = pathBoundReducer,
       txs = blueprint.txs,
-      deps = blueprint.deps,
+      tablesProvider = blueprint.provider,
     )(using blueprint.uniqueNames, prefixFreePath)
 
   /** Extend two modules mounted at the same path into a single module.
     *
     * This is the core operation for Phase 5: combining two StateModules that
     * are deployed at the same path into a unified module with:
-    *   - Merged schemas (S1 ++ S2)
+    *   - Merged owned schemas (O1 ++ O2)
     *   - Merged transaction sets (T1 ++ T2)
-    *   - Concatenated dependencies ((D1, D2))
     *   - Combined reducer logic (tries r1, then r2)
     *
     * The extend operation requires evidence that:
-    *   - Combined schema has unique names (UniqueNames[S1 ++ S2])
-    *   - Combined schema is prefix-free at the shared Path (PrefixFreePath[Path, S1 ++ S2])
+    *   - Combined owned schema has unique names (UniqueNames[O1 ++ O2])
+    *   - Combined owned schema is prefix-free at the shared Path (PrefixFreePath[Path, O1 ++ O2])
     *
     * Reducer merging strategy:
     *   - Attempt to apply the transaction to r1
@@ -261,71 +283,53 @@ object StateModule:
     *
     * This allows transactions to be processed by whichever module can handle them.
     *
+    * Phase 5.5 SAFETY: Both modules MUST have Needs = EmptyTuple.
+    * This is enforced via compile-time evidence (=:= constraints).
+    * Provider merge strategy for Needs ≠ EmptyTuple is deferred to Phase 5.6.
+    *
     * @tparam F the effect type
     * @tparam Path the shared mount path
-    * @tparam S1 first schema tuple
-    * @tparam S2 second schema tuple
+    * @tparam O1 first owned schema tuple
+    * @tparam O2 second owned schema tuple
     * @tparam T1 first transaction types tuple
     * @tparam T2 second transaction types tuple
-    * @tparam D1 first dependencies tuple
-    * @tparam D2 second dependencies tuple
     * @tparam R1 first reducer type
     * @tparam R2 second reducer type
-    * @param a the first module
-    * @param b the second module
-    * @param uniqueNames evidence that combined schema has unique names
-    * @param prefixFreePath evidence that combined schema is prefix-free at Path
+    * @param a the first module (must have Needs = EmptyTuple)
+    * @param b the second module (must have Needs = EmptyTuple)
+    * @param uniqueNames evidence that combined owned schema has unique names
+    * @param prefixFreePath evidence that combined owned schema is prefix-free at Path
     * @return a merged state module at the same Path
     */
-  def extend[F[_]: cats.Monad, Path <: Tuple, S1 <: Tuple, S2 <: Tuple, T1 <: Tuple, T2 <: Tuple, D1 <: Tuple, D2 <: Tuple, R1, R2](
-      a: StateModule[F, Path, S1, T1, D1, R1],
-      b: StateModule[F, Path, S2, T2, D2, R2],
+  def extend[F[_]: cats.Monad, Path <: Tuple, O1 <: Tuple, O2 <: Tuple, T1 <: Tuple, T2 <: Tuple, R1, R2](
+      a: StateModule[F, Path, O1, EmptyTuple, T1, R1],
+      b: StateModule[F, Path, O2, EmptyTuple, T2, R2],
   )(using
-      uniqueNames: UniqueNames[S1 ++ S2],
-      prefixFreePath: PrefixFreePath[Path, S1 ++ S2],
-  ): StateModule[F, Path, S1 ++ S2, T1 ++ T2, (D1, D2), StateReducer[F, Path, S1 ++ S2]] =
-    // Merge tables using flat concatenation
-    val mergedTables: Tables[F, S1 ++ S2] = mergeTables(a.tables, b.tables)
+      uniqueNames: UniqueNames[O1 ++ O2],
+      prefixFreePath: PrefixFreePath[Path, O1 ++ O2],
+  ): StateModule[F, Path, O1 ++ O2, EmptyTuple, T1 ++ T2, StateReducer[F, Path, O1 ++ O2, EmptyTuple]] =
+    // Merge owned tables using flat concatenation
+    @SuppressWarnings(Array("org.wartremover.warts.AsInstanceOf"))
+    val mergedTables: Tables[F, O1 ++ O2] = (a.tables ++ b.tables).asInstanceOf[Tables[F, O1 ++ O2]]
 
     // Merge reducers - create a new reducer that delegates based on runtime type matching
     // This is a simplified Phase 5 implementation
     // A production system would use explicit transaction routing or a registry pattern
-    val mergedReducer = mergeReducers[F, Path, S1, S2](
-      a.reducer.asInstanceOf[StateReducer[F, Path, S1]],
-      b.reducer.asInstanceOf[StateReducer[F, Path, S2]],
+    val mergedReducer = mergeReducers[F, Path, O1, O2](
+      a.reducer.asInstanceOf[StateReducer[F, Path, O1, EmptyTuple]],
+      b.reducer.asInstanceOf[StateReducer[F, Path, O2, EmptyTuple]],
     )
 
     // Merge transaction registries
     val mergedTxs: TxRegistry[T1 ++ T2] = a.txs.combine(b.txs)
 
-    // Combine dependencies as a tuple
-    val mergedDeps: (D1, D2) = (a.deps, b.deps)
-
-    new StateModule[F, Path, S1 ++ S2, T1 ++ T2, (D1, D2), StateReducer[F, Path, S1 ++ S2]](
+    new StateModule[F, Path, O1 ++ O2, EmptyTuple, T1 ++ T2, StateReducer[F, Path, O1 ++ O2, EmptyTuple]](
       tables = mergedTables,
       reducer = mergedReducer,
       txs = mergedTxs,
-      deps = mergedDeps,
+      tablesProvider = TablesProvider.empty[F], // Both modules have Needs = EmptyTuple
     )(using uniqueNames, prefixFreePath)
 
-  /** Merge two Tables tuples into a single flat tuple.
-    *
-    * This helper ensures that table merging at runtime matches the
-    * type-level Tuple.Concat semantics.
-    *
-    * @tparam F the effect type
-    * @tparam S1 first schema tuple
-    * @tparam S2 second schema tuple
-    * @param t1 the first tables tuple
-    * @param t2 the second tables tuple
-    * @return a flat concatenated tuple of tables
-    */
-  @SuppressWarnings(Array("org.wartremover.warts.AsInstanceOf"))
-  private def mergeTables[F[_], S1 <: Tuple, S2 <: Tuple](
-      t1: Tables[F, S1],
-      t2: Tables[F, S2],
-  ): Tables[F, S1 ++ S2] =
-    Tuple.fromArray(t1.toArray ++ t2.toArray).asInstanceOf[Tables[F, S1 ++ S2]]
 
   /** Merge two reducers into a single reducer.
     *
@@ -347,28 +351,30 @@ object StateModule:
     * which may cause duplicate work. Use explicit routing (ModuleRoutedTx)
     * for production systems.
     *
+    * Phase 5.5 update: Both reducers have Needs = EmptyTuple (enforced by extend signature).
+    *
     * @tparam F the effect type
     * @tparam Path the mount path
-    * @tparam S1 first schema tuple
-    * @tparam S2 second schema tuple
-    * @param r1 the first reducer
-    * @param r2 the second reducer
-    * @return a merged reducer for schema S1 ++ S2
+    * @tparam O1 first owned schema tuple
+    * @tparam O2 second owned schema tuple
+    * @param r1 the first reducer (Needs = EmptyTuple)
+    * @param r2 the second reducer (Needs = EmptyTuple)
+    * @return a merged reducer for owned schema O1 ++ O2
     */
   @SuppressWarnings(Array("org.wartremover.warts.AsInstanceOf"))
-  private def mergeReducers[F[_]: cats.Monad, Path <: Tuple, S1 <: Tuple, S2 <: Tuple](
-      r1: StateReducer[F, Path, S1],
-      r2: StateReducer[F, Path, S2],
-  ): StateReducer[F, Path, S1 ++ S2] =
-    new StateReducer[F, Path, S1 ++ S2]:
+  private def mergeReducers[F[_]: cats.Monad, Path <: Tuple, O1 <: Tuple, O2 <: Tuple](
+      r1: StateReducer[F, Path, O1, EmptyTuple],
+      r2: StateReducer[F, Path, O2, EmptyTuple],
+  ): StateReducer[F, Path, O1 ++ O2, EmptyTuple] =
+    new StateReducer[F, Path, O1 ++ O2, EmptyTuple]:
       def apply[T <: Tx](tx: T)(using
-          requiresReads: Requires[tx.Reads, S1 ++ S2],
-          requiresWrites: Requires[tx.Writes, S1 ++ S2],
+          requiresReads: Requires[tx.Reads, (O1 ++ O2) ++ EmptyTuple],
+          requiresWrites: Requires[tx.Writes, (O1 ++ O2) ++ EmptyTuple],
       ): StoreF[F][(tx.Result, List[tx.Event])] =
-        // Try r1 first
+        // Try r1 first - SAFE because both have Needs = EmptyTuple (enforced by extend signature)
         val r1Result = r1.apply(tx)(using
-          requiresReads.asInstanceOf[Requires[tx.Reads, S1]],
-          requiresWrites.asInstanceOf[Requires[tx.Writes, S1]],
+          requiresReads.asInstanceOf[Requires[tx.Reads, O1 ++ EmptyTuple]],
+          requiresWrites.asInstanceOf[Requires[tx.Writes, O1 ++ EmptyTuple]],
         )
 
         // If r1 fails, try r2 as fallback
@@ -381,8 +387,8 @@ object StateModule:
             case _r1Error =>
               // r1 failed, try r2 as fallback
               r2.apply(tx)(using
-                requiresReads.asInstanceOf[Requires[tx.Reads, S2]],
-                requiresWrites.asInstanceOf[Requires[tx.Writes, S2]],
+                requiresReads.asInstanceOf[Requires[tx.Reads, O2 ++ EmptyTuple]],
+                requiresWrites.asInstanceOf[Requires[tx.Writes, O2 ++ EmptyTuple]],
               ).run(s)
           }
         }
@@ -392,63 +398,62 @@ object StateModule:
     * A ModuleFactory is a blueprint wrapper that can be instantiated
     * at different paths, enabling flexible assembly patterns.
     *
-    * LIMITATION: Dependencies are discarded (Deps → EmptyTuple).
-    * This means factories cannot preserve cross-module dependencies that require
-    * Phase 4's Lookup patterns. Use factories only for:
-    *   - Self-contained modules (no cross-module dependencies)
+    * Phase 5.5 SAFETY: Only supports modules with Needs = EmptyTuple.
+    * This means factories only work for self-contained modules:
+    *   - No cross-module dependencies
     *   - Building the same module at multiple paths (sandboxing)
     *   - Creating module templates that can be customized per path
     *
-    * For modules with cross-module dependencies, use direct mount or composeBlueprint.
+    * For modules with external dependencies, use direct mount or composeBlueprint.
     *
     * @tparam F the effect type
-    * @tparam Schema the schema tuple
+    * @tparam Owns the owned schema tuple
     * @tparam Txs the transaction types tuple
     */
-  trait ModuleFactory[F[_], Schema <: Tuple, Txs <: Tuple]:
+  trait ModuleFactory[F[_], Owns <: Tuple, Txs <: Tuple]:
     /** Build a state module at the given path.
       *
       * @tparam Path the mount path
       * @param monad the Monad instance for F
-      * @param prefixFreePath evidence that the path+schema combination is prefix-free
+      * @param prefixFreePath evidence that the path+owns combination is prefix-free
       * @param nodeStore the MerkleTrie node store
-      * @param schemaMapper the schema mapper for instantiating tables
-      * @return a state module mounted at Path
+      * @param schemaMapper the schema mapper for instantiating owned tables
+      * @return a state module mounted at Path (Needs = EmptyTuple)
       */
     def build[Path <: Tuple](using
         @annotation.unused monad: cats.Monad[F],
-        prefixFreePath: PrefixFreePath[Path, Schema],
+        prefixFreePath: PrefixFreePath[Path, Owns],
         @annotation.unused nodeStore: merkle.MerkleTrie.NodeStore[F],
-        schemaMapper: SchemaMapper[F, Path, Schema],
-    ): StateModule[F, Path, Schema, Txs, EmptyTuple, StateReducer[F, Path, Schema]]
+        schemaMapper: SchemaMapper[F, Path, Owns],
+    ): StateModule[F, Path, Owns, EmptyTuple, Txs, StateReducer[F, Path, Owns, EmptyTuple]]
 
   object ModuleFactory:
     /** Create a module factory from a blueprint.
       *
-      * COMPILE-TIME SAFETY: Only blueprints with EmptyTuple dependencies are accepted.
+      * COMPILE-TIME SAFETY: Only blueprints with Needs = EmptyTuple are accepted.
       * This ensures that factories cannot be created from modules that require
-      * Phase 4 Lookup patterns for cross-module dependencies.
+      * external table dependencies (Phase 5.5 TablesProvider).
       *
-      * Modules with dependencies must be deployed using:
+      * Modules with external dependencies must be deployed using:
       *   - Direct mount: StateModule.mount(blueprint)
-      *   - Composition: composeBlueprint(...) → mount
+      *   - Composition: composeBlueprint(...) → mount (when both have Needs = EmptyTuple)
       *
       * @tparam F the effect type
       * @tparam MName the module name
-      * @tparam Schema the schema tuple
+      * @tparam Owns the owned schema tuple
       * @tparam Txs the transaction types tuple
-      * @param blueprint the blueprint to wrap (must have Deps = EmptyTuple)
+      * @param blueprint the blueprint to wrap (must have Needs = EmptyTuple)
       * @return a module factory that can build the module at different paths
       */
-    def fromBlueprint[F[_], MName <: String, Schema <: Tuple, Txs <: Tuple](
-        blueprint: ModuleBlueprint[F, MName, Schema, Txs, EmptyTuple],
-    ): ModuleFactory[F, Schema, Txs] =
-      new ModuleFactory[F, Schema, Txs]:
+    def fromBlueprint[F[_], MName <: String, Owns <: Tuple, Txs <: Tuple](
+        blueprint: ModuleBlueprint[F, MName, Owns, EmptyTuple, Txs],
+    ): ModuleFactory[F, Owns, Txs] =
+      new ModuleFactory[F, Owns, Txs]:
         def build[Path <: Tuple](using
             @annotation.unused monad: cats.Monad[F],
-            prefixFreePath: PrefixFreePath[Path, Schema],
+            prefixFreePath: PrefixFreePath[Path, Owns],
             @annotation.unused nodeStore: merkle.MerkleTrie.NodeStore[F],
-            schemaMapper: SchemaMapper[F, Path, Schema],
-        ): StateModule[F, Path, Schema, Txs, EmptyTuple, StateReducer[F, Path, Schema]] =
-          // Mount the blueprint - dependencies are already EmptyTuple
+            schemaMapper: SchemaMapper[F, Path, Owns],
+        ): StateModule[F, Path, Owns, EmptyTuple, Txs, StateReducer[F, Path, Owns, EmptyTuple]] =
+          // Mount the blueprint - Needs is already EmptyTuple
           StateModule.mount[Path](blueprint)

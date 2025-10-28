@@ -74,20 +74,22 @@ class Phase5Spec extends FunSuite:
     val balancesEntry = Entry["balances", Address, BigNat]
     val schema: AccountsSchema = (accountsEntry, balancesEntry)
 
-    val reducer = new StateReducer0[SyncIO, AccountsSchema]:
+    val reducer = new StateReducer0[SyncIO, AccountsSchema, EmptyTuple]:
       def apply[T <: Tx](tx: T)(using
           requiresReads: Requires[tx.Reads, AccountsSchema],
           requiresWrites: Requires[tx.Writes, AccountsSchema],
+          ownsTables: Tables[SyncIO, AccountsSchema],
+          provider: TablesProvider[SyncIO, EmptyTuple],
       ): StoreF[SyncIO][(tx.Result, List[tx.Event])] =
         // Simplified reducer for testing
         import cats.data.StateT
         StateT.pure((().asInstanceOf[tx.Result], List.empty[tx.Event]))
 
     new ModuleBlueprint[SyncIO, "accounts", AccountsSchema, EmptyTuple, EmptyTuple](
-      schema = schema,
+      owns = schema,
       reducer0 = reducer,
       txs = TxRegistry.empty,
-      deps = EmptyTuple,
+      provider = TablesProvider.empty[SyncIO],
     )
 
   def createGroupBlueprint(): ModuleBlueprint[SyncIO, "group", GroupSchema, EmptyTuple, EmptyTuple] =
@@ -95,19 +97,21 @@ class Phase5Spec extends FunSuite:
     val membersEntry = Entry["members", Address, BigNat]
     val schema: GroupSchema = (groupsEntry, membersEntry)
 
-    val reducer = new StateReducer0[SyncIO, GroupSchema]:
+    val reducer = new StateReducer0[SyncIO, GroupSchema, EmptyTuple]:
       def apply[T <: Tx](tx: T)(using
           requiresReads: Requires[tx.Reads, GroupSchema],
           requiresWrites: Requires[tx.Writes, GroupSchema],
+          ownsTables: Tables[SyncIO, GroupSchema],
+          provider: TablesProvider[SyncIO, EmptyTuple],
       ): StoreF[SyncIO][(tx.Result, List[tx.Event])] =
         import cats.data.StateT
         StateT.pure((().asInstanceOf[tx.Result], List.empty[tx.Event]))
 
     new ModuleBlueprint[SyncIO, "group", GroupSchema, EmptyTuple, EmptyTuple](
-      schema = schema,
+      owns = schema,
       reducer0 = reducer,
       txs = TxRegistry.empty,
-      deps = EmptyTuple,
+      provider = TablesProvider.empty[SyncIO],
     )
 
   test("extend: merge two modules at same path"):
@@ -202,10 +206,12 @@ class Phase5Spec extends FunSuite:
     val balancesEntry = Entry["balances", Address, BigNat]
     val accountsSchema: AccountsSchema = (accountsEntry, balancesEntry)
 
-    val accountsReducer = new StateReducer0[SyncIO, AccountsSchema]:
+    val accountsReducer = new StateReducer0[SyncIO, AccountsSchema, EmptyTuple]:
       def apply[T <: Tx](tx: T)(using
           requiresReads: Requires[tx.Reads, AccountsSchema],
           requiresWrites: Requires[tx.Writes, AccountsSchema],
+          ownsTables: Tables[SyncIO, AccountsSchema],
+          provider: TablesProvider[SyncIO, EmptyTuple],
       ): StoreF[SyncIO][(tx.Result, List[tx.Event])] =
         tx match
           case CreateAccount(addr, acc) =>
@@ -217,29 +223,31 @@ class Phase5Spec extends FunSuite:
             StateT.pure((().asInstanceOf[tx.Result], List.empty[tx.Event]))
 
     val accountsBP = new ModuleBlueprint[SyncIO, "accounts", AccountsSchema, EmptyTuple, EmptyTuple](
-      schema = accountsSchema,
+      owns = accountsSchema,
       reducer0 = accountsReducer,
       txs = TxRegistry.empty,
-      deps = EmptyTuple,
+      provider = TablesProvider.empty[SyncIO],
     )
 
     val groupsEntry = Entry["groups", Address, GroupInfo]
     val membersEntry = Entry["members", Address, BigNat]
     val groupSchema: GroupSchema = (groupsEntry, membersEntry)
 
-    val groupReducer = new StateReducer0[SyncIO, GroupSchema]:
+    val groupReducer = new StateReducer0[SyncIO, GroupSchema, EmptyTuple]:
       def apply[T <: Tx](tx: T)(using
           requiresReads: Requires[tx.Reads, GroupSchema],
           requiresWrites: Requires[tx.Writes, GroupSchema],
+          ownsTables: Tables[SyncIO, GroupSchema],
+          provider: TablesProvider[SyncIO, EmptyTuple],
       ): StoreF[SyncIO][(tx.Result, List[tx.Event])] =
         import cats.data.StateT
         StateT.pure((().asInstanceOf[tx.Result], List.empty[tx.Event]))
 
     val groupBP = new ModuleBlueprint[SyncIO, "group", GroupSchema, EmptyTuple, EmptyTuple](
-      schema = groupSchema,
+      owns = groupSchema,
       reducer0 = groupReducer,
       txs = TxRegistry.empty,
-      deps = EmptyTuple,
+      provider = TablesProvider.empty[SyncIO],
     )
 
     val accountsModule = StateModule.mount[Path["app"]](accountsBP)
@@ -272,10 +280,12 @@ class Phase5Spec extends FunSuite:
     val balancesEntry = Entry["balances", Address, BigNat]
     val accountsSchema: AccountsSchema = (accountsEntry, balancesEntry)
 
-    val accountsReducer = new StateReducer0[SyncIO, AccountsSchema]:
+    val accountsReducer = new StateReducer0[SyncIO, AccountsSchema, EmptyTuple]:
       def apply[T <: Tx](tx: T)(using
           requiresReads: Requires[tx.Reads, AccountsSchema],
           requiresWrites: Requires[tx.Writes, AccountsSchema],
+          ownsTables: Tables[SyncIO, AccountsSchema],
+          provider: TablesProvider[SyncIO, EmptyTuple],
       ): StoreF[SyncIO][(tx.Result, List[tx.Event])] =
         tx match
           case _: CreateGroup =>
@@ -290,10 +300,10 @@ class Phase5Spec extends FunSuite:
             StateT.pure((().asInstanceOf[tx.Result], List.empty[tx.Event]))
 
     val accountsBP = new ModuleBlueprint[SyncIO, "accounts", AccountsSchema, EmptyTuple, EmptyTuple](
-      schema = accountsSchema,
+      owns = accountsSchema,
       reducer0 = accountsReducer,
       txs = TxRegistry.empty,
-      deps = EmptyTuple,
+      provider = TablesProvider.empty[SyncIO],
     )
 
     // Create group blueprint that will succeed on CreateGroup
@@ -301,10 +311,12 @@ class Phase5Spec extends FunSuite:
     val membersEntry = Entry["members", Address, BigNat]
     val groupSchema: GroupSchema = (groupsEntry, membersEntry)
 
-    val groupReducer = new StateReducer0[SyncIO, GroupSchema]:
+    val groupReducer = new StateReducer0[SyncIO, GroupSchema, EmptyTuple]:
       def apply[T <: Tx](tx: T)(using
           requiresReads: Requires[tx.Reads, GroupSchema],
           requiresWrites: Requires[tx.Writes, GroupSchema],
+          ownsTables: Tables[SyncIO, GroupSchema],
+          provider: TablesProvider[SyncIO, EmptyTuple],
       ): StoreF[SyncIO][(tx.Result, List[tx.Event])] =
         tx match
           case CreateGroup(addr, grp) =>
@@ -316,10 +328,10 @@ class Phase5Spec extends FunSuite:
             StateT.pure((().asInstanceOf[tx.Result], List.empty[tx.Event]))
 
     val groupBP = new ModuleBlueprint[SyncIO, "group", GroupSchema, EmptyTuple, EmptyTuple](
-      schema = groupSchema,
+      owns = groupSchema,
       reducer0 = groupReducer,
       txs = TxRegistry.empty,
-      deps = EmptyTuple,
+      provider = TablesProvider.empty[SyncIO],
     )
 
     val accountsModule = StateModule.mount[Path["app"]](accountsBP)
@@ -352,20 +364,22 @@ class Phase5Spec extends FunSuite:
     val accountsSchema: AccountsSchema = (accountsEntry, balancesEntry)
 
     // r1 always succeeds but returns NO events (e.g., a query operation)
-    val accountsReducer = new StateReducer0[SyncIO, AccountsSchema]:
+    val accountsReducer = new StateReducer0[SyncIO, AccountsSchema, EmptyTuple]:
       def apply[T <: Tx](tx: T)(using
           requiresReads: Requires[tx.Reads, AccountsSchema],
           requiresWrites: Requires[tx.Writes, AccountsSchema],
+          ownsTables: Tables[SyncIO, AccountsSchema],
+          provider: TablesProvider[SyncIO, EmptyTuple],
       ): StoreF[SyncIO][(tx.Result, List[tx.Event])] =
         import cats.data.StateT
         // Successfully handle transaction with NO events
         StateT.pure((().asInstanceOf[tx.Result], List.empty[tx.Event]))
 
     val accountsBP = new ModuleBlueprint[SyncIO, "accounts", AccountsSchema, EmptyTuple, EmptyTuple](
-      schema = accountsSchema,
+      owns = accountsSchema,
       reducer0 = accountsReducer,
       txs = TxRegistry.empty,
-      deps = EmptyTuple,
+      provider = TablesProvider.empty[SyncIO],
     )
 
     val groupsEntry = Entry["groups", Address, GroupInfo]
@@ -374,20 +388,22 @@ class Phase5Spec extends FunSuite:
 
     // r2 should NOT be called if r1 succeeds
     var r2Called = false
-    val groupReducer = new StateReducer0[SyncIO, GroupSchema]:
+    val groupReducer = new StateReducer0[SyncIO, GroupSchema, EmptyTuple]:
       def apply[T <: Tx](tx: T)(using
           requiresReads: Requires[tx.Reads, GroupSchema],
           requiresWrites: Requires[tx.Writes, GroupSchema],
+          ownsTables: Tables[SyncIO, GroupSchema],
+          provider: TablesProvider[SyncIO, EmptyTuple],
       ): StoreF[SyncIO][(tx.Result, List[tx.Event])] =
         r2Called = true  // Track if r2 was called
         import cats.data.StateT
         StateT.pure((().asInstanceOf[tx.Result], List.empty[tx.Event]))
 
     val groupBP = new ModuleBlueprint[SyncIO, "group", GroupSchema, EmptyTuple, EmptyTuple](
-      schema = groupSchema,
+      owns = groupSchema,
       reducer0 = groupReducer,
       txs = TxRegistry.empty,
-      deps = EmptyTuple,
+      provider = TablesProvider.empty[SyncIO],
     )
 
     val accountsModule = StateModule.mount[Path["app"]](accountsBP)
