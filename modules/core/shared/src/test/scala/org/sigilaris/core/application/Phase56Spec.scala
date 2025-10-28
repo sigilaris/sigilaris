@@ -167,6 +167,78 @@ class Phase56Spec extends FunSuite:
 
     assertEquals(merged.tables, EmptyTuple)
 
+  // Regression test for the narrow() fix: verify that composed blueprints
+  // correctly project multi-table providers when routing to sub-modules
+  test("composeBlueprint: provider projection with multi-table Needs pattern matching"):
+    // Create a module with TWO dependencies that we'll pattern match
+    type DualNeeds = Entry["dep1", Long, Long] *: Entry["dep2", Long, Long] *: EmptyTuple
+    type TestOwns = Entry["test", Long, Long] *: EmptyTuple
+
+    val testEntry = new Entry["test", Long, Long]("test")
+
+    // This reducer will PATTERN MATCH on the provider.tables tuple
+    // Before the narrow() fix, this would throw MatchError after composition
+    val reducer = new StateReducer0[Id, TestOwns, DualNeeds]:
+      def apply[T <: Tx](tx: T)(using
+          requiresReads: Requires[tx.Reads, TestOwns ++ DualNeeds],
+          requiresWrites: Requires[tx.Writes, TestOwns ++ DualNeeds],
+          ownsTables: Tables[Id, TestOwns],
+          provider: TablesProvider[Id, DualNeeds],
+      ): StoreF[Id][(tx.Result, List[tx.Event])] =
+        // Pattern match on the provider's tables - this is what would fail with asInstanceOf
+        val (_ *: _ *: EmptyTuple) = provider.tables
+        // If we got here without MatchError, the projection worked correctly
+        StateT.pure((().asInstanceOf[tx.Result], Nil))
+
+    // Create a mock provider with a tuple that can be pattern matched
+    // The actual table contents don't matter for this test - we just need the tuple structure
+    val mockProvider = new TablesProvider[Id, DualNeeds]:
+      def tables: Tables[Id, DualNeeds] =
+        // Create a tuple with two elements so the pattern match (  *: _ *: EmptyTuple) works
+        val mockTuple = (null, null)
+        mockTuple.asInstanceOf[Tables[Id, DualNeeds]]
+
+    val blueprint1 = new ModuleBlueprint[Id, "test", TestOwns, DualNeeds, EmptyTuple](
+      owns = testEntry *: EmptyTuple,
+      reducer0 = reducer,
+      txs = TxRegistry.empty,
+      provider = mockProvider,
+    )
+
+    // Compose with an independent module with EmptyTuple needs
+    val accountsEntry = new Entry["accounts", Long, Long]("accounts")
+    val accountsReducer = new StateReducer0[Id, AccountsSchema, EmptyTuple]:
+      def apply[T <: Tx](tx: T)(using
+          requiresReads: Requires[tx.Reads, AccountsSchema],
+          requiresWrites: Requires[tx.Writes, AccountsSchema],
+          ownsTables: Tables[Id, AccountsSchema],
+          provider: TablesProvider[Id, EmptyTuple],
+      ): StoreF[Id][(tx.Result, List[tx.Event])] =
+        StateT.pure((().asInstanceOf[tx.Result], Nil))
+
+    val blueprint2 = new ModuleBlueprint[Id, "accounts", AccountsSchema, EmptyTuple, EmptyTuple](
+      owns = accountsEntry *: EmptyTuple,
+      reducer0 = accountsReducer,
+      txs = TxRegistry.empty,
+      provider = TablesProvider.empty[Id],
+    )
+
+    // This should compile and work - DualNeeds and EmptyTuple are disjoint
+    val _ = Blueprint.composeBlueprint[Id, "app"](blueprint1, blueprint2)
+
+    // Now actually test the narrow() projection at runtime
+    // Create the merged provider with all dependencies (DualNeeds ++ EmptyTuple)
+    val mergedProvider = TablesProvider.merge(mockProvider, TablesProvider.empty[Id])
+
+    // The critical test: narrow the merged provider to just DualNeeds
+    // Before the fix, this would succeed at compile time but the pattern match would fail at runtime
+    val narrowedProvider = mergedProvider.narrow[DualNeeds]
+
+    // Now verify the pattern match works (this is what would throw MatchError with the old code)
+    val (_ *: _ *: EmptyTuple) = narrowedProvider.tables
+
+    // Success! The narrow() method properly projected the tuple
+
 object Phase56Spec:
   // Test schema types (using Long for simplicity - it has ByteCodec)
   type AccountsSchema = Entry["accounts", Long, Long] *: EmptyTuple

@@ -342,6 +342,8 @@ object Blueprint:
       moduleOut: ValueOf[MOut],
       uniqueNames0: UniqueNames[a.OwnsType ++ b.OwnsType],
       disjointNeeds: TablesProvider.DisjointSchemas[a.NeedsType, b.NeedsType],
+      projectionN1: TablesProjection[F, a.NeedsType, a.NeedsType ++ b.NeedsType],
+      projectionN2: TablesProjection[F, b.NeedsType, a.NeedsType ++ b.NeedsType],
   ): ComposedBlueprint[
     F,
     MOut,
@@ -364,7 +366,7 @@ object Blueprint:
     composeBlueprintImpl[F, MOut, M1, O1, N1, T1, M2, O2, N2, T2](
       a.asInstanceOf[ModuleBlueprint[F, M1, O1, N1, T1]],
       b.asInstanceOf[ModuleBlueprint[F, M2, O2, N2, T2]],
-    )(using monadF, moduleOut, uniqueNames, disjointNeeds)
+    )(using monadF, moduleOut, uniqueNames, disjointNeeds, projectionN1, projectionN2)
 
   private def composeBlueprintImpl[F[
       _,
@@ -376,6 +378,8 @@ object Blueprint:
       moduleOut: ValueOf[MOut],
       uniqueNames: UniqueNames[O1 ++ O2],
       disjointNeeds: TablesProvider.DisjointSchemas[N1, N2],
+      projectionN1: TablesProjection[F, N1, N1 ++ N2],
+      projectionN2: TablesProjection[F, N2, N1 ++ N2],
   ): ComposedBlueprint[F, MOut, O1 ++ O2, N1 ++ N2, T1 ++ T2] =
     given Monad[F]              = monadF
     given UniqueNames[O1 ++ O2] = uniqueNames
@@ -401,24 +405,23 @@ object Blueprint:
 
         if pathHead === m1Name then
           // Route to first module
-          // SAFETY: We need to narrow the merged provider to just N1 for module a.
-          // The provider parameter contains N1 ++ N2, and we extract just N1.
-          // We use asInstanceOf for the provider since N1 is a subset of N1 ++ N2.
+          // SAFETY: We narrow the merged provider to just N1 for module a.
+          // The provider parameter contains N1 ++ N2, and we project it to N1 using narrow.
           a.reducer0.apply(tx)(using
             requiresReads.asInstanceOf[Requires[tx.Reads, O1 ++ N1]],
             requiresWrites.asInstanceOf[Requires[tx.Writes, O1 ++ N1]],
             ownsTables.asInstanceOf[Tables[F, O1]],
-            provider.asInstanceOf[TablesProvider[F, N1]], // Extract subset for module a
+            provider.narrow[N1](using projectionN1), // Project to subset N1 for module a
           )
         else if pathHead === m2Name then
           // Route to second module
-          // SAFETY: We need to narrow the merged provider to just N2 for module b.
-          // The provider parameter contains N1 ++ N2, and we extract just N2.
+          // SAFETY: We narrow the merged provider to just N2 for module b.
+          // The provider parameter contains N1 ++ N2, and we project it to N2 using narrow.
           b.reducer0.apply(tx)(using
             requiresReads.asInstanceOf[Requires[tx.Reads, O2 ++ N2]],
             requiresWrites.asInstanceOf[Requires[tx.Writes, O2 ++ N2]],
             ownsTables.asInstanceOf[Tables[F, O2]],
-            provider.asInstanceOf[TablesProvider[F, N2]], // Extract subset for module b
+            provider.narrow[N2](using projectionN2), // Project to subset N2 for module b
           )
         else
           val msg1: String = m1Name

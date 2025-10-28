@@ -47,6 +47,109 @@ trait TablesProvider[F[_], Provides <: Tuple]:
     */
   def tables: Tables[F, Provides]
 
+  /** Narrow this provider to a subset of its schema.
+    *
+    * This is critical for Phase 5.6 provider composition. When a merged provider
+    * (N1 ++ N2) is passed to a reducer expecting only N1, we must actually project
+    * the tables tuple, not just cast the type.
+    *
+    * Without projection, pattern matching fails:
+    *   val (accountsTable *: EmptyTuple) = provider.tables  // MatchError!
+    *
+    * @tparam Subset
+    *   the subset schema to project to
+    * @param projection
+    *   evidence that Subset can be projected from Provides
+    * @return
+    *   a provider supplying only the Subset tables (actually projected)
+    */
+  def narrow[Subset <: Tuple](using
+      projection: TablesProjection[F, Subset, Provides],
+  ): TablesProvider[F, Subset] = new TablesProvider[F, Subset]:
+    def tables: Tables[F, Subset] = projection.project(TablesProvider.this.tables)
+
+/** Typeclass proving that Subset can be extracted from Source schema.
+  *
+  * TablesProjection[F, Subset, Source] proves that every entry in Subset
+  * exists in Source with matching name, key, and value types. It provides
+  * a project method that extracts the subset tables from a full tables tuple.
+  *
+  * This is the key abstraction for provider narrowing in Phase 5.6.
+  *
+  * @tparam F
+  *   the effect type
+  * @tparam Subset
+  *   the subset schema to extract
+  * @tparam Source
+  *   the source schema to extract from
+  */
+trait TablesProjection[F[_], Subset <: Tuple, Source <: Tuple]:
+  /** Project the source tables to the subset.
+    *
+    * @param sourceTables
+    *   the full tables tuple
+    * @return
+    *   the projected subset tables
+    */
+  def project(sourceTables: Tables[F, Source]): Tables[F, Subset]
+
+/** Low-priority implicits for TablesProjection to avoid ambiguity. */
+private[application] trait TablesProjectionLowPriority:
+  /** Base case: empty subset can be extracted from any source. */
+  given emptyProjection[F[_], Source <: Tuple]: TablesProjection[F, EmptyTuple, Source] with
+    def project(sourceTables: Tables[F, Source]): Tables[F, EmptyTuple] = EmptyTuple
+
+  /** Inductive case: project a non-empty subset using Lookup.
+    *
+    * To project (Entry[Name, K, V] *: RestSubset) from Source:
+    *   1. Use Lookup to find Entry[Name, K, V] in Source
+    *   2. Recursively project RestSubset from Source
+    *   3. Cons the results together
+    */
+  given consProjection[F[_], Name <: String, K, V, RestSubset <: Tuple, Source <: Tuple](using
+      lookup: Lookup[Source, Name, K, V],
+      restProjection: TablesProjection[F, RestSubset, Source],
+  ): TablesProjection[F, Entry[Name, K, V] *: RestSubset, Source] with
+    def project(sourceTables: Tables[F, Source]): Tables[F, Entry[Name, K, V] *: RestSubset] =
+      val headTable = lookup.table(sourceTables)
+      val restTables = restProjection.project(sourceTables)
+      headTable *: restTables
+
+object TablesProjection extends TablesProjectionLowPriority:
+  /** Identity case: a schema is trivially a subset of itself.
+    *
+    * This is highest priority and covers all identity cases including EmptyTuple.
+    */
+  given identityProjection[F[_], S <: Tuple]: TablesProjection[F, S, S] with
+    def project(sourceTables: Tables[F, S]): Tables[F, S] = sourceTables
+
+  /** Prefix case: Non-empty S is a subset of S ++ T (left side of concatenation).
+    *
+    * We require that S is non-empty (Head *: Tail) to avoid ambiguity with
+    * identity when S = EmptyTuple.
+    */
+  given prefixProjection[F[_], Head, Tail <: Tuple, T <: Tuple](using
+      sizeS: ValueOf[Tuple.Size[Head *: Tail]],
+  ): TablesProjection[F, Head *: Tail, (Head *: Tail) ++ T] with
+    @SuppressWarnings(Array("org.wartremover.warts.AsInstanceOf"))
+    def project(sourceTables: Tables[F, (Head *: Tail) ++ T]): Tables[F, Head *: Tail] =
+      // SAFETY: (Head *: Tail) ++ T = concatenated tuple.
+      // We take the first sizeS elements.
+      sourceTables.take(sizeS.value).asInstanceOf[Tables[F, Head *: Tail]]
+
+  /** Suffix case: Non-empty T is a subset of S ++ T (right side of concatenation).
+    *
+    * We require that T is non-empty (Head *: Tail) to avoid ambiguity.
+    */
+  given suffixProjection[F[_], S <: Tuple, Head, Tail <: Tuple](using
+      sizeS: ValueOf[Tuple.Size[S]],
+  ): TablesProjection[F, Head *: Tail, S ++ (Head *: Tail)] with
+    @SuppressWarnings(Array("org.wartremover.warts.AsInstanceOf"))
+    def project(sourceTables: Tables[F, S ++ (Head *: Tail)]): Tables[F, Head *: Tail] =
+      // SAFETY: S ++ (Head *: Tail) = concatenated tuple.
+      // We skip the first sizeS elements.
+      sourceTables.drop(sizeS.value).asInstanceOf[Tables[F, Head *: Tail]]
+
 object TablesProvider:
   /** Empty provider for modules with no external dependencies.
     *
@@ -180,60 +283,6 @@ object TablesProvider:
     * // Now adding metadata to AccountsSchema won't break Group or Token!
     *   }}}
     */
-  extension [F[_], Full <: Tuple](provider: TablesProvider[F, Full])
-    def narrow[Subset <: Tuple](using
-        subset: Requires[Subset, Full],
-        projection: TablesProjection[F, Subset, Full],
-    ): TablesProvider[F, Subset] = new TablesProvider[F, Subset]:
-      def tables: Tables[F, Subset] = projection.project(provider.tables)
-
-  /** Type class for projecting a subset of tables from a full schema.
-    *
-    * This provides the runtime mechanism to extract Subset tables from
-    * Full tables, guided by compile-time Requires evidence.
-    *
-    * Implementation uses Lookup evidence to extract each table from the
-    * full schema based on table name and types.
-    *
-    * @tparam F
-    *   the effect type
-    * @tparam Subset
-    *   the subset schema tuple
-    * @tparam Full
-    *   the full schema tuple
-    */
-  trait TablesProjection[F[_], Subset <: Tuple, Full <: Tuple]:
-    /** Project subset tables from full tables.
-      *
-      * @param fullTables
-      *   the full tables tuple
-      * @return
-      *   the subset tables tuple
-      */
-    def project(fullTables: Tables[F, Full]): Tables[F, Subset]
-
-  object TablesProjection:
-    /** Base case: projecting EmptyTuple from any schema yields EmptyTuple. */
-    given emptyProjection[F[_], Full <: Tuple]: TablesProjection[F, EmptyTuple, Full] with
-      def project(fullTables: Tables[F, Full]): Tables[F, EmptyTuple] = EmptyTuple
-
-    /** Inductive case: project head entry and recurse on tail.
-      *
-      * For a subset Entry[Name, K, V] *: Tail, we:
-      *   1. Use Lookup to extract the table for Entry[Name, K, V] from full schema
-      *   2. Recursively project the Tail subset
-      *   3. Cons them together
-      */
-    given consProjection[F[_], Name <: String, K, V, Tail <: Tuple, Full <: Tuple](using
-        headLookup: Lookup[Full, Name, K, V],
-        tailProjection: TablesProjection[F, Tail, Full],
-    ): TablesProjection[F, Entry[Name, K, V] *: Tail, Full] with
-      def project(fullTables: Tables[F, Full]): Tables[F, Entry[Name, K, V] *: Tail] =
-        // Lookup.table returns StateTable[F] { type Name = Name; type K = K; type V = V }
-        // which is exactly what we need for TableOf[F, Entry[Name, K, V]]
-        val headTable = headLookup.table(fullTables)
-        val tailTables = tailProjection.project(fullTables)
-        headTable *: tailTables
 
   /** Evidence that two schemas are disjoint (no overlapping entries).
     *
