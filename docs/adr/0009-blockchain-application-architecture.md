@@ -12,10 +12,14 @@ Draft
 ## Decision
 - 용어와 경계
   - 테이블: `StateTable` — K/V 스키마와 코덱만 정의(경로나 NS는 없음).
-  - 모듈 설계도(경로 없음): `ModuleBlueprint` — 여러 `StateTable`, 트랜잭션 집합, `StateReducer0`(경로 비의존)를 소유. 어디에 배치될지 모른다는 가정으로 설계.
-  - 장착된 모듈(경로 부여됨): `StateModule` — 설계도를 특정 Path에 장착하여 접두어를 합성하는 실체. DApp을 구성하는 단위.
+  - 모듈 설계도(경로 없음): `ModuleBlueprint` — 자체 테이블 집합(`Owns`), 외부에서 제공받아야 하는 테이블 집합(`Needs`), 트랜잭션 집합을 소유. 어디에 배치될지 모른다는 가정으로 설계하며 `Needs`는 타입으로만 선언된다.
+  - 장착된 모듈(경로 부여됨): `StateModule` — 설계도를 특정 Path에 장착하여 접두어를 합성하고, 테이블 프로바이더를 주입받아 동작하는 실체.
   - 애플리케이션 상태: `DAppState` — 특정 Path, 특정 스키마의 머클 상태 래퍼(타입 레벨 증거로만 생성/소비).
-  - 전이기: `StateReducer` — 트랜잭션을 해석/적용하여 상태를 전이시키고 결과/이벤트 및 접근 로그를 축적. 설계도 단계에서는 Path 비의존, 장착 시 Path 바인딩.
+  - 전이기:
+    - `StateReducer0`: Path 비의존 상태에서 `Owns ++ Needs` 스키마로 트랜잭션을 해석(블루프린트 단계). `Needs`가 요구하는 테이블은 `TablesProvider`를 통해 공급된다.
+    - `StateReducer`: mount 이후 Path와 테이블 접두어가 고정된 상태에서 트랜잭션을 실행(모듈 단계). `ModuleId` 기반 라우팅은 Decision의 `Reducer Routing` 항목을 따른다.
+  - 테이블 프로바이더: `TablesProvider` — 특정 `Needs`(Entry 튜플) 집합을 만족하는 테이블 구현을 제공. Phase 5.5에서 도입된 의존성 모델이며, `Needs = EmptyTuple`일 때는 `TablesProvider.empty`가 사용된다.
+  - 모듈 상대 ID: `ModuleId`는 항상 모듈 상대 경로(`MName *: SubPath`)만 담으며, mount 경로는 트랜잭션에 추가하지 않는다. 라우팅 전략은 `Reducer Routing Strategy` 절에서 정의한다.
 
 - 접두어 규칙(필수, 바이트 단위)
   - 테이블 접두어는 바이트(byte) 단위로 prefix-free 이어야 한다.
@@ -102,15 +106,24 @@ trait StateReducer[F[_], Path <: Tuple, Schema <: Tuple]:
 trait UniqueNames[Schema <: Tuple]
 trait PrefixFreePath[Path <: Tuple, Schema <: Tuple] // encodePath(Path) ++ Name 기반 byte prefix-free 증거
 
-final class StateModule[F[_], Path <: Tuple, Schema <: Tuple, Txs <: Tuple, Deps <: Tuple](
-  val tables: Tables[F, Schema],
-  val reducer: StateReducer[F, Path, Schema],
+final class StateModule[
+  F[_],
+  Path <: Tuple,
+  Owns <: Tuple,
+  Needs <: Tuple,
+  Txs <: Tuple,
+](
+  val ownsTables: Tables[F, Owns],                                     // Path에 바인딩된 자체 테이블
+  val tablesProvider: TablesProvider[F, Needs],                        // 외부 테이블 공급자
+  val reducer: StateReducer[F, Path, Owns ++ Needs],                   // Combined 스키마에 대한 리듀서
   val txs: TxRegistry[Txs],
-  val deps: Deps
-)(using UniqueNames[Schema], PrefixFreePath[Path, Schema])
+)(using
+  UniqueNames[Owns],
+  PrefixFreePath[Path, Owns],
+)
 
-type DApp[F[_], Path <: Tuple, Schema <: Tuple, Txs <: Tuple, Deps <: Tuple] =
-  StateModule[F, Path, Schema, Txs, Deps]
+type DApp[F[_], Path <: Tuple, Owns <: Tuple, Needs <: Tuple, Txs <: Tuple] =
+  StateModule[F, Path, Owns, Needs, Txs]
 
 // 접두어 생성은 모듈 내부 전용: Path 세그먼트 ++ tableName (bytes)
 import scala.compiletime.constValue
@@ -129,6 +142,7 @@ inline def encodePath[Path <: Tuple](acc: ByteVector = ByteVector.empty): ByteVe
 
 inline def tablePrefix[Path <: Tuple, Name <: String]: ByteVector =
   encodePath[Path] ++ encodeSegment[Name]
+// 예) tablePrefix[("app", "accounts"), "balances"] → ("app","accounts","balances")를 접두어 바이트로 인코딩
 
 final case class ModuleId(path: Tuple)
 
@@ -136,27 +150,56 @@ trait ModuleRoutedTx extends Tx:
   def moduleId: ModuleId
 
 // 경로 없는 설계도(Blueprint)와 장착(mount) 스케치
-trait StateReducer0[F[_], Schema <: Tuple]:
-  def apply[T <: Tx](tx: T)(using Requires[T#Reads, Schema], Requires[T#Writes, Schema])
-    : StoreF[F, (T#Result, List[T#Event])]
+trait TablesProvider[F[_], Provides <: Tuple]:
+  def tables: Tables[F, Provides]
 
-final class ModuleBlueprint[F[_], MName <: String, Schema <: Tuple, Txs <: Tuple, Deps <: Tuple](
-  val tables: Tables[F, Schema],
-  val reducer0: StateReducer0[F, Schema], // Path 비의존 리듀서
+object TablesProvider:
+  def empty[F[_]]: TablesProvider[F, EmptyTuple] = new:
+    def tables: Tables[F, EmptyTuple] = EmptyTuple
+
+trait StateReducer0[F[_], Owns <: Tuple, Needs <: Tuple]:
+  type Combined = Owns ++ Needs
+  def apply[T <: Tx](tx: T)(using
+      Requires[tx.Reads, Combined],
+      Requires[tx.Writes, Combined],
+      Tables[F, Owns],                       // Path에 바인딩된 자체 테이블
+      TablesProvider[F, Needs],              // 의존 모듈에서 주입된 테이블
+  ): StoreF[F, (tx.Result, List[tx.Event])]
+
+final class ModuleBlueprint[
+  F[_],
+  MName <: String,
+  Owns <: Tuple,
+  Needs <: Tuple,
+  Txs <: Tuple,
+](
+  val owns: Owns,                             // Owns <: Tuple, 각 요소는 Entry[Name, K, V]
+  val reducer0: StateReducer0[F, Owns, Needs],
   val txs: TxRegistry[Txs],
-  val deps: Deps,
-)(using UniqueNames[Schema])
+  val provider: TablesProvider[F, Needs],
+)(using
+  UniqueNames[Owns],
+  Requires[Needs, Owns ++ Needs],
+  ValueOf[MName],
+)
 
-extension [F[_], MName <: String, S <: Tuple, T <: Tuple, D <: Tuple]
-  def mount[Path <: Tuple](bp: ModuleBlueprint[F, MName, S, T, D])(using PrefixFreePath[Path, S])
-      : StateModule[F, Path, S, T, D] =
-    new StateModule[F, Path, S, T, D](
-      tables = bp.tables,
-      reducer = new StateReducer[F, Path, S]:
-        def apply[X <: Tx](tx: X)(using Requires[X#Reads, S], Requires[X#Writes, S]) =
+  type OwnsType       = Owns
+  type NeedsType      = Needs
+  type TxsType        = Txs
+
+extension [F[_], MName <: String, Owns <: Tuple, Needs <: Tuple, T <: Tuple]
+  def mount[Path <: Tuple](bp: ModuleBlueprint[F, MName, Owns, Needs, T])(using PrefixFreePath[Path, Owns])
+      : StateModule[F, Path, Owns, Needs, T] =
+    val ownsTablesInst = SchemaInstantiation.instantiateTablesFromEntries[F, Path, Owns](bp.owns) // Entry → StateTable
+    new StateModule[F, Path, Owns, Needs, T](
+      ownsTables = ownsTablesInst,
+      tablesProvider = bp.provider,
+      reducer = new StateReducer[F, Path, Owns ++ Needs]:
+        def apply[X <: Tx](tx: X)(using Requires[X#Reads, Owns ++ Needs], Requires[X#Writes, Owns ++ Needs]) =
+          given Tables[F, Owns] = ownsTablesInst
+          given TablesProvider[F, Needs] = bp.provider
           bp.reducer0.apply(tx),
       txs = bp.txs,
-      deps = bp.deps,
     )
 ```
 
@@ -176,59 +219,32 @@ type ++[A <: Tuple, B <: Tuple] = Tuple.Concat[A, B]
 def tupleConcat[A <: Tuple, B <: Tuple](a: A, b: B): A ++ B =
   Tuple.fromArray(a.toArray ++ b.toArray).asInstanceOf[A ++ B]
 
-// 두 설계도를 하나로 합성 (스키마/Tx/Deps ∪)
-// IMPORTANT: Composed blueprints produce a RoutedStateReducer0 that requires
-// transactions to implement ModuleRoutedTx. This is enforced at compile time.
-def composeBlueprint[F[_], MOut <: String](
-  a: ModuleBlueprint[F, ?, ?, ?, ?],
-  b: ModuleBlueprint[F, ?, ?, ?, ?],
-)(using
-  cats.Monad[F],
-  ValueOf[MOut],
-  UniqueNames[a.SchemaType ++ b.SchemaType],
-): ComposedBlueprint[F, MOut, a.SchemaType ++ b.SchemaType, a.TxsType ++ b.TxsType, a.DepsType ++ b.DepsType] =
-  type S1 = a.SchemaType
-  type S2 = b.SchemaType
-  type T1 = a.TxsType
-  type T2 = b.TxsType
-  type D1 = a.DepsType
-  type D2 = b.DepsType
-
-  val combinedSchema = tupleConcat(a.schema, b.schema)
-  val m1Name = a.moduleValue.value
-  val m2Name = b.moduleValue.value
-
-  val routedReducer = new RoutedStateReducer0[F, S1 ++ S2]:
-    def apply[T <: Tx & ModuleRoutedTx](tx: T)(using Requires[tx.Reads, S1 ++ S2], Requires[tx.Writes, S1 ++ S2]) =
-      val pathHead = tx.moduleId.path.head.asInstanceOf[String]
-      if pathHead == m1Name then
-        a.reducer0.apply(tx)(using summon[Requires[tx.Reads, S1]], summon[Requires[tx.Writes, S1]])
-      else if pathHead == m2Name then
-        b.reducer0.apply(tx)(using summon[Requires[tx.Reads, S2]], summon[Requires[tx.Writes, S2]])
-      else
-        sys.error(s"TxRouteMissing: $pathHead ∉ {$m1Name, $m2Name}")
-
-  new ComposedBlueprint[F, MOut, S1 ++ S2, T1 ++ T2, D1 ++ D2](
-    schema = combinedSchema,
-    reducer0 = routedReducer,
-    txs = a.txs.combine(b.txs),
-    deps = tupleConcat(a.deps, b.deps),
-  )
+// 두 설계도를 하나로 합성하는 `composeBlueprint`는 Phase 5.5 시점까지
+// Needs = EmptyTuple인 설계도에 한해 제공되며, 외부 테이블 제공자는 고려하지 않는다.
+// Needs를 보존한 상태에서의 합성은 `TablesProvider` 병합 전략(Phase 5.6)에서 다룬다.
 
 // 베이스 경로 아래 하위 경로로 장착 (Base ++ Sub)
-extension [F[_], MName <: String, S <: Tuple, T <: Tuple, D <: Tuple]
-  def mountAt[Base <: Tuple, Sub <: Tuple](bp: ModuleBlueprint[F, MName, S, T, D])
-      (using PrefixFreePath[Base ++ Sub, S])
-      : StateModule[F, Base ++ Sub, S, T, D] =
+extension [F[_], MName <: String, Owns <: Tuple, Needs <: Tuple, T <: Tuple]
+  def mountAt[Base <: Tuple, Sub <: Tuple](bp: ModuleBlueprint[F, MName, Owns, Needs, T])
+      (using PrefixFreePath[Base ++ Sub, Owns])
+      : StateModule[F, Base ++ Sub, Owns, Needs, T] =
     mount[Base ++ Sub](bp)
 ```
+
+### Needs-Based Dependency Model (Phase 5.5)
+- `Needs`는 블루프린트가 외부에서 제공받아야 하는 테이블(Entry 튜플) 집합으로, `StateReducer0`는 `Owns ++ Needs` 스키마에 대해 동작한다.
+- `TablesProvider[F, Needs]`는 이러한 외부 테이블을 제공하는 의존성으로, 블루프린트가 컴파일 타임에 의존성을 선언한다.
+- `ModuleBlueprint`는 `Owns`/`Needs`를 명시적으로 분리하고, 단일 `TablesProvider`를 통해 외부 테이블을 주입받는다.
+- `StateModule`은 `tablesProvider`를 별도 필드로 보유하며, 더 이상의 의존성 튜플이 존재하지 않는다.
+- `Needs = EmptyTuple`인 경우 `TablesProvider.empty`가 기본 제공되므로 기존 extend/compose 경로와 호환된다.
+- `Needs`와 `Provides`는 모두 `Entry[Name, K, V]` 튜플로 구성되어야 하며, 이를 통해 `Tables[F, _]`, `Requires`, `Lookup` 증거가 타입 수준에서 정확히 연결된다.
 
 ### Aggregator Examples: Shared vs Sandboxed
 ```scala
 // 블루프린트 정의 (Path-비의존)
-val AccountsBP: ModuleBlueprint[F, "accounts", AccountsSchema, AccountsTxs, EmptyTuple] = ???
-val GroupBP   : ModuleBlueprint[F, "group"   , GroupSchema   , GroupTxs   , EmptyTuple] = ??? // Requires[AccountsSchema, _]
-val TokenBP   : ModuleBlueprint[F, "token"   , TokenSchema   , TokenTxs   , EmptyTuple] = ??? // Requires[AccountsSchema, _]
+val AccountsBP: ModuleBlueprint[F, "accounts", AccountsSchema, EmptyTuple, AccountsTxs] = ???
+val GroupBP   : ModuleBlueprint[F, "group"   , GroupSchema   , EmptyTuple, GroupTxs   ] = ???
+val TokenBP   : ModuleBlueprint[F, "token"   , TokenSchema   , EmptyTuple, TokenTxs   ] = ???
 
 // 1) 공유 인스턴스: 동일 Path에 장착하여 테이블만 구분
 val accountsShared = AccountsBP.mount[("app")]
@@ -256,6 +272,57 @@ val CoreBP = composeBlueprint[F, "core"](AccountsBP, GroupBP)
 val DAppBP = composeBlueprint[F, "dapp"](CoreBP, TokenBP)
 val dappOnceMounted = DAppBP.mount[("app")]
 ```
+
+### Needs-Based Dependency Example (Phase 5.5)
+```scala
+// 1) Accounts blueprint: owns balances/accounts, needs nothing external
+type AccountsOwns   = AccountsSchema
+type AccountsNeeds  = EmptyTuple
+
+val AccountsBP = new ModuleBlueprint[F, "accounts", AccountsOwns, AccountsNeeds, AccountsTxs](
+  owns = accountsEntries,           // Entry 튜플 (예: (accountsEntry, balancesEntry))
+  reducer0 = accountsReducer0,      // StateReducer0[F, AccountsOwns, AccountsNeeds]
+  txs = accountsTxRegistry,
+  provider = TablesProvider.empty[F], // Needs = EmptyTuple → 기본 프로바이더 사용
+)
+
+// 2) Group blueprint: owns 그룹 테이블, needs 계정 잔고/계정 테이블
+type GroupOwns   = GroupSchema
+type GroupNeeds  =
+  Entry["accounts", Address, Account] *:
+  Entry["balances", Address, BigNat] *:
+  EmptyTuple
+
+val groupNeedsProvider: TablesProvider[F, GroupNeeds] = ??? // Accounts 모듈에서 유도
+
+val GroupBP = new ModuleBlueprint[F, "group", GroupOwns, GroupNeeds, GroupTxs](
+  owns = groupEntries,              // Entry 튜플 (예: (groupsEntry, membersEntry))
+  reducer0 = new StateReducer0[F, GroupOwns, GroupNeeds]:
+    def apply[T <: Tx](tx: T)(using
+        Requires[tx.Reads, GroupOwns ++ GroupNeeds],
+        Requires[tx.Writes, GroupOwns ++ GroupNeeds],
+        tablesOwn: Tables[F, GroupOwns],
+        provider: TablesProvider[F, GroupNeeds],
+    ): StoreF[F, (tx.Result, List[tx.Event])] =
+      groupReducerLogic(tx, tablesOwn, provider.tables)
+  ,
+  txs = groupTxRegistry,
+  provider = groupNeedsProvider, // 조립 단계에서 프로바이더 주입
+)
+
+// 3) 조립: Accounts를 mount한 뒤 그 테이블로 TablesProvider를 구성하여 GroupBP에 전달
+val accountsModule = AccountsBP.mount[("app", "accounts")]
+
+val groupModule = GroupBP.mount[("app", "group")]
+
+// Phase 5.5 TODO:
+//   extend/accountsModule/groupModule를 결합하려면 Needs ≠ EmptyTuple인 모듈을 합치는
+//   새로운 extend/composition 전략이 필요하다(테이블 프로바이더 병합).
+```
+
+> NOTE: Phase 5.5에서는 `Needs`에 선언된 테이블이 실제로 제공되었는지 컴파일 타임에 검증한다.
+> `ModuleBlueprint`는 `Needs ⊆ Owns ++ Needs` 증거와 `TablesProvider` 의존성을 동시에 요구하며,
+> `extend`는 현재 `Needs = EmptyTuple` 모듈에 한해 제공된다. 외부 테이블을 요구하는 모듈을 결합하려면 향후 `TablesProvider` 병합 전략을 도입해야 하며, 이는 Phase 5.6 (TBD)에서 다룬다.
 
 ### Reducer Routing Strategy
 
@@ -293,7 +360,7 @@ case class AccountsTransfer(...) extends Tx with ModuleRoutedTx:
 ```
 
 ### Tuple Concatenation Semantics
-- `++` 별칭은 `Tuple.Concat`의 얕은(flat) 결합을 의도한다. 런타임에서도 `tupleConcat`을 사용해 동일한 평탄 구조를 유지해야 `Tables`, `Deps` 등 타입 수준 정보와 일치한다.
+- `++` 별칭은 `Tuple.Concat`의 얕은(flat) 결합을 의도한다. 런타임에서도 `tupleConcat`을 사용해 동일한 평탄 구조를 유지해야 `Tables`, `Needs` 등 타입 수준 정보와 일치한다.
 - 설계도/모듈 조합 시 중첩 튜플을 남겨 두면 조회기(`Lookup`), 증거(`Requires`)가 모두 깨진다. 반드시 `tupleConcat` 계열 헬퍼로 합성한다.
 
 ## Assembly Flow Guidance
@@ -424,18 +491,29 @@ trait TokenReducer[F[_], Path <: Tuple, S <: Tuple](using
 // 한 번 mount하여 큰 모듈을 만든다. 샌드박싱이 필요하면 각 스택을 별도 mount.
 type ++[A <: Tuple, B <: Tuple] = Tuple.Concat[A, B]
 
-def extend[F[_], Path <: Tuple, S1 <: Tuple, S2 <: Tuple, T1 <: Tuple, T2 <: Tuple, D1 <: Tuple, D2 <: Tuple](
-  a: StateModule[F, Path, S1, T1, D1],
-  b: StateModule[F, Path, S2, T2, D2],
+def extend[
+  F[_]: cats.Monad,
+  Path <: Tuple,
+  Owns1 <: Tuple,
+  Owns2 <: Tuple,
+  T1 <: Tuple,
+  T2 <: Tuple,
+](
+  a: StateModule[F, Path, Owns1, EmptyTuple, T1],
+  b: StateModule[F, Path, Owns2, EmptyTuple, T2],
 )(using
-  UniqueNames[S1 ++ S2],
-  PrefixFreePath[Path, S1 ++ S2],
-): StateModule[F, Path, S1 ++ S2, T1 ++ T2, (D1, D2)] =
-  new StateModule(
-    tables  = mergeTables(a.tables, b.tables),
-    reducer = mergeReducers(a.reducer, b.reducer),
-    txs     = mergeTxs(a.txs, b.txs),
-    deps    = (a.deps, b.deps),
+  UniqueNames[Owns1 ++ Owns2],
+  PrefixFreePath[Path, Owns1 ++ Owns2],
+): StateModule[F, Path, Owns1 ++ Owns2, EmptyTuple, T1 ++ T2] =
+  val mergedOwns = mergeTables(a.ownsTables, b.ownsTables)
+  val mergedReducer = mergeReducers(a.reducer, b.reducer)
+  val mergedTxs = a.txs.combine(b.txs)
+
+  new StateModule[F, Path, Owns1 ++ Owns2, EmptyTuple, T1 ++ T2](
+    ownsTables = mergedOwns,
+    tablesProvider = TablesProvider.empty[F], // Needs = EmptyTuple
+    reducer = mergedReducer,
+    txs = mergedTxs,
   )
 
 // 리듀서 합성은 'S'가 두 스키마의 합집합임을 가정하고 내부에서 적절히 라우팅/합성
@@ -449,9 +527,9 @@ def mergeReducers[F[_], Path <: Tuple, S1 <: Tuple, S2 <: Tuple](
     r1.apply(tx) // orElse r2.apply(tx) 등 정책에 맞게 설계
 
 // ModuleFactory: 팩토리로 모듈을 Path-매개화하여 다른 Path에서 재사용
-// LIMITATION: Deps = EmptyTuple로 제한 (교차 모듈 의존성 없는 모듈만 가능)
-trait ModuleFactory[F[_], S <: Tuple, T <: Tuple]:
-  def build[Path <: Tuple]: StateModule[F, Path, S, T, EmptyTuple]
+// LIMITATION: Needs = EmptyTuple로 제한 (교차 모듈 의존성 없는 모듈만 가능)
+trait ModuleFactory[F[_], Owns <: Tuple, T <: Tuple]:
+  def build[Path <: Tuple]: StateModule[F, Path, Owns, EmptyTuple, T]
 
 // 집합 결합: mount → extend 패턴 사용 (production-ready)
 val module1 = StateModule.mount(blueprint1)
@@ -485,10 +563,11 @@ val combined = StateModule.extend(module1, module2)
 - Effect Stack: 테이블/리듀서는 고정 스택(`StateT[EitherT[...]]`)을 사용, NodeStore 증거 없인 호출 불가.
 
 ## Open Questions
-- PrefixFree 증거 합성을 어떻게 간결하고 자동으로 만들 것인가?(의존/결합 시)
-- OrderedCodec/FixedSize 같은 특성 증거를 어디까지 자동 유도할 것인가?
-- AccessLog 포맷과 크기를 어떻게 제어할 것인가?(블록 단위/샤딩)
-- 모듈 간 교차 트랜잭션의 증명(Proof)을 어떤 경계에서 생성/검증할 것인가?
+- TablesProvider 병합 전략: Needs ≠ EmptyTuple 모듈을 extend/compose 할 때 어떤 증거를 요구하고, 충돌을 어떻게 보고할 것인가? (Phase 5.6)
+- PrefixFree 증거 합성 자동화: 의존/결합 시 PrefixFreePath를 간결하게 재사용할 수 있는 파생 규칙을 도입할 것인가?
+- OrderedCodec/FixedSize 등 특성 증거 자동 유도 범위는 어디까지 허용할 것인가?
+- AccessLog 포맷과 크기 제어(블록 단위/샤딩) 정책을 어떻게 결정할 것인가?
+- 모듈 간 교차 트랜잭션에 대한 증명(Proof)을 어느 경계에서 생성/검증할 것인가?
 
 ## Implementation Plan (Phases)
 
@@ -522,7 +601,7 @@ Phase 2 — Blueprint
 
 Phase 3 — Composition
 - Deliverables
-  - `composeBlueprint` (schema/tx/deps union)
+  - `composeBlueprint` (Owns/Tx union; Needs must be EmptyTuple until Phase 5.6)
   - Evidence: `UniqueNames` and `PrefixFreePath` (simple version)
 - Tasks
   - Provide minimal `UniqueNames` (no duplicate table names in Schema)
@@ -548,83 +627,66 @@ Phase 4 — Dependencies
 - Criteria
   - Illegal access is a compile error; legal access runs and updates trie
 
-Phase 5 — Assembly (PARTIAL: Core Patterns Proven, ModuleFactory Limited)
-- **Deliverables**: `extend`, `mergeReducers`, `ModuleFactory` (limited to self-contained modules)
-- **Removed/Deferred**: ⛔ `aggregate` function (blocked on subset derivation, see #4 in Optional Future Enhancements)
-- **Status**: Mount-then-extend pattern is production-ready; ModuleFactory limited to self-contained modules
-- **Production-Ready Core**
-  - ✅ `extend`: merge two StateModules at same Path (Module.scala:246-275)
-    - **Fully functional**: merges modules mounted at same path
-    - Combines schemas (S1 ++ S2), transactions (T1 ++ T2), dependencies ((D1, D2))
-    - Tests verify 4 combined tables from 2 modules
-    - **Requirement**: Both modules must already be mounted at the same path
-  - ✅ `mergeReducers`: error-based fallback with transaction execution tests (Module.scala:296-356)
-    - **Strategy**: try r1 first; if r1 fails (Left) → try r2 as fallback
-    - **Fixed**: r1 succeeds with 0 events → no fallback (query-only transactions work)
-    - Tests: r1 succeeds → CreateAccount → AccountCreated event verified
-    - Tests: r1 fails → r2 succeeds → CreateGroup → GroupCreated event verified
-    - Tests: r1 succeeds with empty events → r2 NOT called (verified with flag)
-    - **Limitation**: May attempt both reducers for unhandled transactions (use ModuleRoutedTx for explicit routing)
-  - ✅ Shared vs Sandboxed assembly examples in Phase5Spec
-    - Shared: single mount, Lookup-based access (Phase 4 pattern)
-    - Sandboxed: multiple mounts at different paths, verified isolation
-- **Limited Feature (Safe but Niche)**
-  - ⚠️ `ModuleFactory`: **LIMITED** - safe signature but limited use cases (Module.scala:390-422)
-    - ✅ **Fixed**: fromBlueprint now requires `Deps = EmptyTuple` (compile-time enforcement)
-    - ✅ Prevents factory creation from blueprints with cross-module dependencies
-    - ✅ Safe for: self-contained modules, sandboxed deployment (multiple paths)
-    - ⚠️ **Limitation**: Useful only for modules without Phase 4 Lookup dependencies
-    - **Recommendation**: Use direct mount or composeBlueprint for dependent modules
-- What Actually Works (Mount-then-extend Pattern)
-  - ✅ Mount two blueprints independently at same path
-  - ✅ Use extend to merge them: schemas (S1 ++ S2), transactions (T1 ++ T2), dependencies
-  - ✅ Execute transactions through merged reducer (CreateAccount, CreateGroup tested)
-  - ✅ **Fallback routing FIXED**: r1 fails (Left) → r2 executes (error-based, not empty-events)
-  - ✅ **Empty events handling**: r1 succeeds with 0 events → no fallback to r2 (verified)
-  - ✅ Shared assembly: mount once, other modules access via Phase 4 Lookup
-  - ✅ Isolated assembly: mount same blueprint at different paths for sandboxing
-  - ✅ Tests verify table counts, isolation, and transaction execution
-- **Known Limitation** (mergeReducers)
-  - ⚠️ Error-based fallback may attempt both reducers for unhandled transactions
-    - **Fixed**: no longer breaks on empty events (query-only transactions work)
-    - **Limitation**: both reducers may be attempted, causing duplicate work
-    - **Production alternative**: Use ModuleRoutedTx for explicit routing (Phase 3)
-- **Production Recommendation**
-  - ✅ **Best**: composeBlueprint (Phase 3) → mount (Phase 2)
-    - Single composition, single mount, all evidence derived correctly at compile time
-  - ✅ **Good**: mount blueprint1 → mount blueprint2 → extend
-    - Works when modules are independently mounted at same path
-    - Proven with transaction execution tests (Phase5Spec)
-  - ✅ **Limited use**: ModuleFactory for self-contained modules only
-    - Safe signature (Deps = EmptyTuple enforced)
-    - Useful for sandboxed deployment (same module at different paths)
-- **Phase 5 Follow-up Work Completed**
-  1. Transaction execution tests for mergeReducers
-     - r1 succeeds → CreateAccount → AccountCreated event verified
-     - r1 fails → r2 succeeds → CreateGroup → GroupCreated event verified
-     - r1 succeeds with empty events → no fallback to r2 (verified with flag)
-  2. Dependencies in ModuleFactory - enforced at compile time
-     - fromBlueprint now requires `Deps = EmptyTuple` (signature changed)
-     - Blueprints with dependencies cannot become factories (won't compile)
-     - Safe for self-contained modules only
-  3. mergeReducers fallback strategy - fixed to use error-based routing
-     - Changed from "empty events = unhandled" to "Left = failed, try r2"
-     - Allows legitimate empty-event transactions (queries, no-op operations)
-     - Comprehensive tests cover all three scenarios
-- **Removed/Deferred (Not Part of Phase 5)**
-  - ⛔ `aggregate` function - **DELETED** (blocked on subset derivation)
-    - **Why removed**: Fabricates evidence via asInstanceOf (SchemaMapper, PrefixFreePath, UniqueNames)
-    - **Blocker**: Requires proper subset derivation to be production-ready:
-      - `given deriveSubsetMapper[S1, S2]: SchemaMapper[F, Path, S1] from SchemaMapper[F, Path, S1 ++ S2]`
-      - `given deriveSubsetPrefixFree[S1, S2]: PrefixFreePath[Path, S1] from PrefixFreePath[Path, S1 ++ S2]`
-      - `given deriveUniqueNames[S1, S2]: UniqueNames[S1 ++ S2] from (UniqueNames[S1], UniqueNames[S2])`
-    - **Alternative**: Use mount → extend pattern (production-ready, delivered in Phase 5)
-    - **Status**: Deleted from codebase; will not be implemented until subset derivation exists
-- **Future Enhancements** (beyond Phase 5 scope)
-  - Reducer registry pattern
-    - Replace error-based fallback with explicit transaction-to-reducer mapping
-    - Use ModuleRoutedTx for explicit routing (eliminates duplicate work)
-  - AccessLog integration (deferred to Phase 8)
+### Phase 5 — Assembly (PARTIAL: Core Patterns Proven, ModuleFactory Limited)
+
+#### Feature Status Overview
+| Feature            | Status           | Use When                                   |
+|--------------------|------------------|--------------------------------------------|
+| `extend`           | ✅ Production     | 동일 Path, `Needs = EmptyTuple` 모듈 결합      |
+| `mergeReducers`    | ✅ Production     | 다중 리듀서 fallback 이 필요한 경우           |
+| `composeBlueprint` | ✅ Production     | 여러 블루프린트를 하나로 묶어 단일 mount      |
+| `ModuleFactory`    | ⚠️ Limited        | 외부 의존성 없는(Needs=EmptyTuple) 모듈 복제  |
+| `aggregate`        | ⛔ Removed        | subset 증거 확보 전까지 사용 금지             |
+
+#### Production-Ready Features
+- **`extend`**: 동일 Path에서 두 모듈을 결합(Needs = EmptyTuple). 스키마/트랜잭션이 합쳐지고 Phase5Spec에서 4개 테이블 결합을 검증.
+- **`mergeReducers`**: 에러 기반 fallback. r1 실패 시 r2를 시도하며, 빈 이벤트가 fallback을 유발하지 않도록 수정됨.
+- **Shared vs Sandboxed 패턴**: Phase5Spec에서 공유/격리 장착 테스트 완료.
+
+#### Limited Features
+- **`ModuleFactory`**: `Needs = EmptyTuple`일 때만 fromBlueprint 허용. 외부 테이블이 필요한 모듈에는 직접 mount 또는 compose 권장.
+- **`mergeReducers` 한계**: 라우팅 없이 모든 리듀서를 시도할 수 있음. ModuleRoutedTx 기반 라우팅(Phase 3)을 장기적으로 도입 예정.
+
+#### Removed Features
+- **`aggregate`**: subset 증거 부재로 삭제. mount → extend 패턴 사용 또는 provider 병합(Phase 5.6) 이후 사용을 고려.
+
+#### Phase 5 Follow-up 완료 항목
+1. mergeReducers 경로별 테스트 (성공·실패·빈 이벤트)
+2. ModuleFactory 컴파일 시 `Needs = EmptyTuple` 강제
+3. fallback 전략을 “오류 발생 시” 기준으로 조정(쿼리 트랜잭션 지원)
+
+#### 실무 권장
+- 가장 안전한 흐름: composeBlueprint → 단일 mount
+- 실험/샌드박스: 독립 mount 후 extend (Needs = EmptyTuple 조건 하에서)
+- 외부 테이블 필요 시: Phase 5.6 provider 병합 전략 도입 전까지 단일 블루프린트로 compose
+
+Phase 5.5 — Needs-Based Dependency Providers (DESIGN SIGNED-OFF, IMPLEMENTATION PENDING)
+- Deliverables
+  - Introduce `TablesProvider[F, Provides]` (with `TablesProvider.empty`) as the canonical dependency handle (naming highlights what the provider supplies; blueprints consume the same tuple via `Needs`)
+  - Update `ModuleBlueprint`/`StateModule` to split `Owns` and `Needs`, with providers carried explicitly
+  - Remove dependency tuples entirely; provider wiring is the only external requirement
+  - Documentation and examples (this ADR) reflecting the provider-backed model
+- Tasks
+  - Enforce at compile time that a non-empty `Needs` cannot build without a matching `TablesProvider`
+  - Adapt `extend`/`composeBlueprint` signatures to keep working for `Needs = EmptyTuple` and surface TODOs for provider composition
+  - Provide helper utilities to derive `TablesProvider` from mounted modules (remaining Phase 5.5 follow-up task)
+- Tests (planned)
+  - Compile-only: blueprint construction fails without provider when `Needs ≠ EmptyTuple`
+  - Runtime: reducer can read provider-supplied tables while keeping cross-module access type-safe
+  - Regression: existing Phase 5 tests remain green with flattened dependency tuples
+- Criteria
+  - Nested dependency tuples are eliminated
+  - Blueprint authors declare external requirements as `Needs` (Entry tuples) rather than concrete module handles
+  - Clear TODOs captured for provider merge strategy before enabling extend/composition for `Needs ≠ EmptyTuple`
+
+Phase 5.6 — Provider Composition (TBD)
+- Goal: enable `extend`/composition for modules with non-empty `Needs`
+- Scope candidates
+  - Define `TablesProvider.merge` (or similar) to compose providers when schemas are disjoint
+  - Extend `extend`/`composeBlueprint` signatures to accept provider merge evidence
+  - Capture failure modes (conflicting providers, overlapping schemas) with explicit compiler errors
+- Outcome
+  - Modules requiring external tables can be combined at compile time without losing type safety
 
 Phase 6 — Example Blueprints (Accounts, Group)
 - See ADR‑0010 (Blockchain Account Model and Key Management) and ADR‑0011 (Blockchain Account Group Management) for detailed schemas, transactions, and reducer rules.
