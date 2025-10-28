@@ -1,6 +1,8 @@
 package org.sigilaris.core
 package application
 
+import scala.Tuple.++
+
 /** Module identifier carrying the module-relative path.
   *
   * IMPORTANT: The path is always module-relative (MName *: SubPath), never

@@ -4,6 +4,7 @@ package application
 import cats.Monad
 import cats.data.{EitherT, StateT}
 import cats.syntax.eq.*
+import scala.Tuple.++
 
 import failure.RoutingFailure
 import merkle.MerkleTrie.NodeStore
@@ -146,7 +147,9 @@ sealed trait Blueprint[F[
   type NeedsType     = Needs
   type TxsType       = Txs
 
-  /** The Entry instances for owned tables (runtime values that can create tables). */
+  /** The Entry instances for owned tables (runtime values that can create
+    * tables).
+    */
   def owns: Owns
 
   /** The path-agnostic reducer. */
@@ -265,30 +268,16 @@ final class ComposedBlueprint[F[
 )(using
     val uniqueNames: UniqueNames[Owns],
     val moduleValue: ValueOf[MName],
-) extends Blueprint[F, MName, Owns, Needs, Txs, RoutedStateReducer0[F, Owns, Needs]]
+) extends Blueprint[
+      F,
+      MName,
+      Owns,
+      Needs,
+      Txs,
+      RoutedStateReducer0[F, Owns, Needs],
+    ]
 
 object Blueprint:
-  /** Concatenate two tuples into a flat result.
-    *
-    * This helper ensures that tuple concatenation at runtime matches the
-    * type-level Tuple.Concat semantics. Without this, naive pairing like `(a,
-    * b)` creates nested tuples that break table lookups and evidence.
-    *
-    * @tparam A
-    *   the first tuple type
-    * @tparam B
-    *   the second tuple type
-    * @param a
-    *   the first tuple
-    * @param b
-    *   the second tuple
-    * @return
-    *   a flat concatenated tuple of type A ++ B
-    */
-  @SuppressWarnings(Array("org.wartremover.warts.AsInstanceOf"))
-  def tupleConcat[A <: Tuple, B <: Tuple](a: A, b: B): A ++ B =
-    (a ++ b).asInstanceOf[A ++ B]
-
   /** Compose two blueprints into a single composed blueprint.
     *
     * This is the core operation for Phase 3: combining two independent module
@@ -312,9 +301,9 @@ object Blueprint:
     * paths (mountPath ++ moduleId.path) are only constructed at system edges
     * for telemetry or logging.
     *
-    * Phase 5.5 SAFETY: Both blueprints MUST have Needs = EmptyTuple.
-    * This is enforced via compile-time evidence (=:= constraints).
-    * Provider merge strategy for Needs ≠ EmptyTuple is deferred to Phase 5.6.
+    * Phase 5.5 SAFETY: Both blueprints MUST have Needs = EmptyTuple. This is
+    * enforced via compile-time evidence (=:= constraints). Provider merge
+    * strategy for Needs ≠ EmptyTuple is deferred to Phase 5.6.
     *
     * @tparam F
     *   the effect type
@@ -493,6 +482,11 @@ object Blueprint:
     blueprint.OwnsType,
     blueprint.NeedsType,
     blueprint.TxsType,
-    StateReducer[blueprint.EffectType, Base ++ Sub, blueprint.OwnsType, blueprint.NeedsType],
+    StateReducer[
+      blueprint.EffectType,
+      Base ++ Sub,
+      blueprint.OwnsType,
+      blueprint.NeedsType,
+    ],
   ] =
     StateModule.mount[Base ++ Sub](blueprint)

@@ -2,6 +2,7 @@ package org.sigilaris.core
 package application
 
 import cats.Monad
+import scala.Tuple.++
 import merkle.MerkleTrie
 
 /** Path-bound state reducer for single modules.

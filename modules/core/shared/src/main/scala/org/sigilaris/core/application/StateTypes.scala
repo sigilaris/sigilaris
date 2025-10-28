@@ -24,15 +24,6 @@ type Eff[F[_]] = EitherT[F, SigilarisFailure, *]
   */
 type StoreF[F[_]] = StateT[Eff[F], MerkleTrieState, *]
 
-/** Tuple concatenation type alias.
-  *
-  * Simplifies writing Tuple.Concat[A, B] as A ++ B.
-  *
-  * @tparam A the first tuple type
-  * @tparam B the second tuple type
-  */
-type ++[A <: Tuple, B <: Tuple] = Tuple.Concat[A, B]
-
 /** Zero-cost key branding to prevent keys from different tables being mixed.
   *
   * Brand is typically the table instance's singleton type (self.type), ensuring

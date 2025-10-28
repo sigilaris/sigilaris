@@ -79,6 +79,7 @@ class PrefixCollisionTest extends FunSuite:
   // Test Case 4: Composed schema with duplicate table names
   test("PrefixFreePath should reject composition with duplicate table names"):
     val errors = compileErrors("""
+      import scala.Tuple.++
       type Schema1 = Entry["balances", Utf8, Long] *: EmptyTuple
       type Schema2 = Entry["balances", Utf8, Utf8] *: EmptyTuple
       type Combined = Schema1 ++ Schema2

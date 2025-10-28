@@ -3,6 +3,7 @@ package application
 
 import cats.Id
 import cats.data.{EitherT, Kleisli, StateT}
+import scala.Tuple.++
 
 import munit.FunSuite
 
@@ -313,33 +314,3 @@ class CompositionTest extends FunSuite:
         fail(s"Expected RoutingFailure but got: $other")
       case Right(_) =>
         fail("Expected Left for wrong module path but got Right")
-
-  test("tupleConcat produces flat concatenation"):
-    val tuple1 = ("a", 1) *: EmptyTuple
-    val tuple2 = ("b", 2) *: EmptyTuple
-    val result = Blueprint.tupleConcat(tuple1, tuple2)
-
-    // Verify flat structure
-    assertEquals(result.size, 2)
-    assertEquals(result(0), ("a", 1))
-    assertEquals(result(1), ("b", 2))
-
-  test("tupleConcat with EmptyTuple"):
-    val tuple1 = ("a", 1) *: EmptyTuple
-    val tuple2 = EmptyTuple
-    val result = Blueprint.tupleConcat(tuple1, tuple2)
-
-    assertEquals(result.size, 1)
-    assertEquals(result(0), ("a", 1))
-
-  test("tupleConcat preserves type-level concatenation"):
-    type T1 = ("a", Int) *: EmptyTuple
-    type T2 = ("b", String) *: EmptyTuple
-    type Expected = T1 ++ T2
-
-    val tuple1: T1 = ("a", 1) *: EmptyTuple
-    val tuple2: T2 = ("b", "test") *: EmptyTuple
-    val result: Expected = Blueprint.tupleConcat(tuple1, tuple2)
-
-    // Verify runtime structure matches type-level expectation
-    assertEquals(result.size, 2)
