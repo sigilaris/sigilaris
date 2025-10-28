@@ -387,10 +387,6 @@ object Blueprint:
     val m1Name: String = a.moduleValue.value
     val m2Name: String = b.moduleValue.value
 
-    // Combine owned tables from both modules
-    @SuppressWarnings(Array("org.wartremover.warts.AsInstanceOf"))
-    val combinedOwns: O1 ++ O2 = (a.owns ++ b.owns).asInstanceOf[O1 ++ O2]
-
     // Phase 5.5 SAFETY: Both modules have Needs = EmptyTuple (enforced by signature)
     // Provider merge strategy for Needs ≠ EmptyTuple is deferred to Phase 5.6
 
@@ -433,7 +429,7 @@ object Blueprint:
     val combinedTxs: TxRegistry[T1 ++ T2] = a.txs.combine(b.txs)
 
     new ComposedBlueprint[F, MOut, O1 ++ O2, EmptyTuple, T1 ++ T2](
-      owns = combinedOwns,
+      owns = a.owns ++ b.owns,
       reducer0 = routedReducer,
       txs = combinedTxs,
       provider = TablesProvider.empty[F],
