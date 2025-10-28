@@ -301,9 +301,10 @@ object Blueprint:
     * paths (mountPath ++ moduleId.path) are only constructed at system edges
     * for telemetry or logging.
     *
-    * Phase 5.5 SAFETY: Both blueprints MUST have Needs = EmptyTuple. This is
-    * enforced via compile-time evidence (=:= constraints). Provider merge
-    * strategy for Needs ≠ EmptyTuple is deferred to Phase 5.6.
+    * Phase 5.6 UPGRADE: Now supports modules with non-empty Needs. The providers
+    * are merged using TablesProvider.merge, which requires that the dependency
+    * schemas are disjoint (DisjointSchemas[N1, N2]). This prevents ambiguous
+    * table lookups while allowing flexible composition of dependent modules.
     *
     * @tparam F
     *   the effect type
@@ -322,15 +323,13 @@ object Blueprint:
     * @tparam T2
     *   second transaction types tuple
     * @param a
-    *   the first blueprint (must have Needs = EmptyTuple)
+    *   the first blueprint
     * @param b
-    *   the second blueprint (must have Needs = EmptyTuple)
+    *   the second blueprint
     * @param uniqueNames
     *   evidence that combined owned schema has unique names
-    * @param needsEmpty1
-    *   evidence that first blueprint has no external dependencies
-    * @param needsEmpty2
-    *   evidence that second blueprint has no external dependencies
+    * @param disjointNeeds
+    *   evidence that dependency schemas are disjoint (Phase 5.6)
     * @return
     *   a ComposedBlueprint with RoutedStateReducer0
     */
@@ -342,44 +341,42 @@ object Blueprint:
       monadF: cats.Monad[F],
       moduleOut: ValueOf[MOut],
       uniqueNames0: UniqueNames[a.OwnsType ++ b.OwnsType],
-      needsEmpty1: a.NeedsType =:= EmptyTuple,
-      needsEmpty2: b.NeedsType =:= EmptyTuple,
+      disjointNeeds: TablesProvider.DisjointSchemas[a.NeedsType, b.NeedsType],
   ): ComposedBlueprint[
     F,
     MOut,
     a.OwnsType ++ b.OwnsType,
-    EmptyTuple, // Phase 5.5: Needs = EmptyTuple enforced by compile-time constraints
+    a.NeedsType ++ b.NeedsType, // Phase 5.6: Merged Needs from both blueprints
     a.TxsType ++ b.TxsType,
   ] =
     type M1 = a.ModuleName
     type O1 = a.OwnsType
+    type N1 = a.NeedsType
     type T1 = a.TxsType
     type M2 = b.ModuleName
     type O2 = b.OwnsType
+    type N2 = b.NeedsType
     type T2 = b.TxsType
 
     type CombinedOwns = O1 ++ O2
     val uniqueNames: UniqueNames[CombinedOwns] = uniqueNames0
 
-    // SAFETY: The =:= constraints (needsEmpty1, needsEmpty2) prove at compile-time that
-    // a.NeedsType =:= EmptyTuple and b.NeedsType =:= EmptyTuple. The asInstanceOf is safe
-    // because the type checker has already verified the constraint. Without these constraints,
-    // this function would not compile when called with non-empty Needs.
-    composeBlueprintImpl[F, MOut, M1, O1, T1, M2, O2, T2](
-      a.asInstanceOf[ModuleBlueprint[F, M1, O1, EmptyTuple, T1]],
-      b.asInstanceOf[ModuleBlueprint[F, M2, O2, EmptyTuple, T2]],
-    )(using monadF, moduleOut, uniqueNames)
+    composeBlueprintImpl[F, MOut, M1, O1, N1, T1, M2, O2, N2, T2](
+      a.asInstanceOf[ModuleBlueprint[F, M1, O1, N1, T1]],
+      b.asInstanceOf[ModuleBlueprint[F, M2, O2, N2, T2]],
+    )(using monadF, moduleOut, uniqueNames, disjointNeeds)
 
   private def composeBlueprintImpl[F[
       _,
-  ], MOut <: String, M1 <: String, O1 <: Tuple, T1 <: Tuple, M2 <: String, O2 <: Tuple, T2 <: Tuple](
-      a: ModuleBlueprint[F, M1, O1, EmptyTuple, T1],
-      b: ModuleBlueprint[F, M2, O2, EmptyTuple, T2],
+  ], MOut <: String, M1 <: String, O1 <: Tuple, N1 <: Tuple, T1 <: Tuple, M2 <: String, O2 <: Tuple, N2 <: Tuple, T2 <: Tuple](
+      a: ModuleBlueprint[F, M1, O1, N1, T1],
+      b: ModuleBlueprint[F, M2, O2, N2, T2],
   )(using
       monadF: Monad[F],
       moduleOut: ValueOf[MOut],
       uniqueNames: UniqueNames[O1 ++ O2],
-  ): ComposedBlueprint[F, MOut, O1 ++ O2, EmptyTuple, T1 ++ T2] =
+      disjointNeeds: TablesProvider.DisjointSchemas[N1, N2],
+  ): ComposedBlueprint[F, MOut, O1 ++ O2, N1 ++ N2, T1 ++ T2] =
     given Monad[F]              = monadF
     given UniqueNames[O1 ++ O2] = uniqueNames
     given ValueOf[MOut]         = moduleOut
@@ -387,36 +384,41 @@ object Blueprint:
     val m1Name: String = a.moduleValue.value
     val m2Name: String = b.moduleValue.value
 
-    // Phase 5.5 SAFETY: Both modules have Needs = EmptyTuple (enforced by signature)
-    // Provider merge strategy for Needs ≠ EmptyTuple is deferred to Phase 5.6
+    // Phase 5.6: Merge providers from both modules
+    // DisjointSchemas evidence ensures no ambiguous table lookups
+    val mergedProvider: TablesProvider[F, N1 ++ N2] =
+      TablesProvider.merge(a.provider, b.provider)(using disjointNeeds)
 
-    val routedReducer = new RoutedStateReducer0[F, O1 ++ O2, EmptyTuple]:
+    val routedReducer = new RoutedStateReducer0[F, O1 ++ O2, N1 ++ N2]:
       @SuppressWarnings(Array("org.wartremover.warts.AsInstanceOf"))
       def apply[T <: Tx & ModuleRoutedTx](tx: T)(using
-          requiresReads: Requires[tx.Reads, (O1 ++ O2) ++ EmptyTuple],
-          requiresWrites: Requires[tx.Writes, (O1 ++ O2) ++ EmptyTuple],
+          requiresReads: Requires[tx.Reads, (O1 ++ O2) ++ (N1 ++ N2)],
+          requiresWrites: Requires[tx.Writes, (O1 ++ O2) ++ (N1 ++ N2)],
           ownsTables: Tables[F, O1 ++ O2],
-          provider: TablesProvider[F, EmptyTuple],
+          provider: TablesProvider[F, N1 ++ N2],
       ): StoreF[F][(tx.Result, List[tx.Event])] =
         val pathHead = tx.moduleId.path.head.asInstanceOf[String]
 
         if pathHead === m1Name then
-          // Route to first module - SAFE because Needs = EmptyTuple (enforced by signature)
-          // So O1 ++ EmptyTuple is the schema for module a
+          // Route to first module
+          // SAFETY: We need to narrow the merged provider to just N1 for module a.
+          // The provider parameter contains N1 ++ N2, and we extract just N1.
+          // We use asInstanceOf for the provider since N1 is a subset of N1 ++ N2.
           a.reducer0.apply(tx)(using
-            requiresReads.asInstanceOf[Requires[tx.Reads, O1 ++ EmptyTuple]],
-            requiresWrites.asInstanceOf[Requires[tx.Writes, O1 ++ EmptyTuple]],
+            requiresReads.asInstanceOf[Requires[tx.Reads, O1 ++ N1]],
+            requiresWrites.asInstanceOf[Requires[tx.Writes, O1 ++ N1]],
             ownsTables.asInstanceOf[Tables[F, O1]],
-            a.provider, // This is TablesProvider.empty since Needs = EmptyTuple
+            provider.asInstanceOf[TablesProvider[F, N1]], // Extract subset for module a
           )
         else if pathHead === m2Name then
-          // Route to second module - SAFE because Needs = EmptyTuple (enforced by signature)
-          // So O2 ++ EmptyTuple is the schema for module b
+          // Route to second module
+          // SAFETY: We need to narrow the merged provider to just N2 for module b.
+          // The provider parameter contains N1 ++ N2, and we extract just N2.
           b.reducer0.apply(tx)(using
-            requiresReads.asInstanceOf[Requires[tx.Reads, O2 ++ EmptyTuple]],
-            requiresWrites.asInstanceOf[Requires[tx.Writes, O2 ++ EmptyTuple]],
+            requiresReads.asInstanceOf[Requires[tx.Reads, O2 ++ N2]],
+            requiresWrites.asInstanceOf[Requires[tx.Writes, O2 ++ N2]],
             ownsTables.asInstanceOf[Tables[F, O2]],
-            b.provider, // This is TablesProvider.empty since Needs = EmptyTuple
+            provider.asInstanceOf[TablesProvider[F, N2]], // Extract subset for module b
           )
         else
           val msg1: String = m1Name
@@ -428,11 +430,11 @@ object Blueprint:
 
     val combinedTxs: TxRegistry[T1 ++ T2] = a.txs.combine(b.txs)
 
-    new ComposedBlueprint[F, MOut, O1 ++ O2, EmptyTuple, T1 ++ T2](
+    new ComposedBlueprint[F, MOut, O1 ++ O2, N1 ++ N2, T1 ++ T2](
       owns = a.owns ++ b.owns,
       reducer0 = routedReducer,
       txs = combinedTxs,
-      provider = TablesProvider.empty[F],
+      provider = mergedProvider, // Phase 5.6: Use merged provider
     )
 
   /** Mount a blueprint at a path composed from base and sub paths.
