@@ -284,51 +284,60 @@ object StateModule:
     *
     * This allows transactions to be processed by whichever module can handle them.
     *
-    * Phase 5.5 SAFETY: Both modules MUST have Needs = EmptyTuple.
-    * This is enforced via compile-time evidence (=:= constraints).
-    * Provider merge strategy for Needs ≠ EmptyTuple is deferred to Phase 5.6.
+    * Phase 5.6 UPGRADE: Now supports modules with non-empty Needs. The providers
+    * are merged using TablesProvider.merge, which requires that the dependency
+    * schemas are disjoint (DisjointSchemas[N1, N2]). This prevents ambiguous
+    * table lookups while allowing flexible composition of dependent modules.
     *
     * @tparam F the effect type
     * @tparam Path the shared mount path
     * @tparam O1 first owned schema tuple
+    * @tparam N1 first needs schema tuple
     * @tparam O2 second owned schema tuple
+    * @tparam N2 second needs schema tuple
     * @tparam T1 first transaction types tuple
     * @tparam T2 second transaction types tuple
     * @tparam R1 first reducer type
     * @tparam R2 second reducer type
-    * @param a the first module (must have Needs = EmptyTuple)
-    * @param b the second module (must have Needs = EmptyTuple)
+    * @param a the first module
+    * @param b the second module
     * @param uniqueNames evidence that combined owned schema has unique names
     * @param prefixFreePath evidence that combined owned schema is prefix-free at Path
+    * @param disjointNeeds evidence that dependency schemas are disjoint (Phase 5.6)
     * @return a merged state module at the same Path
     */
-  def extend[F[_]: cats.Monad, Path <: Tuple, O1 <: Tuple, O2 <: Tuple, T1 <: Tuple, T2 <: Tuple, R1, R2](
-      a: StateModule[F, Path, O1, EmptyTuple, T1, R1],
-      b: StateModule[F, Path, O2, EmptyTuple, T2, R2],
+  def extend[F[_]: cats.Monad, Path <: Tuple, O1 <: Tuple, N1 <: Tuple, O2 <: Tuple, N2 <: Tuple, T1 <: Tuple, T2 <: Tuple, R1, R2](
+      a: StateModule[F, Path, O1, N1, T1, R1],
+      b: StateModule[F, Path, O2, N2, T2, R2],
   )(using
       uniqueNames: UniqueNames[O1 ++ O2],
       prefixFreePath: PrefixFreePath[Path, O1 ++ O2],
-  ): StateModule[F, Path, O1 ++ O2, EmptyTuple, T1 ++ T2, StateReducer[F, Path, O1 ++ O2, EmptyTuple]] =
+      disjointNeeds: TablesProvider.DisjointSchemas[N1, N2],
+  ): StateModule[F, Path, O1 ++ O2, N1 ++ N2, T1 ++ T2, StateReducer[F, Path, O1 ++ O2, N1 ++ N2]] =
     // Merge owned tables using flat concatenation
     @SuppressWarnings(Array("org.wartremover.warts.AsInstanceOf"))
     val mergedTables: Tables[F, O1 ++ O2] = (a.tables ++ b.tables).asInstanceOf[Tables[F, O1 ++ O2]]
 
+    // Phase 5.6: Merge providers from both modules
+    val mergedProvider: TablesProvider[F, N1 ++ N2] =
+      TablesProvider.merge(a.tablesProvider, b.tablesProvider)(using disjointNeeds)
+
     // Merge reducers - create a new reducer that delegates based on runtime type matching
     // This is a simplified Phase 5 implementation
     // A production system would use explicit transaction routing or a registry pattern
-    val mergedReducer = mergeReducers[F, Path, O1, O2](
-      a.reducer.asInstanceOf[StateReducer[F, Path, O1, EmptyTuple]],
-      b.reducer.asInstanceOf[StateReducer[F, Path, O2, EmptyTuple]],
+    val mergedReducer = mergeReducers[F, Path, O1, N1, O2, N2](
+      a.reducer.asInstanceOf[StateReducer[F, Path, O1, N1]],
+      b.reducer.asInstanceOf[StateReducer[F, Path, O2, N2]],
     )
 
     // Merge transaction registries
     val mergedTxs: TxRegistry[T1 ++ T2] = a.txs.combine(b.txs)
 
-    new StateModule[F, Path, O1 ++ O2, EmptyTuple, T1 ++ T2, StateReducer[F, Path, O1 ++ O2, EmptyTuple]](
+    new StateModule[F, Path, O1 ++ O2, N1 ++ N2, T1 ++ T2, StateReducer[F, Path, O1 ++ O2, N1 ++ N2]](
       tables = mergedTables,
       reducer = mergedReducer,
       txs = mergedTxs,
-      tablesProvider = TablesProvider.empty[F], // Both modules have Needs = EmptyTuple
+      tablesProvider = mergedProvider, // Phase 5.6: Use merged provider
     )(using uniqueNames, prefixFreePath)
 
 
@@ -352,30 +361,32 @@ object StateModule:
     * which may cause duplicate work. Use explicit routing (ModuleRoutedTx)
     * for production systems.
     *
-    * Phase 5.5 update: Both reducers have Needs = EmptyTuple (enforced by extend signature).
+    * Phase 5.6 update: Reducers can have non-empty Needs (merged via DisjointSchemas).
     *
     * @tparam F the effect type
     * @tparam Path the mount path
     * @tparam O1 first owned schema tuple
+    * @tparam N1 first needs schema tuple
     * @tparam O2 second owned schema tuple
-    * @param r1 the first reducer (Needs = EmptyTuple)
-    * @param r2 the second reducer (Needs = EmptyTuple)
-    * @return a merged reducer for owned schema O1 ++ O2
+    * @tparam N2 second needs schema tuple
+    * @param r1 the first reducer
+    * @param r2 the second reducer
+    * @return a merged reducer for schema (O1 ++ O2) with needs (N1 ++ N2)
     */
   @SuppressWarnings(Array("org.wartremover.warts.AsInstanceOf"))
-  private def mergeReducers[F[_]: cats.Monad, Path <: Tuple, O1 <: Tuple, O2 <: Tuple](
-      r1: StateReducer[F, Path, O1, EmptyTuple],
-      r2: StateReducer[F, Path, O2, EmptyTuple],
-  ): StateReducer[F, Path, O1 ++ O2, EmptyTuple] =
-    new StateReducer[F, Path, O1 ++ O2, EmptyTuple]:
+  private def mergeReducers[F[_]: cats.Monad, Path <: Tuple, O1 <: Tuple, N1 <: Tuple, O2 <: Tuple, N2 <: Tuple](
+      r1: StateReducer[F, Path, O1, N1],
+      r2: StateReducer[F, Path, O2, N2],
+  ): StateReducer[F, Path, O1 ++ O2, N1 ++ N2] =
+    new StateReducer[F, Path, O1 ++ O2, N1 ++ N2]:
       def apply[T <: Tx](tx: T)(using
-          requiresReads: Requires[tx.Reads, (O1 ++ O2) ++ EmptyTuple],
-          requiresWrites: Requires[tx.Writes, (O1 ++ O2) ++ EmptyTuple],
+          requiresReads: Requires[tx.Reads, (O1 ++ O2) ++ (N1 ++ N2)],
+          requiresWrites: Requires[tx.Writes, (O1 ++ O2) ++ (N1 ++ N2)],
       ): StoreF[F][(tx.Result, List[tx.Event])] =
-        // Try r1 first - SAFE because both have Needs = EmptyTuple (enforced by extend signature)
+        // Try r1 first
         val r1Result = r1.apply(tx)(using
-          requiresReads.asInstanceOf[Requires[tx.Reads, O1 ++ EmptyTuple]],
-          requiresWrites.asInstanceOf[Requires[tx.Writes, O1 ++ EmptyTuple]],
+          requiresReads.asInstanceOf[Requires[tx.Reads, O1 ++ N1]],
+          requiresWrites.asInstanceOf[Requires[tx.Writes, O1 ++ N1]],
         )
 
         // If r1 fails, try r2 as fallback
@@ -388,8 +399,8 @@ object StateModule:
             case _r1Error =>
               // r1 failed, try r2 as fallback
               r2.apply(tx)(using
-                requiresReads.asInstanceOf[Requires[tx.Reads, O2 ++ EmptyTuple]],
-                requiresWrites.asInstanceOf[Requires[tx.Writes, O2 ++ EmptyTuple]],
+                requiresReads.asInstanceOf[Requires[tx.Reads, O2 ++ N2]],
+                requiresWrites.asInstanceOf[Requires[tx.Writes, O2 ++ N2]],
               ).run(s)
           }
         }
