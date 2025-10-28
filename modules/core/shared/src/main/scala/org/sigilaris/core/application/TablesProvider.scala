@@ -1,6 +1,8 @@
 package org.sigilaris.core
 package application
 
+import scala.Tuple.++
+
 /** Provider for external table dependencies.
   *
   * TablesProvider is the canonical handle for supplying tables that a module
@@ -232,3 +234,147 @@ object TablesProvider:
         val headTable = headLookup.table(fullTables)
         val tailTables = tailProjection.project(fullTables)
         headTable *: tailTables
+
+  /** Evidence that two schemas are disjoint (no overlapping entries).
+    *
+    * This is critical for Phase 5.6: when composing modules with non-empty Needs,
+    * we must prove that their dependency schemas don't conflict. Two schemas are
+    * disjoint if they have no Entry with the same Name/K/V types.
+    *
+    * This prevents ambiguous table lookups and ensures that merged providers
+    * maintain type safety.
+    *
+    * @tparam S1
+    *   the first schema tuple
+    * @tparam S2
+    *   the second schema tuple
+    *
+    * @example
+    *   {{{
+    * // These schemas are disjoint - no overlap
+    * type S1 = Entry["accounts", Address, Account] *: EmptyTuple
+    * type S2 = Entry["balances", Address, BigNat] *: EmptyTuple
+    * summon[DisjointSchemas[S1, S2]]  // compiles
+    *
+    * // These schemas overlap - same name and types
+    * type S3 = Entry["accounts", Address, Account] *: EmptyTuple
+    * type S4 = Entry["accounts", Address, Account] *: EmptyTuple
+    * summon[DisjointSchemas[S3, S4]]  // does not compile
+    *   }}}
+    */
+  trait DisjointSchemas[S1 <: Tuple, S2 <: Tuple]
+
+  object DisjointSchemas:
+    /** Base case: EmptyTuple is disjoint from EmptyTuple (most specific). */
+    given emptyEmpty: DisjointSchemas[EmptyTuple, EmptyTuple] = new DisjointSchemas[EmptyTuple, EmptyTuple] {}
+
+    /** Base case: EmptyTuple is disjoint from any non-empty schema. */
+    given emptyLeft[S <: Tuple]: DisjointSchemas[EmptyTuple, S] = new DisjointSchemas[EmptyTuple, S] {}
+
+    /** Base case: Any non-empty schema is disjoint from EmptyTuple. */
+    given emptyRight[S <: Tuple]: DisjointSchemas[S, EmptyTuple] = new DisjointSchemas[S, EmptyTuple] {}
+
+    /** Inductive case: (H *: T1) is disjoint from S2 if:
+      *   1. H is not in S2 (NotInSchema[H, S2])
+      *   2. T1 is disjoint from S2 (DisjointSchemas[T1, S2])
+      */
+    given consDisjoint[Name <: String, K, V, T1 <: Tuple, S2 <: Tuple](using
+        notInS2: NotInSchema[Entry[Name, K, V], S2],
+        tailDisjoint: DisjointSchemas[T1, S2],
+    ): DisjointSchemas[Entry[Name, K, V] *: T1, S2] =
+      new DisjointSchemas[Entry[Name, K, V] *: T1, S2] {}
+
+  /** Evidence that an Entry is not present in a schema.
+    *
+    * This is used by DisjointSchemas to check overlap at the entry level.
+    * An entry Entry[Name, K, V] is not in a schema if:
+    *   - The schema is EmptyTuple, OR
+    *   - The table name doesn't match AND the entry is not in the tail
+    *
+    * For Phase 5.6, we check table name uniqueness only. Two entries with
+    * the same name are considered overlapping regardless of K/V types.
+    * This is conservative but safe for preventing ambiguous lookups.
+    *
+    * @tparam E
+    *   the entry to check for
+    * @tparam S
+    *   the schema to check in
+    */
+  trait NotInSchema[E <: Entry[?, ?, ?], S <: Tuple]
+
+  object NotInSchema:
+    /** Base case: any entry is not in EmptyTuple. */
+    given notInEmpty[E <: Entry[?, ?, ?]]: NotInSchema[E, EmptyTuple] =
+      new NotInSchema[E, EmptyTuple] {}
+
+    /** Inductive case: Entry[N1, K1, V1] is not in (Entry[N2, K2, V2] *: Tail) if:
+      *   - Names differ (checked via DifferentNames / NotGiven), AND
+      *   - The entry is not in Tail
+      *
+      * We use DifferentNames (which is NotGiven[N1 =:= N2]) to prove at compile time
+      * that the table names are different.
+      */
+    given notInCons[N1 <: String, K1, V1, N2 <: String, K2, V2, Tail <: Tuple](using
+        namesDiffer: DifferentNames[N1, N2],
+        notInTail: NotInSchema[Entry[N1, K1, V1], Tail],
+    ): NotInSchema[Entry[N1, K1, V1], Entry[N2, K2, V2] *: Tail] =
+      new NotInSchema[Entry[N1, K1, V1], Entry[N2, K2, V2] *: Tail] {}
+
+  /** Merge two disjoint providers into a single provider.
+    *
+    * This is the core operation for Phase 5.6: combining providers when
+    * composing modules with non-empty Needs. The schemas must be disjoint
+    * (no overlapping entries) to ensure unambiguous table lookups.
+    *
+    * The merged provider:
+    *   - Provides tables from both P1 and P2
+    *   - Can be narrowed to any subset of P1 ++ P2
+    *   - Maintains type safety through DisjointSchemas evidence
+    *
+    * @tparam F
+    *   the effect type
+    * @tparam P1
+    *   the first provider's schema
+    * @tparam P2
+    *   the second provider's schema
+    * @param p1
+    *   the first provider
+    * @param p2
+    *   the second provider
+    * @param disjoint
+    *   evidence that P1 and P2 are disjoint
+    * @return
+    *   a provider supplying P1 ++ P2
+    *
+    * @example
+    *   {{{
+    * // Accounts module provides accounts and balances
+    * val accountsProvider: TablesProvider[F, AccountsSchema] = ???
+    *
+    * // Group module provides groups and members
+    * val groupProvider: TablesProvider[F, GroupSchema] = ???
+    *
+    * // Merge providers (compiles only if schemas are disjoint)
+    * val mergedProvider = TablesProvider.merge(accountsProvider, groupProvider)
+    * // Type: TablesProvider[F, AccountsSchema ++ GroupSchema]
+    *
+    * // Can now be used by modules needing tables from both
+    * val tokenBP = new ModuleBlueprint[F, "token", TokenOwns, AccountsSchema ++ GroupSchema, ...](
+    *   owns = tokenEntries,
+    *   reducer0 = tokenReducer,
+    *   txs = tokenTxRegistry,
+    *   provider = mergedProvider,
+    * )
+    *   }}}
+    */
+  def merge[F[_], P1 <: Tuple, P2 <: Tuple](
+      p1: TablesProvider[F, P1],
+      p2: TablesProvider[F, P2],
+  )(using
+      disjoint: DisjointSchemas[P1, P2],
+  ): TablesProvider[F, P1 ++ P2] = new TablesProvider[F, P1 ++ P2]:
+    @SuppressWarnings(Array("org.wartremover.warts.AsInstanceOf"))
+    def tables: Tables[F, P1 ++ P2] =
+      // SAFETY: Tuple concatenation at runtime matches type-level Tuple.Concat.
+      // DisjointSchemas evidence ensures no ambiguity in table lookups.
+      (p1.tables ++ p2.tables).asInstanceOf[Tables[F, P1 ++ P2]]
