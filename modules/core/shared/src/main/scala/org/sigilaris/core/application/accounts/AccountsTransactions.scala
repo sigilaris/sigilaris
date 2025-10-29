@@ -1,0 +1,161 @@
+package org.sigilaris.core
+package application
+package accounts
+
+import java.time.Instant
+
+import cats.Eq
+
+import codec.byte.{ByteDecoder, ByteEncoder}
+import datatype.{BigNat, Utf8}
+
+// Import Entry for transaction type definitions
+import org.sigilaris.core.application.Entry
+
+/** Common envelope for all transactions.
+  *
+  * Contains metadata for auditing and replay protection across chains.
+  *
+  * @param networkId chain/network identifier for cross-chain replay protection
+  * @param createdAt transaction creation timestamp
+  * @param memo optional memo for auditing/operational purposes
+  */
+final case class TxEnvelope(
+    networkId: BigNat,
+    createdAt: Instant,
+    memo: Option[Utf8],
+) derives ByteEncoder, ByteDecoder
+
+object TxEnvelope:
+  given txEnvelopeEq: Eq[TxEnvelope] = Eq.fromUniversalEquals
+
+/** Create a new Named account.
+  *
+  * Requires signature from the initial key's private key.
+  *
+  * @param envelope common transaction metadata
+  * @param name account name (UTF-8 string)
+  * @param initialKeyId initial public key identifier
+  * @param guardian optional guardian account
+  */
+final case class CreateNamedAccount(
+    envelope: TxEnvelope,
+    name: Utf8,
+    initialKeyId: KeyId20,
+    guardian: Option[Account],
+) extends Tx derives ByteEncoder, ByteDecoder:
+  type Reads = Entry["accounts", Utf8, AccountInfo] *: EmptyTuple
+  type Writes = Entry["accounts", Utf8, AccountInfo] *:
+    Entry["nameKey", (Utf8, KeyId20), KeyInfo] *: EmptyTuple
+  type Result = Unit
+  type Event = AccountCreated
+
+object CreateNamedAccount:
+  given createNamedAccountEq: Eq[CreateNamedAccount] = Eq.fromUniversalEquals
+
+/** Update account information (change guardian).
+  *
+  * Requires signature from one of the account's registered keys or the guardian.
+  *
+  * @param envelope common transaction metadata
+  * @param name account name
+  * @param nonce must match current account nonce
+  * @param newGuardian new guardian (can be None to remove, Some to set/change)
+  */
+final case class UpdateAccount(
+    envelope: TxEnvelope,
+    name: Utf8,
+    nonce: BigNat,
+    newGuardian: Option[Account],
+) extends Tx derives ByteEncoder, ByteDecoder:
+  type Reads = Entry["accounts", Utf8, AccountInfo] *: EmptyTuple
+  type Writes = Entry["accounts", Utf8, AccountInfo] *: EmptyTuple
+  type Result = Unit
+  type Event = AccountUpdated
+
+object UpdateAccount:
+  given updateAccountEq: Eq[UpdateAccount] = Eq.fromUniversalEquals
+
+/** Add new public keys to a Named account.
+  *
+  * Requires signature from one of the account's registered keys or the guardian.
+  *
+  * @param envelope common transaction metadata
+  * @param name account name
+  * @param nonce must match current account nonce
+  * @param keyIds map of KeyId20 to description (user-provided)
+  * @param expiresAt optional expiration timestamp applied to all new keys
+  */
+final case class AddKeyIds(
+    envelope: TxEnvelope,
+    name: Utf8,
+    nonce: BigNat,
+    keyIds: Map[KeyId20, Utf8],
+    expiresAt: Option[Instant],
+) extends Tx derives ByteEncoder, ByteDecoder:
+  type Reads = Entry["accounts", Utf8, AccountInfo] *:
+    Entry["nameKey", (Utf8, KeyId20), KeyInfo] *: EmptyTuple
+  type Writes = Entry["accounts", Utf8, AccountInfo] *:
+    Entry["nameKey", (Utf8, KeyId20), KeyInfo] *: EmptyTuple
+  type Result = Unit
+  type Event = KeysAdded
+
+object AddKeyIds:
+  given addKeyIdsEq: Eq[AddKeyIds] = Eq.fromUniversalEquals
+
+/** Remove public keys from a Named account.
+  *
+  * Requires signature from one of the account's registered keys or the guardian.
+  *
+  * @param envelope common transaction metadata
+  * @param name account name
+  * @param nonce must match current account nonce
+  * @param keyIds set of KeyId20 to remove
+  */
+final case class RemoveKeyIds(
+    envelope: TxEnvelope,
+    name: Utf8,
+    nonce: BigNat,
+    keyIds: Set[KeyId20],
+) extends Tx derives ByteEncoder, ByteDecoder:
+  type Reads = Entry["accounts", Utf8, AccountInfo] *:
+    Entry["nameKey", (Utf8, KeyId20), KeyInfo] *: EmptyTuple
+  type Writes = Entry["accounts", Utf8, AccountInfo] *:
+    Entry["nameKey", (Utf8, KeyId20), KeyInfo] *: EmptyTuple
+  type Result = Unit
+  type Event = KeysRemoved
+
+object RemoveKeyIds:
+  given removeKeyIdsEq: Eq[RemoveKeyIds] = Eq.fromUniversalEquals
+
+/** Remove a Named account entirely.
+  *
+  * Requires signature from one of the account's registered keys or the guardian.
+  * Does not check for UTXO balances (module boundary concern).
+  *
+  * @param envelope common transaction metadata
+  * @param name account name
+  * @param nonce must match current account nonce
+  */
+final case class RemoveAccount(
+    envelope: TxEnvelope,
+    name: Utf8,
+    nonce: BigNat,
+) extends Tx derives ByteEncoder, ByteDecoder:
+  type Reads = Entry["accounts", Utf8, AccountInfo] *: EmptyTuple
+  type Writes = Entry["accounts", Utf8, AccountInfo] *:
+    Entry["nameKey", (Utf8, KeyId20), KeyInfo] *: EmptyTuple
+  type Result = Unit
+  type Event = AccountRemoved
+
+object RemoveAccount:
+  given removeAccountEq: Eq[RemoveAccount] = Eq.fromUniversalEquals
+
+// Event types
+sealed trait AccountEvent
+
+final case class AccountCreated(name: Utf8, guardian: Option[Account]) extends AccountEvent
+final case class AccountUpdated(name: Utf8, newGuardian: Option[Account]) extends AccountEvent
+final case class KeysAdded(name: Utf8, keyIds: Set[KeyId20]) extends AccountEvent
+final case class KeysRemoved(name: Utf8, keyIds: Set[KeyId20]) extends AccountEvent
+final case class AccountRemoved(name: Utf8) extends AccountEvent
