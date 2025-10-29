@@ -24,7 +24,23 @@ import scala.Tuple.++
   * // The full path ("app", "accounts") is only constructed at system boundaries
   * }}}
   */
-final case class ModuleId(path: Tuple)
+final case class ModuleId[Path <: Tuple] private (path: Path)
+
+object ModuleId:
+  /** Evidence that a tuple consists only of `String` elements. */
+  sealed trait StringTuple[Path <: Tuple]
+  object StringTuple:
+    given StringTuple[EmptyTuple] with {}
+    given [H <: String, T <: Tuple](using StringTuple[T]): StringTuple[H *: T] with {}
+
+  type Any = ModuleId[? <: Tuple]
+
+  /** Construct a `ModuleId` ensuring the tuple elements are all `String`s at compile time. */
+  def apply[Path <: Tuple](path: Path)(using StringTuple[Path]): ModuleId[Path] =
+    new ModuleId(path)
+
+  /** Pattern matching helper exposing the underlying tuple path. */
+  def unapply[Path <: Tuple](id: ModuleId[Path]): Some[Path] = Some(id.path)
 
 /** Transaction trait defining read/write requirements and result types.
   *
@@ -78,7 +94,7 @@ trait Tx:
   */
 trait ModuleRoutedTx extends Tx:
   /** The module identifier specifying which module this transaction belongs to. */
-  def moduleId: ModuleId
+  def moduleId: ModuleId.Any
 
 /** Transaction registry holding a tuple of transaction types.
   *

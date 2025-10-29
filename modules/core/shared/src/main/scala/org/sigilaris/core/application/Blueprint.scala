@@ -3,7 +3,6 @@ package application
 
 import cats.Monad
 import cats.data.{EitherT, StateT}
-import cats.syntax.eq.*
 import scala.Tuple.++
 
 import failure.RoutingFailure
@@ -172,6 +171,9 @@ sealed trait Blueprint[F[
   /** Literal module name for this blueprint. */
   def moduleValue: ValueOf[MName]
 
+  /** Module-relative first segments handled by this blueprint. */
+  def routeHeads: List[String]
+
 /** Single-module blueprint (path-independent).
   *
   * A module blueprint is a specification for a single, self-contained module.
@@ -223,7 +225,8 @@ final class ModuleBlueprint[F[
 )(using
     val uniqueNames: UniqueNames[Owns],
     val moduleValue: ValueOf[MName],
-) extends Blueprint[F, MName, Owns, Needs, Txs, StateReducer0[F, Owns, Needs]]
+) extends Blueprint[F, MName, Owns, Needs, Txs, StateReducer0[F, Owns, Needs]]:
+  override val routeHeads: List[String] = moduleValue.value :: Nil
 
 /** Composed blueprint (path-independent).
   *
@@ -265,6 +268,7 @@ final class ComposedBlueprint[F[
     val reducer0: RoutedStateReducer0[F, Owns, Needs],
     val txs: TxRegistry[Txs],
     val provider: TablesProvider[F, Needs],
+    val routeHeads: List[String],
 )(using
     val uniqueNames: UniqueNames[Owns],
     val moduleValue: ValueOf[MName],
@@ -278,6 +282,31 @@ final class ComposedBlueprint[F[
     ]
 
 object Blueprint:
+  private final case class BlueprintData[F[_], Owns <: Tuple, Needs <: Tuple, Txs <: Tuple](
+      owns: Owns,
+      routedReducer: RoutedStateReducer0[F, Owns, Needs],
+      txs: TxRegistry[Txs],
+      provider: TablesProvider[F, Needs],
+      routeHeads: List[String],
+  )
+
+  private def blueprintData[F[_], MName <: String, Owns <: Tuple, Needs <: Tuple, Txs <: Tuple](
+      bp: Blueprint[F, MName, Owns, Needs, Txs, ?],
+  ): BlueprintData[F, Owns, Needs, Txs] =
+    bp match
+      case module: ModuleBlueprint[F, MName, Owns, Needs, Txs] =>
+        val routedReducer = new RoutedStateReducer0[F, Owns, Needs]:
+          def apply[T <: Tx & ModuleRoutedTx](tx: T)(using
+              requiresReads: Requires[tx.Reads, Owns ++ Needs],
+              requiresWrites: Requires[tx.Writes, Owns ++ Needs],
+              ownsTables: Tables[F, Owns],
+              provider: TablesProvider[F, Needs],
+          ): StoreF[F][(tx.Result, List[tx.Event])] =
+            module.reducer0.apply(tx)
+        BlueprintData(module.owns, routedReducer, module.txs, module.provider, module.routeHeads)
+      case composed: ComposedBlueprint[F, MName, Owns, Needs, Txs] =>
+        BlueprintData(composed.owns, composed.reducer0, composed.txs, composed.provider, composed.routeHeads)
+
   /** Compose two blueprints into a single composed blueprint.
     *
     * This is the core operation for Phase 3: combining two independent module
@@ -333,10 +362,9 @@ object Blueprint:
     * @return
     *   a ComposedBlueprint with RoutedStateReducer0
     */
-  @SuppressWarnings(Array("org.wartremover.warts.AsInstanceOf"))
   def composeBlueprint[F[_], MOut <: String](
-      a: ModuleBlueprint[F, ?, ?, ?, ?],
-      b: ModuleBlueprint[F, ?, ?, ?, ?],
+      a: Blueprint[F, ?, ?, ?, ?, ?],
+      b: Blueprint[F, ?, ?, ?, ?, ?],
   )(using
       monadF: cats.Monad[F],
       moduleOut: ValueOf[MOut],
@@ -363,16 +391,32 @@ object Blueprint:
     type CombinedOwns = O1 ++ O2
     val uniqueNames: UniqueNames[CombinedOwns] = uniqueNames0
 
-    composeBlueprintImpl[F, MOut, M1, O1, N1, T1, M2, O2, N2, T2](
-      a.asInstanceOf[ModuleBlueprint[F, M1, O1, N1, T1]],
-      b.asInstanceOf[ModuleBlueprint[F, M2, O2, N2, T2]],
-    )(using monadF, moduleOut, uniqueNames, disjointNeeds, projectionN1, projectionN2)
+    val aData: BlueprintData[F, O1, N1, T1] = a match
+      case module: ModuleBlueprint[F, M1, O1, N1, T1] =>
+        blueprintData[F, M1, O1, N1, T1](module)
+      case composed: ComposedBlueprint[F, M1, O1, N1, T1] =>
+        blueprintData[F, M1, O1, N1, T1](composed)
+
+    val bData: BlueprintData[F, O2, N2, T2] = b match
+      case module: ModuleBlueprint[F, M2, O2, N2, T2] =>
+        blueprintData[F, M2, O2, N2, T2](module)
+      case composed: ComposedBlueprint[F, M2, O2, N2, T2] =>
+        blueprintData[F, M2, O2, N2, T2](composed)
+
+    composeBlueprintImpl[F, MOut, O1, N1, T1, O2, N2, T2](aData, bData)(
+      using monadF,
+      moduleOut,
+      uniqueNames,
+      disjointNeeds,
+      projectionN1,
+      projectionN2,
+    )
 
   private def composeBlueprintImpl[F[
       _,
-  ], MOut <: String, M1 <: String, O1 <: Tuple, N1 <: Tuple, T1 <: Tuple, M2 <: String, O2 <: Tuple, N2 <: Tuple, T2 <: Tuple](
-      a: ModuleBlueprint[F, M1, O1, N1, T1],
-      b: ModuleBlueprint[F, M2, O2, N2, T2],
+  ], MOut <: String, O1 <: Tuple, N1 <: Tuple, T1 <: Tuple, O2 <: Tuple, N2 <: Tuple, T2 <: Tuple](
+      a: BlueprintData[F, O1, N1, T1],
+      b: BlueprintData[F, O2, N2, T2],
   )(using
       monadF: Monad[F],
       moduleOut: ValueOf[MOut],
@@ -385,59 +429,68 @@ object Blueprint:
     given UniqueNames[O1 ++ O2] = uniqueNames
     given ValueOf[MOut]         = moduleOut
 
-    val m1Name: String = a.moduleValue.value
-    val m2Name: String = b.moduleValue.value
-
     // Phase 5.6: Merge providers from both modules
     // DisjointSchemas evidence ensures no ambiguous table lookups
     val mergedProvider: TablesProvider[F, N1 ++ N2] =
       TablesProvider.merge(a.provider, b.provider)(using disjointNeeds)
 
+    val aRouteHeads: List[String] = a.routeHeads
+    val bRouteHeads: List[String] = b.routeHeads
+    val allowedHeads: List[String] = (aRouteHeads ++ bRouteHeads).distinct
+
     val routedReducer = new RoutedStateReducer0[F, O1 ++ O2, N1 ++ N2]:
-      @SuppressWarnings(Array("org.wartremover.warts.AsInstanceOf"))
+      @SuppressWarnings(Array("org.wartremover.warts.AsInstanceOf", "org.wartremover.warts.Any"))
       def apply[T <: Tx & ModuleRoutedTx](tx: T)(using
           requiresReads: Requires[tx.Reads, (O1 ++ O2) ++ (N1 ++ N2)],
           requiresWrites: Requires[tx.Writes, (O1 ++ O2) ++ (N1 ++ N2)],
           ownsTables: Tables[F, O1 ++ O2],
           provider: TablesProvider[F, N1 ++ N2],
       ): StoreF[F][(tx.Result, List[tx.Event])] =
-        val pathHead = tx.moduleId.path.head.asInstanceOf[String]
+        val path       = tx.moduleId.path
+        val maybeHead: Option[String] = path match
+          case (head: String) *: _ => Some(head)
+          case EmptyTuple          => None
+          case _                   => None
 
-        if pathHead === m1Name then
-          // Route to first module
-          // SAFETY: We narrow the merged provider to just N1 for module a.
-          // The provider parameter contains N1 ++ N2, and we project it to N1 using narrow.
-          a.reducer0.apply(tx)(using
-            requiresReads.asInstanceOf[Requires[tx.Reads, O1 ++ N1]],
-            requiresWrites.asInstanceOf[Requires[tx.Writes, O1 ++ N1]],
-            ownsTables.asInstanceOf[Tables[F, O1]],
-            provider.narrow[N1](using projectionN1), // Project to subset N1 for module a
-          )
-        else if pathHead === m2Name then
-          // Route to second module
-          // SAFETY: We narrow the merged provider to just N2 for module b.
-          // The provider parameter contains N1 ++ N2, and we project it to N2 using narrow.
-          b.reducer0.apply(tx)(using
-            requiresReads.asInstanceOf[Requires[tx.Reads, O2 ++ N2]],
-            requiresWrites.asInstanceOf[Requires[tx.Writes, O2 ++ N2]],
-            ownsTables.asInstanceOf[Tables[F, O2]],
-            provider.narrow[N2](using projectionN2), // Project to subset N2 for module b
-          )
-        else
-          val msg1: String = m1Name
-          val msg2: String = m2Name
-          StateT.liftF:
-            EitherT.leftT[F, (tx.Result, List[tx.Event])]:
-              RoutingFailure:
-                ss"TxRouteMissing: module '$pathHead' does not match '$msg1' or '$msg2'"
+        maybeHead match
+          case Some(pathHead) if aRouteHeads.contains(pathHead) =>
+            // Route to first blueprint (module or composed).
+            a.routedReducer.apply(tx)(using
+              requiresReads.asInstanceOf[Requires[tx.Reads, O1 ++ N1]],
+              requiresWrites.asInstanceOf[Requires[tx.Writes, O1 ++ N1]],
+              ownsTables.asInstanceOf[Tables[F, O1]],
+              provider.narrow[N1](using projectionN1), // Project to subset N1 for module a
+            )
+          case Some(pathHead) if bRouteHeads.contains(pathHead) =>
+            // Route to second blueprint (module or composed).
+            b.routedReducer.apply(tx)(using
+              requiresReads.asInstanceOf[Requires[tx.Reads, O2 ++ N2]],
+              requiresWrites.asInstanceOf[Requires[tx.Writes, O2 ++ N2]],
+              ownsTables.asInstanceOf[Tables[F, O2]],
+              provider.narrow[N2](using projectionN2), // Project to subset N2 for module b
+            )
+          case Some(pathHead) =>
+            val expected = allowedHeads.mkString("'", "', '", "'")
+            StateT.liftF:
+              EitherT.leftT[F, (tx.Result, List[tx.Event])]:
+                RoutingFailure:
+                  ss"TxRouteMissing: module '$pathHead' not found in $expected"
+          case None =>
+            val expected = allowedHeads.mkString("'", "', '", "'")
+            StateT.liftF:
+              EitherT.leftT[F, (tx.Result, List[tx.Event])]:
+                RoutingFailure:
+                  ss"TxRouteMissing: empty module path; expected head in $expected"
 
     val combinedTxs: TxRegistry[T1 ++ T2] = a.txs.combine(b.txs)
+    val combinedRouteHeads: List[String]  = allowedHeads
 
     new ComposedBlueprint[F, MOut, O1 ++ O2, N1 ++ N2, T1 ++ T2](
       owns = a.owns ++ b.owns,
       reducer0 = routedReducer,
       txs = combinedTxs,
       provider = mergedProvider, // Phase 5.6: Use merged provider
+      routeHeads = combinedRouteHeads,
     )
 
   /** Mount a blueprint at a path composed from base and sub paths.

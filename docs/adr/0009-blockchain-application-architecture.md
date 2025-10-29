@@ -223,6 +223,24 @@ def tupleConcat[A <: Tuple, B <: Tuple](a: A, b: B): A ++ B =
 // Needs = EmptyTuple인 설계도에 한해 제공되며, 외부 테이블 제공자는 고려하지 않는다.
 // Needs를 보존한 상태에서의 합성은 `TablesProvider` 병합 전략(Phase 5.6)에서 다룬다.
 
+### Generic Composition (Phase 5.7)
+- `composeBlueprint`는 이제 `Blueprint` 일반형(단일 모듈/기 합성 설계도 포함)을 입력으로 받아 라우팅 리듀서를 재사용하며, 중첩 합성 없이도 모듈 계층을 평탄하게 다룰 수 있다.
+- 라우팅은 입력 설계도의 `moduleValue`를 첫 세그먼트로 매칭하는 기존 전략을 유지하므로, 기 합성 설계도를 다시 합성해도 외부에서 동일한 모듈 이름으로 경합한다.
+- 동일 증거 요구사항(`UniqueNames[A.OwnsType ++ B.OwnsType]`, `DisjointSchemas`, `TablesProjection`)은 유지되며, 각 합성 단계에서 증거를 제공해야 한다.
+- 가변 인자 버전은 `headOption.fold(throw …)(_.tail.foldLeft(head)(composeBlueprint))` 형태로 폴딩하여 구현하며, 각 단계에서 타입 증거를 재사용할 수 있도록 givens/derivation 헬퍼를 권장한다.
+
+```scala
+// 다중 설계도 합성 예시
+val composite = Blueprint.composeAll[F, "dapp"](
+  AccountsBP,
+  GroupBP,
+  TokenBP,
+)
+
+// composeAll은 내부적으로 fold를 돌며 매 단계마다 증거를 summon:
+// summonInline[UniqueNames[(Acc.OwnsType) ++ Next.OwnsType]] 등
+```
+
 // 베이스 경로 아래 하위 경로로 장착 (Base ++ Sub)
 extension [F[_], MName <: String, Owns <: Tuple, Needs <: Tuple, T <: Tuple]
   def mountAt[Base <: Tuple, Sub <: Tuple](bp: ModuleBlueprint[F, MName, Owns, Needs, T])
@@ -687,6 +705,24 @@ Phase 5.6 — Provider Composition (TBD)
   - Capture failure modes (conflicting providers, overlapping schemas) with explicit compiler errors
 - Outcome
   - Modules requiring external tables can be combined at compile time without losing type safety
+
+Phase 5.7 — Blueprint Composition Generalization (DRAFT)
+- Deliverables
+  - Broaden `Blueprint.composeBlueprint` to accept any `Blueprint` (single or composed) while preserving routing semantics.
+  - Provide a variadic `composeAll` (or equivalent) that folds over an arbitrary number of blueprints using the generalized binary helper.
+  - Document evidence requirements (`UniqueNames`, `DisjointSchemas`, `TablesProjection`) and recommended derivation utilities.
+- Tasks
+  - Refactor the existing binary implementation to operate on the sealed trait; update call sites/tests.
+  - Implement the fold-based API and ensure type inference remains stable with nested compositions.
+  - Add regression tests covering three-plus module composition and mixed Module/Composed inputs.
+- Tests
+  - Compile-time checks ensuring incorrect routing (non-`ModuleRoutedTx`) continues to fail.
+  - Runtime tests verifying delegating reducers still select the correct moduleId head segment.
+  - Property/regression tests for `composeAll` to confirm associative folding and schema evidence reuse.
+- Criteria
+  - Users can chain compositions without manual unwrapping of intermediate composed blueprints.
+  - Routing failures still yield precise `RoutingFailure` diagnostics.
+  - Documentation and samples reflect the new API surface (ADR updated in Phase 5.7 notes above).
 
 Phase 6 — Example Blueprints (Accounts, Group)
 - See ADR‑0010 (Blockchain Account Model and Key Management) and ADR‑0011 (Blockchain Account Group Management) for detailed schemas, transactions, and reducer rules.

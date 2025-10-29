@@ -69,6 +69,26 @@ class CompositionTest extends FunSuite:
       provider = TablesProvider.empty[Id],
     )
 
+  def createBlueprint3(): ModuleBlueprint[Id, "module3", Schema3, EmptyTuple, EmptyTuple] =
+    val tokensEntry = Entry["tokens", Utf8, BigInt]
+    val schema: Schema3 = tokensEntry *: EmptyTuple
+
+    val reducer = new StateReducer0[Id, Schema3, EmptyTuple]:
+      def apply[T <: Tx](tx: T)(using
+          requiresReads: Requires[tx.Reads, Schema3],
+          requiresWrites: Requires[tx.Writes, Schema3],
+          ownsTables: Tables[Id, Schema3],
+          provider: TablesProvider[Id, EmptyTuple],
+      ): StoreF[Id][(tx.Result, List[tx.Event])] =
+        StateT.pure((null.asInstanceOf[tx.Result], List.empty[tx.Event]))
+
+    new ModuleBlueprint[Id, "module3", Schema3, EmptyTuple, EmptyTuple](
+      owns = schema,
+      reducer0 = reducer,
+      txs = TxRegistry.empty,
+      provider = TablesProvider.empty[Id],
+    )
+
   test("composeBlueprint combines two blueprints with different schemas"):
     val bp1 = createBlueprint1()
     val bp2 = createBlueprint2()
@@ -113,6 +133,19 @@ class CompositionTest extends FunSuite:
     val provider: TablesProvider[Id, EmptyTuple] = composed.provider
     assert(provider != null)
 
+  test("nested composed blueprints can be mounted"):
+    val bp1 = createBlueprint1()
+    val bp2 = createBlueprint2()
+    val bp3 = createBlueprint3()
+
+    val composed12 = Blueprint.composeBlueprint[Id, "combined12"](bp1, bp2)
+    val nested = Blueprint.composeBlueprint[Id, "nested"](composed12, bp3)
+
+    type Path = "app" *: EmptyTuple
+    val module = StateModule.mountComposed[Path](nested)
+
+    assertEquals(module.tables.size, 3)
+
   test("mountAt helper works for nested paths"):
     val bp = createBlueprint1()
 
@@ -140,17 +173,24 @@ class CompositionTest extends FunSuite:
 
   // Test transactions with module routing
   case class Module1Tx(value: Long) extends Tx with ModuleRoutedTx:
-    val moduleId: ModuleId = ModuleId("module1" *: EmptyTuple)
+    val moduleId: ModuleId["module1" *: EmptyTuple] = ModuleId("module1" *: EmptyTuple)
     type Reads = Schema1
     type Writes = Schema1
     type Result = Long
     type Event = Nothing
 
   case class Module2Tx(name: String) extends Tx with ModuleRoutedTx:
-    val moduleId: ModuleId = ModuleId("module2" *: EmptyTuple)
+    val moduleId: ModuleId["module2" *: EmptyTuple] = ModuleId("module2" *: EmptyTuple)
     type Reads = Schema2
     type Writes = Schema2
     type Result = String
+    type Event = Nothing
+
+  case class Module3Tx(amount: BigInt) extends Tx with ModuleRoutedTx:
+    val moduleId: ModuleId["module3" *: EmptyTuple] = ModuleId("module3" *: EmptyTuple)
+    type Reads = Schema3
+    type Writes = Schema3
+    type Result = BigInt
     type Event = Nothing
 
   case class UnroutedTx() extends Tx:
@@ -160,7 +200,7 @@ class CompositionTest extends FunSuite:
     type Event = Nothing
 
   case class WrongPathTx() extends Tx with ModuleRoutedTx:
-    val moduleId: ModuleId = ModuleId("module3" *: EmptyTuple)
+    val moduleId: ModuleId["module3" *: EmptyTuple] = ModuleId("module3" *: EmptyTuple)
     type Reads = EmptyTuple
     type Writes = EmptyTuple
     type Result = Unit
@@ -208,6 +248,30 @@ class CompositionTest extends FunSuite:
             StateT.pure((null.asInstanceOf[tx.Result], List.empty[tx.Event]))
 
     new ModuleBlueprint[Id, "module2", Schema2, EmptyTuple, EmptyTuple](
+      owns = schema,
+      reducer0 = reducer,
+      txs = TxRegistry.empty,
+      provider = TablesProvider.empty[Id],
+    )
+
+  def createRoutingBlueprint3(): ModuleBlueprint[Id, "module3", Schema3, EmptyTuple, EmptyTuple] =
+    val tokensEntry = Entry["tokens", Utf8, BigInt]
+    val schema: Schema3 = tokensEntry *: EmptyTuple
+
+    val reducer = new StateReducer0[Id, Schema3, EmptyTuple]:
+      def apply[T <: Tx](tx: T)(using
+          requiresReads: Requires[tx.Reads, Schema3],
+          requiresWrites: Requires[tx.Writes, Schema3],
+          ownsTables: Tables[Id, Schema3],
+          provider: TablesProvider[Id, EmptyTuple],
+      ): StoreF[Id][(tx.Result, List[tx.Event])] =
+        tx match
+          case Module3Tx(amount) =>
+            StateT.pure((amount.asInstanceOf[tx.Result], List.empty[tx.Event]))
+          case _ =>
+            StateT.pure((null.asInstanceOf[tx.Result], List.empty[tx.Event]))
+
+    new ModuleBlueprint[Id, "module3", Schema3, EmptyTuple, EmptyTuple](
       owns = schema,
       reducer0 = reducer,
       txs = TxRegistry.empty,
@@ -314,3 +378,30 @@ class CompositionTest extends FunSuite:
         fail(s"Expected RoutingFailure but got: $other")
       case Right(_) =>
         fail("Expected Left for wrong module path but got Right")
+
+  test("nested composed blueprint routes across merged modules"):
+    val bp1 = createRoutingBlueprint1()
+    val bp2 = createRoutingBlueprint2()
+    val bp3 = createRoutingBlueprint3()
+
+    val composed12 = Blueprint.composeBlueprint[Id, "combined12"](bp1, bp2)
+    val nested = Blueprint.composeBlueprint[Id, "nested"](composed12, bp3)
+
+    type Path = "test" *: EmptyTuple
+    val module = StateModule.mountComposed[Path](nested)
+
+    val result1 = module.reducer.apply(Module1Tx(7L)).run(null).value
+    result1 match
+      case Right((_, (value, events))) =>
+        assertEquals(value, 7L)
+        assertEquals(events, List.empty)
+      case Left(err) =>
+        fail(s"Expected module1 routing to succeed but failed with $err")
+
+    val result3 = module.reducer.apply(Module3Tx(BigInt(9))).run(null).value
+    result3 match
+      case Right((_, (value, events))) =>
+        assertEquals(value, BigInt(9))
+        assertEquals(events, List.empty)
+      case Left(err) =>
+        fail(s"Expected module3 routing to succeed but failed with $err")
