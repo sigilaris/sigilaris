@@ -14,8 +14,8 @@ import merkle.{MerkleTrie, MerkleTrieNode, MerkleTrieState}
   * Phase 5.6 enables composeBlueprint and extend to work with modules that have
   * external dependencies, as long as their dependency schemas are disjoint.
   */
-class Phase56Spec extends FunSuite:
-  import Phase56Spec.*
+class Phase56Test extends FunSuite:
+  import Phase56Test.*
 
   given MerkleTrie.NodeStore[Id] = Kleisli: (_: MerkleTrieNode.MerkleHash) =>
     EitherT.rightT[Id, String](None)
@@ -239,7 +239,7 @@ class Phase56Spec extends FunSuite:
 
     // Success! The narrow() method properly projected the tuple
 
-object Phase56Spec:
+object Phase56Test:
   // Test schema types (using Long for simplicity - it has ByteCodec)
   type AccountsSchema = Entry["accounts", Long, Long] *: EmptyTuple
   type GroupSchema    = Entry["groups", Long, Long] *: EmptyTuple

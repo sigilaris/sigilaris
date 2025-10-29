@@ -22,7 +22,7 @@ import codec.byte.ByteCodec
   *
   * Note: Uses SyncIO for cross-platform compatibility (JVM + JS).
   */
-class Phase4Spec extends FunSuite:
+class Phase4Test extends FunSuite:
 
   // Use built-in types with existing codecs - no custom codec implementation needed!
   import datatype.{Utf8, BigNat}

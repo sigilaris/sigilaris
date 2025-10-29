@@ -282,7 +282,9 @@ final class ComposedBlueprint[F[
     ]
 
 object Blueprint:
-  private final case class BlueprintData[F[_], Owns <: Tuple, Needs <: Tuple, Txs <: Tuple](
+  private final case class BlueprintData[F[
+      _,
+  ], Owns <: Tuple, Needs <: Tuple, Txs <: Tuple](
       owns: Owns,
       routedReducer: RoutedStateReducer0[F, Owns, Needs],
       txs: TxRegistry[Txs],
@@ -290,7 +292,9 @@ object Blueprint:
       routeHeads: List[String],
   )
 
-  private def blueprintData[F[_], MName <: String, Owns <: Tuple, Needs <: Tuple, Txs <: Tuple](
+  private def blueprintData[F[
+      _,
+  ], MName <: String, Owns <: Tuple, Needs <: Tuple, Txs <: Tuple](
       bp: Blueprint[F, MName, Owns, Needs, Txs, ?],
   ): BlueprintData[F, Owns, Needs, Txs] =
     bp match
@@ -303,9 +307,21 @@ object Blueprint:
               provider: TablesProvider[F, Needs],
           ): StoreF[F][(tx.Result, List[tx.Event])] =
             module.reducer0.apply(tx)
-        BlueprintData(module.owns, routedReducer, module.txs, module.provider, module.routeHeads)
+        BlueprintData(
+          module.owns,
+          routedReducer,
+          module.txs,
+          module.provider,
+          module.routeHeads,
+        )
       case composed: ComposedBlueprint[F, MName, Owns, Needs, Txs] =>
-        BlueprintData(composed.owns, composed.reducer0, composed.txs, composed.provider, composed.routeHeads)
+        BlueprintData(
+          composed.owns,
+          composed.reducer0,
+          composed.txs,
+          composed.provider,
+          composed.routeHeads,
+        )
 
   /** Compose two blueprints into a single composed blueprint.
     *
@@ -330,10 +346,11 @@ object Blueprint:
     * paths (mountPath ++ moduleId.path) are only constructed at system edges
     * for telemetry or logging.
     *
-    * Phase 5.6 UPGRADE: Now supports modules with non-empty Needs. The providers
-    * are merged using TablesProvider.merge, which requires that the dependency
-    * schemas are disjoint (DisjointSchemas[N1, N2]). This prevents ambiguous
-    * table lookups while allowing flexible composition of dependent modules.
+    * Phase 5.6 UPGRADE: Now supports modules with non-empty Needs. The
+    * providers are merged using TablesProvider.merge, which requires that the
+    * dependency schemas are disjoint (DisjointSchemas[N1, N2]). This prevents
+    * ambiguous table lookups while allowing flexible composition of dependent
+    * modules.
     *
     * @tparam F
     *   the effect type
@@ -370,7 +387,11 @@ object Blueprint:
       moduleOut: ValueOf[MOut],
       uniqueNames0: UniqueNames[a.OwnsType ++ b.OwnsType],
       disjointNeeds: TablesProvider.DisjointSchemas[a.NeedsType, b.NeedsType],
-      projectionN1: TablesProjection[F, a.NeedsType, a.NeedsType ++ b.NeedsType],
+      projectionN1: TablesProjection[
+        F,
+        a.NeedsType,
+        a.NeedsType ++ b.NeedsType,
+      ],
       projectionN2: TablesProjection[F, b.NeedsType, a.NeedsType ++ b.NeedsType],
   ): ComposedBlueprint[
     F,
@@ -403,8 +424,8 @@ object Blueprint:
       case composed: ComposedBlueprint[F, M2, O2, N2, T2] =>
         blueprintData[F, M2, O2, N2, T2](composed)
 
-    composeBlueprintImpl[F, MOut, O1, N1, T1, O2, N2, T2](aData, bData)(
-      using monadF,
+    composeBlueprintImpl[F, MOut, O1, N1, T1, O2, N2, T2](aData, bData)(using
+      monadF,
       moduleOut,
       uniqueNames,
       disjointNeeds,
@@ -434,19 +455,21 @@ object Blueprint:
     val mergedProvider: TablesProvider[F, N1 ++ N2] =
       TablesProvider.merge(a.provider, b.provider)(using disjointNeeds)
 
-    val aRouteHeads: List[String] = a.routeHeads
-    val bRouteHeads: List[String] = b.routeHeads
+    val aRouteHeads: List[String]  = a.routeHeads
+    val bRouteHeads: List[String]  = b.routeHeads
     val allowedHeads: List[String] = (aRouteHeads ++ bRouteHeads).distinct
 
     val routedReducer = new RoutedStateReducer0[F, O1 ++ O2, N1 ++ N2]:
-      @SuppressWarnings(Array("org.wartremover.warts.AsInstanceOf", "org.wartremover.warts.Any"))
+      @SuppressWarnings(
+        Array("org.wartremover.warts.AsInstanceOf", "org.wartremover.warts.Any"),
+      )
       def apply[T <: Tx & ModuleRoutedTx](tx: T)(using
           requiresReads: Requires[tx.Reads, (O1 ++ O2) ++ (N1 ++ N2)],
           requiresWrites: Requires[tx.Writes, (O1 ++ O2) ++ (N1 ++ N2)],
           ownsTables: Tables[F, O1 ++ O2],
           provider: TablesProvider[F, N1 ++ N2],
       ): StoreF[F][(tx.Result, List[tx.Event])] =
-        val path       = tx.moduleId.path
+        val path = tx.moduleId.path
         val maybeHead: Option[String] = path match
           case (head: String) *: _ => Some(head)
           case EmptyTuple          => None
@@ -459,7 +482,9 @@ object Blueprint:
               requiresReads.asInstanceOf[Requires[tx.Reads, O1 ++ N1]],
               requiresWrites.asInstanceOf[Requires[tx.Writes, O1 ++ N1]],
               ownsTables.asInstanceOf[Tables[F, O1]],
-              provider.narrow[N1](using projectionN1), // Project to subset N1 for module a
+              provider.narrow[N1](using
+                projectionN1,
+              ), // Project to subset N1 for module a
             )
           case Some(pathHead) if bRouteHeads.contains(pathHead) =>
             // Route to second blueprint (module or composed).
@@ -467,7 +492,9 @@ object Blueprint:
               requiresReads.asInstanceOf[Requires[tx.Reads, O2 ++ N2]],
               requiresWrites.asInstanceOf[Requires[tx.Writes, O2 ++ N2]],
               ownsTables.asInstanceOf[Tables[F, O2]],
-              provider.narrow[N2](using projectionN2), // Project to subset N2 for module b
+              provider.narrow[N2](using
+                projectionN2,
+              ), // Project to subset N2 for module b
             )
           case Some(pathHead) =>
             val expected = allowedHeads.mkString("'", "', '", "'")

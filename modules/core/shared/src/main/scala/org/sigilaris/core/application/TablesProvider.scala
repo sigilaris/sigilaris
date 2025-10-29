@@ -49,12 +49,12 @@ trait TablesProvider[F[_], Provides <: Tuple]:
 
   /** Narrow this provider to a subset of its schema.
     *
-    * This is critical for Phase 5.6 provider composition. When a merged provider
-    * (N1 ++ N2) is passed to a reducer expecting only N1, we must actually project
-    * the tables tuple, not just cast the type.
+    * This is critical for Phase 5.6 provider composition. When a merged
+    * provider (N1 ++ N2) is passed to a reducer expecting only N1, we must
+    * actually project the tables tuple, not just cast the type.
     *
-    * Without projection, pattern matching fails:
-    *   val (accountsTable *: EmptyTuple) = provider.tables  // MatchError!
+    * Without projection, pattern matching fails: val (accountsTable *:
+    * EmptyTuple) = provider.tables // MatchError!
     *
     * @tparam Subset
     *   the subset schema to project to
@@ -66,13 +66,14 @@ trait TablesProvider[F[_], Provides <: Tuple]:
   def narrow[Subset <: Tuple](using
       projection: TablesProjection[F, Subset, Provides],
   ): TablesProvider[F, Subset] = new TablesProvider[F, Subset]:
-    def tables: Tables[F, Subset] = projection.project(TablesProvider.this.tables)
+    def tables: Tables[F, Subset] =
+      projection.project(TablesProvider.this.tables)
 
 /** Typeclass proving that Subset can be extracted from Source schema.
   *
-  * TablesProjection[F, Subset, Source] proves that every entry in Subset
-  * exists in Source with matching name, key, and value types. It provides
-  * a project method that extracts the subset tables from a full tables tuple.
+  * TablesProjection[F, Subset, Source] proves that every entry in Subset exists
+  * in Source with matching name, key, and value types. It provides a project
+  * method that extracts the subset tables from a full tables tuple.
   *
   * This is the key abstraction for provider narrowing in Phase 5.6.
   *
@@ -96,34 +97,41 @@ trait TablesProjection[F[_], Subset <: Tuple, Source <: Tuple]:
 /** Low-priority implicits for TablesProjection to avoid ambiguity. */
 private[application] trait TablesProjectionLowPriority:
   /** Base case: empty subset can be extracted from any source. */
-  given emptyProjection[F[_], Source <: Tuple]: TablesProjection[F, EmptyTuple, Source] with
-    def project(sourceTables: Tables[F, Source]): Tables[F, EmptyTuple] = EmptyTuple
+  given emptyProjection[F[_], Source <: Tuple]
+      : TablesProjection[F, EmptyTuple, Source] with
+    def project(sourceTables: Tables[F, Source]): Tables[F, EmptyTuple] =
+      EmptyTuple
 
   /** Inductive case: project a non-empty subset using Lookup.
     *
     * To project (Entry[Name, K, V] *: RestSubset) from Source:
-    *   1. Use Lookup to find Entry[Name, K, V] in Source
-    *   2. Recursively project RestSubset from Source
-    *   3. Cons the results together
+    *   1. Use Lookup to find Entry[Name, K, V] in Source 2. Recursively project
+    *      RestSubset from Source 3. Cons the results together
     */
-  given consProjection[F[_], Name <: String, K, V, RestSubset <: Tuple, Source <: Tuple](using
+  given consProjection[F[
+      _,
+  ], Name <: String, K, V, RestSubset <: Tuple, Source <: Tuple](using
       lookup: Lookup[Source, Name, K, V],
       restProjection: TablesProjection[F, RestSubset, Source],
   ): TablesProjection[F, Entry[Name, K, V] *: RestSubset, Source] with
-    def project(sourceTables: Tables[F, Source]): Tables[F, Entry[Name, K, V] *: RestSubset] =
-      val headTable = lookup.table(sourceTables)
+    def project(
+        sourceTables: Tables[F, Source],
+    ): Tables[F, Entry[Name, K, V] *: RestSubset] =
+      val headTable  = lookup.table(sourceTables)
       val restTables = restProjection.project(sourceTables)
       headTable *: restTables
 
 object TablesProjection extends TablesProjectionLowPriority:
   /** Identity case: a schema is trivially a subset of itself.
     *
-    * This is highest priority and covers all identity cases including EmptyTuple.
+    * This is highest priority and covers all identity cases including
+    * EmptyTuple.
     */
   given identityProjection[F[_], S <: Tuple]: TablesProjection[F, S, S] with
     def project(sourceTables: Tables[F, S]): Tables[F, S] = sourceTables
 
-  /** Prefix case: Non-empty S is a subset of S ++ T (left side of concatenation).
+  /** Prefix case: Non-empty S is a subset of S ++ T (left side of
+    * concatenation).
     *
     * We require that S is non-empty (Head *: Tail) to avoid ambiguity with
     * identity when S = EmptyTuple.
@@ -132,12 +140,15 @@ object TablesProjection extends TablesProjectionLowPriority:
       sizeS: ValueOf[Tuple.Size[Head *: Tail]],
   ): TablesProjection[F, Head *: Tail, (Head *: Tail) ++ T] with
     @SuppressWarnings(Array("org.wartremover.warts.AsInstanceOf"))
-    def project(sourceTables: Tables[F, (Head *: Tail) ++ T]): Tables[F, Head *: Tail] =
+    def project(
+        sourceTables: Tables[F, (Head *: Tail) ++ T],
+    ): Tables[F, Head *: Tail] =
       // SAFETY: (Head *: Tail) ++ T = concatenated tuple.
       // We take the first sizeS elements.
       sourceTables.take(sizeS.value).asInstanceOf[Tables[F, Head *: Tail]]
 
-  /** Suffix case: Non-empty T is a subset of S ++ T (right side of concatenation).
+  /** Suffix case: Non-empty T is a subset of S ++ T (right side of
+    * concatenation).
     *
     * We require that T is non-empty (Head *: Tail) to avoid ambiguity.
     */
@@ -145,7 +156,9 @@ object TablesProjection extends TablesProjectionLowPriority:
       sizeS: ValueOf[Tuple.Size[S]],
   ): TablesProjection[F, Head *: Tail, S ++ (Head *: Tail)] with
     @SuppressWarnings(Array("org.wartremover.warts.AsInstanceOf"))
-    def project(sourceTables: Tables[F, S ++ (Head *: Tail)]): Tables[F, Head *: Tail] =
+    def project(
+        sourceTables: Tables[F, S ++ (Head *: Tail)],
+    ): Tables[F, Head *: Tail] =
       // SAFETY: S ++ (Head *: Tail) = concatenated tuple.
       // We skip the first sizeS elements.
       sourceTables.drop(sizeS.value).asInstanceOf[Tables[F, Head *: Tail]]
@@ -173,8 +186,9 @@ object TablesProvider:
     * )
     *   }}}
     */
-  def empty[F[_]]: TablesProvider[F, EmptyTuple] = new TablesProvider[F, EmptyTuple]:
-    def tables: Tables[F, EmptyTuple] = EmptyTuple
+  def empty[F[_]]: TablesProvider[F, EmptyTuple] =
+    new TablesProvider[F, EmptyTuple]:
+      def tables: Tables[F, EmptyTuple] = EmptyTuple
 
   /** Create a provider from a mounted module's tables.
     *
@@ -182,18 +196,18 @@ object TablesProvider:
     * one module to supply tables to another module's dependencies.
     *
     * This is useful for wiring dependencies when composing modules:
-    *   1. Mount the provider module (e.g., Accounts)
-    *   2. Extract a TablesProvider from it
-    *   3. Pass the provider to dependent modules (e.g., Group, Token)
+    *   1. Mount the provider module (e.g., Accounts) 2. Extract a
+    *      TablesProvider from it 3. Pass the provider to dependent modules
+    *      (e.g., Group, Token)
     *
-    * IMPORTANT: The provider captures a reference to the module's tables at
-    * the time of creation. If the module is extended or modified later, the
+    * IMPORTANT: The provider captures a reference to the module's tables at the
+    * time of creation. If the module is extended or modified later, the
     * provider will not reflect those changes.
     *
-    * LIMITATION (Phase 5.5): This creates a provider for the FULL schema.
-    * Use `narrow` to project to a subset if the dependent module only needs
-    * some of the tables. This prevents breaking changes when adding tables
-    * to the provider module.
+    * LIMITATION (Phase 5.5): This creates a provider for the FULL schema. Use
+    * `narrow` to project to a subset if the dependent module only needs some of
+    * the tables. This prevents breaking changes when adding tables to the
+    * provider module.
     *
     * @tparam F
     *   the effect type
@@ -233,23 +247,25 @@ object TablesProvider:
     * )
     *   }}}
     */
-  def fromModule[F[_], Path <: Tuple, Schema <: Tuple, Txs <: Tuple, Deps <: Tuple, R](
+  def fromModule[F[
+      _,
+  ], Path <: Tuple, Schema <: Tuple, Txs <: Tuple, Deps <: Tuple, R](
       module: StateModule[F, Path, Schema, Txs, Deps, R],
   ): TablesProvider[F, Schema] = new TablesProvider[F, Schema]:
     def tables: Tables[F, Schema] = module.tables
 
   /** Narrow a provider to a subset of its tables.
     *
-    * This extension method allows projecting a TablesProvider[F, Full] to
-    * a TablesProvider[F, Subset] where Subset ⊆ Full.
+    * This extension method allows projecting a TablesProvider[F, Full] to a
+    * TablesProvider[F, Subset] where Subset ⊆ Full.
     *
     * This is critical for avoiding breaking changes: dependent modules should
-    * declare exactly which tables they need (Needs tuple), and use `narrow`
-    * to extract only those tables from the provider module. Adding new tables
-    * to the provider module won't break dependent modules.
+    * declare exactly which tables they need (Needs tuple), and use `narrow` to
+    * extract only those tables from the provider module. Adding new tables to
+    * the provider module won't break dependent modules.
     *
-    * The Requires[Subset, Full] evidence ensures compile-time safety: you
-    * can only narrow to a subset that actually exists in the full schema.
+    * The Requires[Subset, Full] evidence ensures compile-time safety: you can
+    * only narrow to a subset that actually exists in the full schema.
     *
     * @tparam F
     *   the effect type
@@ -286,9 +302,9 @@ object TablesProvider:
 
   /** Evidence that two schemas are disjoint (no overlapping entries).
     *
-    * This is critical for Phase 5.6: when composing modules with non-empty Needs,
-    * we must prove that their dependency schemas don't conflict. Two schemas are
-    * disjoint if they have no Entry with the same Name/K/V types.
+    * This is critical for Phase 5.6: when composing modules with non-empty
+    * Needs, we must prove that their dependency schemas don't conflict. Two
+    * schemas are disjoint if they have no Entry with the same Name/K/V types.
     *
     * This prevents ambiguous table lookups and ensures that merged providers
     * maintain type safety.
@@ -315,17 +331,20 @@ object TablesProvider:
 
   object DisjointSchemas:
     /** Base case: EmptyTuple is disjoint from EmptyTuple (most specific). */
-    given emptyEmpty: DisjointSchemas[EmptyTuple, EmptyTuple] = new DisjointSchemas[EmptyTuple, EmptyTuple] {}
+    given emptyEmpty: DisjointSchemas[EmptyTuple, EmptyTuple] =
+      new DisjointSchemas[EmptyTuple, EmptyTuple] {}
 
     /** Base case: EmptyTuple is disjoint from any non-empty schema. */
-    given emptyLeft[S <: Tuple]: DisjointSchemas[EmptyTuple, S] = new DisjointSchemas[EmptyTuple, S] {}
+    given emptyLeft[S <: Tuple]: DisjointSchemas[EmptyTuple, S] =
+      new DisjointSchemas[EmptyTuple, S] {}
 
     /** Base case: Any non-empty schema is disjoint from EmptyTuple. */
-    given emptyRight[S <: Tuple]: DisjointSchemas[S, EmptyTuple] = new DisjointSchemas[S, EmptyTuple] {}
+    given emptyRight[S <: Tuple]: DisjointSchemas[S, EmptyTuple] =
+      new DisjointSchemas[S, EmptyTuple] {}
 
     /** Inductive case: (H *: T1) is disjoint from S2 if:
-      *   1. H is not in S2 (NotInSchema[H, S2])
-      *   2. T1 is disjoint from S2 (DisjointSchemas[T1, S2])
+      *   1. H is not in S2 (NotInSchema[H, S2]) 2. T1 is disjoint from S2
+      *      (DisjointSchemas[T1, S2])
       */
     given consDisjoint[Name <: String, K, V, T1 <: Tuple, S2 <: Tuple](using
         notInS2: NotInSchema[Entry[Name, K, V], S2],
@@ -335,14 +354,14 @@ object TablesProvider:
 
   /** Evidence that an Entry is not present in a schema.
     *
-    * This is used by DisjointSchemas to check overlap at the entry level.
-    * An entry Entry[Name, K, V] is not in a schema if:
+    * This is used by DisjointSchemas to check overlap at the entry level. An
+    * entry Entry[Name, K, V] is not in a schema if:
     *   - The schema is EmptyTuple, OR
     *   - The table name doesn't match AND the entry is not in the tail
     *
-    * For Phase 5.6, we check table name uniqueness only. Two entries with
-    * the same name are considered overlapping regardless of K/V types.
-    * This is conservative but safe for preventing ambiguous lookups.
+    * For Phase 5.6, we check table name uniqueness only. Two entries with the
+    * same name are considered overlapping regardless of K/V types. This is
+    * conservative but safe for preventing ambiguous lookups.
     *
     * @tparam E
     *   the entry to check for
@@ -356,14 +375,16 @@ object TablesProvider:
     given notInEmpty[E <: Entry[?, ?, ?]]: NotInSchema[E, EmptyTuple] =
       new NotInSchema[E, EmptyTuple] {}
 
-    /** Inductive case: Entry[N1, K1, V1] is not in (Entry[N2, K2, V2] *: Tail) if:
+    /** Inductive case: Entry[N1, K1, V1] is not in (Entry[N2, K2, V2] *: Tail)
+      * if:
       *   - Names differ (checked via DifferentNames / NotGiven), AND
       *   - The entry is not in Tail
       *
-      * We use DifferentNames (which is NotGiven[N1 =:= N2]) to prove at compile time
-      * that the table names are different.
+      * We use DifferentNames (which is NotGiven[N1 =:= N2]) to prove at compile
+      * time that the table names are different.
       */
-    given notInCons[N1 <: String, K1, V1, N2 <: String, K2, V2, Tail <: Tuple](using
+    given notInCons[N1 <: String, K1, V1, N2 <: String, K2, V2, Tail <: Tuple](
+        using
         namesDiffer: DifferentNames[N1, N2],
         notInTail: NotInSchema[Entry[N1, K1, V1], Tail],
     ): NotInSchema[Entry[N1, K1, V1], Entry[N2, K2, V2] *: Tail] =
@@ -372,8 +393,8 @@ object TablesProvider:
   /** Merge two disjoint providers into a single provider.
     *
     * This is the core operation for Phase 5.6: combining providers when
-    * composing modules with non-empty Needs. The schemas must be disjoint
-    * (no overlapping entries) to ensure unambiguous table lookups.
+    * composing modules with non-empty Needs. The schemas must be disjoint (no
+    * overlapping entries) to ensure unambiguous table lookups.
     *
     * The merged provider:
     *   - Provides tables from both P1 and P2

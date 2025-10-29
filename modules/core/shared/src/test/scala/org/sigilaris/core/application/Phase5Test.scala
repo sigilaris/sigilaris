@@ -23,7 +23,7 @@ import codec.byte.ByteCodec
   * Note: Uses SyncIO for cross-platform compatibility (JVM + JS).
   * Note: aggregate was removed (blocked on subset derivation, see ADR-0009).
   */
-class Phase5Spec extends FunSuite:
+class Phase5Test extends FunSuite:
 
   // Use built-in types with existing codecs - no custom codec implementation needed!
   import datatype.{Utf8, BigNat}
@@ -157,7 +157,7 @@ class Phase5Spec extends FunSuite:
     assertEquals(tables.size, 2)
 
     // In a shared assembly, other modules would reference these same tables
-    // via Lookup evidence, as demonstrated in Phase4Spec
+    // via Lookup evidence, as demonstrated in Phase4Test
 
   test("Sandboxed assembly: two Accounts mounted at different paths"):
     given merkle.MerkleTrie.NodeStore[SyncIO] = createNodeStore()

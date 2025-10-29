@@ -20,7 +20,8 @@ import merkle.Nibbles.*
   * table's singleton type (self.type), preventing keys from different tables
   * from being mixed at compile time with zero runtime overhead.
   *
-  * @tparam F the effect type
+  * @tparam F
+  *   the effect type
   */
 trait StateTable[F[_]]:
   self =>
@@ -51,30 +52,40 @@ trait StateTable[F[_]]:
 
   /** Brand an unbranded key with this table's instance type.
     *
-    * @param k the unbranded key
-    * @return the branded key
+    * @param k
+    *   the unbranded key
+    * @return
+    *   the branded key
     */
   inline def brand(k: K): Key = KeyOf[self.type, K](k)
 
   /** Retrieve a value by key.
     *
-    * @param k the branded key
-    * @return a stateful computation returning Some(value) if found, None otherwise
+    * @param k
+    *   the branded key
+    * @return
+    *   a stateful computation returning Some(value) if found, None otherwise
     */
   def get(k: Key): StoreF[F][Option[V]]
 
   /** Insert or update a key-value pair.
     *
-    * @param k the branded key
-    * @param v the value
-    * @return a stateful computation returning Unit
+    * @param k
+    *   the branded key
+    * @param v
+    *   the value
+    * @return
+    *   a stateful computation returning Unit
     */
   def put(k: Key, v: V): StoreF[F][Unit]
 
   /** Remove a key-value pair.
     *
-    * @param k the branded key
-    * @return a stateful computation returning true if the key existed, false otherwise
+    * @param k
+    *   the branded key
+    * @return
+    *   a stateful computation returning true if the key existed, false
+    *   otherwise
     */
   def remove(k: Key): StoreF[F][Boolean]
 
@@ -83,23 +94,33 @@ object StateTable:
     *
     * StateTable schemas are path-independent - they define only the table name,
     * key/value types, and codecs. This method binds a schema to a concrete
-    * prefix (computed from a module's mount path), creating a usable table instance.
+    * prefix (computed from a module's mount path), creating a usable table
+    * instance.
     *
-    * This is called internally during module mounting (Phase 2). Users typically
-    * don't call this directly - instead, they define Entry schemas and let the
-    * mount machinery compute prefixes and instantiate tables.
+    * This is called internally during module mounting (Phase 2). Users
+    * typically don't call this directly - instead, they define Entry schemas
+    * and let the mount machinery compute prefixes and instantiate tables.
     *
     * The table name is extracted from the literal type N using ValueOf.
     *
-    * @tparam F the effect type
-    * @tparam N the table name (literal String type, must have ValueOf instance)
-    * @tparam K0 the key type
-    * @tparam V0 the value type
-    * @param prefix the byte prefix for all keys in this table (computed from mount path)
-    * @param kCodec the key codec
-    * @param vCodec the value codec
-    * @param nodeStore the underlying node storage
-    * @return a concrete StateTable instance bound to the given prefix
+    * @tparam F
+    *   the effect type
+    * @tparam N
+    *   the table name (literal String type, must have ValueOf instance)
+    * @tparam K0
+    *   the key type
+    * @tparam V0
+    *   the value type
+    * @param prefix
+    *   the byte prefix for all keys in this table (computed from mount path)
+    * @param kCodec
+    *   the key codec
+    * @param vCodec
+    *   the value codec
+    * @param nodeStore
+    *   the underlying node storage
+    * @return
+    *   a concrete StateTable instance bound to the given prefix
     */
   def atPrefix[F[_]: Monad, N <: String: ValueOf, K0, V0](
       prefix: scodec.bits.ByteVector,
@@ -110,8 +131,8 @@ object StateTable:
   ): StateTable[F] { type Name = N; type K = K0; type V = V0 } =
     new StateTable[F]:
       type Name = N
-      type K = K0
-      type V = V0
+      type K    = K0
+      type V    = V0
 
       given kCodec: ByteCodec[K] = summon[ByteCodec[K0]]
       given vCodec: ByteCodec[V] = summon[ByteCodec[V0]]
@@ -119,30 +140,43 @@ object StateTable:
       val name: Name = valueOf[N]
 
       def get(k: Key): StoreF[F][Option[V]] =
-        val rawKey = KeyOf.unwrap(k)
+        val rawKey       = KeyOf.unwrap(k)
         val fullKeyBytes = prefix ++ ByteCodec[K].encode(rawKey)
-        val fullKey = fullKeyBytes.toNibbles
+        val fullKey      = fullKeyBytes.toNibbles
         StateT: (state: MerkleTrieState) =>
-          MerkleTrie.get[F](fullKey).run(state).leftMap(TrieFailure(_): SigilarisFailure).flatMap:
-            case (nextState, None) => EitherT.rightT[F, SigilarisFailure]((nextState, None))
-            case (nextState, Some(bytes)) =>
-              bytes.to[V] match
-                case Right(value) => EitherT.rightT[F, SigilarisFailure]((nextState, Some(value)))
-                case Left(err) => EitherT.leftT[F, (MerkleTrieState, Option[V])]((err: SigilarisFailure))
+          MerkleTrie
+            .get[F](fullKey)
+            .run(state)
+            .leftMap(TrieFailure(_): SigilarisFailure)
+            .flatMap:
+              case (nextState, None) =>
+                EitherT.rightT[F, SigilarisFailure]((nextState, None))
+              case (nextState, Some(bytes)) =>
+                bytes.to[V] match
+                  case Right(value) =>
+                    EitherT.rightT[F, SigilarisFailure]:
+                      (nextState, Some(value))
+                  case Left(err) =>
+                    EitherT.leftT[F, (MerkleTrieState, Option[V])]:
+                      (err: SigilarisFailure)
 
       def put(k: Key, v: V): StoreF[F][Unit] =
-        val rawKey = KeyOf.unwrap(k)
+        val rawKey       = KeyOf.unwrap(k)
         val fullKeyBytes = prefix ++ ByteCodec[K].encode(rawKey)
-        val fullKey = fullKeyBytes.toNibbles
-        val valueBytes = ByteCodec[V].encode(v)
+        val fullKey      = fullKeyBytes.toNibbles
+        val valueBytes   = ByteCodec[V].encode(v)
         StateT: (state: MerkleTrieState) =>
-          MerkleTrie.put[F](fullKey, valueBytes).run(state)
+          MerkleTrie
+            .put[F](fullKey, valueBytes)
+            .run(state)
             .leftMap(err => TrieFailure(err): SigilarisFailure)
 
       def remove(k: Key): StoreF[F][Boolean] =
-        val rawKey = KeyOf.unwrap(k)
+        val rawKey       = KeyOf.unwrap(k)
         val fullKeyBytes = prefix ++ ByteCodec[K].encode(rawKey)
-        val fullKey = fullKeyBytes.toNibbles
+        val fullKey      = fullKeyBytes.toNibbles
         StateT: (state: MerkleTrieState) =>
-          MerkleTrie.remove[F](fullKey).run(state)
+          MerkleTrie
+            .remove[F](fullKey)
+            .run(state)
             .leftMap(err => TrieFailure(err): SigilarisFailure)

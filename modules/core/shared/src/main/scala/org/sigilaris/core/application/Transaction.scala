@@ -9,20 +9,22 @@ import scala.Tuple.++
   * prefixed with the mount path. This ensures transactions remain portable
   * across different deployment paths.
   *
-  * The path tuple identifies which module a transaction belongs to.
-  * During blueprint composition, the path is used to route transactions
-  * to the correct reducer by matching the first segment (module name).
+  * The path tuple identifies which module a transaction belongs to. During
+  * blueprint composition, the path is used to route transactions to the correct
+  * reducer by matching the first segment (module name).
   *
-  * @param path the module-relative path tuple (e.g., ("accounts" *: EmptyTuple) or ("accounts" *: "v1" *: EmptyTuple))
+  * @param path
+  *   the module-relative path tuple (e.g., ("accounts" *: EmptyTuple) or
+  *   ("accounts" *: "v1" *: EmptyTuple))
   *
   * @example
-  * {{{
+  *   {{{
   * // A transaction for the "accounts" module
   * val moduleId = ModuleId("accounts" *: EmptyTuple)
   *
   * // Even when the module is mounted at ("app"), the moduleId stays ("accounts")
   * // The full path ("app", "accounts") is only constructed at system boundaries
-  * }}}
+  *   }}}
   */
 final case class ModuleId[Path <: Tuple] private (path: Path)
 
@@ -31,12 +33,17 @@ object ModuleId:
   sealed trait StringTuple[Path <: Tuple]
   object StringTuple:
     given StringTuple[EmptyTuple] with {}
-    given [H <: String, T <: Tuple](using StringTuple[T]): StringTuple[H *: T] with {}
+    given [H <: String, T <: Tuple](using StringTuple[T]): StringTuple[H *: T]
+    with {}
 
   type Any = ModuleId[? <: Tuple]
 
-  /** Construct a `ModuleId` ensuring the tuple elements are all `String`s at compile time. */
-  def apply[Path <: Tuple](path: Path)(using StringTuple[Path]): ModuleId[Path] =
+  /** Construct a `ModuleId` ensuring the tuple elements are all `String`s at
+    * compile time.
+    */
+  def apply[Path <: Tuple](path: Path)(using
+      StringTuple[Path],
+  ): ModuleId[Path] =
     new ModuleId(path)
 
   /** Pattern matching helper exposing the underlying tuple path. */
@@ -50,17 +57,17 @@ object ModuleId:
   *   - Result: the type of result produced
   *   - Event: the type of events emitted
   *
-  * The Reads and Writes types are used for compile-time verification that
-  * a reducer has access to all required tables.
+  * The Reads and Writes types are used for compile-time verification that a
+  * reducer has access to all required tables.
   *
   * @example
-  * {{{
+  *   {{{
   * case class Transfer(from: Address, to: Address, amount: BigInt) extends Tx:
   *   type Reads = (Entry["accounts", Address, Account], Entry["balances", Address, BigInt])
   *   type Writes = Entry["balances", Address, BigInt] *: EmptyTuple
   *   type Result = Unit
   *   type Event = TransferEvent
-  * }}}
+  *   }}}
   */
 trait Tx:
   /** Tables this transaction reads from. */
@@ -77,12 +84,12 @@ trait Tx:
 
 /** Transaction trait with module routing information.
   *
-  * Transactions that implement this trait carry their module path,
-  * enabling proper routing in composed blueprints. The module path
-  * is used to dispatch transactions to the correct reducer.
+  * Transactions that implement this trait carry their module path, enabling
+  * proper routing in composed blueprints. The module path is used to dispatch
+  * transactions to the correct reducer.
   *
   * @example
-  * {{{
+  *   {{{
   * case class AccountsTransfer(from: Address, to: Address, amount: BigInt)
   *     extends Tx with ModuleRoutedTx:
   *   val moduleId = ModuleId(("accounts" *: EmptyTuple))
@@ -90,25 +97,32 @@ trait Tx:
   *   type Writes = Entry["balances", Address, BigInt] *: EmptyTuple
   *   type Result = Unit
   *   type Event = TransferEvent
-  * }}}
+  *   }}}
   */
 trait ModuleRoutedTx extends Tx:
-  /** The module identifier specifying which module this transaction belongs to. */
+  /** The module identifier specifying which module this transaction belongs to.
+    */
   def moduleId: ModuleId.Any
 
 /** Transaction registry holding a tuple of transaction types.
   *
-  * This is a compile-time marker used for type-level transaction set definitions.
+  * This is a compile-time marker used for type-level transaction set
+  * definitions.
   *
-  * @tparam Txs the transaction types tuple
+  * @tparam Txs
+  *   the transaction types tuple
   */
 final class TxRegistry[Txs <: Tuple]:
   /** Combine this registry with another registry.
     *
-    * @param other the other transaction registry
-    * @return a registry containing both transaction sets
+    * @param other
+    *   the other transaction registry
+    * @return
+    *   a registry containing both transaction sets
     */
-  def combine[T2 <: Tuple](@annotation.unused other: TxRegistry[T2]): TxRegistry[Txs ++ T2] =
+  def combine[T2 <: Tuple](
+      @annotation.unused other: TxRegistry[T2],
+  ): TxRegistry[Txs ++ T2] =
     new TxRegistry[Txs ++ T2]
 
 object TxRegistry:
