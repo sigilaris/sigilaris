@@ -68,11 +68,25 @@ ADR-0010과 동일한 Envelope를 포함한다:
 
 사전조건
 - 그룹 존재, `groupNonce == group(groupId).nonce`
+- **그룹이 비어있어야 함**: `group(groupId).memberCount == 0`
+  - 멤버가 있는 그룹은 해산 불가능
+  - 멤버를 먼저 `RemoveAccounts`로 모두 제거한 후 해산해야 함
 
 사후조건
-- `group(groupId)` 및 모든 `groupAccount(groupId, *)` 상태 제거(완전 정리)
+- `group(groupId)` 상태 제거
+- 모든 `groupAccount(groupId, *)` 엔트리는 이미 제거된 상태 (memberCount == 0 조건으로 보장)
 - 이후 동일 `groupId`로 `CreateGroup` 재생성 허용(새 그룹의 `nonce`는 0부터 시작)
 - 이벤트 `GroupDisbanded(groupId)` 방출
+
+**설계 근거**:
+- 현재 MerkleTrie API는 범위 삭제나 반복 API를 제공하지 않음 (ADR-0009 Phase 8에서 추가 예정)
+- 멤버가 있는 그룹 해산 시 `groupAccount` 엔트리를 정리할 방법이 없음
+- 미정리된 엔트리가 남으면 동일 `groupId`로 그룹 재생성 시 이전 멤버들이 복원되는 보안 문제 발생
+- **해결책**: `memberCount` 필드를 도입하여 빈 그룹만 해산 가능하도록 제한
+  - `AddAccounts`는 실제로 추가된 멤버 수만큼 `memberCount` 증가
+  - `RemoveAccounts`는 실제로 제거된 멤버 수만큼 `memberCount` 감소
+  - `DisbandGroup`은 `memberCount == 0`일 때만 허용
+- 이 방식으로 `groupAccount` 엔트리가 없음을 보장하여 완전한 정리 달성
 
 #### AddAccounts
 그룹에 계정들을 추가한다.
@@ -149,6 +163,11 @@ groupAccount: (GroupId, Account) -> Unit
 - `name: Utf8` — 그룹 이름(불변)
 - `coordinator: Account` — 코디네이터 계정
 - `nonce: BigNat` — 그룹 관리 트랜잭션 재생 방지용 카운터
+- `memberCount: BigNat` — 그룹의 현재 멤버 수 (코디네이터 제외)
+  - `CreateGroup` 시 0으로 초기화
+  - `AddAccounts` 시 실제 추가된 멤버 수만큼 증가
+  - `RemoveAccounts` 시 실제 제거된 멤버 수만큼 감소
+  - `DisbandGroup`은 `memberCount == 0`일 때만 허용
 - `createdAt: Instant` 등 메타데이터
 
 역인덱스(계정 → 그룹)는 유지하지 않는다. 운영·검증 목적의 접근은 그룹 접두로 `groupAccount`를 스캔하여 처리한다.
@@ -173,7 +192,14 @@ groupAccount: (GroupId, Account) -> Unit
 
 - 그룹 생성 시 GroupId 중복 검증 필요
 - 코디네이터 권한 검증을 모든 관리 트랜잭션에서 수행
-- 그룹 해산 시 관련된 모든 상태(그룹 데이터 및 멤버십) 정리
+- **그룹 해산 제약**:
+  - `DisbandGroup`은 `memberCount == 0`일 때만 허용
+  - 멤버가 있는 그룹 해산 시도 시 명확한 오류 메시지 반환
+  - 해산 전 `RemoveAccounts`로 모든 멤버를 제거해야 함
+- **멤버 카운트 무결성**:
+  - `AddAccounts`와 `RemoveAccounts`에서 실제 추가/제거된 멤버 수를 정확히 추적
+  - `memberCount`와 실제 `groupAccount` 엔트리 수의 일관성 유지
+  - Idempotent 연산 (이미 존재/부재하는 멤버)에서도 카운트 정확성 보장
 - 존재하지 않는 그룹에 대한 작업 시도 시 적절한 오류 처리
 - 입력 정규화 정책: GroupId/이름에 별도 제약이나 정규화 없음(입력값을 그대로 사용)
 - 모든 유효한 그룹 관리 트랜잭션은 상태 변화가 없더라도 `group.nonce`를 증가(idempotent no-op은 상태 보존 + nonce 증가)
