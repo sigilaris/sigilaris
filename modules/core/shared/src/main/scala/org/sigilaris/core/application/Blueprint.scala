@@ -31,7 +31,10 @@ import util.SafeStringInterp.ss
   *   the needed schema tuple (tuple of Entry types)
   */
 trait StateReducer0[F[_], Owns <: Tuple, Needs <: Tuple]:
-  /** Apply a transaction to produce a result and events.
+  /** Apply a signed transaction to produce a result and events.
+    *
+    * ADR-0012: All transactions must be wrapped in Signed[T] to ensure
+    * cryptographic signatures are present at compile time.
     *
     * The reducer is polymorphic over the transaction type T, requiring only
     * that T's read and write requirements are satisfied by this reducer's
@@ -43,8 +46,8 @@ trait StateReducer0[F[_], Owns <: Tuple, Needs <: Tuple]:
     *
     * @tparam T
     *   the transaction type
-    * @param tx
-    *   the transaction to apply
+    * @param signedTx
+    *   the signed transaction to apply (ADR-0012)
     * @param requiresReads
     *   evidence that T's read requirements are in Owns ++ Needs
     * @param requiresWrites
@@ -56,12 +59,12 @@ trait StateReducer0[F[_], Owns <: Tuple, Needs <: Tuple]:
     * @return
     *   a stateful computation returning the result and list of events
     */
-  def apply[T <: Tx](tx: T)(using
-      requiresReads: Requires[tx.Reads, Owns ++ Needs],
-      requiresWrites: Requires[tx.Writes, Owns ++ Needs],
+  def apply[T <: Tx](signedTx: Signed[T])(using
+      requiresReads: Requires[signedTx.value.Reads, Owns ++ Needs],
+      requiresWrites: Requires[signedTx.value.Writes, Owns ++ Needs],
       ownsTables: Tables[F, Owns],
       provider: TablesProvider[F, Needs],
-  ): StoreF[F][(tx.Result, List[tx.Event])]
+  ): StoreF[F][(signedTx.value.Result, List[signedTx.value.Event])]
 
 /** Routed state reducer requiring ModuleRoutedTx.
   *
@@ -84,7 +87,10 @@ trait StateReducer0[F[_], Owns <: Tuple, Needs <: Tuple]:
   *   the needed schema tuple (tuple of Entry types)
   */
 trait RoutedStateReducer0[F[_], Owns <: Tuple, Needs <: Tuple]:
-  /** Apply a routed transaction to produce a result and events.
+  /** Apply a signed routed transaction to produce a result and events.
+    *
+    * ADR-0012: All transactions must be wrapped in Signed[T] to ensure
+    * cryptographic signatures are present at compile time.
     *
     * The type bound T <: Tx & ModuleRoutedTx ensures that only transactions
     * implementing ModuleRoutedTx can be applied. This is enforced at compile
@@ -92,8 +98,8 @@ trait RoutedStateReducer0[F[_], Owns <: Tuple, Needs <: Tuple]:
     *
     * @tparam T
     *   the transaction type (must implement ModuleRoutedTx)
-    * @param tx
-    *   the transaction to apply
+    * @param signedTx
+    *   the signed transaction to apply (ADR-0012)
     * @param requiresReads
     *   evidence that T's read requirements are in Owns ++ Needs
     * @param requiresWrites
@@ -105,12 +111,12 @@ trait RoutedStateReducer0[F[_], Owns <: Tuple, Needs <: Tuple]:
     * @return
     *   a stateful computation returning the result and list of events
     */
-  def apply[T <: Tx & ModuleRoutedTx](tx: T)(using
-      requiresReads: Requires[tx.Reads, Owns ++ Needs],
-      requiresWrites: Requires[tx.Writes, Owns ++ Needs],
+  def apply[T <: Tx & ModuleRoutedTx](signedTx: Signed[T])(using
+      requiresReads: Requires[signedTx.value.Reads, Owns ++ Needs],
+      requiresWrites: Requires[signedTx.value.Writes, Owns ++ Needs],
       ownsTables: Tables[F, Owns],
       provider: TablesProvider[F, Needs],
-  ): StoreF[F][(tx.Result, List[tx.Event])]
+  ): StoreF[F][(signedTx.value.Result, List[signedTx.value.Event])]
 
 /** Base trait for blueprints (path-independent).
   *
@@ -300,13 +306,13 @@ object Blueprint:
     bp match
       case module: ModuleBlueprint[F, MName, Owns, Needs, Txs] =>
         val routedReducer = new RoutedStateReducer0[F, Owns, Needs]:
-          def apply[T <: Tx & ModuleRoutedTx](tx: T)(using
-              requiresReads: Requires[tx.Reads, Owns ++ Needs],
-              requiresWrites: Requires[tx.Writes, Owns ++ Needs],
+          def apply[T <: Tx & ModuleRoutedTx](signedTx: Signed[T])(using
+              requiresReads: Requires[signedTx.value.Reads, Owns ++ Needs],
+              requiresWrites: Requires[signedTx.value.Writes, Owns ++ Needs],
               ownsTables: Tables[F, Owns],
               provider: TablesProvider[F, Needs],
-          ): StoreF[F][(tx.Result, List[tx.Event])] =
-            module.reducer0.apply(tx)
+          ): StoreF[F][(signedTx.value.Result, List[signedTx.value.Event])] =
+            module.reducer0.apply(signedTx)
         BlueprintData(
           module.owns,
           routedReducer,
@@ -463,12 +469,13 @@ object Blueprint:
       @SuppressWarnings(
         Array("org.wartremover.warts.AsInstanceOf", "org.wartremover.warts.Any"),
       )
-      def apply[T <: Tx & ModuleRoutedTx](tx: T)(using
-          requiresReads: Requires[tx.Reads, (O1 ++ O2) ++ (N1 ++ N2)],
-          requiresWrites: Requires[tx.Writes, (O1 ++ O2) ++ (N1 ++ N2)],
+      def apply[T <: Tx & ModuleRoutedTx](signedTx: Signed[T])(using
+          requiresReads: Requires[signedTx.value.Reads, (O1 ++ O2) ++ (N1 ++ N2)],
+          requiresWrites: Requires[signedTx.value.Writes, (O1 ++ O2) ++ (N1 ++ N2)],
           ownsTables: Tables[F, O1 ++ O2],
           provider: TablesProvider[F, N1 ++ N2],
-      ): StoreF[F][(tx.Result, List[tx.Event])] =
+      ): StoreF[F][(signedTx.value.Result, List[signedTx.value.Event])] =
+        val tx = signedTx.value
         val path = tx.moduleId.path
         val maybeHead: Option[String] = path match
           case (head: String) *: _ => Some(head)
@@ -478,9 +485,9 @@ object Blueprint:
         maybeHead match
           case Some(pathHead) if aRouteHeads.contains(pathHead) =>
             // Route to first blueprint (module or composed).
-            a.routedReducer.apply(tx)(using
-              requiresReads.asInstanceOf[Requires[tx.Reads, O1 ++ N1]],
-              requiresWrites.asInstanceOf[Requires[tx.Writes, O1 ++ N1]],
+            a.routedReducer.apply(signedTx)(using
+              requiresReads.asInstanceOf[Requires[signedTx.value.Reads, O1 ++ N1]],
+              requiresWrites.asInstanceOf[Requires[signedTx.value.Writes, O1 ++ N1]],
               ownsTables.asInstanceOf[Tables[F, O1]],
               provider.narrow[N1](using
                 projectionN1,
@@ -488,9 +495,9 @@ object Blueprint:
             )
           case Some(pathHead) if bRouteHeads.contains(pathHead) =>
             // Route to second blueprint (module or composed).
-            b.routedReducer.apply(tx)(using
-              requiresReads.asInstanceOf[Requires[tx.Reads, O2 ++ N2]],
-              requiresWrites.asInstanceOf[Requires[tx.Writes, O2 ++ N2]],
+            b.routedReducer.apply(signedTx)(using
+              requiresReads.asInstanceOf[Requires[signedTx.value.Reads, O2 ++ N2]],
+              requiresWrites.asInstanceOf[Requires[signedTx.value.Writes, O2 ++ N2]],
               ownsTables.asInstanceOf[Tables[F, O2]],
               provider.narrow[N2](using
                 projectionN2,
@@ -499,13 +506,13 @@ object Blueprint:
           case Some(pathHead) =>
             val expected = allowedHeads.mkString("'", "', '", "'")
             StateT.liftF:
-              EitherT.leftT[F, (tx.Result, List[tx.Event])]:
+              EitherT.leftT[F, (signedTx.value.Result, List[signedTx.value.Event])]:
                 RoutingFailure:
                   ss"TxRouteMissing: module '$pathHead' not found in $expected"
           case None =>
             val expected = allowedHeads.mkString("'", "', '", "'")
             StateT.liftF:
-              EitherT.leftT[F, (tx.Result, List[tx.Event])]:
+              EitherT.leftT[F, (signedTx.value.Result, List[signedTx.value.Event])]:
                 RoutingFailure:
                   ss"TxRouteMissing: empty module path; expected head in $expected"
 

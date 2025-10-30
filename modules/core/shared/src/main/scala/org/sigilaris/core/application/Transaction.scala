@@ -3,6 +3,9 @@ package application
 
 import scala.Tuple.++
 
+import crypto.Signature
+import accounts.Account
+
 /** Module identifier carrying the module-relative path.
   *
   * IMPORTANT: The path is always module-relative (MName *: SubPath), never
@@ -128,3 +131,71 @@ final class TxRegistry[Txs <: Tuple]:
 object TxRegistry:
   /** Create an empty transaction registry. */
   def empty: TxRegistry[EmptyTuple] = new TxRegistry[EmptyTuple]
+
+/** Account signature containing both the signing account and the signature.
+  *
+  * This binds a cryptographic signature to the account that produced it,
+  * enabling verification that the signature was created by a key controlled
+  * by the specified account.
+  *
+  * @param account
+  *   the account that signed the transaction
+  * @param sig
+  *   the cryptographic signature
+  *
+  * @example
+  *   {{{
+  * val accountSig = AccountSignature(
+  *   account = Account.Named(Utf8("alice")),
+  *   sig = signature
+  * )
+  *   }}}
+  */
+final case class AccountSignature(
+    account: Account,
+    sig: Signature,
+)
+
+/** Signed transaction wrapper enforcing signature requirement at type level.
+  *
+  * All blockchain transactions must be wrapped in Signed[A] to ensure they
+  * carry a valid signature. This is enforced at compile time - attempting to
+  * submit an unsigned transaction to a blueprint will result in a type error.
+  *
+  * The covariant type parameter (+A <: Tx) allows Signed[CreateNamedAccount]
+  * to be used where Signed[Tx & ModuleRoutedTx] is expected, enabling flexible
+  * composition while maintaining type safety.
+  *
+  * @tparam A
+  *   the transaction type (covariant)
+  * @param sig
+  *   the account signature (account + cryptographic signature)
+  * @param value
+  *   the actual transaction payload
+  *
+  * @example
+  *   {{{
+  * // Creating a signed transaction
+  * val tx = CreateNamedAccount(...)
+  * val keyPair = CryptoOps.generate()
+  * val account = Account.Named(Utf8("alice"))
+  *
+  * // Sign the transaction
+  * val signedTx: Either[SigilarisFailure, Signed[CreateNamedAccount]] =
+  *   for
+  *     sig <- keyPair.sign(tx)
+  *   yield Signed(AccountSignature(account, sig), tx)
+  *
+  * // Use in blueprint (requires Signed wrapper)
+  * module.reducer.apply(signedTx)
+  *   }}}
+  *
+  * @see
+  *   [[AccountSignature]] for signature structure
+  * @see
+  *   ADR-0012 for design rationale
+  */
+final case class Signed[+A <: Tx](
+    sig: AccountSignature,
+    value: A,
+)

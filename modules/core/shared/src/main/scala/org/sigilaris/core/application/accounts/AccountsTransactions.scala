@@ -7,6 +7,7 @@ import java.time.Instant
 import cats.Eq
 
 import codec.byte.{ByteDecoder, ByteEncoder}
+import crypto.{Hash, Recover}
 import datatype.{BigNat, Utf8}
 
 // Import Entry for transaction type definitions
@@ -52,6 +53,8 @@ final case class CreateNamedAccount(
 
 object CreateNamedAccount:
   given createNamedAccountEq: Eq[CreateNamedAccount] = Eq.fromUniversalEquals
+  given createNamedAccountHash: Hash[CreateNamedAccount] = Hash.build
+  given createNamedAccountRecover: Recover[CreateNamedAccount] = Recover.build
 
 /** Update account information (change guardian).
   *
@@ -75,6 +78,8 @@ final case class UpdateAccount(
 
 object UpdateAccount:
   given updateAccountEq: Eq[UpdateAccount] = Eq.fromUniversalEquals
+  given updateAccountHash: Hash[UpdateAccount] = Hash.build
+  given updateAccountRecover: Recover[UpdateAccount] = Recover.build
 
 /** Add new public keys to a Named account.
   *
@@ -102,6 +107,8 @@ final case class AddKeyIds(
 
 object AddKeyIds:
   given addKeyIdsEq: Eq[AddKeyIds] = Eq.fromUniversalEquals
+  given addKeyIdsHash: Hash[AddKeyIds] = Hash.build
+  given addKeyIdsRecover: Recover[AddKeyIds] = Recover.build
 
 /** Remove public keys from a Named account.
   *
@@ -127,6 +134,8 @@ final case class RemoveKeyIds(
 
 object RemoveKeyIds:
   given removeKeyIdsEq: Eq[RemoveKeyIds] = Eq.fromUniversalEquals
+  given removeKeyIdsHash: Hash[RemoveKeyIds] = Hash.build
+  given removeKeyIdsRecover: Recover[RemoveKeyIds] = Recover.build
 
 /** Remove a Named account entirely.
   *
@@ -150,6 +159,8 @@ final case class RemoveAccount(
 
 object RemoveAccount:
   given removeAccountEq: Eq[RemoveAccount] = Eq.fromUniversalEquals
+  given removeAccountHash: Hash[RemoveAccount] = Hash.build
+  given removeAccountRecover: Recover[RemoveAccount] = Recover.build
 
 // Event types
 sealed trait AccountEvent

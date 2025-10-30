@@ -6,7 +6,11 @@ import cats.data.{EitherT, Kleisli, StateT}
 import munit.FunSuite
 import scala.Tuple.++
 
+import accounts.Account
+import crypto.Signature
+import datatype.UInt256
 import merkle.{MerkleTrie, MerkleTrieNode, MerkleTrieState}
+import scodec.bits.ByteVector
 
 /** Phase 5.6: Provider Composition Tests
   *
@@ -179,16 +183,16 @@ class Phase56Test extends FunSuite:
     // This reducer will PATTERN MATCH on the provider.tables tuple
     // Before the narrow() fix, this would throw MatchError after composition
     val reducer = new StateReducer0[Id, TestOwns, DualNeeds]:
-      def apply[T <: Tx](tx: T)(using
-          requiresReads: Requires[tx.Reads, TestOwns ++ DualNeeds],
-          requiresWrites: Requires[tx.Writes, TestOwns ++ DualNeeds],
+      def apply[T <: Tx](signedTx: Signed[T])(using
+          requiresReads: Requires[signedTx.value.Reads, TestOwns ++ DualNeeds],
+          requiresWrites: Requires[signedTx.value.Writes, TestOwns ++ DualNeeds],
           ownsTables: Tables[Id, TestOwns],
           provider: TablesProvider[Id, DualNeeds],
-      ): StoreF[Id][(tx.Result, List[tx.Event])] =
+      ): StoreF[Id][(signedTx.value.Result, List[signedTx.value.Event])] =
         // Pattern match on the provider's tables - this is what would fail with asInstanceOf
         val (_ *: _ *: EmptyTuple) = provider.tables
         // If we got here without MatchError, the projection worked correctly
-        StateT.pure((().asInstanceOf[tx.Result], Nil))
+        StateT.pure((().asInstanceOf[signedTx.value.Result], Nil))
 
     // Create a mock provider with a tuple that can be pattern matched
     // The actual table contents don't matter for this test - we just need the tuple structure
@@ -208,13 +212,13 @@ class Phase56Test extends FunSuite:
     // Compose with an independent module with EmptyTuple needs
     val accountsEntry = new Entry["accounts", Long, Long]("accounts")
     val accountsReducer = new StateReducer0[Id, AccountsSchema, EmptyTuple]:
-      def apply[T <: Tx](tx: T)(using
-          requiresReads: Requires[tx.Reads, AccountsSchema],
-          requiresWrites: Requires[tx.Writes, AccountsSchema],
+      def apply[T <: Tx](signedTx: Signed[T])(using
+          requiresReads: Requires[signedTx.value.Reads, AccountsSchema],
+          requiresWrites: Requires[signedTx.value.Writes, AccountsSchema],
           ownsTables: Tables[Id, AccountsSchema],
           provider: TablesProvider[Id, EmptyTuple],
-      ): StoreF[Id][(tx.Result, List[tx.Event])] =
-        StateT.pure((().asInstanceOf[tx.Result], Nil))
+      ): StoreF[Id][(signedTx.value.Result, List[signedTx.value.Event])] =
+        StateT.pure((().asInstanceOf[signedTx.value.Result], Nil))
 
     val blueprint2 = new ModuleBlueprint[Id, "accounts", AccountsSchema, EmptyTuple, EmptyTuple](
       owns = accountsEntry *: EmptyTuple,
@@ -246,18 +250,26 @@ object Phase56Test:
   type TokenSchema    = Entry["tokens", Long, Long] *: EmptyTuple
   type GovSchema      = Entry["governance", Long, Long] *: EmptyTuple
 
+  def signTx[A <: Tx](tx: A, account: Account): Signed[A] =
+    val dummySig = Signature(
+      v = 27,
+      r = UInt256.unsafeFromBytesBE(ByteVector.fill(32)(0x00)),
+      s = UInt256.unsafeFromBytesBE(ByteVector.fill(32)(0x00)),
+    )
+    Signed(AccountSignature(account, dummySig), tx)
+
   // Helper to create accounts blueprint (no dependencies)
   def createAccountsBlueprint()(using @annotation.unused nodeStore: MerkleTrie.NodeStore[Id]): ModuleBlueprint[Id, "accounts", AccountsSchema, EmptyTuple, EmptyTuple] =
     val accountsEntry = new Entry["accounts", Long, Long]("accounts")
 
     val reducer = new StateReducer0[Id, AccountsSchema, EmptyTuple]:
-      def apply[T <: Tx](tx: T)(using
-          requiresReads: Requires[tx.Reads, AccountsSchema],
-          requiresWrites: Requires[tx.Writes, AccountsSchema],
+      def apply[T <: Tx](signedTx: Signed[T])(using
+          requiresReads: Requires[signedTx.value.Reads, AccountsSchema],
+          requiresWrites: Requires[signedTx.value.Writes, AccountsSchema],
           ownsTables: Tables[Id, AccountsSchema],
           provider: TablesProvider[Id, EmptyTuple],
-      ): StoreF[Id][(tx.Result, List[tx.Event])] =
-        StateT.pure((().asInstanceOf[tx.Result], Nil))
+      ): StoreF[Id][(signedTx.value.Result, List[signedTx.value.Event])] =
+        StateT.pure((().asInstanceOf[signedTx.value.Result], Nil))
 
     new ModuleBlueprint[Id, "accounts", AccountsSchema, EmptyTuple, EmptyTuple](
       owns = accountsEntry *: EmptyTuple,
@@ -271,13 +283,13 @@ object Phase56Test:
     val groupEntry = new Entry["groups", Long, Long]("groups")
 
     val reducer = new StateReducer0[Id, GroupSchema, EmptyTuple]:
-      def apply[T <: Tx](tx: T)(using
-          requiresReads: Requires[tx.Reads, GroupSchema],
-          requiresWrites: Requires[tx.Writes, GroupSchema],
+      def apply[T <: Tx](signedTx: Signed[T])(using
+          requiresReads: Requires[signedTx.value.Reads, GroupSchema],
+          requiresWrites: Requires[signedTx.value.Writes, GroupSchema],
           ownsTables: Tables[Id, GroupSchema],
           provider: TablesProvider[Id, EmptyTuple],
-      ): StoreF[Id][(tx.Result, List[tx.Event])] =
-        StateT.pure((().asInstanceOf[tx.Result], Nil))
+      ): StoreF[Id][(signedTx.value.Result, List[signedTx.value.Event])] =
+        StateT.pure((().asInstanceOf[signedTx.value.Result], Nil))
 
     new ModuleBlueprint[Id, "group", GroupSchema, EmptyTuple, EmptyTuple](
       owns = groupEntry *: EmptyTuple,
@@ -291,13 +303,13 @@ object Phase56Test:
     val tokenEntry = new Entry["tokens", Long, Long]("tokens")
 
     val reducer = new StateReducer0[Id, TokenSchema, AccountsSchema]:
-      def apply[T <: Tx](tx: T)(using
-          requiresReads: Requires[tx.Reads, TokenSchema ++ AccountsSchema],
-          requiresWrites: Requires[tx.Writes, TokenSchema ++ AccountsSchema],
+      def apply[T <: Tx](signedTx: Signed[T])(using
+          requiresReads: Requires[signedTx.value.Reads, TokenSchema ++ AccountsSchema],
+          requiresWrites: Requires[signedTx.value.Writes, TokenSchema ++ AccountsSchema],
           ownsTables: Tables[Id, TokenSchema],
           provider: TablesProvider[Id, AccountsSchema],
-      ): StoreF[Id][(tx.Result, List[tx.Event])] =
-        StateT.pure((().asInstanceOf[tx.Result], Nil))
+      ): StoreF[Id][(signedTx.value.Result, List[signedTx.value.Event])] =
+        StateT.pure((().asInstanceOf[signedTx.value.Result], Nil))
 
     // NOTE: This blueprint requires AccountsSchema tables but has empty provider.
     // In real usage, you'd pass the provider when creating the blueprint.
@@ -318,13 +330,13 @@ object Phase56Test:
     val tokenEntry = new Entry["tokens", Long, Long]("tokens")
 
     val reducer = new StateReducer0[Id, TokenSchema, AccountsSchema]:
-      def apply[T <: Tx](tx: T)(using
-          requiresReads: Requires[tx.Reads, TokenSchema ++ AccountsSchema],
-          requiresWrites: Requires[tx.Writes, TokenSchema ++ AccountsSchema],
+      def apply[T <: Tx](signedTx: Signed[T])(using
+          requiresReads: Requires[signedTx.value.Reads, TokenSchema ++ AccountsSchema],
+          requiresWrites: Requires[signedTx.value.Writes, TokenSchema ++ AccountsSchema],
           ownsTables: Tables[Id, TokenSchema],
           accountsProvider: TablesProvider[Id, AccountsSchema],
-      ): StoreF[Id][(tx.Result, List[tx.Event])] =
-        StateT.pure((().asInstanceOf[tx.Result], Nil))
+      ): StoreF[Id][(signedTx.value.Result, List[signedTx.value.Event])] =
+        StateT.pure((().asInstanceOf[signedTx.value.Result], Nil))
 
     new ModuleBlueprint[Id, "token", TokenSchema, AccountsSchema, EmptyTuple](
       owns = tokenEntry *: EmptyTuple,
@@ -338,13 +350,13 @@ object Phase56Test:
     val govEntry = new Entry["governance", Long, Long]("governance")
 
     val reducer = new StateReducer0[Id, GovSchema, GroupSchema]:
-      def apply[T <: Tx](tx: T)(using
-          requiresReads: Requires[tx.Reads, GovSchema ++ GroupSchema],
-          requiresWrites: Requires[tx.Writes, GovSchema ++ GroupSchema],
+      def apply[T <: Tx](signedTx: Signed[T])(using
+          requiresReads: Requires[signedTx.value.Reads, GovSchema ++ GroupSchema],
+          requiresWrites: Requires[signedTx.value.Writes, GovSchema ++ GroupSchema],
           ownsTables: Tables[Id, GovSchema],
           provider: TablesProvider[Id, GroupSchema],
-      ): StoreF[Id][(tx.Result, List[tx.Event])] =
-        StateT.pure((().asInstanceOf[tx.Result], Nil))
+      ): StoreF[Id][(signedTx.value.Result, List[signedTx.value.Event])] =
+        StateT.pure((().asInstanceOf[signedTx.value.Result], Nil))
 
     // NOTE: This blueprint requires GroupSchema tables but has empty provider.
     // In real usage, you'd pass the provider when creating the blueprint.
@@ -365,13 +377,13 @@ object Phase56Test:
     val govEntry = new Entry["governance", Long, Long]("governance")
 
     val reducer = new StateReducer0[Id, GovSchema, GroupSchema]:
-      def apply[T <: Tx](tx: T)(using
-          requiresReads: Requires[tx.Reads, GovSchema ++ GroupSchema],
-          requiresWrites: Requires[tx.Writes, GovSchema ++ GroupSchema],
+      def apply[T <: Tx](signedTx: Signed[T])(using
+          requiresReads: Requires[signedTx.value.Reads, GovSchema ++ GroupSchema],
+          requiresWrites: Requires[signedTx.value.Writes, GovSchema ++ GroupSchema],
           ownsTables: Tables[Id, GovSchema],
           groupProvider: TablesProvider[Id, GroupSchema],
-      ): StoreF[Id][(tx.Result, List[tx.Event])] =
-        StateT.pure((().asInstanceOf[tx.Result], Nil))
+      ): StoreF[Id][(signedTx.value.Result, List[signedTx.value.Event])] =
+        StateT.pure((().asInstanceOf[signedTx.value.Result], Nil))
 
     new ModuleBlueprint[Id, "governance", GovSchema, GroupSchema, EmptyTuple](
       owns = govEntry *: EmptyTuple,

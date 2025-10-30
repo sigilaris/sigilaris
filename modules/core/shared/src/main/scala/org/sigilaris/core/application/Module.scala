@@ -25,7 +25,10 @@ import merkle.MerkleTrie
   *   the needed schema tuple (tuple of Entry types)
   */
 trait StateReducer[F[_], Path <: Tuple, Owns <: Tuple, Needs <: Tuple]:
-  /** Apply a transaction to produce a result and events.
+  /** Apply a signed transaction to produce a result and events.
+    *
+    * ADR-0012: All transactions must be wrapped in Signed[T] to ensure
+    * cryptographic signatures are present at compile time.
     *
     * The reducer is polymorphic over the transaction type T, requiring only
     * that T's read and write requirements are satisfied by this reducer's
@@ -33,8 +36,8 @@ trait StateReducer[F[_], Path <: Tuple, Owns <: Tuple, Needs <: Tuple]:
     *
     * @tparam T
     *   the transaction type
-    * @param tx
-    *   the transaction to apply
+    * @param signedTx
+    *   the signed transaction to apply (ADR-0012)
     * @param requiresReads
     *   evidence that T's read requirements are in Owns ++ Needs
     * @param requiresWrites
@@ -42,10 +45,10 @@ trait StateReducer[F[_], Path <: Tuple, Owns <: Tuple, Needs <: Tuple]:
     * @return
     *   a stateful computation returning the result and list of events
     */
-  def apply[T <: Tx](tx: T)(using
-      requiresReads: Requires[tx.Reads, Owns ++ Needs],
-      requiresWrites: Requires[tx.Writes, Owns ++ Needs],
-  ): StoreF[F][(tx.Result, List[tx.Event])]
+  def apply[T <: Tx](signedTx: Signed[T])(using
+      requiresReads: Requires[signedTx.value.Reads, Owns ++ Needs],
+      requiresWrites: Requires[signedTx.value.Writes, Owns ++ Needs],
+  ): StoreF[F][(signedTx.value.Result, List[signedTx.value.Event])]
 
 /** Path-bound routed state reducer for composed modules.
   *
@@ -69,7 +72,10 @@ trait StateReducer[F[_], Path <: Tuple, Owns <: Tuple, Needs <: Tuple]:
   *   the needed schema tuple (tuple of Entry types)
   */
 trait RoutedStateReducer[F[_], Path <: Tuple, Owns <: Tuple, Needs <: Tuple]:
-  /** Apply a routed transaction to produce a result and events.
+  /** Apply a signed routed transaction to produce a result and events.
+    *
+    * ADR-0012: All transactions must be wrapped in Signed[T] to ensure
+    * cryptographic signatures are present at compile time.
     *
     * The type bound T <: Tx & ModuleRoutedTx ensures that only transactions
     * implementing ModuleRoutedTx can be applied. This is enforced at compile
@@ -77,8 +83,8 @@ trait RoutedStateReducer[F[_], Path <: Tuple, Owns <: Tuple, Needs <: Tuple]:
     *
     * @tparam T
     *   the transaction type (must implement ModuleRoutedTx)
-    * @param tx
-    *   the transaction to apply
+    * @param signedTx
+    *   the signed transaction to apply (ADR-0012)
     * @param requiresReads
     *   evidence that T's read requirements are in Owns ++ Needs
     * @param requiresWrites
@@ -86,10 +92,10 @@ trait RoutedStateReducer[F[_], Path <: Tuple, Owns <: Tuple, Needs <: Tuple]:
     * @return
     *   a stateful computation returning the result and list of events
     */
-  def apply[T <: Tx & ModuleRoutedTx](tx: T)(using
-      requiresReads: Requires[tx.Reads, Owns ++ Needs],
-      requiresWrites: Requires[tx.Writes, Owns ++ Needs],
-  ): StoreF[F][(tx.Result, List[tx.Event])]
+  def apply[T <: Tx & ModuleRoutedTx](signedTx: Signed[T])(using
+      requiresReads: Requires[signedTx.value.Reads, Owns ++ Needs],
+      requiresWrites: Requires[signedTx.value.Writes, Owns ++ Needs],
+  ): StoreF[F][(signedTx.value.Result, List[signedTx.value.Event])]
 
 /** State module (path-bound).
   *
@@ -241,12 +247,12 @@ object StateModule:
       )
 
     val pathBoundReducer = new StateReducer[F, Path, Owns, Needs]:
-      def apply[T <: Tx](tx: T)(using
-          requiresReads: Requires[tx.Reads, Owns ++ Needs],
-          requiresWrites: Requires[tx.Writes, Owns ++ Needs],
-      ): StoreF[F][(tx.Result, List[tx.Event])] =
+      def apply[T <: Tx](signedTx: Signed[T])(using
+          requiresReads: Requires[signedTx.value.Reads, Owns ++ Needs],
+          requiresWrites: Requires[signedTx.value.Writes, Owns ++ Needs],
+      ): StoreF[F][(signedTx.value.Result, List[signedTx.value.Event])] =
         // Delegate to the path-agnostic reducer with owns tables and provider
-        blueprint.reducer0.apply(tx)(using
+        blueprint.reducer0.apply(signedTx)(using
           requiresReads,
           requiresWrites,
           ownsTables,
@@ -352,12 +358,12 @@ object StateModule:
     // Create a RoutedStateReducer (path-bound version of RoutedStateReducer0)
     // NO CAST NEEDED - type safety is preserved!
     val pathBoundReducer = new RoutedStateReducer[F, Path, Owns, Needs]:
-      def apply[T <: Tx & ModuleRoutedTx](tx: T)(using
-          requiresReads: Requires[tx.Reads, Owns ++ Needs],
-          requiresWrites: Requires[tx.Writes, Owns ++ Needs],
-      ): StoreF[F][(tx.Result, List[tx.Event])] =
+      def apply[T <: Tx & ModuleRoutedTx](signedTx: Signed[T])(using
+          requiresReads: Requires[signedTx.value.Reads, Owns ++ Needs],
+          requiresWrites: Requires[signedTx.value.Writes, Owns ++ Needs],
+      ): StoreF[F][(signedTx.value.Result, List[signedTx.value.Event])] =
         // Delegate to the path-agnostic routed reducer with owns tables and provider
-        blueprint.reducer0.apply(tx)(using
+        blueprint.reducer0.apply(signedTx)(using
           requiresReads,
           requiresWrites,
           ownsTables,
@@ -539,14 +545,14 @@ object StateModule:
       r2: StateReducer[F, Path, O2, N2],
   ): StateReducer[F, Path, O1 ++ O2, N1 ++ N2] =
     new StateReducer[F, Path, O1 ++ O2, N1 ++ N2]:
-      def apply[T <: Tx](tx: T)(using
-          requiresReads: Requires[tx.Reads, (O1 ++ O2) ++ (N1 ++ N2)],
-          requiresWrites: Requires[tx.Writes, (O1 ++ O2) ++ (N1 ++ N2)],
-      ): StoreF[F][(tx.Result, List[tx.Event])] =
+      def apply[T <: Tx](signedTx: Signed[T])(using
+          requiresReads: Requires[signedTx.value.Reads, (O1 ++ O2) ++ (N1 ++ N2)],
+          requiresWrites: Requires[signedTx.value.Writes, (O1 ++ O2) ++ (N1 ++ N2)],
+      ): StoreF[F][(signedTx.value.Result, List[signedTx.value.Event])] =
         // Try r1 first
-        val r1Result = r1.apply(tx)(using
-          requiresReads.asInstanceOf[Requires[tx.Reads, O1 ++ N1]],
-          requiresWrites.asInstanceOf[Requires[tx.Writes, O1 ++ N1]],
+        val r1Result = r1.apply(signedTx)(using
+          requiresReads.asInstanceOf[Requires[signedTx.value.Reads, O1 ++ N1]],
+          requiresWrites.asInstanceOf[Requires[signedTx.value.Writes, O1 ++ N1]],
         )
 
         // If r1 fails, try r2 as fallback
@@ -559,9 +565,9 @@ object StateModule:
             .run(s)
             .recoverWith: _ =>
               // r1 failed, try r2 as fallback
-              r2.apply(tx)(using
-                requiresReads.asInstanceOf[Requires[tx.Reads, O2 ++ N2]],
-                requiresWrites.asInstanceOf[Requires[tx.Writes, O2 ++ N2]],
+              r2.apply(signedTx)(using
+                requiresReads.asInstanceOf[Requires[signedTx.value.Reads, O2 ++ N2]],
+                requiresWrites.asInstanceOf[Requires[signedTx.value.Writes, O2 ++ N2]],
               ).run(s)
 
   /** Module factory for building modules at different paths.

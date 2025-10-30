@@ -7,9 +7,12 @@ import scala.Tuple.++
 
 import munit.FunSuite
 
-import datatype.Utf8
+import accounts.Account
+import crypto.Signature
+import datatype.{UInt256, Utf8}
 import failure.RoutingFailure
 import merkle.{MerkleTrie, MerkleTrieNode}
+import scodec.bits.ByteVector
 
 @SuppressWarnings(Array("org.wartremover.warts.Null", "org.wartremover.warts.AsInstanceOf"))
 
@@ -18,6 +21,15 @@ class CompositionTest extends FunSuite:
   // Empty node store for testing
   given MerkleTrie.NodeStore[Id] = Kleisli: (_: MerkleTrieNode.MerkleHash) =>
     EitherT.rightT[Id, String](None)
+
+  // Helper to create a signed transaction with dummy signature for testing
+  def signTx[A <: Tx](tx: A, account: Account): Signed[A] =
+    val dummySig = Signature(
+      v = 27,
+      r = UInt256.unsafeFromBytesBE(ByteVector.fill(32)(0x00)),
+      s = UInt256.unsafeFromBytesBE(ByteVector.fill(32)(0x00)),
+    )
+    Signed(AccountSignature(account, dummySig), tx)
 
   // Test schemas
   type BalancesEntry = Entry["balances", Utf8, Long]
@@ -34,13 +46,13 @@ class CompositionTest extends FunSuite:
     val schema: Schema1 = balancesEntry *: EmptyTuple
 
     val reducer = new StateReducer0[Id, Schema1, EmptyTuple]:
-      def apply[T <: Tx](tx: T)(using
-          requiresReads: Requires[tx.Reads, Schema1],
-          requiresWrites: Requires[tx.Writes, Schema1],
+      def apply[T <: Tx](signedTx: Signed[T])(using
+          requiresReads: Requires[signedTx.value.Reads, Schema1],
+          requiresWrites: Requires[signedTx.value.Writes, Schema1],
           ownsTables: Tables[Id, Schema1],
           provider: TablesProvider[Id, EmptyTuple],
-      ): StoreF[Id][(tx.Result, List[tx.Event])] =
-        StateT.pure((null.asInstanceOf[tx.Result], List.empty[tx.Event]))
+      ): StoreF[Id][(signedTx.value.Result, List[signedTx.value.Event])] =
+        StateT.pure((null.asInstanceOf[signedTx.value.Result], List.empty[signedTx.value.Event]))
 
     new ModuleBlueprint[Id, "module1", Schema1, EmptyTuple, EmptyTuple](
       owns = schema,
@@ -54,13 +66,13 @@ class CompositionTest extends FunSuite:
     val schema: Schema2 = accountsEntry *: EmptyTuple
 
     val reducer = new StateReducer0[Id, Schema2, EmptyTuple]:
-      def apply[T <: Tx](tx: T)(using
-          requiresReads: Requires[tx.Reads, Schema2],
-          requiresWrites: Requires[tx.Writes, Schema2],
+      def apply[T <: Tx](signedTx: Signed[T])(using
+          requiresReads: Requires[signedTx.value.Reads, Schema2],
+          requiresWrites: Requires[signedTx.value.Writes, Schema2],
           ownsTables: Tables[Id, Schema2],
           provider: TablesProvider[Id, EmptyTuple],
-      ): StoreF[Id][(tx.Result, List[tx.Event])] =
-        StateT.pure((null.asInstanceOf[tx.Result], List.empty[tx.Event]))
+      ): StoreF[Id][(signedTx.value.Result, List[signedTx.value.Event])] =
+        StateT.pure((null.asInstanceOf[signedTx.value.Result], List.empty[signedTx.value.Event]))
 
     new ModuleBlueprint[Id, "module2", Schema2, EmptyTuple, EmptyTuple](
       owns = schema,
@@ -74,13 +86,13 @@ class CompositionTest extends FunSuite:
     val schema: Schema3 = tokensEntry *: EmptyTuple
 
     val reducer = new StateReducer0[Id, Schema3, EmptyTuple]:
-      def apply[T <: Tx](tx: T)(using
-          requiresReads: Requires[tx.Reads, Schema3],
-          requiresWrites: Requires[tx.Writes, Schema3],
+      def apply[T <: Tx](signedTx: Signed[T])(using
+          requiresReads: Requires[signedTx.value.Reads, Schema3],
+          requiresWrites: Requires[signedTx.value.Writes, Schema3],
           ownsTables: Tables[Id, Schema3],
           provider: TablesProvider[Id, EmptyTuple],
-      ): StoreF[Id][(tx.Result, List[tx.Event])] =
-        StateT.pure((null.asInstanceOf[tx.Result], List.empty[tx.Event]))
+      ): StoreF[Id][(signedTx.value.Result, List[signedTx.value.Event])] =
+        StateT.pure((null.asInstanceOf[signedTx.value.Result], List.empty[signedTx.value.Event]))
 
     new ModuleBlueprint[Id, "module3", Schema3, EmptyTuple, EmptyTuple](
       owns = schema,
@@ -211,17 +223,17 @@ class CompositionTest extends FunSuite:
     val schema: Schema1 = balancesEntry *: EmptyTuple
 
     val reducer = new StateReducer0[Id, Schema1, EmptyTuple]:
-      def apply[T <: Tx](tx: T)(using
-          requiresReads: Requires[tx.Reads, Schema1],
-          requiresWrites: Requires[tx.Writes, Schema1],
+      def apply[T <: Tx](signedTx: Signed[T])(using
+          requiresReads: Requires[signedTx.value.Reads, Schema1],
+          requiresWrites: Requires[signedTx.value.Writes, Schema1],
           ownsTables: Tables[Id, Schema1],
           provider: TablesProvider[Id, EmptyTuple],
-      ): StoreF[Id][(tx.Result, List[tx.Event])] =
-        tx match
+      ): StoreF[Id][(signedTx.value.Result, List[signedTx.value.Event])] =
+        signedTx.value match
           case Module1Tx(value) =>
-            StateT.pure((value.asInstanceOf[tx.Result], List.empty[tx.Event]))
+            StateT.pure((value.asInstanceOf[signedTx.value.Result], List.empty[signedTx.value.Event]))
           case _ =>
-            StateT.pure((null.asInstanceOf[tx.Result], List.empty[tx.Event]))
+            StateT.pure((null.asInstanceOf[signedTx.value.Result], List.empty[signedTx.value.Event]))
 
     new ModuleBlueprint[Id, "module1", Schema1, EmptyTuple, EmptyTuple](
       owns = schema,
@@ -235,17 +247,17 @@ class CompositionTest extends FunSuite:
     val schema: Schema2 = accountsEntry *: EmptyTuple
 
     val reducer = new StateReducer0[Id, Schema2, EmptyTuple]:
-      def apply[T <: Tx](tx: T)(using
-          requiresReads: Requires[tx.Reads, Schema2],
-          requiresWrites: Requires[tx.Writes, Schema2],
+      def apply[T <: Tx](signedTx: Signed[T])(using
+          requiresReads: Requires[signedTx.value.Reads, Schema2],
+          requiresWrites: Requires[signedTx.value.Writes, Schema2],
           ownsTables: Tables[Id, Schema2],
           provider: TablesProvider[Id, EmptyTuple],
-      ): StoreF[Id][(tx.Result, List[tx.Event])] =
-        tx match
+      ): StoreF[Id][(signedTx.value.Result, List[signedTx.value.Event])] =
+        signedTx.value match
           case Module2Tx(name) =>
-            StateT.pure((name.asInstanceOf[tx.Result], List.empty[tx.Event]))
+            StateT.pure((name.asInstanceOf[signedTx.value.Result], List.empty[signedTx.value.Event]))
           case _ =>
-            StateT.pure((null.asInstanceOf[tx.Result], List.empty[tx.Event]))
+            StateT.pure((null.asInstanceOf[signedTx.value.Result], List.empty[signedTx.value.Event]))
 
     new ModuleBlueprint[Id, "module2", Schema2, EmptyTuple, EmptyTuple](
       owns = schema,
@@ -259,17 +271,17 @@ class CompositionTest extends FunSuite:
     val schema: Schema3 = tokensEntry *: EmptyTuple
 
     val reducer = new StateReducer0[Id, Schema3, EmptyTuple]:
-      def apply[T <: Tx](tx: T)(using
-          requiresReads: Requires[tx.Reads, Schema3],
-          requiresWrites: Requires[tx.Writes, Schema3],
+      def apply[T <: Tx](signedTx: Signed[T])(using
+          requiresReads: Requires[signedTx.value.Reads, Schema3],
+          requiresWrites: Requires[signedTx.value.Writes, Schema3],
           ownsTables: Tables[Id, Schema3],
           provider: TablesProvider[Id, EmptyTuple],
-      ): StoreF[Id][(tx.Result, List[tx.Event])] =
-        tx match
+      ): StoreF[Id][(signedTx.value.Result, List[signedTx.value.Event])] =
+        signedTx.value match
           case Module3Tx(amount) =>
-            StateT.pure((amount.asInstanceOf[tx.Result], List.empty[tx.Event]))
+            StateT.pure((amount.asInstanceOf[signedTx.value.Result], List.empty[signedTx.value.Event]))
           case _ =>
-            StateT.pure((null.asInstanceOf[tx.Result], List.empty[tx.Event]))
+            StateT.pure((null.asInstanceOf[signedTx.value.Result], List.empty[signedTx.value.Event]))
 
     new ModuleBlueprint[Id, "module3", Schema3, EmptyTuple, EmptyTuple](
       owns = schema,
@@ -287,8 +299,10 @@ class CompositionTest extends FunSuite:
     type Path = "test" *: EmptyTuple
     val module = StateModule.mountComposed[Path](composed)
 
+    val account = Account.Named(Utf8("testuser"))
     val tx = Module1Tx(42L)
-    val result = module.reducer.apply(tx)
+    val signedTx = signTx(tx, account)
+    val result = module.reducer.apply(signedTx)
 
     val runResult = result.run(null).value
     runResult match
@@ -307,8 +321,10 @@ class CompositionTest extends FunSuite:
     type Path = "test" *: EmptyTuple
     val module = StateModule.mountComposed[Path](composed)
 
+    val account = Account.Named(Utf8("testuser"))
     val tx = Module2Tx("test")
-    val result = module.reducer.apply(tx)
+    val signedTx = signTx(tx, account)
+    val result = module.reducer.apply(signedTx)
 
     val runResult = result.run(null).value
     runResult match
@@ -326,10 +342,12 @@ class CompositionTest extends FunSuite:
     // Verify that UnroutedTx does NOT compile with composed reducer
     // ComposedBlueprint's reducer requires T <: ModuleRoutedTx constraint
     val errors = compileErrors("""
+      val account = Account.Named(Utf8("testuser"))
       val tx = UnroutedTx()
-      composed.reducer0.apply(tx)(using
-        summon[Requires[tx.Reads, Schema1 ++ Schema2]],
-        summon[Requires[tx.Writes, Schema1 ++ Schema2]],
+      val signedTx = signTx(tx, account)
+      composed.reducer0.apply(signedTx)(using
+        summon[Requires[signedTx.value.Reads, Schema1 ++ Schema2]],
+        summon[Requires[signedTx.value.Writes, Schema1 ++ Schema2]],
       )
     """)
 
@@ -337,10 +355,11 @@ class CompositionTest extends FunSuite:
     assertNoDiff(
       errors,
       """|error:
-         |Found:    (tx : CompositionTest.this.UnroutedTx)
-         |Required: org.sigilaris.core.application.Tx &
-         |  org.sigilaris.core.application.ModuleRoutedTx
-         |      composed.reducer0.apply(tx)(using
+         |Found:    (signedTx :
+         |  org.sigilaris.core.application.Signed[CompositionTest.this.UnroutedTx])
+         |Required: org.sigilaris.core.application.Signed[org.sigilaris.core.application.Tx &
+         |  org.sigilaris.core.application.ModuleRoutedTx]
+         |      composed.reducer0.apply(signedTx)(using
          |                             ^
          |""".stripMargin
     )
@@ -349,8 +368,10 @@ class CompositionTest extends FunSuite:
     type Path = "test" *: EmptyTuple
     val module = StateModule.mountComposed[Path](composed)
 
+    val account = Account.Named(Utf8("testuser"))
     val routedTx = Module1Tx(100L)
-    val result = module.reducer.apply(routedTx).run(null).value
+    val signedRoutedTx = signTx(routedTx, account)
+    val result = module.reducer.apply(signedRoutedTx).run(null).value
 
     result match
       case Right((_, (value, _))) =>
@@ -367,8 +388,10 @@ class CompositionTest extends FunSuite:
     type Path = "test" *: EmptyTuple
     val module = StateModule.mountComposed[Path](composed)
 
+    val account = Account.Named(Utf8("testuser"))
     val tx = WrongPathTx()
-    val result = module.reducer.apply(tx).run(null).value
+    val signedTx = signTx(tx, account)
+    val result = module.reducer.apply(signedTx).run(null).value
 
     result match
       case Left(_: RoutingFailure) =>
@@ -390,7 +413,11 @@ class CompositionTest extends FunSuite:
     type Path = "test" *: EmptyTuple
     val module = StateModule.mountComposed[Path](nested)
 
-    val result1 = module.reducer.apply(Module1Tx(7L)).run(null).value
+    val account = Account.Named(Utf8("testuser"))
+
+    val tx1 = Module1Tx(7L)
+    val signedTx1 = signTx(tx1, account)
+    val result1 = module.reducer.apply(signedTx1).run(null).value
     result1 match
       case Right((_, (value, events))) =>
         assertEquals(value, 7L)
@@ -398,7 +425,9 @@ class CompositionTest extends FunSuite:
       case Left(err) =>
         fail(s"Expected module1 routing to succeed but failed with $err")
 
-    val result3 = module.reducer.apply(Module3Tx(BigInt(9))).run(null).value
+    val tx3 = Module3Tx(BigInt(9))
+    val signedTx3 = signTx(tx3, account)
+    val result3 = module.reducer.apply(signedTx3).run(null).value
     result3 match
       case Right((_, (value, events))) =>
         assertEquals(value, BigInt(9))

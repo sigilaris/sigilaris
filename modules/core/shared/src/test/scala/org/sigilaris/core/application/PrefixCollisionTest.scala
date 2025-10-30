@@ -156,14 +156,14 @@ class PrefixCollisionTest extends FunSuite:
       val schema1: Schema1 = bp1Entry *: EmptyTuple
 
       val reducer1 = new StateReducer0[Id, Schema1, EmptyTuple]:
-        def apply[T <: Tx](tx: T)(using
-            requiresReads: Requires[tx.Reads, Schema1],
-            requiresWrites: Requires[tx.Writes, Schema1],
+        def apply[T <: Tx](signedTx: Signed[T])(using
+            requiresReads: Requires[signedTx.value.Reads, Schema1],
+            requiresWrites: Requires[signedTx.value.Writes, Schema1],
             ownsTables: Tables[Id, Schema1],
             provider: TablesProvider[Id, EmptyTuple],
-        ): StoreF[Id][(tx.Result, List[tx.Event])] =
+        ): StoreF[Id][(signedTx.value.Result, List[signedTx.value.Event])] =
           import cats.data.StateT
-          StateT.pure((null.asInstanceOf[tx.Result], List.empty[tx.Event]))
+          StateT.pure((null.asInstanceOf[signedTx.value.Result], List.empty[signedTx.value.Event]))
 
       val bp1 = new ModuleBlueprint[Id, "module1", Schema1, EmptyTuple, EmptyTuple](
         owns = schema1,
@@ -176,14 +176,14 @@ class PrefixCollisionTest extends FunSuite:
       val schema2: Schema2 = bp2Entry *: EmptyTuple
 
       val reducer2 = new StateReducer0[Id, Schema2, EmptyTuple]:
-        def apply[T <: Tx](tx: T)(using
-            requiresReads: Requires[tx.Reads, Schema2],
-            requiresWrites: Requires[tx.Writes, Schema2],
+        def apply[T <: Tx](signedTx: Signed[T])(using
+            requiresReads: Requires[signedTx.value.Reads, Schema2],
+            requiresWrites: Requires[signedTx.value.Writes, Schema2],
             ownsTables: Tables[Id, Schema2],
             provider: TablesProvider[Id, EmptyTuple],
-        ): StoreF[Id][(tx.Result, List[tx.Event])] =
+        ): StoreF[Id][(signedTx.value.Result, List[signedTx.value.Event])] =
           import cats.data.StateT
-          StateT.pure((null.asInstanceOf[tx.Result], List.empty[tx.Event]))
+          StateT.pure((null.asInstanceOf[signedTx.value.Result], List.empty[signedTx.value.Event]))
 
       val bp2 = new ModuleBlueprint[Id, "module2", Schema2, EmptyTuple, EmptyTuple](
         owns = schema2,

@@ -27,15 +27,15 @@ class BlueprintTest extends FunSuite:
     val schema: SimpleSchema = balancesEntry *: EmptyTuple
 
     val reducer = new StateReducer0[Id, SimpleSchema, EmptyTuple]:
-      def apply[T <: Tx](tx: T)(using
-          requiresReads: Requires[tx.Reads, SimpleSchema],
-          requiresWrites: Requires[tx.Writes, SimpleSchema],
+      def apply[T <: Tx](signedTx: Signed[T])(using
+          requiresReads: Requires[signedTx.value.Reads, SimpleSchema],
+          requiresWrites: Requires[signedTx.value.Writes, SimpleSchema],
           ownsTables: Tables[Id, SimpleSchema],
           provider: TablesProvider[Id, EmptyTuple],
-      ): StoreF[Id][(tx.Result, List[tx.Event])] =
+      ): StoreF[Id][(signedTx.value.Result, List[signedTx.value.Event])] =
         // Trivial implementation for testing
         import cats.data.StateT
-        StateT.pure((null.asInstanceOf[tx.Result], List.empty[tx.Event]))
+        StateT.pure((null.asInstanceOf[signedTx.value.Result], List.empty[signedTx.value.Event]))
 
     new ModuleBlueprint[Id, "simple", SimpleSchema, EmptyTuple, EmptyTuple](
       owns = schema,

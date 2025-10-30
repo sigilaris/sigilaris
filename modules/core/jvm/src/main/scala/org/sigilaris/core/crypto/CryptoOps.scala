@@ -57,6 +57,10 @@ import util.SafeStringInterp.*
   *      implementation
   */
 object CryptoOps extends CryptoOpsLike:
+  // Initialize BouncyCastle provider once at startup
+  private val _ = java.security.Security.addProvider(
+    new org.bouncycastle.jce.provider.BouncyCastleProvider()
+  )
   /** Computes Keccak-256 hash using thread-local digest pool.
     *
     * @param input
