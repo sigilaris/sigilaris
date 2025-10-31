@@ -198,3 +198,19 @@ object BigNat:
     * @return Eq instance
     */
   given bignatEq: Eq[BigNat] = Eq.fromUniversalEquals
+
+  /** OrderedCodec instance for BigNat.
+    *
+    * BigNat's variable-length encoding preserves ordering: smaller natural numbers
+    * encode to lexicographically smaller byte sequences.
+    *
+    * The encoding format uses length-prefixed bytes which satisfies the ordering law:
+    *   compare(x, y) ≡ encode(x).compare(encode(y))
+    *
+    * @return OrderedCodec instance
+    * @see [[org.sigilaris.core.codec.OrderedCodec]] for law details
+    */
+  given bignatOrderedCodec: codec.OrderedCodec[BigNat] =
+    val ord = new Ordering[BigNat]:
+      def compare(x: BigNat, y: BigNat): Int = x.compare(y)
+    codec.OrderedCodec.fromCodecAndOrdering(codec.byte.ByteCodec[BigNat], ord)

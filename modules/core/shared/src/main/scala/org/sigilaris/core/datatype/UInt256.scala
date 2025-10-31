@@ -348,3 +348,22 @@ object UInt256:
     def decodeFromHex(s: String): Either[DecodeFailure, UInt256] =
       fromHex(s).leftMap(e => DecodeFailure(e.msg))
     JsonKeyCodec[String].narrow(decodeFromHex, _.toHexLower)
+
+  /** OrderedCodec instance for UInt256.
+    *
+    * UInt256's fixed 32-byte big-endian encoding preserves ordering: smaller unsigned
+    * integers encode to lexicographically smaller byte sequences.
+    *
+    * The big-endian byte representation satisfies the ordering law:
+    *   compare(x, y) ≡ encode(x).compare(encode(y))
+    *
+    * @return OrderedCodec instance
+    * @see [[org.sigilaris.core.codec.OrderedCodec]] for law details
+    */
+  given uint256OrderedCodec: org.sigilaris.core.codec.OrderedCodec[UInt256] =
+    new org.sigilaris.core.codec.OrderedCodec[UInt256]:
+      def encode(u: UInt256): ByteVector = u.bytes
+      def decode(bv: ByteVector): Either[DecodeFailure, org.sigilaris.core.codec.byte.DecodeResult[UInt256]] =
+        ByteDecoder[UInt256].decode(bv)
+      def compare(x: UInt256, y: UInt256): Int =
+        x.toBigIntUnsigned.compare(y.toBigIntUnsigned)
