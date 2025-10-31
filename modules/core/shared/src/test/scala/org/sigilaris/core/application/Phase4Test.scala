@@ -224,7 +224,7 @@ class Phase4Test extends FunSuite:
       yield (maybeAccount, maybeBalance, maybeToken, notFound)
 
     // Execute the cross-module operation
-    val initialState = merkle.MerkleTrieState.empty
+    val initialState = StoreState.empty
     val result = crossModuleOperation.run(initialState).value.unsafeRunSync()
 
     result match
@@ -236,7 +236,7 @@ class Phase4Test extends FunSuite:
         assertEquals(notFound, None)
 
         // Persist the state changes
-        saveNodes(finalState)
+        saveNodes(finalState.trieState)
 
         // Verify we can read the persisted data
         val accountsLookup = summon[Lookup[CombinedSchema, "accounts", Address, Account]]

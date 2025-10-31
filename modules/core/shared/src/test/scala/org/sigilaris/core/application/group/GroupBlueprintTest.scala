@@ -9,7 +9,7 @@ import cats.data.{EitherT, Kleisli}
 import munit.FunSuite
 
 import datatype.{BigNat, Utf8}
-import merkle.{MerkleTrie, MerkleTrieNode, MerkleTrieState}
+import merkle.{MerkleTrie, MerkleTrieNode}
 import scodec.bits.ByteVector
 import application.accounts.{Account, KeyId20, TxEnvelope}
 
@@ -26,7 +26,7 @@ class GroupBlueprintTest extends FunSuite:
   given MerkleTrie.NodeStore[Id] = Kleisli: (_: MerkleTrieNode.MerkleHash) =>
     EitherT.rightT[Id, String](None)
 
-  val initialState: MerkleTrieState = MerkleTrieState.empty
+  val initialState: StoreState = StoreState.empty
 
   /** Stub provider for GroupsNeeds.
     *

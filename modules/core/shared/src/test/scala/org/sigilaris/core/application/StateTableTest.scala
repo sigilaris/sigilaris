@@ -8,7 +8,7 @@ import scodec.bits.hex
 import munit.FunSuite
 
 import datatype.Utf8
-import merkle.{MerkleTrie, MerkleTrieNode, MerkleTrieState}
+import merkle.{MerkleTrie, MerkleTrieNode}
 
 class StateTableTest extends FunSuite:
 
@@ -21,7 +21,7 @@ class StateTableTest extends FunSuite:
     val table = StateTable.atPrefix[Id, "balances", Utf8, Long](prefix)
 
     val key = table.brand(Utf8("alice"))
-    val initialState = MerkleTrieState.empty
+    val initialState = StoreState.empty
 
     val result = table.get(key).runA(initialState).value
 
@@ -35,7 +35,7 @@ class StateTableTest extends FunSuite:
 
     val key = table.brand(Utf8("alice"))
     val balance = 100L
-    val initialState = MerkleTrieState.empty
+    val initialState = StoreState.empty
 
     // Put then get
     val program = for
@@ -47,7 +47,7 @@ class StateTableTest extends FunSuite:
       case Right((finalState, Some(retrievedBalance))) =>
         assertEquals(retrievedBalance, balance)
         // Verify state changed
-        assert(finalState.root != initialState.root)
+        assert(finalState.trieState.root != initialState.trieState.root)
       case Right((_, None)) =>
         fail("Expected Some(balance), got None")
       case Left(err) =>
@@ -59,7 +59,7 @@ class StateTableTest extends FunSuite:
 
     val key = table.brand(Utf8("bob"))
     val balance = 200L
-    val initialState = MerkleTrieState.empty
+    val initialState = StoreState.empty
 
     // Put, then remove
     val program = for
@@ -82,7 +82,7 @@ class StateTableTest extends FunSuite:
     val table = StateTable.atPrefix[Id, "balances", Utf8, Long](prefix)
 
     val key = table.brand(Utf8("charlie"))
-    val initialState = MerkleTrieState.empty
+    val initialState = StoreState.empty
 
     val result = table.remove(key).runA(initialState).value
 
@@ -101,7 +101,7 @@ class StateTableTest extends FunSuite:
     val scoreKey = scores.brand(Utf8("alice"))
 
     // This should compile - using the correct key for each table
-    val initialState = MerkleTrieState.empty
+    val initialState = StoreState.empty
     val _ = balances.get(balanceKey).runA(initialState).value
     val _ = scores.get(scoreKey).runA(initialState).value
 

@@ -16,15 +16,39 @@ import merkle.MerkleTrieState
   */
 type Eff[F[_]] = EitherT[F, SigilarisFailure, *]
 
+/** Combined state for blockchain storage and access logging.
+  *
+  * Phase 8: Extends MerkleTrieState with AccessLog to track all read/write
+  * operations performed during transaction execution.
+  *
+  * @param trieState
+  *   the Merkle trie state
+  * @param accessLog
+  *   the accumulated access log
+  */
+final case class StoreState(
+    trieState: MerkleTrieState,
+    accessLog: AccessLog,
+)
+
+object StoreState:
+  /** Create an empty store state with no logged accesses. */
+  def empty: StoreState = StoreState(MerkleTrieState.empty, AccessLog.empty)
+
+  /** Create a store state from just a trie state (empty access log). */
+  def fromTrieState(trieState: MerkleTrieState): StoreState =
+    StoreState(trieState, AccessLog.empty)
+
 /** State effect type for blockchain storage operations.
   *
-  * Combines state management (StateT) with error handling (Eff) over
-  * MerkleTrieState.
+  * Phase 8 update: Now operates over StoreState (MerkleTrieState + AccessLog)
+  * instead of just MerkleTrieState, enabling automatic access logging and
+  * conflict detection.
   *
   * @tparam F
   *   the base effect type
   */
-type StoreF[F[_]] = StateT[Eff[F], MerkleTrieState, *]
+type StoreF[F[_]] = StateT[Eff[F], StoreState, *]
 
 /** Zero-cost key branding to prevent keys from different tables being mixed.
   *

@@ -9,7 +9,7 @@ import scala.Tuple.++
 import accounts.Account
 import crypto.Signature
 import datatype.UInt256
-import merkle.{MerkleTrie, MerkleTrieNode, MerkleTrieState}
+import merkle.{MerkleTrie, MerkleTrieNode}
 import scodec.bits.ByteVector
 
 /** Phase 5.6: Provider Composition Tests
@@ -24,7 +24,7 @@ class Phase56Test extends FunSuite:
   given MerkleTrie.NodeStore[Id] = Kleisli: (_: MerkleTrieNode.MerkleHash) =>
     EitherT.rightT[Id, String](None)
 
-  val initialState: MerkleTrieState = MerkleTrieState.empty
+  val initialState: StoreState = StoreState.empty
 
   test("DisjointSchemas: EmptyTuple is disjoint from EmptyTuple"):
     summon[TablesProvider.DisjointSchemas[EmptyTuple, EmptyTuple]]

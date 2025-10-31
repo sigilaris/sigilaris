@@ -119,7 +119,7 @@ class GroupsReducer[F[_]: Monad] extends StateReducer0[F, GroupsSchema.GroupsSch
               maybeKeyInfo <- nameKeyTable.get(nameKeyTable.brand((name, recoveredKeyId)))
               _ <- maybeKeyInfo match
                 case None =>
-                  StateT.liftF[Eff[F], merkle.MerkleTrieState, Unit]:
+                  StateT.liftF[Eff[F], StoreState, Unit]:
                     EitherT.leftT:
                       CryptoFailure(
                         s"Key ${recoveredKeyId.bytes.toHex} not registered for Named account ${name.asString}"
@@ -139,22 +139,22 @@ class GroupsReducer[F[_]: Monad] extends StateReducer0[F, GroupsSchema.GroupsSch
 
                   keyInfo.expiresAt match
                     case Some(expiresAt) if txTimestamp.isAfter(expiresAt) =>
-                      StateT.liftF[Eff[F], merkle.MerkleTrieState, Unit]:
+                      StateT.liftF[Eff[F], StoreState, Unit]:
                         EitherT.leftT:
                           CryptoFailure(
                             s"Key expired at $expiresAt, transaction timestamp: $txTimestamp"
                           )
                     case _ =>
                       // Key has no expiration or has not expired yet
-                      StateT.pure[Eff[F], merkle.MerkleTrieState, Unit](())
+                      StateT.pure[Eff[F], StoreState, Unit](())
             yield ()
 
           case Account.Unnamed(keyId) =>
             // For Unnamed accounts: key ID must match account ID directly
             if recoveredKeyId === keyId then
-              StateT.pure[Eff[F], merkle.MerkleTrieState, Unit](())
+              StateT.pure[Eff[F], StoreState, Unit](())
             else
-              StateT.liftF[Eff[F], merkle.MerkleTrieState, Unit]:
+              StateT.liftF[Eff[F], StoreState, Unit]:
                 EitherT.leftT:
                   CryptoFailure(s"Recovered key ${recoveredKeyId.bytes.toHex} does not match unnamed account ${keyId.bytes.toHex}")
 
@@ -178,15 +178,15 @@ class GroupsReducer[F[_]: Monad] extends StateReducer0[F, GroupsSchema.GroupsSch
       maybeData <- groupsTable.get(groupsTable.brand(groupId))
       _ <- maybeData match
         case Some(groupData) if groupData.coordinator === accountSig.account =>
-          StateT.pure[Eff[F], merkle.MerkleTrieState, Unit](())
+          StateT.pure[Eff[F], StoreState, Unit](())
         case Some(groupData) =>
-          StateT.liftF[Eff[F], merkle.MerkleTrieState, Unit]:
+          StateT.liftF[Eff[F], StoreState, Unit]:
             EitherT.leftT:
               CryptoFailure(
                 s"Unauthorized: ${accountSig.account} is not the coordinator of group ${groupId.toUtf8.asString}"
               )
         case None =>
-          StateT.liftF[Eff[F], merkle.MerkleTrieState, Unit]:
+          StateT.liftF[Eff[F], StoreState, Unit]:
             EitherT.leftT:
               TrieFailure(s"Group ${groupId.toUtf8.asString} not found during authorization check")
     yield ()
@@ -212,7 +212,7 @@ class GroupsReducer[F[_]: Monad] extends StateReducer0[F, GroupsSchema.GroupsSch
       case tx: ReplaceCoordinator =>
         verifyAndHandleReplaceCoordinator(tx, signedTx.sig)
       case _ =>
-        StateT.liftF[Eff[F], merkle.MerkleTrieState, (Unit, List[Nothing])]:
+        StateT.liftF[Eff[F], StoreState, (Unit, List[Nothing])]:
           EitherT.leftT[F, (Unit, List[Nothing])]:
             TrieFailure(s"Unknown transaction type: ${tx.getClass.getName}")
 
@@ -238,7 +238,7 @@ class GroupsReducer[F[_]: Monad] extends StateReducer0[F, GroupsSchema.GroupsSch
 
     // Verify signer is the coordinator
     if sig.account =!= tx.coordinator then
-      StateT.liftF[Eff[F], merkle.MerkleTrieState, (Unit, List[GroupCreated])]:
+      StateT.liftF[Eff[F], StoreState, (Unit, List[GroupCreated])]:
         EitherT.leftT:
           CryptoFailure(
             s"Unauthorized: signer ${sig.account} does not match coordinator ${tx.coordinator}"
@@ -248,7 +248,7 @@ class GroupsReducer[F[_]: Monad] extends StateReducer0[F, GroupsSchema.GroupsSch
         maybeExisting <- groupsTable.get(groupsTable.brand(tx.groupId))
         result <- maybeExisting match
           case Some(_) =>
-            StateT.liftF[Eff[F], merkle.MerkleTrieState, (Unit, List[GroupCreated])]:
+            StateT.liftF[Eff[F], StoreState, (Unit, List[GroupCreated])]:
               EitherT.leftT:
                 TrieFailure(s"Group ${tx.groupId.toUtf8.asString} already exists")
           case None =>
@@ -288,7 +288,7 @@ class GroupsReducer[F[_]: Monad] extends StateReducer0[F, GroupsSchema.GroupsSch
       result <- maybeData match
         case Some(groupData) =>
           if groupData.nonce =!= tx.groupNonce then
-            StateT.liftF[Eff[F], merkle.MerkleTrieState, (Unit, List[GroupDisbanded])]:
+            StateT.liftF[Eff[F], StoreState, (Unit, List[GroupDisbanded])]:
               EitherT.leftT:
                 TrieFailure(s"Nonce mismatch: expected ${groupData.nonce}, got ${tx.groupNonce}")
           else if groupData.memberCount =!= BigNat.Zero then
@@ -300,7 +300,7 @@ class GroupsReducer[F[_]: Monad] extends StateReducer0[F, GroupsSchema.GroupsSch
             //
             // To disband a group with members, the coordinator must first
             // remove all members via RemoveAccounts transactions.
-            StateT.liftF[Eff[F], merkle.MerkleTrieState, (Unit, List[GroupDisbanded])]:
+            StateT.liftF[Eff[F], StoreState, (Unit, List[GroupDisbanded])]:
               EitherT.leftT:
                 TrieFailure(s"Cannot disband group ${tx.groupId.toUtf8.asString} with ${groupData.memberCount} members. Remove all members first.")
           else
@@ -308,7 +308,7 @@ class GroupsReducer[F[_]: Monad] extends StateReducer0[F, GroupsSchema.GroupsSch
               _ <- groupsTable.remove(groupsTable.brand(tx.groupId))
             yield ((), List(GroupDisbanded(tx.groupId)))
         case None =>
-          StateT.liftF[Eff[F], merkle.MerkleTrieState, (Unit, List[GroupDisbanded])]:
+          StateT.liftF[Eff[F], StoreState, (Unit, List[GroupDisbanded])]:
             EitherT.leftT:
               TrieFailure(s"Group ${tx.groupId.toUtf8.asString} not found")
     yield result
@@ -334,7 +334,7 @@ class GroupsReducer[F[_]: Monad] extends StateReducer0[F, GroupsSchema.GroupsSch
 
     // Validate non-empty accounts set
     if tx.accounts.isEmpty then
-      StateT.liftF[Eff[F], merkle.MerkleTrieState, (Unit, List[GroupMembersAdded])]:
+      StateT.liftF[Eff[F], StoreState, (Unit, List[GroupMembersAdded])]:
         EitherT.leftT:
           TrieFailure("AddAccounts requires non-empty accounts set")
     else
@@ -345,7 +345,7 @@ class GroupsReducer[F[_]: Monad] extends StateReducer0[F, GroupsSchema.GroupsSch
             if groupData.nonce === tx.groupNonce then
               // Add all accounts sequentially and track which were actually added (idempotent)
               val addAccountsEffect = tx.accounts.foldLeft(
-                StateT.pure[Eff[F], merkle.MerkleTrieState, Set[Account]](Set.empty[Account])
+                StateT.pure[Eff[F], StoreState, Set[Account]](Set.empty[Account])
               ) {
                 case (acc, account) =>
                   for
@@ -354,7 +354,7 @@ class GroupsReducer[F[_]: Monad] extends StateReducer0[F, GroupsSchema.GroupsSch
                     newAdded <- maybeExisting match
                       case Some(_) =>
                         // Already a member, skip (idempotent)
-                        StateT.pure[Eff[F], merkle.MerkleTrieState, Set[Account]](alreadyAdded)
+                        StateT.pure[Eff[F], StoreState, Set[Account]](alreadyAdded)
                       case None =>
                         // Add new member
                         for
@@ -375,11 +375,11 @@ class GroupsReducer[F[_]: Monad] extends StateReducer0[F, GroupsSchema.GroupsSch
                 _ <- groupsTable.put(groupsTable.brand(tx.groupId), newData)
               yield ((), List(GroupMembersAdded(tx.groupId, actuallyAdded)))
             else
-              StateT.liftF[Eff[F], merkle.MerkleTrieState, (Unit, List[GroupMembersAdded])]:
+              StateT.liftF[Eff[F], StoreState, (Unit, List[GroupMembersAdded])]:
                 EitherT.leftT:
                   TrieFailure(s"Nonce mismatch: expected ${groupData.nonce}, got ${tx.groupNonce}")
           case None =>
-            StateT.liftF[Eff[F], merkle.MerkleTrieState, (Unit, List[GroupMembersAdded])]:
+            StateT.liftF[Eff[F], StoreState, (Unit, List[GroupMembersAdded])]:
               EitherT.leftT:
                 TrieFailure(s"Group ${tx.groupId.toUtf8.asString} not found")
       yield result
@@ -405,7 +405,7 @@ class GroupsReducer[F[_]: Monad] extends StateReducer0[F, GroupsSchema.GroupsSch
 
     // Validate non-empty accounts set
     if tx.accounts.isEmpty then
-      StateT.liftF[Eff[F], merkle.MerkleTrieState, (Unit, List[GroupMembersRemoved])]:
+      StateT.liftF[Eff[F], StoreState, (Unit, List[GroupMembersRemoved])]:
         EitherT.leftT:
           TrieFailure("RemoveAccounts requires non-empty accounts set")
     else
@@ -416,7 +416,7 @@ class GroupsReducer[F[_]: Monad] extends StateReducer0[F, GroupsSchema.GroupsSch
             if groupData.nonce === tx.groupNonce then
               // Remove all accounts sequentially and track which were actually removed (idempotent)
               val removeAccountsEffect = tx.accounts.foldLeft(
-                StateT.pure[Eff[F], merkle.MerkleTrieState, Set[Account]](Set.empty[Account])
+                StateT.pure[Eff[F], StoreState, Set[Account]](Set.empty[Account])
               ):
                 case (acc, account) =>
                   for
@@ -437,11 +437,11 @@ class GroupsReducer[F[_]: Monad] extends StateReducer0[F, GroupsSchema.GroupsSch
                 _ <- groupsTable.put(groupsTable.brand(tx.groupId), newData)
               yield ((), List(GroupMembersRemoved(tx.groupId, actuallyRemoved)))
             else
-              StateT.liftF[Eff[F], merkle.MerkleTrieState, (Unit, List[GroupMembersRemoved])]:
+              StateT.liftF[Eff[F], StoreState, (Unit, List[GroupMembersRemoved])]:
                 EitherT.leftT:
                   TrieFailure(s"Nonce mismatch: expected ${groupData.nonce}, got ${tx.groupNonce}")
           case None =>
-            StateT.liftF[Eff[F], merkle.MerkleTrieState, (Unit, List[GroupMembersRemoved])]:
+            StateT.liftF[Eff[F], StoreState, (Unit, List[GroupMembersRemoved])]:
               EitherT.leftT:
                 TrieFailure(s"Group ${tx.groupId.toUtf8.asString} not found")
       yield result
@@ -482,11 +482,11 @@ class GroupsReducer[F[_]: Monad] extends StateReducer0[F, GroupsSchema.GroupsSch
               _ <- groupsTable.put(groupsTable.brand(tx.groupId), newData)
             yield ((), List(GroupCoordinatorReplaced(tx.groupId, oldCoordinator, tx.newCoordinator)))
           else
-            StateT.liftF[Eff[F], merkle.MerkleTrieState, (Unit, List[GroupCoordinatorReplaced])]:
+            StateT.liftF[Eff[F], StoreState, (Unit, List[GroupCoordinatorReplaced])]:
               EitherT.leftT:
                 TrieFailure(s"Nonce mismatch: expected ${groupData.nonce}, got ${tx.groupNonce}")
         case None =>
-          StateT.liftF[Eff[F], merkle.MerkleTrieState, (Unit, List[GroupCoordinatorReplaced])]:
+          StateT.liftF[Eff[F], StoreState, (Unit, List[GroupCoordinatorReplaced])]:
             EitherT.leftT:
               TrieFailure(s"Group ${tx.groupId.toUtf8.asString} not found")
     yield result

@@ -7,7 +7,7 @@ import cats.data.{EitherT, StateT}
 import codec.byte.ByteCodec
 import codec.byte.ByteDecoder.ops.*
 import failure.{SigilarisFailure, TrieFailure}
-import merkle.{MerkleTrie, MerkleTrieState}
+import merkle.MerkleTrie
 import merkle.Nibbles.*
 
 /** State table providing key-value storage with compile-time key safety.
@@ -143,21 +143,29 @@ object StateTable:
         val rawKey       = KeyOf.unwrap(k)
         val fullKeyBytes = prefix ++ ByteCodec[K].encode(rawKey)
         val fullKey      = fullKeyBytes.toNibbles
-        StateT: (state: MerkleTrieState) =>
+        StateT: (storeState: StoreState) =>
           MerkleTrie
             .get[F](fullKey)
-            .run(state)
+            .run(storeState.trieState)
             .leftMap(TrieFailure(_): SigilarisFailure)
             .flatMap:
-              case (nextState, None) =>
-                EitherT.rightT[F, SigilarisFailure]((nextState, None))
-              case (nextState, Some(bytes)) =>
+              case (nextTrieState, None) =>
+                // Phase 8: Record read access
+                val nextLog = storeState.accessLog.recordRead(prefix, fullKeyBytes)
+                EitherT.rightT[F, SigilarisFailure]:
+                  (StoreState(nextTrieState, nextLog), None)
+              case (nextTrieState, Some(bytes)) =>
                 bytes.to[V] match
                   case Right(value) =>
+                    // Phase 8: Record read access
+                    val nextLog = storeState.accessLog.recordRead(
+                      prefix,
+                      fullKeyBytes,
+                    )
                     EitherT.rightT[F, SigilarisFailure]:
-                      (nextState, Some(value))
+                      (StoreState(nextTrieState, nextLog), Some(value))
                   case Left(err) =>
-                    EitherT.leftT[F, (MerkleTrieState, Option[V])]:
+                    EitherT.leftT[F, (StoreState, Option[V])]:
                       (err: SigilarisFailure)
 
       def put(k: Key, v: V): StoreF[F][Unit] =
@@ -165,18 +173,26 @@ object StateTable:
         val fullKeyBytes = prefix ++ ByteCodec[K].encode(rawKey)
         val fullKey      = fullKeyBytes.toNibbles
         val valueBytes   = ByteCodec[V].encode(v)
-        StateT: (state: MerkleTrieState) =>
+        StateT: (storeState: StoreState) =>
           MerkleTrie
             .put[F](fullKey, valueBytes)
-            .run(state)
+            .run(storeState.trieState)
             .leftMap(err => TrieFailure(err): SigilarisFailure)
+            .map: (nextTrieState, result) =>
+              // Phase 8: Record write access
+              val nextLog = storeState.accessLog.recordWrite(prefix, fullKeyBytes)
+              (StoreState(nextTrieState, nextLog), result)
 
       def remove(k: Key): StoreF[F][Boolean] =
         val rawKey       = KeyOf.unwrap(k)
         val fullKeyBytes = prefix ++ ByteCodec[K].encode(rawKey)
         val fullKey      = fullKeyBytes.toNibbles
-        StateT: (state: MerkleTrieState) =>
+        StateT: (storeState: StoreState) =>
           MerkleTrie
             .remove[F](fullKey)
-            .run(state)
+            .run(storeState.trieState)
             .leftMap(err => TrieFailure(err): SigilarisFailure)
+            .map: (nextTrieState, result) =>
+              // Phase 8: Record write access (removal is a write)
+              val nextLog = storeState.accessLog.recordWrite(prefix, fullKeyBytes)
+              (StoreState(nextTrieState, nextLog), result)

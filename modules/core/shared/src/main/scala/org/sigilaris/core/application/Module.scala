@@ -559,7 +559,7 @@ object StateModule:
         import cats.data.StateT
         import cats.data.EitherT
 
-        StateT: (s: merkle.MerkleTrieState) =>
+        StateT: (s: StoreState) =>
           // r1Result.run(s) returns EitherT[F, Failure, (State, (Result, Events))]
           r1Result
             .run(s)

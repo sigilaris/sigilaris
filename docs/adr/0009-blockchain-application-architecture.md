@@ -56,7 +56,7 @@ import io.github.iltotore.iron.*
 import io.github.iltotore.iron.constraint.numeric.Positive0
 
 type Eff[F[_]]    = EitherT[F, SigilarisFailure, *]
-type StoreF[F[_]] = StateT[Eff[F], MerkleTrieState, *]
+type StoreF[F[_]] = StateT[Eff[F], StoreState, *]  // Phase 8: wraps MerkleTrieState + AccessLog
 
 final class Entry[Name <: String, K, V](using ByteCodec[K], ByteCodec[V])
 
@@ -92,11 +92,25 @@ trait Tx:
   type Result
   type Event
 
-// 전이기: 정적 증거 + 동적 AccessLog 축적
-final case class AccessLog(
-  reads:  Map[String, Set[ByteVector]],
-  writes: Map[String, Set[ByteVector]]
+// Phase 8: 상태 + 접근 로그 통합
+final case class StoreState(
+  trieState: MerkleTrieState,
+  accessLog: AccessLog
 )
+
+// 접근 로그: 테이블 접두어(ByteVector)별 키 집합 추적
+// - prefix-free 보장으로 테이블 간 거짓 양성 방지
+// - 읽기/쓰기는 unique keys로 계산 (operations 아님)
+final case class AccessLog(
+  reads:  Map[ByteVector, Set[ByteVector]],  // tablePrefix → set of full keys
+  writes: Map[ByteVector, Set[ByteVector]]
+):
+  def recordRead(tablePrefix: ByteVector, key: ByteVector): AccessLog
+  def recordWrite(tablePrefix: ByteVector, key: ByteVector): AccessLog
+  def conflictsWith(other: AccessLog): Boolean  // W∩W or R∩W
+  def readCount: Int   // sum of unique keys read across all tables
+  def writeCount: Int  // sum of unique keys written across all tables
+  def exceedsLimits(maxReads: Int, maxWrites: Int): Boolean  // helper for enforcement
 
 trait StateReducer[F[_], Path <: Tuple, Schema <: Tuple]:
   def apply[T <: Tx](tx: T)(using Requires[T#Reads, Schema], Requires[T#Writes, Schema])
@@ -760,14 +774,30 @@ Phase 7 — Law & Property Tests ✅ (2025-10-31 완료)
   - OrderedCodec required only for KEY types (not path encoding)
   - Path encoding is prefix-free but does NOT preserve lexicographic ordering (intentional)
 
-Phase 8 — AccessLog & Conflicts
+Phase 8 — AccessLog & Conflicts ✅ **COMPLETED**
 - Deliverables
-  - `AccessLog` accumulation and simple conflict predicates (W∩W, R∩W)
+  - ✅ `AccessLog` accumulation and simple conflict predicates (W∩W, R∩W)
+  - ✅ `StoreState` wrapper integrating AccessLog with MerkleTrieState
+  - ✅ Automatic access recording in `StateTable` operations
 - Tasks
-  - Integrate logging into reducers; add options for Bloom/roaring for reads
-  - Size caps and metrics surfaces
+  - ✅ Integrate logging into StateTable operations (get/put/remove record accesses)
+  - ✅ Size caps and metrics surfaces (readCount, writeCount, exceedsLimits helper)
+  - 📋 DEFERRED: Bloom/roaring filters for read optimization (premature optimization)
+  - 📋 DEFERRED: Automatic enforcement of size limits (exceedsLimits exposed but not called)
 - Criteria
-  - Conflicts detected on crafted overlapping txs; memory bounded by policy
+  - ✅ Conflicts detected on crafted overlapping txs (41 comprehensive tests)
+  - ⚠️  Memory bounds available via exceedsLimits helper, enforcement deferred to higher layer
+  - ✅ All tests passing (311 total, including 41 AccessLogTest cases)
+- Test Coverage
+  - `AccessLogTest`: 41 tests covering basic operations, combine, conflicts, metrics, real-world scenarios
+  - Conflict detection validated: W∩W (write-write), R∩W (read-write), W∩R (write-read)
+  - Real-world scenarios: concurrent account creates, parallel operations, batch size limits
+  - Integration: StateTable operations automatically record accesses in AccessLog
+- Implementation Notes
+  - AccessLog keys by ByteVector table prefix (not String) for precise prefix-free guarantees
+  - readCount/writeCount measure unique keys (Set size), not individual operation counts
+  - exceedsLimits is a query helper; automatic enforcement deferred to transaction execution layer
+  - StoreState wrapper combines MerkleTrieState + AccessLog in single state monad
 
 ## References
 - 구현 레퍼런스: `modules/core/shared/src/main/scala/org/sigilaris/core/merkle/MerkleTrie.scala`

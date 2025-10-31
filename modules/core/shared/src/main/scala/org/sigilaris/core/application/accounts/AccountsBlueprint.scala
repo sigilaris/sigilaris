@@ -123,22 +123,22 @@ class AccountsReducer[F[_]: Monad] extends StateReducer0[F, AccountsSchema.Accou
 
     // First check: signer is the account owner
     if accountSig.account === Account.Named(targetName) then
-      StateT.pure[Eff[F], merkle.MerkleTrieState, Unit](())
+      StateT.pure[Eff[F], StoreState, Unit](())
     else
       // Second check: signer is the guardian
       for
         maybeInfo <- accountsTable.get(accountsTable.brand(targetName))
         _ <- maybeInfo match
           case Some(info) if info.guardian.contains(accountSig.account) =>
-            StateT.pure[Eff[F], merkle.MerkleTrieState, Unit](())
+            StateT.pure[Eff[F], StoreState, Unit](())
           case Some(_) =>
-            StateT.liftF[Eff[F], merkle.MerkleTrieState, Unit]:
+            StateT.liftF[Eff[F], StoreState, Unit]:
               EitherT.leftT:
                 CryptoFailure(
                   s"Unauthorized: ${accountSig.account} is not owner or guardian of account ${targetName.asString}"
                 )
           case None =>
-            StateT.liftF[Eff[F], merkle.MerkleTrieState, Unit]:
+            StateT.liftF[Eff[F], StoreState, Unit]:
               EitherT.leftT:
                 TrieFailure(s"Account ${targetName.asString} not found during authorization check")
       yield ()
@@ -181,7 +181,8 @@ class AccountsReducer[F[_]: Monad] extends StateReducer0[F, AccountsSchema.Accou
 
     recoveryResult match
       case Left(err) =>
-        StateT.liftF(EitherT.leftT(CryptoFailure(s"Signature recovery failed: ${err.msg}")))
+        StateT.liftF[Eff[F], StoreState, Unit]:
+          EitherT.leftT[F, Unit](CryptoFailure(s"Signature recovery failed: ${err.msg}"))
 
       case Right(recoveredPubKey) =>
         // Step 3: Derive KeyId20 from recovered public key
@@ -195,7 +196,7 @@ class AccountsReducer[F[_]: Monad] extends StateReducer0[F, AccountsSchema.Accou
               maybeKeyInfo <- nameKeyTable.get(nameKeyTable.brand((name, recoveredKeyId)))
               _ <- maybeKeyInfo match
                 case None =>
-                  StateT.liftF[Eff[F], merkle.MerkleTrieState, Unit]:
+                  StateT.liftF[Eff[F], StoreState, Unit]:
                     EitherT.leftT:
                       CryptoFailure(s"Key ${recoveredKeyId.bytes.toHex} not registered for account ${name.asString}")
                 case Some(keyInfo) =>
@@ -214,19 +215,19 @@ class AccountsReducer[F[_]: Monad] extends StateReducer0[F, AccountsSchema.Accou
 
                   keyInfo.expiresAt match
                     case Some(expiresAt) if txTimestamp.isAfter(expiresAt) =>
-                      StateT.liftF[Eff[F], merkle.MerkleTrieState, Unit]:
+                      StateT.liftF[Eff[F], StoreState, Unit]:
                         EitherT.leftT:
                           CryptoFailure(s"Key expired at $expiresAt, transaction timestamp: $txTimestamp")
                     case _ =>
-                      StateT.pure[Eff[F], merkle.MerkleTrieState, Unit](())
+                      StateT.pure[Eff[F], StoreState, Unit](())
             yield ()
 
           case Account.Unnamed(keyId) =>
             // For Unnamed accounts: key ID must match account ID directly
             if recoveredKeyId === keyId then
-              StateT.pure[Eff[F], merkle.MerkleTrieState, Unit](())
+              StateT.pure[Eff[F], StoreState, Unit](())
             else
-              StateT.liftF[Eff[F], merkle.MerkleTrieState, Unit]:
+              StateT.liftF[Eff[F], StoreState, Unit]:
                 EitherT.leftT:
                   CryptoFailure(s"Recovered key ${recoveredKeyId.bytes.toHex} does not match unnamed account ${keyId.bytes.toHex}")
 
@@ -254,7 +255,7 @@ class AccountsReducer[F[_]: Monad] extends StateReducer0[F, AccountsSchema.Accou
       case tx: RemoveAccount =>
         verifyAndHandleRemoveAccount(tx, signedTx.sig)
       case _ =>
-        StateT.liftF[Eff[F], merkle.MerkleTrieState, (Unit, List[Nothing])](
+        StateT.liftF[Eff[F], StoreState, (Unit, List[Nothing])](
           EitherT.leftT[F, (Unit, List[Nothing])](TrieFailure(s"Unknown transaction type: ${tx.getClass.getName}"))
         )
 
@@ -276,7 +277,7 @@ class AccountsReducer[F[_]: Monad] extends StateReducer0[F, AccountsSchema.Accou
 
       // Verify recovered key matches the initial key being registered
       if recoveredKeyId =!= tx.initialKeyId then
-        StateT.liftF[Eff[F], merkle.MerkleTrieState, (Unit, List[AccountCreated])]:
+        StateT.liftF[Eff[F], StoreState, (Unit, List[AccountCreated])]:
           EitherT.leftT:
             CryptoFailure(
               s"Recovered key ${recoveredKeyId.bytes.toHex} does not match initialKeyId ${tx.initialKeyId.bytes.toHex}"
@@ -287,7 +288,7 @@ class AccountsReducer[F[_]: Monad] extends StateReducer0[F, AccountsSchema.Accou
           maybeExisting <- accountsTable.get(accountsTable.brand(tx.name))
           result <- maybeExisting match
             case Some(_) =>
-              StateT.liftF[Eff[F], merkle.MerkleTrieState, (Unit, List[AccountCreated])]:
+              StateT.liftF[Eff[F], StoreState, (Unit, List[AccountCreated])]:
                 EitherT.leftT:
                   TrieFailure(s"Account ${tx.name.asString} already exists")
             case None =>
@@ -301,7 +302,7 @@ class AccountsReducer[F[_]: Monad] extends StateReducer0[F, AccountsSchema.Accou
 
     recoveryResult match
       case Left(err) =>
-        StateT.liftF[Eff[F], merkle.MerkleTrieState, (Unit, List[AccountCreated])]:
+        StateT.liftF[Eff[F], StoreState, (Unit, List[AccountCreated])]:
           EitherT.leftT:
             CryptoFailure(s"Signature recovery failed for CreateNamedAccount: ${err.msg}")
       case Right(recoveredPubKey) =>
@@ -338,10 +339,10 @@ class AccountsReducer[F[_]: Monad] extends StateReducer0[F, AccountsSchema.Accou
               _ <- accountsTable.put(accountsTable.brand(tx.name), newInfo)
             yield ((), List(AccountUpdated(tx.name, tx.newGuardian)))
           else
-            StateT.liftF[Eff[F], merkle.MerkleTrieState, (Unit, List[AccountUpdated])]:
+            StateT.liftF[Eff[F], StoreState, (Unit, List[AccountUpdated])]:
               EitherT.leftT(TrieFailure(s"Nonce mismatch: expected ${info.nonce}, got ${tx.nonce}"))
         case None =>
-          StateT.liftF[Eff[F], merkle.MerkleTrieState, (Unit, List[AccountUpdated])]:
+          StateT.liftF[Eff[F], StoreState, (Unit, List[AccountUpdated])]:
             EitherT.leftT(TrieFailure(s"Account ${tx.name.asString} not found"))
     yield result
 
@@ -369,13 +370,13 @@ class AccountsReducer[F[_]: Monad] extends StateReducer0[F, AccountsSchema.Accou
         case Some(info) =>
           if info.nonce === tx.nonce then
             // Add all keys sequentially
-            val addKeysEffect = tx.keyIds.foldLeft(StateT.pure[Eff[F], merkle.MerkleTrieState, Unit](())) {
+            val addKeysEffect = tx.keyIds.foldLeft(StateT.pure[Eff[F], StoreState, Unit](())) {
               case (acc, (keyId, description)) =>
                 for
                   _ <- acc
                   maybeExisting <- nameKeyTable.get(nameKeyTable.brand((tx.name, keyId)))
                   _ <- maybeExisting match
-                    case Some(_) => StateT.pure[Eff[F], merkle.MerkleTrieState, Unit](()) // Skip existing
+                    case Some(_) => StateT.pure[Eff[F], StoreState, Unit](()) // Skip existing
                     case None =>
                       val keyInfo = KeyInfo(
                         addedAt = tx.envelope.createdAt,
@@ -395,10 +396,10 @@ class AccountsReducer[F[_]: Monad] extends StateReducer0[F, AccountsSchema.Accou
               _ <- accountsTable.put(accountsTable.brand(tx.name), newInfo)
             yield ((), List(KeysAdded(tx.name, tx.keyIds.keySet)))
           else
-            StateT.liftF[Eff[F], merkle.MerkleTrieState, (Unit, List[KeysAdded])]:
+            StateT.liftF[Eff[F], StoreState, (Unit, List[KeysAdded])]:
               EitherT.leftT(TrieFailure(s"Nonce mismatch: expected ${info.nonce}, got ${tx.nonce}"))
         case None =>
-          StateT.liftF[Eff[F], merkle.MerkleTrieState, (Unit, List[KeysAdded])]:
+          StateT.liftF[Eff[F], StoreState, (Unit, List[KeysAdded])]:
             EitherT.leftT(TrieFailure(s"Account ${tx.name.asString} not found"))
     yield result
 
@@ -426,7 +427,7 @@ class AccountsReducer[F[_]: Monad] extends StateReducer0[F, AccountsSchema.Accou
         case Some(info) =>
           if info.nonce === tx.nonce then
             // Remove all keys sequentially
-            val removeKeysEffect = tx.keyIds.foldLeft(StateT.pure[Eff[F], merkle.MerkleTrieState, Unit](())):
+            val removeKeysEffect = tx.keyIds.foldLeft(StateT.pure[Eff[F], StoreState, Unit](())):
               case (acc, keyId) =>
                 for
                   _ <- acc
@@ -442,11 +443,11 @@ class AccountsReducer[F[_]: Monad] extends StateReducer0[F, AccountsSchema.Accou
               _ <- accountsTable.put(accountsTable.brand(tx.name), newInfo)
             yield ((), List(KeysRemoved(tx.name, tx.keyIds)))
           else
-            StateT.liftF[Eff[F], merkle.MerkleTrieState, (Unit, List[KeysRemoved])]:
+            StateT.liftF[Eff[F], StoreState, (Unit, List[KeysRemoved])]:
               EitherT.leftT:
                 TrieFailure(s"Nonce mismatch: expected ${info.nonce}, got ${tx.nonce}")
         case None =>
-          StateT.liftF[Eff[F], merkle.MerkleTrieState, (Unit, List[KeysRemoved])]:
+          StateT.liftF[Eff[F], StoreState, (Unit, List[KeysRemoved])]:
             EitherT.leftT:
               TrieFailure(s"Account ${tx.name.asString} not found")
     yield result
@@ -482,11 +483,11 @@ class AccountsReducer[F[_]: Monad] extends StateReducer0[F, AccountsSchema.Accou
               // TODO: Add streaming API to iterate over all keys with prefix (name, *)
               ((), List(AccountRemoved(tx.name)))
           else
-            StateT.liftF[Eff[F], merkle.MerkleTrieState, (Unit, List[AccountRemoved])]:
+            StateT.liftF[Eff[F], StoreState, (Unit, List[AccountRemoved])]:
               EitherT.leftT:
                 TrieFailure(s"Nonce mismatch: expected ${info.nonce}, got ${tx.nonce}")
         case None =>
-          StateT.liftF[Eff[F], merkle.MerkleTrieState, (Unit, List[AccountRemoved])]:
+          StateT.liftF[Eff[F], StoreState, (Unit, List[AccountRemoved])]:
             EitherT.leftT(TrieFailure(s"Account ${tx.name.asString} not found"))
     yield result
 

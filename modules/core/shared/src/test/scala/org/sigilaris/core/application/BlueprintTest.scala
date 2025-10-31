@@ -202,23 +202,22 @@ class BlueprintTest extends FunSuite:
     assert(table1 ne table2, "Each mount should create fresh table instances")
 
     // Verify prefixes by doing a put/get and checking the keys in the trie
-    import merkle.MerkleTrieState
     val key = table1.brand(Utf8("test"))
     val value = 42L
 
     // Put to table1
-    val (state1, _) = table1.put(key, value).run(MerkleTrieState.empty).value match
+    val (state1, _) = table1.put(key, value).run(StoreState.empty).value match
       case Right(result) => result
       case Left(err) => fail(s"Put failed: $err")
 
     // Put same logical key to table2
     val key2 = table2.brand(Utf8("test"))
-    val (state2, _) = table2.put(key2, value).run(MerkleTrieState.empty).value match
+    val (state2, _) = table2.put(key2, value).run(StoreState.empty).value match
       case Right(result) => result
       case Left(err) => fail(s"Put failed: $err")
 
     // The states should have different roots because the actual keys differ
-    assert(state1.root != state2.root, "Different paths should produce different trie keys")
+    assert(state1.trieState.root != state2.trieState.root, "Different paths should produce different trie keys")
 
   test("mounted tables carry correct computed prefixes"):
     val blueprint = createSimpleBlueprint()
@@ -238,12 +237,11 @@ class BlueprintTest extends FunSuite:
     val fullKey = expectedPrefix ++ encodedKey
 
     // Put a value using the table
-    import merkle.MerkleTrieState
     import merkle.Nibbles.*
     import codec.byte.ByteDecoder.ops.*
 
     val key = table.brand(testKey)
-    val (state, _) = table.put(key, 100L).run(MerkleTrieState.empty).value match
+    val (state, _) = table.put(key, 100L).run(StoreState.empty).value match
       case Right(result) => result
       case Left(err) => fail(s"Put failed: $err")
 
@@ -251,7 +249,7 @@ class BlueprintTest extends FunSuite:
     val fullKeyNibbles = fullKey.toNibbles
 
     // Verify the key exists in the trie by trying to get it
-    val retrieved = merkle.MerkleTrie.get[Id](fullKeyNibbles).runA(state).value match
+    val retrieved = merkle.MerkleTrie.get[Id](fullKeyNibbles).runA(state.trieState).value match
       case Right(Some(bytes)) => bytes
       case Right(None) => fail("Key should exist in trie")
       case Left(err) => fail(s"Get failed: $err")

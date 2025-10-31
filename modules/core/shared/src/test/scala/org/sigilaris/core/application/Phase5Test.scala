@@ -272,7 +272,7 @@ class Phase5Test extends FunSuite:
     val account = Account.Named(Utf8("testuser"))
     val tx = CreateAccount(Address(Utf8("addr1")), AccountData(Utf8("account1")))
     val signedTx = signTx(tx, account)
-    val initialState = merkle.MerkleTrieState.empty
+    val initialState = StoreState.empty
 
     val result = extended.reducer.apply(signedTx).run(initialState).value.unsafeRunSync()
 
@@ -358,7 +358,7 @@ class Phase5Test extends FunSuite:
     val account = Account.Named(Utf8("testuser"))
     val tx = CreateGroup(Address(Utf8("addr2")), GroupInfo(Utf8("group1")))
     val signedTx = signTx(tx, account)
-    val initialState = merkle.MerkleTrieState.empty
+    val initialState = StoreState.empty
 
     val result = extended.reducer.apply(signedTx).run(initialState).value.unsafeRunSync()
 
@@ -432,7 +432,7 @@ class Phase5Test extends FunSuite:
     val account = Account.Named(Utf8("testuser"))
     val tx = CreateAccount(Address(Utf8("addr3")), AccountData(Utf8("account3")))
     val signedTx = signTx(tx, account)
-    val initialState = merkle.MerkleTrieState.empty
+    val initialState = StoreState.empty
 
     val result = extended.reducer.apply(signedTx).run(initialState).value.unsafeRunSync()
 
