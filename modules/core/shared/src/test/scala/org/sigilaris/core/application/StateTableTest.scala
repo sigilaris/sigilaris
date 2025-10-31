@@ -127,3 +127,133 @@ class StateTableTest extends FunSuite:
          |          ^
          |""".stripMargin
     )
+
+  // Phase 8: Integration tests for AccessLog recording
+  test("StateTable operations record accesses in AccessLog"):
+    val prefix = hex"0001"
+    val table = StateTable.atPrefix[Id, "balances", Utf8, Long](prefix)
+
+    val aliceKey = table.brand(Utf8("alice"))
+    val bobKey = table.brand(Utf8("bob"))
+    val initialState = StoreState.empty
+
+    // Perform operations and check AccessLog
+    val charlieKey = table.brand(Utf8("charlie"))
+    val program = for
+      _ <- table.get(aliceKey)           // Read alice
+      _ <- table.put(aliceKey, 100L)     // Write alice
+      _ <- table.get(aliceKey)           // Read alice (deduplicated in log)
+      _ <- table.get(bobKey)             // Read bob
+      _ <- table.put(bobKey, 200L)       // Write bob
+      _ <- table.put(charlieKey, 300L)   // Write charlie
+    yield ()
+
+    val result = program.run(initialState).value
+
+    result match
+      case Right((finalState, _)) =>
+        val log = finalState.accessLog
+        
+        // Verify read count (2 unique keys: alice, bob)
+        assertEquals(log.readCount, 2, "Expected 2 unique keys read")
+        
+        // Verify write count (3 unique keys: alice, bob, charlie)
+        assertEquals(log.writeCount, 3, "Expected 3 unique keys written")
+        
+        // Verify the log contains the correct table prefix
+        assert(log.reads.contains(prefix), "Reads should include table prefix")
+        assert(log.writes.contains(prefix), "Writes should include table prefix")
+        
+      case Left(err) =>
+        fail(s"Expected successful operations, got Left($err)")
+
+  test("StateTable: parallel operations on different keys don't conflict"):
+    val prefix = hex"0001"
+    val table = StateTable.atPrefix[Id, "balances", Utf8, Long](prefix)
+
+    val aliceKey = table.brand(Utf8("alice"))
+    val bobKey = table.brand(Utf8("bob"))
+    val initialState = StoreState.empty
+
+    // Transaction 1: operations on alice
+    val tx1 = for
+      _ <- table.get(aliceKey)
+      _ <- table.put(aliceKey, 100L)
+    yield ()
+
+    // Transaction 2: operations on bob
+    val tx2 = for
+      _ <- table.get(bobKey)
+      _ <- table.put(bobKey, 200L)
+    yield ()
+
+    val result1 = tx1.run(initialState).value
+    val result2 = tx2.run(initialState).value
+
+    (result1, result2) match
+      case (Right((state1, _)), Right((state2, _))) =>
+        val log1 = state1.accessLog
+        val log2 = state2.accessLog
+        
+        // Verify no conflict - different keys
+        assertEquals(log1.conflictsWith(log2), false, 
+          "Operations on different keys should not conflict")
+        
+      case _ =>
+        fail("Expected both transactions to succeed")
+
+  test("StateTable: overlapping writes cause W∩W conflict"):
+    val prefix = hex"0001"
+    val table = StateTable.atPrefix[Id, "balances", Utf8, Long](prefix)
+
+    val aliceKey = table.brand(Utf8("alice"))
+    val initialState = StoreState.empty
+
+    // Transaction 1: write to alice
+    val tx1 = table.put(aliceKey, 100L)
+
+    // Transaction 2: write to alice
+    val tx2 = table.put(aliceKey, 200L)
+
+    val result1 = tx1.run(initialState).value
+    val result2 = tx2.run(initialState).value
+
+    (result1, result2) match
+      case (Right((state1, _)), Right((state2, _))) =>
+        val log1 = state1.accessLog
+        val log2 = state2.accessLog
+        
+        // Verify W∩W conflict
+        assertEquals(log1.conflictsWith(log2), true, 
+          "Concurrent writes to same key should conflict (W∩W)")
+        
+      case _ =>
+        fail("Expected both transactions to succeed")
+
+  test("StateTable: read-write on same key causes R∩W conflict"):
+    val prefix = hex"0001"
+    val table = StateTable.atPrefix[Id, "balances", Utf8, Long](prefix)
+
+    val aliceKey = table.brand(Utf8("alice"))
+    val initialState = StoreState.empty
+
+    // Transaction 1: read alice
+    val tx1 = table.get(aliceKey)
+
+    // Transaction 2: write alice
+    val tx2 = table.put(aliceKey, 100L)
+
+    val result1 = tx1.run(initialState).value
+    val result2 = tx2.run(initialState).value
+
+    (result1, result2) match
+      case (Right((state1, _)), Right((state2, _))) =>
+        val log1 = state1.accessLog
+        val log2 = state2.accessLog
+        
+        // Verify R∩W conflict
+        assertEquals(log1.conflictsWith(log2), true, 
+          "Read and write on same key should conflict (R∩W)")
+        
+      case _ =>
+        fail("Expected both transactions to succeed")
