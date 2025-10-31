@@ -201,3 +201,86 @@ class PrefixCollisionTest extends FunSuite:
            "Should mention uniqueness or prefix-free constraint")
     assert(errors.contains("data"), "Should mention the duplicate table name 'data'")
     assert(errors.contains("DifferentNames") || errors.contains("UniqueNames"), "Should show the constraint in error trace")
+
+  // Test Case 11: PrefixFreeValidator utility tests
+  test("PrefixFreeValidator detects identical prefixes"):
+    import scodec.bits.ByteVector
+
+    val prefix1 = ByteVector(0x01, 0x02, 0x03)
+    val prefix2 = ByteVector(0x01, 0x02, 0x03)
+    val prefix3 = ByteVector(0x04, 0x05, 0x06)
+
+    val result = PrefixFreeValidator.validate(List(prefix1, prefix2, prefix3))
+    result match
+      case PrefixFreeValidator.IdenticalPrefixes(p, count) =>
+        assert(p == prefix1 && count == 2)
+      case _ =>
+        fail(s"Expected IdenticalPrefixes, got $result")
+
+  test("PrefixFreeValidator detects prefix collision"):
+    import scodec.bits.ByteVector
+
+    val short = ByteVector(0x01, 0x02)
+    val long  = ByteVector(0x01, 0x02, 0x03, 0x04)
+
+    val result = PrefixFreeValidator.validate(List(short, long))
+    result match
+      case PrefixFreeValidator.PrefixCollision(p1, p2) =>
+        assert(p1 == short && p2 == long)
+      case _ =>
+        fail(s"Expected PrefixCollision, got $result")
+
+  test("PrefixFreeValidator accepts valid prefix-free set"):
+    import scodec.bits.ByteVector
+
+    val prefix1 = ByteVector(0x01, 0x02, 0x03)
+    val prefix2 = ByteVector(0x01, 0x03, 0x03)
+    val prefix3 = ByteVector(0x02, 0x02, 0x03)
+
+    val result = PrefixFreeValidator.validate(List(prefix1, prefix2, prefix3))
+    assert(result == PrefixFreeValidator.Valid)
+
+  test("PrefixFreeValidator.wouldCollide detects collision with existing"):
+    import scodec.bits.ByteVector
+
+    val existing = List(
+      ByteVector(0x01, 0x02, 0x03),
+      ByteVector(0x04, 0x05, 0x06)
+    )
+
+    // Identical prefix
+    assert(PrefixFreeValidator.wouldCollide(ByteVector(0x01, 0x02, 0x03), existing))
+
+    // New is prefix of existing
+    assert(PrefixFreeValidator.wouldCollide(ByteVector(0x01, 0x02), existing))
+
+    // Existing is prefix of new
+    assert(PrefixFreeValidator.wouldCollide(ByteVector(0x01, 0x02, 0x03, 0x04), existing))
+
+    // No collision
+    assert(!PrefixFreeValidator.wouldCollide(ByteVector(0x07, 0x08, 0x09), existing))
+
+  test("PrefixFreeValidator with table prefixes"):
+    val prefix1 = tablePrefix[("app" *: EmptyTuple), "accounts"]
+    val prefix2 = tablePrefix[("app" *: EmptyTuple), "balances"]
+    val prefix3 = tablePrefix[("app" *: EmptyTuple), "metadata"]
+
+    val result = PrefixFreeValidator.validate(List(prefix1, prefix2, prefix3))
+    assert(result == PrefixFreeValidator.Valid, s"Table prefixes should be prefix-free, got: ${PrefixFreeValidator.formatResult(result)}")
+
+  test("PrefixFreeValidator.validateSchema compile-time check"):
+    // This verifies the inline validateSchema function works correctly
+    type Path   = ("app", "accounts")
+    type Schema = Entry["balances", Utf8, Long] *: Entry["accounts", Utf8, Utf8] *: EmptyTuple
+
+    val result = PrefixFreeValidator.validateSchema[Path, Schema]
+    assert(result == PrefixFreeValidator.Valid, s"Schema should be prefix-free, got: ${PrefixFreeValidator.formatResult(result)}")
+
+  test("PrefixFreeValidator handles edge case: empty list"):
+    val result = PrefixFreeValidator.validate(Nil)
+    assert(result == PrefixFreeValidator.Valid)
+
+  test("PrefixFreeValidator handles edge case: single prefix"):
+    import scodec.bits.ByteVector
+    val result = PrefixFreeValidator.validate(List(ByteVector(0x01, 0x02)))
+    assert(result == PrefixFreeValidator.Valid)
