@@ -590,17 +590,19 @@ val combined = StateModule.extend(module1, module2)
   - 타입 레벨 복잡도 증가 및 에러 메시지 가독성 저하 가능.
   - 접두어 prefix-free 증거 합성 시(모듈 집합 결합) 증명 도구가 필요.
 
-## Compile-Time Checks (권장)
-- ByteCodec 존재: 모든 `Entry[Name, K, V]`에 `ByteCodec[K]`, `ByteCodec[V]` 필요.
-- UniqueNames: 모듈 스키마(및 의존 모듈 포함) 내 테이블 이름 중복 금지.
-- PrefixFreePath(Path, Schema): `encodePath(Path) ++ encodeSegment(Name)` 바이트(길이 접두) 기준 동일/접두어-관계 금지.
-- OrderedCodec[K]: 범위/사전식 스트림을 쓰는 테이블의 키 인코딩은 순서 보존을 증명.
-- Requires: 각 `Tx`의 `Reads`/`Writes` ⊆ 모듈 스키마 증거 필요.
-- DAppStateTag: DApp 상태를 소비하는 API는 `using DAppStateTag[S]` 요구.
-- Dependency DAG: 모듈 의존 관계는 비순환, 결합 시 UniqueNames/PrefixFree 유지.
-- FixedSize[K, N]: 고정 길이 키 요구 테이블에 크기 불변을 강제.
-- Proof Coupling: `MerkleProof[Name, K]`에 테이블/키 타입 팬텀을 부여해 교차 사용 방지.
-- Effect Stack: 테이블/리듀서는 고정 스택(`StateT[EitherT[...]]`)을 사용, NodeStore 증거 없인 호출 불가.
+## Compile-Time Checks (현황 및 후속 과제)
+- **ByteCodec** ✅: `StateTypes.scala`의 `Entry` 생성 시 키/값 코덱 evidence를 요구하고, `StateTable.atPrefix`에서도 동일 증거를 재노출한다.
+- **Requires** ✅: `Evidence.scala`의 `Requires`/`Contains` 타입클래스가 트랜잭션 `Reads`·`Writes ⊆ Schema`를 보증하며, `StateReducer`·`StateReducer0` 전역에서 `using Requires[...]`로 강제한다.
+- **UniqueNames** ✅: 동일 파일의 `UniqueNames`/`NameNotInSchema`가 스키마 내 중복 테이블 이름을 컴파일 타임에 차단하고, `ModuleBlueprint`·`StateModule`·`composeBlueprint` 모두 evidence를 요구한다.
+- **PrefixFreePath** ✅: `Evidence.scala`의 `PrefixFreePath`가 길이 접두 인코딩과 `UniqueNames` 조합으로 접두어 충돌 방지 증거를 제공하며, `StateModule.mount`/`extend`에서 소환한다.
+- **Effect Stack** ✅: `StateTypes.scala`에서 `Eff[F] = EitherT[F, SigilarisFailure, *]`, `StoreF[F] = StateT[Eff[F], StoreState, *]` 별칭으로 고정 효과 스택을 정의하고 전역 API가 이를 사용한다.
+- **OrderedCodec[K]** ⚠️: `OrderedCodec.scala`와 대응 테스트는 준비돼 있으나, `StateTable` 스트리밍 API가 아직 `using OrderedCodec` 제약을 요구하지 않는다. 향후 스트리밍/범위 조회 기능에 제약을 연결해야 한다.
+- **DAppStateTag** ⛔: `DAppState`/`DAppStateTag` 타입과 소비 측 증거 요구가 미구현 상태다.
+- **Dependency DAG** ⛔: 모듈 의존 그래프 순환 검증 evidence가 없으며, 현재는 `TablesProvider.DisjointSchemas` 수준에 머물러 있다.
+- **FixedSize[K, N]** ⛔: 고정 길이 키 증거 타입과 호출부가 존재하지 않는다.
+- **Proof Coupling** ⛔: `MerkleProof`에 테이블/키 팬텀을 부여해 교차 사용을 막는 구조가 아직 도입되지 않았다.
+
+> **다음 단계 제안**: OrderedCodec 제약을 스트리밍 API에 연결하고, DAppStateTag·Dependency DAG 등 미구현 항목을 우선순위에 따라 도입하는 작업이 자연스러운 후속 과제다.
 
 ## Open Questions
 - TablesProvider 병합 전략: Needs ≠ EmptyTuple 모듈을 extend/compose 할 때 어떤 증거를 요구하고, 충돌을 어떻게 보고할 것인가? (Phase 5.6)
