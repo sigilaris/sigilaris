@@ -12,6 +12,8 @@ import datatype.{BigNat, Utf8}
 import merkle.{MerkleTrie, MerkleTrieNode}
 import scodec.bits.ByteVector
 import application.accounts.{Account, KeyId20, TxEnvelope}
+import GroupsEvent.*
+import GroupsResult.*
 
 /** Tests for the Groups blueprint (Phase 6).
   *
@@ -93,10 +95,10 @@ class GroupBlueprintTest extends FunSuite:
     assert(result.isRight, s"Expected successful group creation, got: $result")
 
     result match
-      case Right((newState, ((), events))) =>
+      case Right((newState, (res, events))) =>
+        assertEquals(res.value, ())
         assertEquals(events.size, 1)
-        assert(events.head.isInstanceOf[GroupCreated])
-        val event = events.head.asInstanceOf[GroupCreated]
+        val event = events.head.value
         assertEquals(event.groupId, groupId)
         assertEquals(event.coordinator, coordinator)
         assertEquals(event.name, Utf8("Developers Group"))
@@ -186,10 +188,10 @@ class GroupBlueprintTest extends FunSuite:
     assert(result2.isRight, s"Expected successful member addition, got: $result2")
 
     result2 match
-      case Right((_, ((), events))) =>
+      case Right((_, (res, events))) =>
+        assertEquals(res.value, ())
         assertEquals(events.size, 1)
-        assert(events.head.isInstanceOf[GroupMembersAdded])
-        val event = events.head.asInstanceOf[GroupMembersAdded]
+        val event = events.head.value
         assertEquals(event.groupId, groupId)
         assertEquals(event.added.size, 2)
         assert(event.added.contains(bobAccount))
@@ -265,9 +267,10 @@ class GroupBlueprintTest extends FunSuite:
     assert(result3.isRight)
 
     result3 match
-      case Right((_, ((), events))) =>
+      case Right((_, (res, events))) =>
+        assertEquals(res.value, ())
         assertEquals(events.size, 1)
-        val event = events.head.asInstanceOf[GroupMembersAdded]
+        val event = events.head.value
         assertEquals(event.added.size, 0, "Bob was already a member, should report 0 added")
       case Left(err) =>
         fail(s"Unexpected error: $err")
@@ -342,10 +345,10 @@ class GroupBlueprintTest extends FunSuite:
     assert(result3.isRight)
 
     result3 match
-      case Right((_, ((), events))) =>
+      case Right((_, (res, events))) =>
+        assertEquals(res.value, ())
         assertEquals(events.size, 1)
-        assert(events.head.isInstanceOf[GroupMembersRemoved])
-        val event = events.head.asInstanceOf[GroupMembersRemoved]
+        val event = events.head.value
         assertEquals(event.groupId, groupId)
         assertEquals(event.removed.size, 1)
         assert(event.removed.contains(bobAccount))
@@ -401,10 +404,10 @@ class GroupBlueprintTest extends FunSuite:
     assert(result2.isRight)
 
     result2 match
-      case Right((_, ((), events))) =>
+      case Right((_, (res, events))) =>
+        assertEquals(res.value, ())
         assertEquals(events.size, 1)
-        assert(events.head.isInstanceOf[GroupCoordinatorReplaced])
-        val event = events.head.asInstanceOf[GroupCoordinatorReplaced]
+        val event = events.head.value
         assertEquals(event.groupId, groupId)
         assertEquals(event.oldCoordinator, coordinator)
         assertEquals(event.newCoordinator, newCoordinator)
@@ -456,10 +459,10 @@ class GroupBlueprintTest extends FunSuite:
     assert(result2.isRight)
 
     result2 match
-      case Right((_, ((), events))) =>
+      case Right((_, (res, events))) =>
+        assertEquals(res.value, ())
         assertEquals(events.size, 1)
-        assert(events.head.isInstanceOf[GroupDisbanded])
-        val event = events.head.asInstanceOf[GroupDisbanded]
+        val event = events.head.value
         assertEquals(event.groupId, groupId)
       case Left(err) =>
         fail(s"Unexpected error: $err")
@@ -671,8 +674,9 @@ class GroupBlueprintTest extends FunSuite:
     assert(result5.isRight, "Should succeed when disbanding empty group")
 
     result5 match
-      case Right((_, ((), events))) =>
+      case Right((_, (res, events))) =>
+        assertEquals(res.value, ())
         assertEquals(events.size, 1)
-        assert(events.head.isInstanceOf[GroupDisbanded])
+        assert(events.head.value.isInstanceOf[GroupDisbanded])
       case Left(err) =>
         fail(s"Unexpected error: $err")

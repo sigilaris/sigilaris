@@ -11,6 +11,8 @@ import munit.FunSuite
 import datatype.{BigNat, Utf8}
 import merkle.{MerkleTrie, MerkleTrieNode}
 import scodec.bits.ByteVector
+import AccountsEvent.*
+import AccountsResult.*
 
 /** Tests for the Accounts blueprint (Phase 6).
   *
@@ -79,10 +81,10 @@ class AccountsBlueprintTest extends FunSuite:
     assert(result.isRight, s"Expected successful account creation, got: $result")
 
     result match
-      case Right((newState, ((), events))) =>
+      case Right((newState, (res, events))) =>
+        assertEquals(res.value, ())
         assertEquals(events.size, 1)
-        assert(events.head.isInstanceOf[AccountCreated])
-        val event = events.head.asInstanceOf[AccountCreated]
+        val event = events.head.value
         assertEquals(event.name, Utf8("alice"))
         assertEquals(event.guardian, None)
       case Left(err) =>
@@ -122,9 +124,10 @@ class AccountsBlueprintTest extends FunSuite:
     assert(result.isRight)
 
     result match
-      case Right((_, ((), events))) =>
+      case Right((_, (res, events))) =>
+        assertEquals(res.value, ())
         assertEquals(events.size, 1)
-        val event = events.head.asInstanceOf[AccountCreated]
+        val event = events.head.value
         assertEquals(event.name, Utf8("bob"))
         assertEquals(event.guardian, Some(guardian))
       case Left(err) =>
@@ -216,9 +219,10 @@ class AccountsBlueprintTest extends FunSuite:
     assert(result2.isRight)
 
     result2 match
-      case Right((_, ((), events))) =>
+      case Right((_, (res, events))) =>
+        assertEquals(res.value, ())
         assertEquals(events.size, 1)
-        val event = events.head.asInstanceOf[AccountUpdated]
+        val event = events.head.value
         assertEquals(event.name, Utf8("dave"))
         assertEquals(event.newGuardian, Some(newGuardian))
       case Left(err) =>
@@ -329,9 +333,10 @@ class AccountsBlueprintTest extends FunSuite:
     assert(result2.isRight)
 
     result2 match
-      case Right((_, ((), events))) =>
+      case Right((_, (res, events))) =>
+        assertEquals(res.value, ())
         assertEquals(events.size, 1)
-        val event = events.head.asInstanceOf[KeysAdded]
+        val event = events.head.value
         assertEquals(event.name, Utf8("frank"))
         assertEquals(event.keyIds, Set(keyId2, keyId3))
       case Left(err) =>
@@ -410,9 +415,10 @@ class AccountsBlueprintTest extends FunSuite:
     assert(result3.isRight)
 
     result3 match
-      case Right((_, ((), events))) =>
+      case Right((_, (res, events))) =>
+        assertEquals(res.value, ())
         assertEquals(events.size, 1)
-        val event = events.head.asInstanceOf[KeysRemoved]
+        val event = events.head.value
         assertEquals(event.name, Utf8("grace"))
         assertEquals(event.keyIds, Set(keyId1))
       case Left(err) =>
@@ -464,9 +470,10 @@ class AccountsBlueprintTest extends FunSuite:
     assert(result2.isRight)
 
     result2 match
-      case Right((_, ((), events))) =>
+      case Right((_, (res, events))) =>
+        assertEquals(res.value, ())
         assertEquals(events.size, 1)
-        val event = events.head.asInstanceOf[AccountRemoved]
+        val event = events.head.value
         assertEquals(event.name, Utf8("heidi"))
       case Left(err) =>
         fail(s"Unexpected error: $err")
@@ -618,9 +625,10 @@ class AccountsBlueprintTest extends FunSuite:
     assert(result2.isRight)
 
     result2 match
-      case Right((_, ((), events))) =>
+      case Right((_, (res, events))) =>
+        assertEquals(res.value, ())
         assertEquals(events.size, 1)
-        val event = events.head.asInstanceOf[AccountUpdated]
+        val event = events.head.value
         assertEquals(event.name, Utf8("alice"))
         assertEquals(event.newGuardian, None)
       case Left(err) =>

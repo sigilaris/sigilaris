@@ -29,8 +29,8 @@ final case class CreateGroup(
 ) extends Tx derives ByteEncoder, ByteDecoder:
   type Reads = Entry["groups", GroupId, GroupData] *: EmptyTuple
   type Writes = Entry["groups", GroupId, GroupData] *: EmptyTuple
-  type Result = Unit
-  type Event = GroupCreated
+  type Result = GroupsResult[Unit]
+  type Event = GroupsEvent[GroupCreated]
 
 object CreateGroup:
   given createGroupEq: Eq[CreateGroup] = Eq.fromUniversalEquals
@@ -53,8 +53,8 @@ final case class DisbandGroup(
   type Reads = Entry["groups", GroupId, GroupData] *: EmptyTuple
   type Writes = Entry["groups", GroupId, GroupData] *:
     Entry["groupAccounts", (GroupId, Account), Unit] *: EmptyTuple
-  type Result = Unit
-  type Event = GroupDisbanded
+  type Result = GroupsResult[Unit]
+  type Event = GroupsEvent[GroupDisbanded]
 
 object DisbandGroup:
   given disbandGroupEq: Eq[DisbandGroup] = Eq.fromUniversalEquals
@@ -81,8 +81,8 @@ final case class AddAccounts(
     Entry["groupAccounts", (GroupId, Account), Unit] *: EmptyTuple
   type Writes = Entry["groups", GroupId, GroupData] *:
     Entry["groupAccounts", (GroupId, Account), Unit] *: EmptyTuple
-  type Result = Unit
-  type Event = GroupMembersAdded
+  type Result = GroupsResult[Unit]
+  type Event = GroupsEvent[GroupMembersAdded]
 
 object AddAccounts:
   given addAccountsEq: Eq[AddAccounts] = Eq.fromUniversalEquals
@@ -109,8 +109,8 @@ final case class RemoveAccounts(
     Entry["groupAccounts", (GroupId, Account), Unit] *: EmptyTuple
   type Writes = Entry["groups", GroupId, GroupData] *:
     Entry["groupAccounts", (GroupId, Account), Unit] *: EmptyTuple
-  type Result = Unit
-  type Event = GroupMembersRemoved
+  type Result = GroupsResult[Unit]
+  type Event = GroupsEvent[GroupMembersRemoved]
 
 object RemoveAccounts:
   given removeAccountsEq: Eq[RemoveAccounts] = Eq.fromUniversalEquals
@@ -135,8 +135,8 @@ final case class ReplaceCoordinator(
 ) extends Tx derives ByteEncoder, ByteDecoder:
   type Reads = Entry["groups", GroupId, GroupData] *: EmptyTuple
   type Writes = Entry["groups", GroupId, GroupData] *: EmptyTuple
-  type Result = Unit
-  type Event = GroupCoordinatorReplaced
+  type Result = GroupsResult[Unit]
+  type Event = GroupsEvent[GroupCoordinatorReplaced]
 
 object ReplaceCoordinator:
   given replaceCoordinatorEq: Eq[ReplaceCoordinator] = Eq.fromUniversalEquals

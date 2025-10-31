@@ -13,6 +13,8 @@ import scodec.bits.ByteVector
 
 import application.accounts.*
 import application.group.*
+import group.GroupsEvent.*
+import group.GroupsResult.*
 
 /** Integration tests for AccountsBP + GroupBP composition (Phase 6).
   *
@@ -128,10 +130,10 @@ class AccountsGroupIntegrationTest extends FunSuite:
     val stateAfterGroup = result3.toOption.get._1
 
     result3 match
-      case Right((_, ((), events))) =>
+      case Right((_, (res, events))) =>
+        assertEquals(res.value, ())
         assertEquals(events.size, 1)
-        assert(events.head.isInstanceOf[GroupCreated])
-        val event = events.head.asInstanceOf[GroupCreated]
+        val event = events.head.value
         assertEquals(event.groupId, groupId)
         assertEquals(event.coordinator, aliceAccount)
       case Left(err) =>
@@ -150,10 +152,10 @@ class AccountsGroupIntegrationTest extends FunSuite:
     assert(result4.isRight, s"Expected successful member addition, got: $result4")
 
     result4 match
-      case Right((_, ((), events))) =>
+      case Right((_, (res, events))) =>
+        assertEquals(res.value, ())
         assertEquals(events.size, 1)
-        assert(events.head.isInstanceOf[GroupMembersAdded])
-        val event = events.head.asInstanceOf[GroupMembersAdded]
+        val event = events.head.value
         assertEquals(event.groupId, groupId)
         assertEquals(event.added.size, 1)
         assert(event.added.contains(bobAccount))

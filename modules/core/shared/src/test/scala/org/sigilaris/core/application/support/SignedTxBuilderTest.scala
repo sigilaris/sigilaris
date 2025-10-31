@@ -51,7 +51,8 @@ class SignedTxBuilderTest extends FunSuite:
     val result = StateModuleExecutor.run(initialState, signedTx)(using module).value
 
     assert(result.isRight, s"Expected reducer success, got: $result")
-    val (nextState, ((), events)) = result.toOption.get
+    val (nextState, (accountResult, events)) = result.toOption.get
+    assertEquals(accountResult.value, ())
     assertEquals(events.size, 1)
     assert(events.head.isInstanceOf[AccountCreated], "Expected AccountCreated event")
     assertEquals(nextState.accessLog.readCount, 1)

@@ -1,6 +1,7 @@
 package org.sigilaris.core
 package application
 
+import cats.Monad
 import cats.data.{EitherT, StateT}
 
 import codec.byte.ByteCodec
@@ -49,6 +50,19 @@ object StoreState:
   *   the base effect type
   */
 type StoreF[F[_]] = StateT[Eff[F], StoreState, *]
+
+object StoreF:
+  /** Lift a pure value into StoreF. */
+  def pure[F[_]: Monad, A](value: A): StoreF[F][A] =
+    StateT.pure[Eff[F], StoreState, A](value)
+
+  /** Lift an Eff action into StoreF. */
+  def lift[F[_]: Monad, A](fa: Eff[F][A]): StoreF[F][A] =
+    StateT.liftF[Eff[F], StoreState, A](fa)
+
+  /** Raise a failure, short-circuiting the StoreF computation. */
+  def raise[F[_]: Monad, A](failure: SigilarisFailure): StoreF[F][A] =
+    StateT.liftF[Eff[F], StoreState, A](EitherT.leftT[F, A](failure))
 
 /** Zero-cost key branding to prevent keys from different tables being mixed.
   *

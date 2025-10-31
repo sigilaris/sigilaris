@@ -48,8 +48,8 @@ final case class CreateNamedAccount(
   type Reads = Entry["accounts", Utf8, AccountInfo] *: EmptyTuple
   type Writes = Entry["accounts", Utf8, AccountInfo] *:
     Entry["nameKey", (Utf8, KeyId20), KeyInfo] *: EmptyTuple
-  type Result = Unit
-  type Event = AccountCreated
+  type Result = AccountsResult[Unit]
+  type Event = AccountsEvent[AccountCreated]
 
 object CreateNamedAccount:
   given createNamedAccountEq: Eq[CreateNamedAccount] = Eq.fromUniversalEquals
@@ -73,8 +73,8 @@ final case class UpdateAccount(
 ) extends Tx derives ByteEncoder, ByteDecoder:
   type Reads = Entry["accounts", Utf8, AccountInfo] *: EmptyTuple
   type Writes = Entry["accounts", Utf8, AccountInfo] *: EmptyTuple
-  type Result = Unit
-  type Event = AccountUpdated
+  type Result = AccountsResult[Unit]
+  type Event = AccountsEvent[AccountUpdated]
 
 object UpdateAccount:
   given updateAccountEq: Eq[UpdateAccount] = Eq.fromUniversalEquals
@@ -102,8 +102,8 @@ final case class AddKeyIds(
     Entry["nameKey", (Utf8, KeyId20), KeyInfo] *: EmptyTuple
   type Writes = Entry["accounts", Utf8, AccountInfo] *:
     Entry["nameKey", (Utf8, KeyId20), KeyInfo] *: EmptyTuple
-  type Result = Unit
-  type Event = KeysAdded
+  type Result = AccountsResult[Unit]
+  type Event = AccountsEvent[KeysAdded]
 
 object AddKeyIds:
   given addKeyIdsEq: Eq[AddKeyIds] = Eq.fromUniversalEquals
@@ -129,8 +129,8 @@ final case class RemoveKeyIds(
     Entry["nameKey", (Utf8, KeyId20), KeyInfo] *: EmptyTuple
   type Writes = Entry["accounts", Utf8, AccountInfo] *:
     Entry["nameKey", (Utf8, KeyId20), KeyInfo] *: EmptyTuple
-  type Result = Unit
-  type Event = KeysRemoved
+  type Result = AccountsResult[Unit]
+  type Event = AccountsEvent[KeysRemoved]
 
 object RemoveKeyIds:
   given removeKeyIdsEq: Eq[RemoveKeyIds] = Eq.fromUniversalEquals
@@ -154,8 +154,8 @@ final case class RemoveAccount(
   type Reads = Entry["accounts", Utf8, AccountInfo] *: EmptyTuple
   type Writes = Entry["accounts", Utf8, AccountInfo] *:
     Entry["nameKey", (Utf8, KeyId20), KeyInfo] *: EmptyTuple
-  type Result = Unit
-  type Event = AccountRemoved
+  type Result = AccountsResult[Unit]
+  type Event = AccountsEvent[AccountRemoved]
 
 object RemoveAccount:
   given removeAccountEq: Eq[RemoveAccount] = Eq.fromUniversalEquals
