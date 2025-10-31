@@ -40,8 +40,11 @@ inline def encodeSegment[S <: String]: ByteVector =
 
 /** Encode a path (tuple of string segments) into a byte vector.
   *
-  * Recursively encodes each segment in the path tuple, concatenating them. The
-  * result is a prefix-free encoding of the entire path.
+  * Format: length(num_segments) ++ segment1 ++ segment2 ++ ...
+  *
+  * The path-level length header ensures that shorter paths cannot be prefixes
+  * of longer paths, even when segments are empty. This is critical for the
+  * prefix-free guarantee across all table prefixes.
   *
   * @tparam Path
   *   the path tuple type
@@ -49,7 +52,9 @@ inline def encodeSegment[S <: String]: ByteVector =
   *   the encoded path
   */
 inline def encodePath[Path <: Tuple]: ByteVector =
-  encodePathAcc[Path](ByteVector.empty)
+  val segCount = constValue[Tuple.Size[Path]]
+  val header   = lenBytes(segCount)
+  encodePathAcc[Path](header)
 
 /** Internal helper for encoding paths with accumulator.
   *
@@ -130,18 +135,32 @@ trait PathEncoder[Path <: Tuple]:
     */
   def encode: ByteVector
 
-object PathEncoder:
-  /** Base case: empty path encodes to empty bytes. */
-  given empty: PathEncoder[EmptyTuple] with
-    def encode: ByteVector = ByteVector.empty
+/** Helper to collect path segments as a list for encoding. */
+trait SegmentCollector[T <: Tuple]:
+  def collect: List[String]
 
-  /** Inductive case: encode head segment and concat with encoded tail. */
-  given cons[H <: String: ValueOf, T <: Tuple](using
-      tailEncoder: PathEncoder[T],
+object SegmentCollector:
+  given emptyCollector: SegmentCollector[EmptyTuple] with
+    def collect: List[String] = Nil
+
+  given consCollector[H <: String, T <: Tuple](using
+      ev: ValueOf[H],
+      tailCollector: SegmentCollector[T],
+  ): SegmentCollector[H *: T] with
+    def collect: List[String] = ev.value :: tailCollector.collect
+
+object PathEncoder:
+  /** Base case: empty path encodes to length header (0) only. */
+  given empty: PathEncoder[EmptyTuple] with
+    def encode: ByteVector = lenBytesRuntime(0)
+
+  /** Inductive case: encode with path-level length header. */
+  given cons[H <: String, T <: Tuple](using
+      collector: SegmentCollector[H *: T],
   ): PathEncoder[H *: T] with
     def encode: ByteVector =
-      val segment = encodeSegmentRuntime(valueOf[H])
-      segment ++ tailEncoder.encode
+      val segments = collector.collect
+      encodePathRuntime(segments)
 
 /** Compute the table prefix at runtime using PathEncoder.
   *
@@ -163,3 +182,34 @@ def tablePrefixRuntime[Path <: Tuple](tableName: String)(using
   val pathBytes = pathEncoder.encode
   val nameBytes = encodeSegmentRuntime(tableName)
   pathBytes ++ nameBytes
+
+/** Runtime encoding for a path given as a List[String].
+  *
+  * Format: length(num_segments) ++ segment1 ++ segment2 ++ ...
+  *
+  * The path-level length header ensures prefix-freedom across paths of
+  * different lengths.
+  *
+  * @param path
+  *   the path segments as a list
+  * @return
+  *   the encoded path bytes
+  */
+def encodePathRuntime(path: List[String]): ByteVector =
+  val header = lenBytesRuntime(path.length)
+  path.foldLeft(header)((acc, segment) => acc ++ encodeSegmentRuntime(segment))
+
+/** Runtime computation of table prefix from a dynamic path list.
+  *
+  * This is useful for property testing where both paths and table names are
+  * generated dynamically.
+  *
+  * @param path
+  *   the path segments as a list
+  * @param tableName
+  *   the table name
+  * @return
+  *   the full table prefix
+  */
+def tablePrefixRuntimeFromList(path: List[String], tableName: String): ByteVector =
+  encodePathRuntime(path) ++ encodeSegmentRuntime(tableName)
