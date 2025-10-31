@@ -16,10 +16,25 @@
 - 스키마 선언 단축: `Entry` 생성 시 이름을 문자열 리터럴로 반복 기입하는 패턴을 줄이기 위해 `entry"accounts"[Utf8, AccountInfo]` 스타일 매크로나 헬퍼를 도입한다.
 
 ### 2. 타입 세이프티 및 증거 자동화
-- `TablesProvider` 자동 유도: 장착된 모듈에서 제공하는 테이블을 `TablesProvider.fromModule(accountsModule)`로 추출하는 헬퍼를 구현해 `Group` 등 의존 모듈이 요구하는 프로바이더 주입을 안전하게 자동화한다.
-- Needs ≠ EmptyTuple 조합 지원: Phase 5.6에서 미뤄둔 `TablesProvider.merge` 증거를 구현해 의존 모듈을 포함한 `extend`/`composeBlueprint` 경로를 열고, 컴파일 타임 충돌 리포트를 명확화한다.
-- `Requires`/`Lookup` 파생기: 매 모듈에서 반복되는 증거 소환을 `given LookupAuto[A, S] = deriveLookup` 형태로 자동 파생하도록 매크로 또는 인라인 재귀 유틸을 제공한다.
-- 이벤트/결과 타입 브랜드화: 각 트랜잭션의 `Event`/`Result` 타입에 모듈 브랜드(`type Event = AccountsEvent[Underlier]`)를 부여해 교차 모듈 이벤트 혼동을 방지한다.
+#### 2.1 `TablesProvider` 자동 유도
+- 목표: 장착된 모듈이 보유한 테이블 메타 정보를 바탕으로 `TablesProvider` 인스턴스를 자동 생성해 의존 모듈 주입 시 타입 미스매치 가능성을 제거한다.
+- 구현: `TablesProvider.fromModule(module)` 헬퍼를 `core.application.support` 계층에 추가하고, 모듈 블루프린트 등록 시 테이블 레지스트리를 노출하도록 공용 인터페이스를 확정한다. 내부적으로는 `module.tables` 기반의 주어진 증거를 재활용하되, 미노출 테이블에 대해서는 컴파일 타임 오류를 유도한다.
+- 후속 작업: Group/Accounts 등 의존 모듈 진입부를 `TablesProvider.fromModule`로 교체하고, 조립 DSL(`BlueprintDsl.mount`)에서 신규 헬퍼를 기본값으로 사용하는 테스트를 추가한다.
+
+#### 2.2 Needs ≠ EmptyTuple 조합 지원
+- 목표: 의존 모듈이 존재하는 블루프린트 합성 시 `Needs =:= EmptyTuple` 제약으로 막혀 있던 경로를 열어 다양한 모듈 확장 조합을 허용한다.
+- 구현: `TablesProvider.merge[A, B]` 증거를 `Tuple.Concat`/`Tuple.Union` 기반으로 재도입하고, 충돌 시 `CompileTimeError`를 포함한 매크로 진단을 제공한다. 조립 DSL에서는 merge 경로를 기본으로 사용해 의존 관계가 있는 모듈도 동일한 API로 장착된다.
+- 검증: Accounts+Group 조합, Group 확장 블루프린트 등 최소 두 가지 합성 시나리오에 대한 단위 테스트와 스칼라메타 기반 컴파일 타임 테스트를 작성한다.
+
+#### 2.3 `Requires` / `Lookup` 파생기
+- 목표: 각 모듈에서 반복되는 `given Lookup[Key, Table]` 및 `given Requires[Module, Dependency]` 선언을 자동으로 생성해 템플릿 코드와 파생 누락 위험을 줄인다.
+- 구현: `LookupAuto.derive` 인라인 매크로를 제공해 `SummonFrom`을 활용한 재귀 파생을 수행하고, 실패 시 필요한 증거 타입을 명시하는 에러 메시지를 반환한다. `RequiresAuto`는 모듈 메타를 순회해 의존 항목을 수집한 뒤 `ProductOf` 기반으로 합성한다.
+- 통합: 기존 모듈의 수동 `given` 정의를 제거하고 자동 파생으로 대체한다. 해당 변경은 규칙 테스트(`LookupLaws`, `RequiresLaws`)로 회귀 검증한다.
+
+#### 2.4 이벤트/결과 타입 브랜드화
+- 목표: 동일한 `Event`/`Result` 서브타입이 모듈 간 공유될 때 발생하는 혼동을 방지하고, 트랜잭션 경로 추적을 용이하게 한다.
+- 구현: 각 모듈의 트랜잭션 패키지에 브랜드 타입 별칭(`type Event = AccountsEvent[Underlier]`)을 도입하고, 공용 인터페이스에는 브랜드가 유지되도록 `opaque type` 또는 새로운 래퍼를 적용한다.
+- 영향: 이벤트 버스 필터링, 결과 매핑 등 후속 처리 경로에서 모듈 브랜드를 활용할 수 있도록 API 문서를 보강하고, 교차 모듈 시나리오에 대한 골든 테스트를 추가한다.
 
 ### 3. 중복 제거 및 공통 모듈화
 - 서명 검증 공통 모듈: `modules/core/shared/.../application/security/SignatureVerifier.scala`를 추가해 `AccountsReducer`(파일 경로: `.../AccountsBlueprint.scala`)에 분산된 서명 검증 로직을 재사용 가능하게 만든다. `GroupReducer` 등 차후 모듈도 동일 API를 사용하고, 토큰 시나리오는 별도 애플리케이션 가이드에서 이 헬퍼를 호출하는 예제로만 다룬다.
