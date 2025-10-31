@@ -327,6 +327,14 @@ object TablesProvider:
     * summon[DisjointSchemas[S3, S4]]  // does not compile
     *   }}}
     */
+  @scala.annotation.implicitNotFound(
+"""Cannot merge provider schemas: overlapping tables detected.
+Left schema: ${S1}
+Right schema: ${S2}
+
+Each Entry name must be unique across merged providers. Rename the tables or
+ensure dependent modules expose disjoint schemas before composing providers."""
+  )
   trait DisjointSchemas[S1 <: Tuple, S2 <: Tuple]
 
   object DisjointSchemas:
@@ -368,6 +376,13 @@ object TablesProvider:
     * @tparam S
     *   the schema to check in
     */
+  @scala.annotation.implicitNotFound(
+"""Table ${E} already exists in schema ${S}.
+
+Dependency schemas must not redefine the same table name. Remove the duplicate
+entry or refactor the module layout so that each table name is provided by a
+single module."""
+  )
   trait NotInSchema[E <: Entry[?, ?, ?], S <: Tuple]
 
   object NotInSchema:

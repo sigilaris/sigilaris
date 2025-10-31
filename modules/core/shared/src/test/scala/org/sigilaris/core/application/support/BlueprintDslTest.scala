@@ -10,6 +10,8 @@ import datatype.Utf8
 import merkle.{MerkleTrie, MerkleTrieNode}
 
 import EntrySyntax.entry
+import TablesProviderOps.*
+import TablesAccessOps.*
 
 class BlueprintDslTest extends FunSuite:
   given MerkleTrie.NodeStore[Id] = Kleisli: (_: MerkleTrieNode.MerkleHash) =>
@@ -51,3 +53,27 @@ class BlueprintDslTest extends FunSuite:
 
     val typed: StateModule[Id, ("app" *: EmptyTuple), TestSchema, TestNeeds, TestTxs, StateReducer[Id, ("app" *: EmptyTuple), TestSchema, TestNeeds]] = module
     assert(typed eq module)
+
+  test("TablesProviderOps.toTablesProvider re-exposes mounted tables"):
+    val module = BlueprintDsl.mount("app" -> testBlueprint)
+    val provider = module.toTablesProvider
+
+    // Ensure the provider exposes the same tables as the mounted module.
+    // Tuple equality holds because Tables is an alias for tuples of StateTable values.
+    assertEquals(provider.tables, module.tables)
+
+  test("TablesAccessOps.providedTable resolves dependency table by name"):
+    val module = BlueprintDsl.mount("app" -> testBlueprint)
+    val provider: TablesProvider[Id, TestSchema] = module.toTablesProvider
+    val balancesTable = provider.providedTable["balances", Utf8, Long]
+    val brandedKey = balancesTable.brand(Utf8("alice"))
+    // If brand succeeds, the lookup evidence matched the expected schema.
+    assertEquals(KeyOf.unwrap(brandedKey), Utf8("alice"))
+
+  test("TablesAccessOps.deriveLookup mirrors summonInline"):
+    val lookup = deriveLookup[TestSchema, "balances", Utf8, Long]
+    val module = BlueprintDsl.mount("app" -> testBlueprint)
+    val provider: TablesProvider[Id, TestSchema] = module.toTablesProvider
+    val table = lookup.table(provider.tables)
+    val brandedKey = table.brand(Utf8("bob"))
+    assertEquals(KeyOf.unwrap(brandedKey), Utf8("bob"))

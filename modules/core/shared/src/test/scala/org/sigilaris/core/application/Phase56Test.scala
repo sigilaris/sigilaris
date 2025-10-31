@@ -49,11 +49,11 @@ class Phase56Test extends FunSuite:
     assert(errors.nonEmpty, "Expected compilation error for overlapping table names")
 
     // Verify the error mentions either DisjointSchemas or DifferentNames
-    val mentionsDisjoint = errors.contains("DisjointSchemas")
-    val mentionsDifferent = errors.contains("DifferentNames")
+    val mentionsMerge = errors.contains("Cannot merge provider schemas")
+    val mentionsDuplicate = errors.contains("Table Entry") || errors.contains("Table Entry[")
     assert(
-      mentionsDisjoint || mentionsDifferent,
-      s"Expected error about DisjointSchemas or DifferentNames, got: $errors"
+      mentionsMerge || mentionsDuplicate,
+      s"Expected error about overlapping provider schemas, got: $errors"
     )
 
   test("TablesProvider.merge: merge two empty providers"):
@@ -124,11 +124,9 @@ class Phase56Test extends FunSuite:
     assert(errors.nonEmpty, "Expected compilation error for overlapping Needs in composeBlueprint")
 
     // Verify the error mentions the relevant type classes
-    val mentionsDisjoint = errors.contains("DisjointSchemas")
-    val mentionsDifferent = errors.contains("DifferentNames")
     assert(
-      mentionsDisjoint || mentionsDifferent,
-      s"Expected error about DisjointSchemas or DifferentNames, got: $errors"
+      errors.contains("Cannot merge provider schemas"),
+      s"Expected error about overlapping provider schemas, got: $errors"
     )
 
   test("extend: overlapping Needs should not compile"):
@@ -150,11 +148,9 @@ class Phase56Test extends FunSuite:
     assert(errors.nonEmpty, "Expected compilation error for overlapping Needs in extend")
 
     // Verify the error mentions the relevant type classes
-    val mentionsDisjoint = errors.contains("DisjointSchemas")
-    val mentionsDifferent = errors.contains("DifferentNames")
     assert(
-      mentionsDisjoint || mentionsDifferent,
-      s"Expected error about DisjointSchemas or DifferentNames, got: $errors"
+      errors.contains("Cannot merge provider schemas"),
+      s"Expected error about overlapping provider schemas, got: $errors"
     )
 
   test("Phase 5.6: extend compiles with disjoint non-empty Needs"):

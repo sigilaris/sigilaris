@@ -13,6 +13,7 @@ import crypto.{Hash, Recover, PublicKey}
 import datatype.{BigNat, Utf8}
 import failure.{TrieFailure, CryptoFailure}
 import application.accounts.{Account, AccountInfo, KeyId20, KeyInfo}
+import support.TablesAccessOps.*
 
 /** Groups module schema.
   *
@@ -114,7 +115,7 @@ class GroupsReducer[F[_]: Monad] extends StateReducer0[F, GroupsSchema.GroupsSch
           case Account.Named(name) =>
             // For Named accounts: lookup key in nameKey table (from AccountsBP)
             // SECURITY FIX: Previously this always returned success, allowing signature forgery
-            val (_ *: nameKeyTable *: EmptyTuple) = provider.tables
+            val nameKeyTable = provider.providedTable["nameKey", (Utf8, KeyId20), KeyInfo]
             for
               maybeKeyInfo <- nameKeyTable.get(nameKeyTable.brand((name, recoveredKeyId)))
               _ <- maybeKeyInfo match
