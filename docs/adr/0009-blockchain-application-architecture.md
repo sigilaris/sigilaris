@@ -399,11 +399,19 @@ case class AccountsTransfer(...) extends Tx with ModuleRoutedTx:
 
 ## Prefix Encoding Format
 - 목표: 바이트 단위에서 엄격한 prefix‑free 보장.
-- 권장 인코딩: 경로(Path) 세그먼트와 테이블 이름을 모두 길이 접두(length‑prefix) + 구분자(sentinel, 예: 0x00)로 인코딩.
-  - 예: `encodePath[("app", "accounts")] ++ encodeSegment["balances"]`
-  - 길이 접두만으로도 prefix‑free가 성립하며, 구분자는 디버깅/가독성 향상에 유용.
+- **Path-Level Framing (2025-10-31 구현)**:
+  - **경로 인코딩**: `lenBytes(num_segments) ++ segment1 ++ segment2 ++ ...`
+  - **세그먼트 인코딩**: `lenBytes(segment_bytes.length) ++ segment_bytes ++ 0x00`
+  - **테이블 접두사**: `encodePath(path) ++ encodeSegment(tableName)`
+  - 예시:
+    - `encodePath[("app", "v1")]` → `[2][len]["app"][0x00][len]["v1"][0x00]`
+    - `encodePath[("app")]` → `[1][len]["app"][0x00]`
+    - `encodePath[EmptyTuple]` → `[0]`
+  - **핵심**: 경로 수준의 길이 헤더로 짧은 경로가 긴 경로의 prefix가 될 수 없음을 보장
+  - **Empty segment 지원**: 이전 설계에서는 `""` → `0x0000`이 `("")` + `("")` → `0x00000000`의 prefix가 되는 문제 존재 → path-level framing으로 해결
 - 대안: 각 세그먼트/테이블 이름을 고정 길이 해시(예: Keccak256)로 치환 후 결합(사전 정의된 충돌 위험 허용 시).
 - 검증 범위: 모듈 내부 + 의존/집합 결합된 모든 테이블 집합에 대해 전역 prefix‑free 검사.
+- 구현: `PathEncoding.scala`의 `encodePath`, `encodeSegment`, `tablePrefixRuntimeFromList` 참조
 
 ## Streaming API
 - 의도: “테이블 전체” vs “특정 범위/접두어” 스트리밍을 명확히 분리.
@@ -735,15 +743,22 @@ Phase 6 — Example Blueprints (Accounts, Group)
 - Criteria
   - End‑to‑end scenario passes; prefix‑free and `Requires` invariants hold.
 
-Phase 7 — Law & Property Tests
+Phase 7 — Law & Property Tests ✅ (2025-10-31 완료)
 - Deliverables
-  - OrderedCodec law checks
-  - Prefix-free validator coverage
+  - OrderedCodec law checks ✅
+  - Prefix-free validator coverage ✅
+  - Path-level framing implementation ✅
 - Tasks
-  - Add property tests for OrderedCodec and encoded path ordering where needed
-  - Fuzz tests for prefix encoding and composition
+  - Add property tests for OrderedCodec and encoded path ordering where needed ✅
+  - Fuzz tests for prefix encoding and composition ✅
+  - **Critical Fix**: Path-level framing to prevent shorter paths from being prefixes of longer paths ✅
 - Criteria
-  - Laws hold across supported primitives and demo types
+  - Laws hold across supported primitives and demo types ✅
+  - All 270 tests passing including aggressive fuzz tests ✅
+- Key Findings
+  - Empty segment prefix collision discovered and fixed with path-level length header
+  - OrderedCodec required only for KEY types (not path encoding)
+  - Path encoding is prefix-free but does NOT preserve lexicographic ordering (intentional)
 
 Phase 8 — AccessLog & Conflicts
 - Deliverables
