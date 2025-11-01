@@ -1,20 +1,27 @@
-package org.sigilaris.core
-package application
+package org.sigilaris.core.application
 
 import java.time.Instant
 
 import cats.Id
 import cats.data.{EitherT, Kleisli}
 import munit.FunSuite
-
-import datatype.{BigNat, Utf8}
-import merkle.{MerkleTrie, MerkleTrieNode}
 import scodec.bits.ByteVector
 
-import application.accounts.*
-import application.group.*
-import group.GroupsEvent.*
-import group.GroupsResult.*
+import org.sigilaris.core.application.accounts.domain.{Account, KeyId20}
+import org.sigilaris.core.application.accounts.module.AccountsBP
+import org.sigilaris.core.application.accounts.transactions.{CreateNamedAccount, TxEnvelope}
+import org.sigilaris.core.application.domain.StoreState
+import org.sigilaris.core.application.group.domain.GroupId
+import org.sigilaris.core.application.group.domain.GroupsEvent.*
+import org.sigilaris.core.application.group.domain.GroupsResult.*
+import org.sigilaris.core.application.group.module.GroupsBP
+import org.sigilaris.core.application.group.transactions.{AddAccounts, CreateGroup, DisbandGroup}
+import org.sigilaris.core.application.module.{Blueprint, StateModule, TablesProvider}
+import org.sigilaris.core.application.transactions.{AccountSignature, Signed, Tx}
+import org.sigilaris.core.crypto.{CryptoOps, Hash, KeyPair, Sign}
+import org.sigilaris.core.crypto.Sign.ops.*
+import org.sigilaris.core.datatype.{BigNat, Utf8}
+import org.sigilaris.core.merkle.{MerkleTrie, MerkleTrieNode}
 
 /** Integration tests for AccountsBP + GroupBP composition (Phase 6).
   *
@@ -31,8 +38,6 @@ class AccountsGroupIntegrationTest extends FunSuite:
   val initialState: StoreState = StoreState.empty
 
   /** Helper keypairs for testing. */
-  import crypto.{CryptoOps, KeyPair, Hash, Sign}
-  import crypto.Sign.ops.*
 
   lazy val aliceKeyPair: KeyPair = CryptoOps.generate()
   lazy val bobKeyPair: KeyPair = CryptoOps.generate()

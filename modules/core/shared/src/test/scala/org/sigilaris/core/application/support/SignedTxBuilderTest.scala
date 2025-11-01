@@ -1,22 +1,28 @@
-package org.sigilaris.core
-package application
-package support
+package org.sigilaris.core.application.support
 
 import java.time.Instant
 
-import cats.Id
 import cats.data.{EitherT, Kleisli}
+import cats.instances.either.given
 import munit.FunSuite
 import scodec.bits.ByteVector
 
-import application.accounts.*
-import crypto.{CryptoOps, KeyPair}
-import datatype.{BigNat, Utf8}
-import merkle.{MerkleTrie, MerkleTrieNode}
+import _root_.org.sigilaris.core.application.accounts.domain.{Account, AccountsResult, KeyId20}
+import _root_.org.sigilaris.core.application.accounts.module.AccountsBP
+import _root_.org.sigilaris.core.application.accounts.transactions.{AccountCreated, CreateNamedAccount, TxEnvelope}
+import _root_.org.sigilaris.core.application.domain.StoreState
+import _root_.org.sigilaris.core.application.module.StateModule
+import _root_.org.sigilaris.core.application.support.StateModuleExecutor
+import _root_.org.sigilaris.core.failure.SigilarisFailure
+import org.sigilaris.core.crypto.{CryptoOps, KeyPair}
+import org.sigilaris.core.datatype.{BigNat, Utf8}
+import org.sigilaris.core.merkle.{MerkleTrie, MerkleTrieNode}
 
 class SignedTxBuilderTest extends FunSuite:
-  given MerkleTrie.NodeStore[Id] = Kleisli: (_: MerkleTrieNode.MerkleHash) =>
-    EitherT.rightT[Id, String](None)
+  private type TestF[A] = Either[SigilarisFailure, A]
+
+  given MerkleTrie.NodeStore[TestF] = Kleisli: (_: MerkleTrieNode.MerkleHash) =>
+    EitherT.rightT[TestF, String](None)
 
   private val initialState: StoreState = StoreState.empty
 
@@ -25,7 +31,7 @@ class SignedTxBuilderTest extends FunSuite:
     KeyId20.unsafeApply(ByteVector.view(hash).takeRight(20))
 
   test("SignedTxBuilder.sign produces signed transaction and executes via StateModuleExecutor"):
-    val accountsBP = AccountsBP[Id]
+    val accountsBP = AccountsBP[TestF]
     val module = StateModule.mount[("dsl", "accounts")](accountsBP)
 
     val keyPair = CryptoOps.generate()
@@ -48,7 +54,10 @@ class SignedTxBuilderTest extends FunSuite:
     assert(signedEither.isRight, s"Expected signing success, got: $signedEither")
 
     val signedTx = signedEither.toOption.get
-    val result = StateModuleExecutor.run(initialState, signedTx)(using module).value
+    val result = StateModuleExecutor
+      .run(initialState, signedTx)(using module)
+      .value
+      .flatMap(identity)
 
     assert(result.isRight, s"Expected reducer success, got: $result")
     val (nextState, (accountResult, events)) = result.toOption.get

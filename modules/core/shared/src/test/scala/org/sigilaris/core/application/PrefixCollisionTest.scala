@@ -1,13 +1,14 @@
-package org.sigilaris.core
-package application
+package org.sigilaris.core.application
 
 import cats.Id
 import cats.data.{EitherT, Kleisli}
 
 import munit.FunSuite
 
-import datatype.Utf8
-import merkle.{MerkleTrie, MerkleTrieNode}
+import _root_.org.sigilaris.core.application.{domain as appDomain, support as appSupport}
+import _root_.org.sigilaris.core.assembly.{PrefixFreeValidator as AssemblyPrefixFreeValidator}
+import _root_.org.sigilaris.core.datatype.Utf8
+import _root_.org.sigilaris.core.merkle.{MerkleTrie, MerkleTrieNode}
 
 /** Tests for compile-time prefix collision detection.
   *
@@ -33,10 +34,13 @@ class PrefixCollisionTest extends FunSuite:
   test("PrefixFreePath should reject identical table names in same schema"):
     // This should NOT compile - duplicate table names
     val errors = compileErrors("""
-      type DuplicateSchema = Entry["accounts", Utf8, Long] *:
-                             Entry["accounts", Utf8, Utf8] *:
+      import _root_.org.sigilaris.core.application.{domain as appDomain, support as appSupport}
+      import _root_.org.sigilaris.core.datatype.Utf8
+
+      type DuplicateSchema = appDomain.Entry["accounts", Utf8, Long] *:
+                 appDomain.Entry["accounts", Utf8, Utf8] *:
                              EmptyTuple
-      summon[PrefixFreePath["app" *: EmptyTuple, DuplicateSchema]]
+      summon[appSupport.PrefixFreePath["app" *: EmptyTuple, DuplicateSchema]]
     """)
 
     // Verify key parts of error message
@@ -56,34 +60,37 @@ class PrefixCollisionTest extends FunSuite:
     // If encoding is naive, "user" could be a prefix of "user_data"
     // With proper length-prefix encoding, this should be safe
     // But we should still detect if the encoded bytes have prefix relationship
-    type PrefixRelatedSchema = Entry["user", Utf8, Long] *:
-                                Entry["user_data", Utf8, Utf8] *:
+    type PrefixRelatedSchema = appDomain.Entry["user", Utf8, Long] *:
+                  appDomain.Entry["user_data", Utf8, Utf8] *:
                                 EmptyTuple
 
     // This test verifies our encoding is actually prefix-free
     // With length-prefix encoding, these should be OK
-    val evidence = summon[PrefixFreePath["app" *: EmptyTuple, PrefixRelatedSchema]]
+    val evidence = summon[appSupport.PrefixFreePath["app" *: EmptyTuple, PrefixRelatedSchema]]
     assert(evidence != null, "Length-prefix encoding should make these prefix-free")
 
   // Test Case 3: Same table name at different depths (edge case)
   test("PrefixFreePath should handle same table name at different path depths"):
-    type Schema1 = Entry["data", Utf8, Long] *: EmptyTuple
-    type Schema2 = Entry["data", Utf8, Utf8] *: EmptyTuple
+    type Schema1 = appDomain.Entry["data", Utf8, Long] *: EmptyTuple
+    type Schema2 = appDomain.Entry["data", Utf8, Utf8] *: EmptyTuple
 
     // Same table name but different paths should be OK
-    val evidence1 = summon[PrefixFreePath[("app", "v1"), Schema1]]
-    val evidence2 = summon[PrefixFreePath[("app", "v2"), Schema2]]
+    val evidence1 = summon[appSupport.PrefixFreePath[("app", "v1"), Schema1]]
+    val evidence2 = summon[appSupport.PrefixFreePath[("app", "v2"), Schema2]]
 
-    assert(evidence1 != null && evidence2 != null)
+    assert(evidence1 != null && evidence2 != null, "Prefix evidence should exist for both schemas")
 
   // Test Case 4: Composed schema with duplicate table names
   test("PrefixFreePath should reject composition with duplicate table names"):
     val errors = compileErrors("""
       import scala.Tuple.++
-      type Schema1 = Entry["balances", Utf8, Long] *: EmptyTuple
-      type Schema2 = Entry["balances", Utf8, Utf8] *: EmptyTuple
+      import _root_.org.sigilaris.core.application.{domain as appDomain, support as appSupport}
+      import _root_.org.sigilaris.core.datatype.Utf8
+
+      type Schema1 = appDomain.Entry["balances", Utf8, Long] *: EmptyTuple
+      type Schema2 = appDomain.Entry["balances", Utf8, Utf8] *: EmptyTuple
       type Combined = Schema1 ++ Schema2
-      summon[PrefixFreePath["app" *: EmptyTuple, Combined]]
+      summon[appSupport.PrefixFreePath["app" *: EmptyTuple, Combined]]
     """)
 
     // Verify key parts of the error message
@@ -94,23 +101,23 @@ class PrefixCollisionTest extends FunSuite:
 
   // Test Case 5: Valid case - should compile successfully
   test("PrefixFreePath should accept valid prefix-free schema"):
-    type ValidSchema = Entry["accounts", Utf8, Long] *:
-                       Entry["balances", Utf8, Long] *:
-                       Entry["metadata", Utf8, Utf8] *:
+    type ValidSchema = appDomain.Entry["accounts", Utf8, Long] *:
+               appDomain.Entry["balances", Utf8, Long] *:
+               appDomain.Entry["metadata", Utf8, Utf8] *:
                        EmptyTuple
 
-    val evidence = summon[PrefixFreePath["app" *: EmptyTuple, ValidSchema]]
+    val evidence = summon[appSupport.PrefixFreePath["app" *: EmptyTuple, ValidSchema]]
     assert(evidence != null, "Valid prefix-free schema should compile")
 
   // Test Case 6: Empty schema - always valid
   test("PrefixFreePath should accept empty schema"):
-    val evidence = summon[PrefixFreePath["app" *: EmptyTuple, EmptyTuple]]
+    val evidence = summon[appSupport.PrefixFreePath["app" *: EmptyTuple, EmptyTuple]]
     assert(evidence != null, "Empty schema is trivially prefix-free")
 
   // Test Case 7: Single table - always valid
   test("PrefixFreePath should accept single-table schema"):
-    type SingleSchema = Entry["accounts", Utf8, Long] *: EmptyTuple
-    val evidence = summon[PrefixFreePath["app" *: EmptyTuple, SingleSchema]]
+    type SingleSchema = appDomain.Entry["accounts", Utf8, Long] *: EmptyTuple
+    val evidence = summon[appSupport.PrefixFreePath["app" *: EmptyTuple, SingleSchema]]
     assert(evidence != null, "Single table is trivially prefix-free")
 
   // Test Case 8: Actual byte-level prefix collision detection
@@ -118,9 +125,9 @@ class PrefixCollisionTest extends FunSuite:
     import scodec.bits.ByteVector
 
     // Simulate what the compile-time check should do at runtime
-    val prefix1 = tablePrefix[("app" *: EmptyTuple), "accounts"]
-    val prefix2 = tablePrefix[("app" *: EmptyTuple), "balances"]
-    val prefix3 = tablePrefix[("app" *: EmptyTuple), "metadata"]
+    val prefix1 = appSupport.tablePrefix[("app" *: EmptyTuple), "accounts"]
+    val prefix2 = appSupport.tablePrefix[("app" *: EmptyTuple), "balances"]
+    val prefix3 = appSupport.tablePrefix[("app" *: EmptyTuple), "metadata"]
 
     // None should be a prefix of another
     def isPrefix(a: ByteVector, b: ByteVector): Boolean =
@@ -136,9 +143,9 @@ class PrefixCollisionTest extends FunSuite:
 
   // Test Case 9: Verify encoding produces different prefixes
   test("Runtime validator: verify all table prefixes are distinct"):
-    val prefix1 = tablePrefix[("app" *: EmptyTuple), "accounts"]
-    val prefix2 = tablePrefix[("app" *: EmptyTuple), "balances"]
-    val prefix3 = tablePrefix[("app" *: EmptyTuple), "metadata"]
+    val prefix1 = appSupport.tablePrefix[("app" *: EmptyTuple), "accounts"]
+    val prefix2 = appSupport.tablePrefix[("app" *: EmptyTuple), "balances"]
+    val prefix3 = appSupport.tablePrefix[("app" *: EmptyTuple), "metadata"]
 
     // All should be distinct
     assert(prefix1 != prefix2, "accounts and balances should have different prefixes")
@@ -149,10 +156,18 @@ class PrefixCollisionTest extends FunSuite:
   test("composeBlueprint should validate prefix-free property"):
     // This should fail to compile due to duplicate "data" table name
     val errors = compileErrors("""
-      type Schema1 = Entry["data", Utf8, Long] *: EmptyTuple
-      type Schema2 = Entry["data", Utf8, Utf8] *: EmptyTuple
+      import cats.Id
+      import _root_.org.sigilaris.core.application.{domain as appDomain}
+      import _root_.org.sigilaris.core.application.domain.{StoreF, Tables}
+      import _root_.org.sigilaris.core.application.module.{Blueprint, ModuleBlueprint, StateReducer0, TablesProvider}
+      import _root_.org.sigilaris.core.application.support.Requires
+      import _root_.org.sigilaris.core.application.transactions.{Signed, Tx, TxRegistry}
+      import _root_.org.sigilaris.core.datatype.Utf8
 
-      val bp1Entry = Entry["data", Utf8, Long]
+      type Schema1 = appDomain.Entry["data", Utf8, Long] *: EmptyTuple
+      type Schema2 = appDomain.Entry["data", Utf8, Utf8] *: EmptyTuple
+
+      val bp1Entry = appDomain.Entry["data", Utf8, Long]
       val schema1: Schema1 = bp1Entry *: EmptyTuple
 
       val reducer1 = new StateReducer0[Id, Schema1, EmptyTuple]:
@@ -172,7 +187,7 @@ class PrefixCollisionTest extends FunSuite:
         provider = TablesProvider.empty[Id],
       )
 
-      val bp2Entry = Entry["data", Utf8, Utf8]
+      val bp2Entry = appDomain.Entry["data", Utf8, Utf8]
       val schema2: Schema2 = bp2Entry *: EmptyTuple
 
       val reducer2 = new StateReducer0[Id, Schema2, EmptyTuple]:
@@ -210,9 +225,9 @@ class PrefixCollisionTest extends FunSuite:
     val prefix2 = ByteVector(0x01, 0x02, 0x03)
     val prefix3 = ByteVector(0x04, 0x05, 0x06)
 
-    val result = PrefixFreeValidator.validate(List(prefix1, prefix2, prefix3))
+    val result = AssemblyPrefixFreeValidator.validate(List(prefix1, prefix2, prefix3))
     result match
-      case PrefixFreeValidator.IdenticalPrefixes(p, count) =>
+      case AssemblyPrefixFreeValidator.IdenticalPrefixes(p, count) =>
         assert(p == prefix1 && count == 2)
       case _ =>
         fail(s"Expected IdenticalPrefixes, got $result")
@@ -223,9 +238,9 @@ class PrefixCollisionTest extends FunSuite:
     val short = ByteVector(0x01, 0x02)
     val long  = ByteVector(0x01, 0x02, 0x03, 0x04)
 
-    val result = PrefixFreeValidator.validate(List(short, long))
+    val result = AssemblyPrefixFreeValidator.validate(List(short, long))
     result match
-      case PrefixFreeValidator.PrefixCollision(p1, p2) =>
+      case AssemblyPrefixFreeValidator.PrefixCollision(p1, p2) =>
         assert(p1 == short && p2 == long)
       case _ =>
         fail(s"Expected PrefixCollision, got $result")
@@ -237,8 +252,8 @@ class PrefixCollisionTest extends FunSuite:
     val prefix2 = ByteVector(0x01, 0x03, 0x03)
     val prefix3 = ByteVector(0x02, 0x02, 0x03)
 
-    val result = PrefixFreeValidator.validate(List(prefix1, prefix2, prefix3))
-    assert(result == PrefixFreeValidator.Valid)
+    val result = AssemblyPrefixFreeValidator.validate(List(prefix1, prefix2, prefix3))
+    assert(result == AssemblyPrefixFreeValidator.Valid)
 
   test("PrefixFreeValidator.wouldCollide detects collision with existing"):
     import scodec.bits.ByteVector
@@ -249,38 +264,38 @@ class PrefixCollisionTest extends FunSuite:
     )
 
     // Identical prefix
-    assert(PrefixFreeValidator.wouldCollide(ByteVector(0x01, 0x02, 0x03), existing))
+    assert(AssemblyPrefixFreeValidator.wouldCollide(ByteVector(0x01, 0x02, 0x03), existing))
 
     // New is prefix of existing
-    assert(PrefixFreeValidator.wouldCollide(ByteVector(0x01, 0x02), existing))
+    assert(AssemblyPrefixFreeValidator.wouldCollide(ByteVector(0x01, 0x02), existing))
 
     // Existing is prefix of new
-    assert(PrefixFreeValidator.wouldCollide(ByteVector(0x01, 0x02, 0x03, 0x04), existing))
+    assert(AssemblyPrefixFreeValidator.wouldCollide(ByteVector(0x01, 0x02, 0x03, 0x04), existing))
 
     // No collision
-    assert(!PrefixFreeValidator.wouldCollide(ByteVector(0x07, 0x08, 0x09), existing))
+    assert(!AssemblyPrefixFreeValidator.wouldCollide(ByteVector(0x07, 0x08, 0x09), existing))
 
   test("PrefixFreeValidator with table prefixes"):
-    val prefix1 = tablePrefix[("app" *: EmptyTuple), "accounts"]
-    val prefix2 = tablePrefix[("app" *: EmptyTuple), "balances"]
-    val prefix3 = tablePrefix[("app" *: EmptyTuple), "metadata"]
+    val prefix1 = appSupport.tablePrefix[("app" *: EmptyTuple), "accounts"]
+    val prefix2 = appSupport.tablePrefix[("app" *: EmptyTuple), "balances"]
+    val prefix3 = appSupport.tablePrefix[("app" *: EmptyTuple), "metadata"]
 
-    val result = PrefixFreeValidator.validate(List(prefix1, prefix2, prefix3))
-    assert(result == PrefixFreeValidator.Valid, s"Table prefixes should be prefix-free, got: ${PrefixFreeValidator.formatResult(result)}")
+    val result = AssemblyPrefixFreeValidator.validate(List(prefix1, prefix2, prefix3))
+    assert(result == AssemblyPrefixFreeValidator.Valid, s"Table prefixes should be prefix-free, got: ${AssemblyPrefixFreeValidator.formatResult(result)}")
 
   test("PrefixFreeValidator.validateSchema compile-time check"):
     // This verifies the inline validateSchema function works correctly
     type Path   = ("app", "accounts")
-    type Schema = Entry["balances", Utf8, Long] *: Entry["accounts", Utf8, Utf8] *: EmptyTuple
+    type Schema = appDomain.Entry["balances", Utf8, Long] *: appDomain.Entry["accounts", Utf8, Utf8] *: EmptyTuple
 
-    val result = PrefixFreeValidator.validateSchema[Path, Schema]
-    assert(result == PrefixFreeValidator.Valid, s"Schema should be prefix-free, got: ${PrefixFreeValidator.formatResult(result)}")
+    val result = AssemblyPrefixFreeValidator.validateSchema[Path, Schema]
+    assert(result == AssemblyPrefixFreeValidator.Valid, s"Schema should be prefix-free, got: ${AssemblyPrefixFreeValidator.formatResult(result)}")
 
   test("PrefixFreeValidator handles edge case: empty list"):
-    val result = PrefixFreeValidator.validate(Nil)
-    assert(result == PrefixFreeValidator.Valid)
+    val result = AssemblyPrefixFreeValidator.validate(Nil)
+    assert(result == AssemblyPrefixFreeValidator.Valid)
 
   test("PrefixFreeValidator handles edge case: single prefix"):
     import scodec.bits.ByteVector
-    val result = PrefixFreeValidator.validate(List(ByteVector(0x01, 0x02)))
-    assert(result == PrefixFreeValidator.Valid)
+    val result = AssemblyPrefixFreeValidator.validate(List(ByteVector(0x01, 0x02)))
+    assert(result == AssemblyPrefixFreeValidator.Valid)

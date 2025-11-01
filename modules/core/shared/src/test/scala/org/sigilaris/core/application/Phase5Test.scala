@@ -1,13 +1,16 @@
-package org.sigilaris.core
-package application
+package org.sigilaris.core.application
 
 import cats.effect.SyncIO
 import munit.FunSuite
 
-import accounts.Account
-import codec.byte.ByteCodec
-import crypto.Signature
-import datatype.UInt256
+import _root_.org.sigilaris.core.application.accounts.domain.Account
+import _root_.org.sigilaris.core.application.domain.{Entry, EntryTuple, StoreF, StoreState, Tables}
+import _root_.org.sigilaris.core.application.module.{ModuleBlueprint, StateModule, StateReducer0, TablesProvider}
+import _root_.org.sigilaris.core.application.support.Requires
+import _root_.org.sigilaris.core.application.transactions.{AccountSignature, Signed, Tx, TxRegistry}
+import _root_.org.sigilaris.core.crypto.Signature
+import _root_.org.sigilaris.core.datatype.UInt256
+import _root_.org.sigilaris.core.merkle
 import scodec.bits.ByteVector
 
 /** Tests for Phase 5: Assembly (extend, mergeReducers, ModuleFactory).
@@ -39,7 +42,7 @@ class Phase5Test extends FunSuite:
     Signed(AccountSignature(account, dummySig), tx)
 
   // Use built-in types with existing codecs - no custom codec implementation needed!
-  import datatype.{Utf8, BigNat}
+  import org.sigilaris.core.datatype.{Utf8, BigNat}
 
   // Define sample types - codecs will be auto-derived from field codecs
   case class Address(value: Utf8)
@@ -76,7 +79,7 @@ class Phase5Test extends FunSuite:
   // Helper to create node store
   def createNodeStore(): merkle.MerkleTrie.NodeStore[SyncIO] =
     import cats.data.{Kleisli, EitherT}
-    import merkle.{MerkleTrieNode}
+    import org.sigilaris.core.merkle.{MerkleTrieNode}
     val store = scala.collection.mutable.Map.empty[MerkleTrieNode.MerkleHash, MerkleTrieNode]
     Kleisli: hash =>
       EitherT.rightT[SyncIO, String](store.get(hash))
@@ -308,7 +311,7 @@ class Phase5Test extends FunSuite:
             import cats.data.StateT
             import cats.data.EitherT
             StateT.liftF(EitherT.leftT[SyncIO, (signedTx.value.Result, List[signedTx.value.Event])](
-              failure.TrieFailure("Accounts module cannot handle CreateGroup")
+              _root_.org.sigilaris.core.failure.TrieFailure("Accounts module cannot handle CreateGroup")
             ))
           case _ =>
             import cats.data.StateT

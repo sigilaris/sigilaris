@@ -1,17 +1,16 @@
-package org.sigilaris.core
-package application
-package accounts
+package org.sigilaris.core.application.accounts.transactions
 
 import java.time.Instant
 
 import cats.Eq
 
-import codec.byte.{ByteDecoder, ByteEncoder}
-import crypto.{Hash, Recover}
-import datatype.{BigNat, Utf8}
+import org.sigilaris.core.codec.byte.{ByteDecoder, ByteEncoder}
+import org.sigilaris.core.crypto.{Hash, Recover}
+import org.sigilaris.core.datatype.{BigNat, Utf8}
 
-// Import Entry for transaction type definitions
-import org.sigilaris.core.application.Entry
+import org.sigilaris.core.application.accounts.domain.*
+import org.sigilaris.core.application.domain.Entry
+import org.sigilaris.core.application.transactions.Tx
 
 /** Common envelope for all transactions.
   *

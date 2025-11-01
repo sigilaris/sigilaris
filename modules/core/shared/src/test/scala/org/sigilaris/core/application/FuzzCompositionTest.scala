@@ -2,6 +2,9 @@ package org.sigilaris.core.application
 
 import hedgehog.munit.HedgehogSuite
 import hedgehog.*
+import org.sigilaris.core.application.{support as supportPkg}
+import supportPkg.tablePrefixRuntimeFromList
+import org.sigilaris.core.assembly.PrefixFreeValidator
 
 /** Fuzz tests for module composition using Hedgehog.
   *

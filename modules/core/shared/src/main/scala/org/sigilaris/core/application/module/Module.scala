@@ -1,9 +1,12 @@
-package org.sigilaris.core
-package application
+package org.sigilaris.core.application.module
 
 import cats.Monad
 import scala.Tuple.++
-import merkle.MerkleTrie
+
+import org.sigilaris.core.application.domain.{StoreF, StoreState, Tables}
+import org.sigilaris.core.application.support.{PrefixFreePath, Requires, UniqueNames}
+import org.sigilaris.core.application.{ModuleRoutedTx, Signed, Tx, TxRegistry}
+import org.sigilaris.core.merkle.MerkleTrie
 
 /** Path-bound state reducer for single modules.
   *
@@ -610,7 +613,7 @@ object StateModule:
     def build[Path <: Tuple](using
         @annotation.unused monad: cats.Monad[F],
         prefixFreePath: PrefixFreePath[Path, Owns],
-        @annotation.unused nodeStore: merkle.MerkleTrie.NodeStore[F],
+        @annotation.unused nodeStore: org.sigilaris.core.merkle.MerkleTrie.NodeStore[F],
         schemaMapper: SchemaMapper[F, Path, Owns],
     ): StateModule[F, Path, Owns, EmptyTuple, Txs, StateReducer[
       F,
@@ -651,7 +654,7 @@ object StateModule:
         def build[Path <: Tuple](using
             @annotation.unused monad: cats.Monad[F],
             prefixFreePath: PrefixFreePath[Path, Owns],
-            @annotation.unused nodeStore: merkle.MerkleTrie.NodeStore[F],
+            @annotation.unused nodeStore: org.sigilaris.core.merkle.MerkleTrie.NodeStore[F],
             schemaMapper: SchemaMapper[F, Path, Owns],
         ): StateModule[F, Path, Owns, EmptyTuple, Txs, StateReducer[
           F,

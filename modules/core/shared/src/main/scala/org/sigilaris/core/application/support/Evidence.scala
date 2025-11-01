@@ -1,5 +1,7 @@
-package org.sigilaris.core
-package application
+package org.sigilaris.core.application.support
+
+import org.sigilaris.core.application.EntryTuple
+import org.sigilaris.core.application.domain.{Entry, StateTable, Tables}
 
 /** Evidence that all entries in Needs are present in Schema.
   *

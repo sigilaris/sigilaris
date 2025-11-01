@@ -1,10 +1,9 @@
-package org.sigilaris.core
-package application
+package org.sigilaris.core.application
 
 import cats.Id
 import munit.FunSuite
 
-import datatype.Utf8
+import org.sigilaris.core.datatype.Utf8
 
 class TablesTest extends FunSuite:
 

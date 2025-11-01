@@ -1,6 +1,4 @@
-package org.sigilaris.core
-package application
-package support
+package org.sigilaris.core.assembly
 
 /** Convenience extensions for deriving table providers from mounted modules.
   *
@@ -13,7 +11,7 @@ package support
   */
 object TablesProviderOps:
   extension[F[_], Path <: Tuple, Owns <: Tuple, Needs <: Tuple, Txs <: Tuple, R](
-      module: StateModule[F, Path, Owns, Needs, Txs, R]
+      module: org.sigilaris.core.application.module.StateModule[F, Path, Owns, Needs, Txs, R]
   )
     /** Derive a `TablesProvider` for the module's owned schema.
       *
@@ -22,4 +20,5 @@ object TablesProviderOps:
       * live tables, so the caller should treat it as an immutable capability
       * and avoid leaking it beyond the intended assembly scope.
       */
-    def toTablesProvider: TablesProvider[F, Owns] = TablesProvider.fromModule(module)
+    def toTablesProvider: org.sigilaris.core.application.module.TablesProvider[F, Owns] =
+      org.sigilaris.core.application.module.TablesProvider.fromModule(module)

@@ -1,11 +1,13 @@
-package org.sigilaris.core
-package application
-package support
+package org.sigilaris.core.application.support
 
-import cats.Monad
+import cats.MonadError
 import scala.Tuple.++
 
-import failure.SigilarisFailure
+import org.sigilaris.core.failure.SigilarisFailure
+import org.sigilaris.core.application.domain.{Eff, StoreState}
+import org.sigilaris.core.application.module.{RoutedStateReducer, StateModule, StateReducer}
+import org.sigilaris.core.application.support.Requires
+import org.sigilaris.core.application.{ModuleRoutedTx, Signed, Tx}
 
 /** Facade for executing transactions against a mounted [[StateModule]].
   *
@@ -27,7 +29,7 @@ object StateModuleExecutor:
       signedTx: Signed[T],
       module: PlainModule[F, Path, Owns, Needs, Txs],
   )(using
-      @annotation.unused monadF: Monad[F],
+      monadErrorF: MonadError[F, SigilarisFailure],
       readsReq: Requires[signedTx.value.Reads, Owns ++ Needs],
       writesReq: Requires[signedTx.value.Writes, Owns ++ Needs],
   ): Eff[F][(StoreState, (signedTx.value.Result, List[signedTx.value.Event]))] =
@@ -39,7 +41,7 @@ object StateModuleExecutor:
       signedTx: Signed[T],
   )(using
       module: PlainModule[F, Path, Owns, Needs, Txs],
-      @annotation.unused monadF: Monad[F],
+      monadErrorF: MonadError[F, SigilarisFailure],
       readsReq: Requires[signedTx.value.Reads, Owns ++ Needs],
       writesReq: Requires[signedTx.value.Writes, Owns ++ Needs],
   ): Eff[F][(StoreState, (signedTx.value.Result, List[signedTx.value.Event]))] =
@@ -51,7 +53,7 @@ object StateModuleExecutor:
       signedTx: Signed[T],
       module: RoutedModule[F, Path, Owns, Needs, Txs],
   )(using
-      @annotation.unused monadF: Monad[F],
+      monadErrorF: MonadError[F, SigilarisFailure],
       readsReq: Requires[signedTx.value.Reads, Owns ++ Needs],
       writesReq: Requires[signedTx.value.Writes, Owns ++ Needs],
   ): Eff[F][(StoreState, (signedTx.value.Result, List[signedTx.value.Event]))] =
@@ -62,7 +64,7 @@ object StateModuleExecutor:
       signedTx: Signed[T],
   )(using
       module: RoutedModule[F, Path, Owns, Needs, Txs],
-      @annotation.unused monadF: Monad[F],
+      monadErrorF: MonadError[F, SigilarisFailure],
       readsReq: Requires[signedTx.value.Reads, Owns ++ Needs],
       writesReq: Requires[signedTx.value.Writes, Owns ++ Needs],
   ): Eff[F][(StoreState, (signedTx.value.Result, List[signedTx.value.Event]))] =
@@ -73,7 +75,7 @@ object StateModuleExecutor:
       signedTx: Signed[T],
       module: PlainModule[F, Path, Owns, Needs, Txs],
   )(using
-      @annotation.unused monadF: Monad[F],
+      monadErrorF: MonadError[F, SigilarisFailure],
       readsReq: Requires[signedTx.value.Reads, Owns ++ Needs],
       writesReq: Requires[signedTx.value.Writes, Owns ++ Needs],
   ): Eff[F][(StoreState, (signedTx.value.Result, List[signedTx.value.Event]))] =
@@ -83,28 +85,30 @@ object StateModuleExecutor:
       signedTx: Signed[T],
   )(using
       module: PlainModule[F, Path, Owns, Needs, Txs],
-      @annotation.unused monadF: Monad[F],
+      monadErrorF: MonadError[F, SigilarisFailure],
       readsReq: Requires[signedTx.value.Reads, Owns ++ Needs],
       writesReq: Requires[signedTx.value.Writes, Owns ++ Needs],
   ): Eff[F][(StoreState, (signedTx.value.Result, List[signedTx.value.Event]))] =
     runFromEmptyWithModule(signedTx, module)
 
   /** Convenience to obtain the plain `F` result. */
-  def runValueWithModule[F[_]: Monad, Path <: Tuple, Owns <: Tuple, Needs <: Tuple, Txs <: Tuple, T <: Tx](
+  def runValueWithModule[F[_], Path <: Tuple, Owns <: Tuple, Needs <: Tuple, Txs <: Tuple, T <: Tx](
       initial: StoreState,
       signedTx: Signed[T],
       module: PlainModule[F, Path, Owns, Needs, Txs],
   )(using
+      monadErrorF: MonadError[F, SigilarisFailure],
       readsReq: Requires[signedTx.value.Reads, Owns ++ Needs],
       writesReq: Requires[signedTx.value.Writes, Owns ++ Needs],
   ): F[Either[SigilarisFailure, (StoreState, (signedTx.value.Result, List[signedTx.value.Event]))]] =
     runWithModule(initial, signedTx, module).value
 
-  def runValue[F[_]: Monad, Path <: Tuple, Owns <: Tuple, Needs <: Tuple, Txs <: Tuple, T <: Tx](
+  def runValue[F[_], Path <: Tuple, Owns <: Tuple, Needs <: Tuple, Txs <: Tuple, T <: Tx](
       initial: StoreState,
       signedTx: Signed[T],
   )(using
       module: PlainModule[F, Path, Owns, Needs, Txs],
+      monadErrorF: MonadError[F, SigilarisFailure],
       readsReq: Requires[signedTx.value.Reads, Owns ++ Needs],
       writesReq: Requires[signedTx.value.Writes, Owns ++ Needs],
   ): F[Either[SigilarisFailure, (StoreState, (signedTx.value.Result, List[signedTx.value.Event]))]] =

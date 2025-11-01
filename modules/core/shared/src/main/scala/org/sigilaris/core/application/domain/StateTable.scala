@@ -1,4 +1,4 @@
-package org.sigilaris.core.application
+package org.sigilaris.core.application.domain
 
 import cats.Monad
 import cats.data.{EitherT, StateT}

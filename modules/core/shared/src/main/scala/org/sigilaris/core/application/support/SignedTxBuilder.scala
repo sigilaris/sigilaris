@@ -1,11 +1,9 @@
-package org.sigilaris.core
-package application
-package support
+package org.sigilaris.core.application.support
 
-import application.accounts.Account
-import application.{AccountSignature, Signed, Tx}
-import crypto.{Hash, KeyPair, Sign}
-import failure.SigilarisFailure
+import org.sigilaris.core.application.accounts.domain.Account
+import org.sigilaris.core.application.transactions.{AccountSignature, Signed, Tx}
+import org.sigilaris.core.crypto.{Hash, KeyPair, Sign}
+import org.sigilaris.core.failure.SigilarisFailure
 
 /** Helper utilities for building [[Signed]] transactions.
   *

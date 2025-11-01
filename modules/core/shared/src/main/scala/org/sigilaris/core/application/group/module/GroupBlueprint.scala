@@ -1,6 +1,4 @@
-package org.sigilaris.core
-package application
-package group
+package org.sigilaris.core.application.group.module
 
 import java.time.Instant
 
@@ -8,14 +6,19 @@ import cats.Monad
 import cats.syntax.eq.*
 import scala.Tuple.++
 
-import codec.byte.{ByteDecoder, ByteEncoder}
-import codec.byte.ByteEncoder.ops.*
-import crypto.{Hash, Recover}
-import datatype.{BigNat, Utf8}
-import failure.{TrieFailure, CryptoFailure}
-import application.accounts.{Account, AccountInfo, KeyId20, KeyInfo}
-import application.security.SignatureVerifier
-import support.TablesAccessOps.*
+import org.sigilaris.core.application.accounts.domain.{Account, AccountInfo, KeyId20, KeyInfo}
+import org.sigilaris.core.application.domain.{Entry, StoreF, Tables}
+import org.sigilaris.core.application.group.domain.*
+import org.sigilaris.core.application.group.transactions.*
+import org.sigilaris.core.application.module.{ModuleBlueprint, StateReducer0, TablesProvider}
+import org.sigilaris.core.application.support.Requires
+import org.sigilaris.core.application.{AccountSignature, Signed, Tx, TxRegistry}
+import org.sigilaris.core.application.security.SignatureVerifier
+import org.sigilaris.core.codec.byte.{ByteDecoder, ByteEncoder}
+import org.sigilaris.core.codec.byte.ByteEncoder.ops.*
+import org.sigilaris.core.crypto.{Hash, Recover}
+import org.sigilaris.core.datatype.{BigNat, Utf8}
+import org.sigilaris.core.failure.{CryptoFailure, TrieFailure}
 
 /** Groups module schema.
   *
@@ -32,7 +35,7 @@ object GroupsSchema:
     for
       groupIdResult <- ByteDecoder[Utf8].decode(bytes)
       accountResult <- ByteDecoder[Account].decode(groupIdResult.remainder)
-    yield codec.byte.DecodeResult((GroupId(groupIdResult.value), accountResult.value), accountResult.remainder)
+    yield org.sigilaris.core.codec.byte.DecodeResult((GroupId(groupIdResult.value), accountResult.value), accountResult.remainder)
 
   type GroupsSchema =
     Entry["groups", GroupId, GroupData] *:
@@ -72,7 +75,7 @@ class GroupsReducer[F[_]: Monad] extends StateReducer0[F, GroupsSchema.GroupsSch
       hashT: Hash[T],
       recoverT: Recover[T],
   ): StoreF[F][KeyId20] =
-    val nameKeyTable = provider.providedTable["nameKey", (Utf8, KeyId20), KeyInfo]
+    val (_ *: nameKeyTable *: EmptyTuple) = provider.tables
 
     SignatureVerifier.verifySignature[F, T](
       Signed(sig, tx),
@@ -402,7 +405,7 @@ object GroupsReducer:
 object GroupsBP:
   def apply[F[_]: Monad](
       provider: TablesProvider[F, GroupsReducer.GroupsNeeds],
-  )(using @annotation.unused nodeStore: merkle.MerkleTrie.NodeStore[F]): ModuleBlueprint[F, "groups", GroupsSchema.GroupsSchema, GroupsReducer.GroupsNeeds, EmptyTuple] =
+  )(using @annotation.unused nodeStore: org.sigilaris.core.merkle.MerkleTrie.NodeStore[F]): ModuleBlueprint[F, "groups", GroupsSchema.GroupsSchema, GroupsReducer.GroupsNeeds, EmptyTuple] =
     import GroupsSchema.*
 
     new ModuleBlueprint[F, "groups", GroupsSchema, GroupsReducer.GroupsNeeds, EmptyTuple](

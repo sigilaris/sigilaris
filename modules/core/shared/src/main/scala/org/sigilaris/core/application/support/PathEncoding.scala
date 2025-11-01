@@ -1,9 +1,8 @@
-package org.sigilaris.core
-package application
+package org.sigilaris.core.application.support
 
 import scodec.bits.ByteVector
-import codec.byte.ByteEncoder.ops.*
-import datatype.BigNat
+import org.sigilaris.core.codec.byte.ByteEncoder.ops.*
+import org.sigilaris.core.datatype.BigNat
 
 import scala.compiletime.{constValue, erasedValue}
 

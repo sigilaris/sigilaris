@@ -1,14 +1,13 @@
-package org.sigilaris.core
-package application
-package support
+package org.sigilaris.core.assembly
 
 import scala.annotation.tailrec
 import scala.compiletime.constValue
 import scala.quoted.*
 
-import codec.byte.ByteCodec
+import org.sigilaris.core.codec.byte.ByteCodec
+import org.sigilaris.core.application.domain.Entry
 
-/** String interpolator helpers for declaring [[application.Entry]] values. */
+/** String interpolator helpers for declaring [[org.sigilaris.core.application.Entry]] values. */
 object EntrySyntax:
   final class EntryBuilder[Name <: String]:
     inline def apply[K: ByteCodec, V: ByteCodec]: Entry[Name, K, V] =

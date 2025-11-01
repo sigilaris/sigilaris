@@ -2,6 +2,9 @@ package org.sigilaris.core.application
 
 import hedgehog.munit.HedgehogSuite
 import hedgehog.*
+import org.sigilaris.core.application.{support as supportPkg}
+import supportPkg.{encodePathRuntime, encodeSegmentRuntime, lenBytesRuntime, tablePrefixRuntimeFromList}
+import org.sigilaris.core.assembly.PrefixFreeValidator
 
 /** Property-based tests for path encoding functions using Hedgehog.
   *

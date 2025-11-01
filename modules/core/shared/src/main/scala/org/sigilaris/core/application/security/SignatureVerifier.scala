@@ -1,17 +1,17 @@
-package org.sigilaris.core
-package application
-package security
+package org.sigilaris.core.application.security
 
 import java.time.Instant
 
 import cats.Monad
 import cats.syntax.eq.*
 
-import accounts.{Account, KeyId20, KeyInfo}
-import datatype.Utf8
-import failure.CryptoFailure
-import crypto.{Hash, Recover, PublicKey}
-import util.SafeStringInterp.*
+import org.sigilaris.core.application.accounts.domain.{Account, KeyId20, KeyInfo}
+import org.sigilaris.core.application.domain.StoreF
+import org.sigilaris.core.application.{AccountSignature, Signed, Tx}
+import org.sigilaris.core.crypto.{Hash, PublicKey, Recover}
+import org.sigilaris.core.datatype.Utf8
+import org.sigilaris.core.failure.CryptoFailure
+import org.sigilaris.core.util.SafeStringInterp.*
 
 object SignatureVerifier:
   def recoverKeyId[F[_]: Monad, T <: Tx](
@@ -40,27 +40,26 @@ object SignatureVerifier:
       lookup: (Utf8, KeyId20) => StoreF[F][Option[KeyInfo]],
   ): StoreF[F][Unit] =
     accountSig.account match
-      case Account.Named(name) =>
-        for
-          maybeKeyInfo <- lookup(name, recoveredKeyId)
-          _ <- maybeKeyInfo match
-            case None =>
-              StoreF.raise[F, Unit](
-                CryptoFailure(
-                  ss"Key ${recoveredKeyId.bytes.toHex} not registered for account ${name.asString}"
-                )
+      case named: Account.Named =>
+        val signerName = named.name
+        lookup(signerName, recoveredKeyId).flatMap {
+          case None =>
+            StoreF.raise[F, Unit](
+              CryptoFailure(
+                ss"Key ${recoveredKeyId.bytes.toHex} not registered for account ${signerName.asString}"
               )
-            case Some(keyInfo) =>
-              keyInfo.expiresAt match
-                case Some(expiresAt) if envelopeTimestamp.isAfter(expiresAt) =>
-                  StoreF.raise[F, Unit](
-                    CryptoFailure(
-                      ss"Key expired at ${expiresAt.toString}, transaction timestamp: ${envelopeTimestamp.toString}"
-                    )
+            )
+          case Some(keyInfo) =>
+            keyInfo.expiresAt match
+              case Some(expiresAt) if envelopeTimestamp.isAfter(expiresAt) =>
+                StoreF.raise[F, Unit](
+                  CryptoFailure(
+                    ss"Key expired at ${expiresAt.toString}, transaction timestamp: ${envelopeTimestamp.toString}"
                   )
-                case _ =>
-                  StoreF.pure[F, Unit](())
-        yield ()
+                )
+              case _ =>
+                StoreF.pure[F, Unit](())
+        }
 
       case Account.Unnamed(keyId) =>
         if recoveredKeyId === keyId then
@@ -88,5 +87,5 @@ object SignatureVerifier:
   /** Derive KeyId20 from a recovered public key following Ethereum convention. */
   private def deriveKeyId20(pubKey: PublicKey): KeyId20 =
     val pubKeyBytes = pubKey.toBytes
-    val hash = crypto.CryptoOps.keccak256(pubKeyBytes.toArray)
+    val hash = org.sigilaris.core.crypto.CryptoOps.keccak256(pubKeyBytes.toArray)
     KeyId20.unsafeApply(scodec.bits.ByteVector.view(hash).takeRight(20))

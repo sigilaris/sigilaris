@@ -1,15 +1,18 @@
-package org.sigilaris.core
-package application
+package org.sigilaris.core.application
 
 import cats.Id
 import cats.data.{EitherT, Kleisli, StateT}
 import munit.FunSuite
 import scala.Tuple.++
 
-import accounts.Account
-import crypto.Signature
-import datatype.UInt256
-import merkle.{MerkleTrie, MerkleTrieNode}
+import _root_.org.sigilaris.core.application.accounts.domain.Account
+import _root_.org.sigilaris.core.application.domain.{Entry, StoreF, StoreState, Tables}
+import _root_.org.sigilaris.core.application.module.{Blueprint, ModuleBlueprint, StateModule, StateReducer0, TablesProvider}
+import _root_.org.sigilaris.core.application.support.Requires
+import _root_.org.sigilaris.core.application.transactions.{AccountSignature, Signed, Tx, TxRegistry}
+import org.sigilaris.core.crypto.Signature
+import org.sigilaris.core.datatype.UInt256
+import org.sigilaris.core.merkle.{MerkleTrie, MerkleTrieNode}
 import scodec.bits.ByteVector
 
 /** Phase 5.6: Provider Composition Tests

@@ -1,6 +1,4 @@
-package org.sigilaris.core
-package application
-package accounts
+package org.sigilaris.core.application.accounts.domain
 
 /** Module-local brands for Accounts transactions to prevent cross-module mixing. */
 opaque type AccountsEvent[+A] = A

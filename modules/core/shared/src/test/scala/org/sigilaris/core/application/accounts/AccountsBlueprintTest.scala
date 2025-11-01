@@ -1,18 +1,31 @@
-package org.sigilaris.core
-package application
-package accounts
+package org.sigilaris.core.application.accounts
 
 import java.time.Instant
 
 import cats.Id
 import cats.data.{EitherT, Kleisli}
 import munit.FunSuite
-
-import datatype.{BigNat, Utf8}
-import merkle.{MerkleTrie, MerkleTrieNode}
 import scodec.bits.ByteVector
-import AccountsEvent.*
-import AccountsResult.*
+
+import org.sigilaris.core.application.accounts.domain.{Account, KeyId20}
+import org.sigilaris.core.application.accounts.domain.AccountsEvent.*
+import org.sigilaris.core.application.accounts.domain.AccountsResult.*
+import org.sigilaris.core.application.accounts.module.AccountsBP
+import org.sigilaris.core.application.accounts.transactions.{
+  AddKeyIds,
+  CreateNamedAccount,
+  RemoveAccount,
+  RemoveKeyIds,
+  TxEnvelope,
+  UpdateAccount,
+}
+import org.sigilaris.core.application.domain.StoreState
+import org.sigilaris.core.application.module.StateModule
+import org.sigilaris.core.application.transactions.{AccountSignature, Signed, Tx}
+import org.sigilaris.core.crypto.{CryptoOps, Hash, KeyPair, Sign}
+import org.sigilaris.core.crypto.Sign.ops.*
+import org.sigilaris.core.datatype.{BigNat, Utf8}
+import org.sigilaris.core.merkle.{MerkleTrie, MerkleTrieNode}
 
 /** Tests for the Accounts blueprint (Phase 6).
   *
@@ -31,8 +44,6 @@ class AccountsBlueprintTest extends FunSuite:
   /** Helper keypairs for testing - these correspond to the test accounts.
     * In production, keys would be securely managed.
     */
-  import crypto.{CryptoOps, KeyPair, Hash, Sign}
-  import crypto.Sign.ops.*
 
   lazy val aliceKeyPair: KeyPair = CryptoOps.generate()
   lazy val bobKeyPair: KeyPair = CryptoOps.generate()

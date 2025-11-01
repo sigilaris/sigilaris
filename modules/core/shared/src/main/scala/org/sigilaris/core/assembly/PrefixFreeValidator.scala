@@ -1,4 +1,6 @@
-package org.sigilaris.core.application
+package org.sigilaris.core.assembly
+
+import org.sigilaris.core.application.support.tablePrefix
 
 import scodec.bits.ByteVector
 
@@ -85,14 +87,14 @@ object PrefixFreeValidator:
 
     inline erasedValue[Schema] match
       case _: EmptyTuple => acc
-      case _: (Entry[name, k, v] *: tail) =>
+      case _: (org.sigilaris.core.application.domain.Entry[name, k, v] *: tail) =>
         val prefix = tablePrefix[Path, name]
         collectSchemaPrefixes[Path, tail](prefix :: acc)
 
   /** Validates that the given schema (Entry tuples) produces prefix-free table prefixes
     * when mounted at the given path.
     *
-    * This is a runtime check that can be used in tests or during module assembly.
+    * This is a runtime check that can be used in tests or during module org.sigilaris.core.application.
     */
   inline def validateSchema[Path <: Tuple, Schema <: Tuple]: ValidationResult =
     val prefixes = collectSchemaPrefixes[Path, Schema]()
@@ -102,7 +104,10 @@ object PrefixFreeValidator:
   def exampleValidation(): Unit =
     // This would typically be used in tests or module assembly
     type Path   = ("app", "accounts")
-    type Schema = Entry["balances", String, Int] *: Entry["accounts", String, String] *: EmptyTuple
+    type Schema =
+      org.sigilaris.core.application.domain.Entry["balances", String, Int] *:
+        org.sigilaris.core.application.domain.Entry["accounts", String, String] *:
+        EmptyTuple
 
     val result = validateSchema[Path, Schema]
     println(formatResult(result))

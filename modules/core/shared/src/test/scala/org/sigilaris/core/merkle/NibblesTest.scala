@@ -5,7 +5,7 @@ import scodec.bits.ByteVector
 
 import codec.byte.{ByteDecoder, DecodeResult}
 import codec.byte.ByteEncoder.ops.*
-import failure.DecodeFailure
+import org.sigilaris.core.failure.DecodeFailure
 import Nibbles.*
 
 import hedgehog.*

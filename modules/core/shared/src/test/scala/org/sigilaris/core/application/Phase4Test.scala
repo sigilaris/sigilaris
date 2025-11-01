@@ -1,10 +1,11 @@
-package org.sigilaris.core
-package application
+package org.sigilaris.core.application
 
 import cats.effect.SyncIO
 import munit.FunSuite
 
-import codec.byte.ByteCodec
+import org.sigilaris.core.application.domain.{Entry, EntryTuple, StoreF, StoreState, Tables}
+import org.sigilaris.core.application.support.{Lookup, Requires}
+import org.sigilaris.core.codec.byte.ByteCodec
 
 /** Tests for Phase 4: Dependencies (Requires and Lookup evidence).
   *
@@ -25,13 +26,12 @@ import codec.byte.ByteCodec
 class Phase4Test extends FunSuite:
 
   // Use built-in types with existing codecs - no custom codec implementation needed!
-  import datatype.{Utf8, BigNat}
+  import org.sigilaris.core.datatype.{Utf8, BigNat}
   import scodec.bits.ByteVector
 
-  // Define sample types - codecs will be auto-derived from field codecs
-  case class Address(value: Utf8)
-  case class Account(data: Utf8)
-  case class TokenInfo(info: Utf8)
+  type Address   = Utf8
+  type Account   = Utf8
+  type TokenInfo = Utf8
 
   // Define sample schemas
   type AccountsSchema = Entry["accounts", Address, Account] *: Entry["balances", Address, BigNat] *: EmptyTuple
@@ -109,7 +109,7 @@ class Phase4Test extends FunSuite:
 
   // Runtime test: verify that Lookup can extract the correct table instance
   test("Lookup runtime: extract table from Tables tuple"):
-    import merkle.{MerkleTrie, MerkleTrieNode}
+    import org.sigilaris.core.merkle.{MerkleTrie, MerkleTrieNode}
     import cats.data.Kleisli
     import cats.data.EitherT
 
@@ -138,7 +138,7 @@ class Phase4Test extends FunSuite:
     assertEquals(extractedTable.name, "balances")
 
   test("Cross-module access: reducer can read/write using branded keys"):
-    import merkle.{MerkleTrie, MerkleTrieNode}
+    import org.sigilaris.core.merkle.{MerkleTrie, MerkleTrieNode}
     import cats.data.Kleisli
     import cats.data.EitherT
 
@@ -148,7 +148,7 @@ class Phase4Test extends FunSuite:
       EitherT.rightT[SyncIO, String](store.get(hash))
 
     // Helper to persist diff
-    def saveNodes(state: merkle.MerkleTrieState): Unit =
+    def saveNodes(state: org.sigilaris.core.merkle.MerkleTrieState): Unit =
       state.diff.toMap.foreach { case (hash, (node, _)) =>
         store.put(hash, node)
       }
@@ -182,12 +182,12 @@ class Phase4Test extends FunSuite:
       val tokens = tokensLookup.table[SyncIO](tables)
 
       // Create test data
-      val addr1 = Address(Utf8("addr1"))
-      val addr2 = Address(Utf8("addr2"))
+      val addr1 = (Utf8("addr1"): Address)
+      val addr2 = (Utf8("addr2"): Address)
 
-      val account1 = Account(Utf8("account_data_1"))
+      val account1 = (Utf8("account_data_1"): Account)
       val balance1 = BigNat.unsafeFromLong(1000L)
-      val tokenInfo = TokenInfo(Utf8("token_info_1"))
+      val tokenInfo = (Utf8("token_info_1"): TokenInfo)
 
       // Brand keys with table-specific types - this is compile-time safe!
       val accountKey1 = accounts.brand(addr1)
@@ -230,9 +230,9 @@ class Phase4Test extends FunSuite:
     result match
       case Right((finalState, (maybeAccount, maybeBalance, maybeToken, notFound))) =>
         // Verify all results
-        assertEquals(maybeAccount, Some(Account(Utf8("account_data_1"))))
+        assertEquals(maybeAccount, Some[Account](Utf8("account_data_1")))
         assertEquals(maybeBalance, Some(BigNat.unsafeFromLong(1000L)))
-        assertEquals(maybeToken, Some(TokenInfo(Utf8("token_info_1"))))
+        assertEquals(maybeToken, Some[TokenInfo](Utf8("token_info_1")))
         assertEquals(notFound, None)
 
         // Persist the state changes
@@ -241,7 +241,7 @@ class Phase4Test extends FunSuite:
         // Verify we can read the persisted data
         val accountsLookup = summon[Lookup[CombinedSchema, "accounts", Address, Account]]
         val accounts = accountsLookup.table[SyncIO](tables)
-        val addr = Address(Utf8("addr1"))
+        val addr = (Utf8("addr1"): Address)
         val key = accounts.brand(addr)
 
         val verifyRead = accounts.get(key).runA(finalState).value
@@ -249,7 +249,7 @@ class Phase4Test extends FunSuite:
 
         verified match
           case Right(Some(account)) =>
-            assertEquals(account, Account(Utf8("account_data_1")))
+            assertEquals(account, (Utf8("account_data_1"): Account))
           case other =>
             fail(s"Expected Some(account), got $other")
 

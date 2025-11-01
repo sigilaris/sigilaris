@@ -1,6 +1,4 @@
-package org.sigilaris.core
-package application
-package group
+package org.sigilaris.core.application.group
 
 import java.time.Instant
 
@@ -8,12 +6,20 @@ import cats.Id
 import cats.data.{EitherT, Kleisli}
 import munit.FunSuite
 
-import datatype.{BigNat, Utf8}
-import merkle.{MerkleTrie, MerkleTrieNode}
 import scodec.bits.ByteVector
-import application.accounts.{Account, KeyId20, TxEnvelope}
-import GroupsEvent.*
-import GroupsResult.*
+
+import org.sigilaris.core.application.transactions.{AccountSignature, Signed, Tx}
+import org.sigilaris.core.application.accounts.domain.{Account, KeyId20}
+import org.sigilaris.core.application.accounts.module.AccountsBP
+import org.sigilaris.core.application.accounts.transactions.TxEnvelope
+import org.sigilaris.core.application.domain.StoreState
+import org.sigilaris.core.application.group.domain.GroupId
+import org.sigilaris.core.application.group.module.{GroupsBP, GroupsReducer}
+import org.sigilaris.core.application.group.transactions.*
+import org.sigilaris.core.application.module.{StateModule, TablesProvider}
+import org.sigilaris.core.application.module.SchemaMapper.given
+import org.sigilaris.core.datatype.{BigNat, Utf8}
+import org.sigilaris.core.merkle.{MerkleTrie, MerkleTrieNode}
 
 /** Tests for the Groups blueprint (Phase 6).
   *
@@ -39,8 +45,6 @@ class GroupBlueprintTest extends FunSuite:
     * We create an empty AccountsBP module and use it as the provider.
     */
   given stubGroupsNeedsProvider: TablesProvider[Id, GroupsReducer.GroupsNeeds] =
-    import application.accounts.AccountsBP
-
     // Create AccountsBP and mount it to get tables
     val accountsBP = AccountsBP[Id]
     val accountsModule = StateModule.mount[("stub", "accounts")](accountsBP)
@@ -49,8 +53,8 @@ class GroupBlueprintTest extends FunSuite:
     TablesProvider.fromModule(accountsModule)
 
   /** Helper keypairs for testing. */
-  import crypto.{CryptoOps, KeyPair, Hash, Sign}
-  import crypto.Sign.ops.*
+  import org.sigilaris.core.crypto.{CryptoOps, KeyPair, Hash, Sign}
+  import org.sigilaris.core.crypto.Sign.ops.*
 
   lazy val aliceKeyPair: KeyPair = CryptoOps.generate()
   lazy val bobKeyPair: KeyPair = CryptoOps.generate()

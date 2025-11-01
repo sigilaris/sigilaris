@@ -1,15 +1,20 @@
-package org.sigilaris.core
-package application
-package accounts
+package org.sigilaris.core.application.accounts.module
 
 import cats.Monad
 import cats.syntax.eq.*
 
-import codec.byte.{ByteDecoder, ByteEncoder}
-import codec.byte.ByteEncoder.ops.*
-import datatype.{BigNat, Utf8}
-import failure.{TrieFailure, CryptoFailure}
-import application.security.SignatureVerifier
+import org.sigilaris.core.codec.byte.{ByteDecoder, ByteEncoder}
+import org.sigilaris.core.codec.byte.ByteEncoder.ops.*
+import org.sigilaris.core.datatype.{BigNat, Utf8}
+import org.sigilaris.core.failure.{TrieFailure, CryptoFailure}
+import org.sigilaris.core.application.accounts.domain.*
+import org.sigilaris.core.application.accounts.transactions.*
+import org.sigilaris.core.application.domain.{Entry, StoreF, Tables}
+import org.sigilaris.core.application.module.{ModuleBlueprint, StateReducer0, TablesProvider}
+import org.sigilaris.core.application.security.SignatureVerifier
+import org.sigilaris.core.application.support.Requires
+import org.sigilaris.core.application.transactions.AccountSignature
+import org.sigilaris.core.application.{Signed, Tx, TxRegistry}
 
 /** Accounts module schema.
   *
@@ -26,7 +31,7 @@ object AccountsSchema:
     for
       nameResult <- ByteDecoder[Utf8].decode(bytes)
       keyIdResult <- ByteDecoder[KeyId20].decode(nameResult.remainder)
-    yield codec.byte.DecodeResult((nameResult.value, keyIdResult.value), keyIdResult.remainder)
+    yield org.sigilaris.core.codec.byte.DecodeResult((nameResult.value, keyIdResult.value), keyIdResult.remainder)
 
   type AccountsSchema =
     Entry["accounts", Utf8, AccountInfo] *:
@@ -393,7 +398,7 @@ class AccountsReducer[F[_]: Monad] extends StateReducer0[F, AccountsSchema.Accou
   * Phase 6 example blueprint implementing ADR-0010 (Blockchain Account Model and Key Management).
   */
 object AccountsBP:
-  def apply[F[_]: Monad](using @annotation.unused nodeStore: merkle.MerkleTrie.NodeStore[F]): ModuleBlueprint[F, "accounts", AccountsSchema.AccountsSchema, EmptyTuple, EmptyTuple] =
+  def apply[F[_]: Monad](using @annotation.unused nodeStore: org.sigilaris.core.merkle.MerkleTrie.NodeStore[F]): ModuleBlueprint[F, "accounts", AccountsSchema.AccountsSchema, EmptyTuple, EmptyTuple] =
     import AccountsSchema.*
 
     new ModuleBlueprint[F, "accounts", AccountsSchema, EmptyTuple, EmptyTuple](

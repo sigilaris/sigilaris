@@ -1,5 +1,4 @@
-package org.sigilaris.core
-package application
+package org.sigilaris.core.application
 
 import cats.Id
 import cats.data.{EitherT, Kleisli}
@@ -7,8 +6,8 @@ import scodec.bits.hex
 
 import munit.FunSuite
 
-import datatype.Utf8
-import merkle.{MerkleTrie, MerkleTrieNode}
+import org.sigilaris.core.datatype.Utf8
+import org.sigilaris.core.merkle.{MerkleTrie, MerkleTrieNode}
 
 class StateTableTest extends FunSuite:
 

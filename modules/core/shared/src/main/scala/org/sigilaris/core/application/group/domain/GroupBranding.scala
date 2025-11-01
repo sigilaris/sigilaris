@@ -1,6 +1,4 @@
-package org.sigilaris.core
-package application
-package group
+package org.sigilaris.core.application.group.domain
 
 /** Module-local brands for Groups transactions to prevent cross-module mixing. */
 opaque type GroupsEvent[+A] = A

@@ -1,5 +1,4 @@
-package org.sigilaris.core
-package application
+package org.sigilaris.core.application
 
 import cats.Id
 import cats.data.{EitherT, Kleisli, StateT}
@@ -7,11 +6,30 @@ import scala.Tuple.++
 
 import munit.FunSuite
 
-import accounts.Account
-import crypto.Signature
-import datatype.{UInt256, Utf8}
-import failure.RoutingFailure
-import merkle.{MerkleTrie, MerkleTrieNode}
+import org.sigilaris.core.application.accounts.domain.Account
+import org.sigilaris.core.application.domain.{Entry, StoreF, Tables}
+import org.sigilaris.core.application.module.{
+  Blueprint,
+  ComposedBlueprint,
+  ModuleBlueprint,
+  StateModule,
+  StateReducer,
+  StateReducer0,
+  TablesProvider,
+}
+import org.sigilaris.core.application.support.{PrefixFreePath, Requires, UniqueNames}
+import org.sigilaris.core.application.transactions.{
+  AccountSignature,
+  ModuleId,
+  ModuleRoutedTx,
+  Signed,
+  Tx,
+  TxRegistry,
+}
+import org.sigilaris.core.crypto.Signature
+import org.sigilaris.core.datatype.{UInt256, Utf8}
+import org.sigilaris.core.failure.RoutingFailure
+import org.sigilaris.core.merkle.{MerkleTrie, MerkleTrieNode}
 import scodec.bits.ByteVector
 
 @SuppressWarnings(Array("org.wartremover.warts.Null", "org.wartremover.warts.AsInstanceOf"))
@@ -356,8 +374,11 @@ class CompositionTest extends FunSuite:
       errors,
       """|error:
          |Found:    (signedTx :
-         |  org.sigilaris.core.application.Signed[CompositionTest.this.UnroutedTx])
-         |Required: org.sigilaris.core.application.Signed[org.sigilaris.core.application.Tx &
+         |  org.sigilaris.core.application.transactions.Signed[
+         |    CompositionTest.this.UnroutedTx]
+         |)
+         |Required: org.sigilaris.core.application.transactions.Signed[
+         |  org.sigilaris.core.application.Tx &
          |  org.sigilaris.core.application.ModuleRoutedTx]
          |      composed.reducer0.apply(signedTx)(using
          |                             ^

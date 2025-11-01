@@ -1,16 +1,16 @@
-package org.sigilaris.core
-package application
-package group
+package org.sigilaris.core.application.group.transactions
 
 import cats.Eq
 
-import codec.byte.{ByteDecoder, ByteEncoder}
-import crypto.{Hash, Recover}
-import datatype.{BigNat, Utf8}
+import org.sigilaris.core.codec.byte.{ByteDecoder, ByteEncoder}
+import org.sigilaris.core.crypto.{Hash, Recover}
+import org.sigilaris.core.datatype.{BigNat, Utf8}
 
-// Import Transaction and Entry types
-import org.sigilaris.core.application.Entry
-import org.sigilaris.core.application.accounts.{Account, TxEnvelope}
+import org.sigilaris.core.application.Tx
+import org.sigilaris.core.application.accounts.domain.Account
+import org.sigilaris.core.application.accounts.transactions.TxEnvelope
+import org.sigilaris.core.application.domain.Entry
+import org.sigilaris.core.application.group.domain.*
 
 /** Create a new group.
   *

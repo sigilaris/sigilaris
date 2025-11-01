@@ -8,7 +8,7 @@ import scodec.bits.*
 import Hash.ops.*
 import Recover.ops.*
 import Sign.ops.*
-import failure.SigilarisFailure
+import org.sigilaris.core.failure.SigilarisFailure
 
 import hedgehog.munit.HedgehogSuite
 import hedgehog.*

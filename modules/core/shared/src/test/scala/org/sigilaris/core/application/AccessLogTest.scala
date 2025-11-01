@@ -1,5 +1,4 @@
-package org.sigilaris.core
-package application
+package org.sigilaris.core.application
 
 import munit.FunSuite
 import scodec.bits.ByteVector

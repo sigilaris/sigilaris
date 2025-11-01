@@ -8,8 +8,8 @@ import hedgehog.*
 import hedgehog.munit.HedgehogSuite
 
 import codec.byte.{ByteDecoder, ByteEncoder, DecodeResult}
-import crypto.Hash
-import datatype.UInt256
+import org.sigilaris.core.crypto.Hash
+import org.sigilaris.core.datatype.UInt256
 import Nibbles.*
 
 class MerkleTrieNodeTest extends HedgehogSuite:

@@ -1,4 +1,4 @@
-package org.sigilaris.core.application
+package org.sigilaris.core.application.domain
 
 import scodec.bits.ByteVector
 

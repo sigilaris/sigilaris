@@ -1,13 +1,15 @@
-package org.sigilaris.core
-package application
+package org.sigilaris.core.application.module
 
 import cats.Monad
 import cats.data.{EitherT, StateT}
 import scala.Tuple.++
 
-import failure.RoutingFailure
-import merkle.MerkleTrie.NodeStore
-import util.SafeStringInterp.ss
+import org.sigilaris.core.application.domain.{StoreF, Tables}
+import org.sigilaris.core.application.support.{PrefixFreePath, Requires, UniqueNames}
+import org.sigilaris.core.application.{ModuleRoutedTx, Signed, Tx, TxRegistry}
+import org.sigilaris.core.failure.RoutingFailure
+import org.sigilaris.core.merkle.MerkleTrie.NodeStore
+import org.sigilaris.core.util.SafeStringInterp.ss
 
 /** Path-agnostic state reducer.
   *

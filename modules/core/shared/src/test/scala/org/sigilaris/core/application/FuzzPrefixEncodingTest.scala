@@ -2,6 +2,9 @@ package org.sigilaris.core.application
 
 import hedgehog.munit.HedgehogSuite
 import hedgehog.*
+import org.sigilaris.core.application.{support as supportPkg}
+import supportPkg.{encodePathRuntime, encodeSegmentRuntime, tablePrefixRuntimeFromList}
+import org.sigilaris.core.assembly.PrefixFreeValidator
 
 /** Fuzz tests for prefix encoding using Hedgehog.
   *

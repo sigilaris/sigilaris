@@ -1,24 +1,32 @@
-package org.sigilaris.core
-package application
-package support
+package org.sigilaris.core.application.support
 
 import cats.Id
 import cats.data.{EitherT, Kleisli}
 import munit.FunSuite
 
-import datatype.Utf8
-import merkle.{MerkleTrie, MerkleTrieNode}
-
-import EntrySyntax.entry
-import TablesProviderOps.*
-import TablesAccessOps.*
+import org.sigilaris.core.application.domain.{Entry, KeyOf as DomainKeyOf, StoreF, Tables}
+import org.sigilaris.core.application.module.{ModuleBlueprint, StateModule, StateReducer, StateReducer0, TablesProvider}
+import org.sigilaris.core.application.module.SchemaMapper.given
+import org.sigilaris.core.application.transactions.{Signed, Tx, TxRegistry}
+import org.sigilaris.core.application.support.{Lookup, Requires}
+import org.sigilaris.core.application.support.Lookup.given
+import org.sigilaris.core.application.support.PathEncoder.given
+import org.sigilaris.core.application.support.PrefixFreePath.given
+import org.sigilaris.core.application.support.UniqueNames.given
+import org.sigilaris.core.assembly.BlueprintDsl
+import org.sigilaris.core.assembly.EntrySyntax.entry
+import org.sigilaris.core.assembly.TablesAccessOps.*
+import org.sigilaris.core.assembly.TablesProviderOps.*
+import org.sigilaris.core.datatype.Utf8
+import org.sigilaris.core.merkle.{MerkleTrie, MerkleTrieNode}
 
 class BlueprintDslTest extends FunSuite:
+  given cats.Monad[Id] = cats.catsInstancesForId
   given MerkleTrie.NodeStore[Id] = Kleisli: (_: MerkleTrieNode.MerkleHash) =>
     EitherT.rightT[Id, String](None)
 
-  private type TestEntry      = EntryTuple["balances", Utf8, Long]
-  private type TestSchema     = TestEntry
+  private type TestEntry      = Entry["balances", Utf8, Long]
+  private type TestSchema     = TestEntry *: EmptyTuple
   private type TestNeeds      = EmptyTuple
   private type TestTxs        = EmptyTuple
   private type TestModuleName = "test"
@@ -68,7 +76,7 @@ class BlueprintDslTest extends FunSuite:
     val balancesTable = provider.providedTable["balances", Utf8, Long]
     val brandedKey = balancesTable.brand(Utf8("alice"))
     // If brand succeeds, the lookup evidence matched the expected schema.
-    assertEquals(KeyOf.unwrap(brandedKey), Utf8("alice"))
+    assertEquals(DomainKeyOf.unwrap(brandedKey), Utf8("alice"))
 
   test("TablesAccessOps.deriveLookup mirrors summonInline"):
     val lookup = deriveLookup[TestSchema, "balances", Utf8, Long]
@@ -76,4 +84,4 @@ class BlueprintDslTest extends FunSuite:
     val provider: TablesProvider[Id, TestSchema] = module.toTablesProvider
     val table = lookup.table(provider.tables)
     val brandedKey = table.brand(Utf8("bob"))
-    assertEquals(KeyOf.unwrap(brandedKey), Utf8("bob"))
+    assertEquals(DomainKeyOf.unwrap(brandedKey), Utf8("bob"))

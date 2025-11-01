@@ -1,6 +1,4 @@
-package org.sigilaris.core
-package application
-package accounts
+package org.sigilaris.core.application.accounts.domain
 
 import java.time.Instant
 
@@ -10,10 +8,10 @@ import scodec.bits.ByteVector
 import io.github.iltotore.iron.*
 import io.github.iltotore.iron.constraint.collection.FixedLength
 
-import codec.byte.{ByteDecoder, ByteEncoder, DecodeResult}
-import codec.byte.ByteEncoder.ops.*
-import datatype.{BigNat, Utf8}
-import failure.DecodeFailure
+import org.sigilaris.core.codec.byte.{ByteDecoder, ByteEncoder, DecodeResult}
+import org.sigilaris.core.codec.byte.ByteEncoder.ops.*
+import org.sigilaris.core.datatype.{BigNat, Utf8}
+import org.sigilaris.core.failure.DecodeFailure
 
 /** Account identifier - can be either Named or Unnamed.
   *

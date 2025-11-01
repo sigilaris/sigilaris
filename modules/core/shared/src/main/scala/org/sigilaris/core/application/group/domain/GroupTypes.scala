@@ -1,14 +1,12 @@
-package org.sigilaris.core
-package application
-package group
+package org.sigilaris.core.application.group.domain
 
 import java.time.Instant
 
 import cats.Eq
 
-import codec.byte.{ByteDecoder, ByteEncoder}
-import datatype.{BigNat, Utf8}
-import application.accounts.Account
+import org.sigilaris.core.codec.byte.{ByteDecoder, ByteEncoder}
+import org.sigilaris.core.datatype.{BigNat, Utf8}
+import org.sigilaris.core.application.accounts.domain.Account
 
 /** Group identifier using UTF-8 string (no format constraints).
   *

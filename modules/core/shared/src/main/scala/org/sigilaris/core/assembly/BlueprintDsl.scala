@@ -1,9 +1,18 @@
-package org.sigilaris.core
-package application
-package support
+package org.sigilaris.core.assembly
 
 import cats.Monad
-import merkle.MerkleTrie
+import org.sigilaris.core.merkle.MerkleTrie
+
+import org.sigilaris.core.application.module.{
+  ComposedBlueprint,
+  ModuleBlueprint,
+  RoutedStateReducer,
+  SchemaMapper,
+  StateModule,
+  StateReducer,
+}
+import org.sigilaris.core.application.support.PrefixFreePath
+import org.sigilaris.core.application.transactions.ModuleId
 
 object BlueprintDsl:
   private type PlainModule[F[_], Path <: Tuple, Owns <: Tuple, Needs <: Tuple, Txs <: Tuple] =

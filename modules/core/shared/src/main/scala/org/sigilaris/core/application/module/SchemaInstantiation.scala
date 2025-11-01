@@ -1,9 +1,11 @@
-package org.sigilaris.core
-package application
+package org.sigilaris.core.application.module
 
 import cats.Monad
 import scodec.bits.ByteVector
-import merkle.MerkleTrie
+
+import org.sigilaris.core.application.domain.{Entry, Tables}
+import org.sigilaris.core.application.support.{PathEncoder, tablePrefixRuntime}
+import org.sigilaris.core.merkle.MerkleTrie
 
 /** Typeclass for instantiating tables from Entry instances.
   *
