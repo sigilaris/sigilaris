@@ -30,9 +30,9 @@
 
 #### 2.3 `Requires` / `Lookup` 파생기
 - 목표: 각 모듈에서 반복되는 `given Lookup[Key, Table]` 및 `given Requires[Module, Dependency]` 선언을 자동으로 생성해 템플릿 코드와 파생 누락 위험을 줄인다.
-- 구현: `LookupAuto.derive` 인라인 매크로를 제공해 `SummonFrom`을 활용한 재귀 파생을 수행하고, 실패 시 필요한 증거 타입을 명시하는 에러 메시지를 반환한다. `RequiresAuto`는 모듈 메타를 순회해 의존 항목을 수집한 뒤 `ProductOf` 기반으로 합성한다.
-- 통합: 기존 모듈의 수동 `given` 정의를 제거하고 자동 파생으로 대체한다. 해당 변경은 규칙 테스트(`LookupLaws`, `RequiresLaws`)로 회귀 검증한다.
-- 진행 상황: Accounts 경로에서 중복 `given` 정리는 StoreF 헬퍼 도입과 함께 일부 반영. 자동 파생 매크로는 미착수.
+- 구현: `modules/core/shared/src/main/scala/org/sigilaris/core/application/support/LookupAuto.scala` 와 `RequiresAuto.scala`에 인라인 매크로를 도입해 `summonFrom` 경로를 감싸고, 실패 시 `report.errorAndAbort`로 스키마/요구 사항을 포함한 상세 진단을 출력한다. 공통 문자열 생성기는 `EvidencePretty.scala`에 별도 헬퍼로 분리해 DSL 및 기타 매크로에서도 재사용 가능하도록 했다.
+- 통합: 블루프린트 DSL(`assembly/TablesAccessOps.scala`)에서 신규 매크로를 사용하도록 교체해 조립 시 자동 증거 소환이 일관되게 동작한다. 회귀 검증을 위해 `LookupAutoSuite.scala`, `RequiresAutoSuite.scala`를 추가하고 실패 메시지가 기대 형식으로 노출되는지 확인했다.
+- 진행 상황: 자동 파생 매크로 및 테스트 도입 완료. 이후 다른 모듈의 잔여 수동 `given`을 점진적으로 제거하면서 통합 테스트 범위를 확대할 계획.
 
 #### 2.4 이벤트/결과 타입 브랜드화
 - 목표: 동일한 `Event`/`Result` 서브타입이 모듈 간 공유될 때 발생하는 혼동을 방지하고, 트랜잭션 경로 추적을 용이하게 한다.
@@ -64,6 +64,7 @@
 ## 단기 착수 제안 (Next Steps)
 - `SignatureVerifier`와 `StoreF.raise` 유틸을 그룹 모듈로 확장하고, 동일 패턴이 필요한 경로(TODO 주석 포함)를 추가로 식별한다.
 - 모듈 조립 DSL 초안과 `TablesProvider.fromModule` 구현을 동시에 진행해 Group 모듈 의존 주입을 간소화한다.
+- `LookupAuto`/`RequiresAuto`가 블루프린트 전역에서 활용되도록 남아 있는 수동 증거 정의를 스캔하고 제거한다.
 - 하이브리드 패키징 PoC를 우선 착수해 `security` 패키지 경계를 확정하고, 같은 마일스톤에서 OrderedCodec 제약 연결 작업을 진행한다.
 - Dependency DAG evidence는 패키징 변경 안정화 후 순차적으로 반영한다.
 
