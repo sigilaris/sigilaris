@@ -4,21 +4,21 @@ package org.sigilaris.core.assembly
 object TablesAccessOps:
   /** Derive Lookup evidence without repeating summoning boilerplate. */
   transparent inline def deriveLookup[Schema <: Tuple, Name <: String, K, V]
-      : org.sigilaris.core.application.support.Lookup[Schema, Name, K, V] =
-    org.sigilaris.core.application.support.LookupAuto
+      : org.sigilaris.core.application.support.compiletime.Lookup[Schema, Name, K, V] =
+    org.sigilaris.core.application.support.compiletime.LookupAuto
       .derive[Schema, Name, K, V]
 
   /** Derive Requires evidence without repeating summoning boilerplate. */
   transparent inline def deriveRequires[Needs <: Tuple, Schema <: Tuple]
-      : org.sigilaris.core.application.support.Requires[Needs, Schema] =
-    org.sigilaris.core.application.support.RequiresAuto
+      : org.sigilaris.core.application.support.compiletime.Requires[Needs, Schema] =
+    org.sigilaris.core.application.support.compiletime.RequiresAuto
       .derive[Needs, Schema]
 
   /** Table access extension for dependency providers. */
   extension[F[_], Schema <: Tuple](
-      provider: org.sigilaris.core.application.module.TablesProvider[F, Schema]
+      provider: org.sigilaris.core.application.module.provider.TablesProvider[F, Schema]
   )
     transparent inline def providedTable[Name <: String, K, V](using
-        lookup: org.sigilaris.core.application.support.Lookup[Schema, Name, K, V],
+        lookup: org.sigilaris.core.application.support.compiletime.Lookup[Schema, Name, K, V],
     ) =
       lookup.table(provider.tables)

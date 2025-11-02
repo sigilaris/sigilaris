@@ -3,16 +3,10 @@ package org.sigilaris.core.assembly
 import cats.Monad
 import org.sigilaris.core.merkle.MerkleTrie
 
-import org.sigilaris.core.application.module.{
-  ComposedBlueprint,
-  ModuleBlueprint,
-  RoutedStateReducer,
-  SchemaMapper,
-  StateModule,
-  StateReducer,
-}
-import org.sigilaris.core.application.support.PrefixFreePath
-import org.sigilaris.core.application.transactions.ModuleId
+import org.sigilaris.core.application.module.blueprint.{ComposedBlueprint, ModuleBlueprint, SchemaMapper}
+import org.sigilaris.core.application.module.runtime.{RoutedStateReducer, StateModule, StateReducer}
+import org.sigilaris.core.application.support.compiletime.PrefixFreePath
+import org.sigilaris.core.application.transactions.model.ModuleId
 
 object BlueprintDsl:
   private type PlainModule[F[_], Path <: Tuple, Owns <: Tuple, Needs <: Tuple, Txs <: Tuple] =

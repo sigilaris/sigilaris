@@ -5,9 +5,9 @@ import scala.compiletime.constValue
 import scala.quoted.*
 
 import org.sigilaris.core.codec.byte.ByteCodec
-import org.sigilaris.core.application.domain.Entry
+import org.sigilaris.core.application.state.Entry
 
-/** String interpolator helpers for declaring [[org.sigilaris.core.application.Entry]] values. */
+/** String interpolator helpers for declaring [[org.sigilaris.core.application.state.Entry]] values. */
 object EntrySyntax:
   final class EntryBuilder[Name <: String]:
     inline def apply[K: ByteCodec, V: ByteCodec]: Entry[Name, K, V] =

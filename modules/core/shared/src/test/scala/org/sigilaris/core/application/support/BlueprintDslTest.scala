@@ -4,15 +4,17 @@ import cats.Id
 import cats.data.{EitherT, Kleisli}
 import munit.FunSuite
 
-import org.sigilaris.core.application.domain.{Entry, KeyOf as DomainKeyOf, StoreF, Tables}
-import org.sigilaris.core.application.module.{ModuleBlueprint, StateModule, StateReducer, StateReducer0, TablesProvider}
-import org.sigilaris.core.application.module.SchemaMapper.given
-import org.sigilaris.core.application.transactions.{Signed, Tx, TxRegistry}
-import org.sigilaris.core.application.support.{Lookup, Requires}
-import org.sigilaris.core.application.support.Lookup.given
-import org.sigilaris.core.application.support.PathEncoder.given
-import org.sigilaris.core.application.support.PrefixFreePath.given
-import org.sigilaris.core.application.support.UniqueNames.given
+import org.sigilaris.core.application.state.{Entry, KeyOf as DomainKeyOf, StoreF, Tables}
+import org.sigilaris.core.application.module.blueprint.{ModuleBlueprint, SchemaMapper, StateReducer0}
+import org.sigilaris.core.application.module.blueprint.SchemaMapper.given
+import org.sigilaris.core.application.module.provider.TablesProvider
+import org.sigilaris.core.application.module.runtime.{StateModule, StateReducer}
+import org.sigilaris.core.application.support.compiletime.{Lookup, PrefixFreePath, Requires, UniqueNames}
+import org.sigilaris.core.application.support.compiletime.Lookup.given
+import org.sigilaris.core.application.support.compiletime.PrefixFreePath.given
+import org.sigilaris.core.application.support.compiletime.UniqueNames.given
+import org.sigilaris.core.application.support.encoding.PathEncoder.given
+import org.sigilaris.core.application.transactions.model.{Signed, Tx, TxRegistry}
 import org.sigilaris.core.assembly.BlueprintDsl
 import org.sigilaris.core.assembly.EntrySyntax.entry
 import org.sigilaris.core.assembly.TablesAccessOps.*

@@ -1,6 +1,6 @@
 package org.sigilaris.core.assembly
 
-import org.sigilaris.core.application.support.tablePrefix
+import org.sigilaris.core.application.support.encoding.tablePrefix
 
 import scodec.bits.ByteVector
 
@@ -87,7 +87,7 @@ object PrefixFreeValidator:
 
     inline erasedValue[Schema] match
       case _: EmptyTuple => acc
-      case _: (org.sigilaris.core.application.domain.Entry[name, k, v] *: tail) =>
+      case _: (org.sigilaris.core.application.state.Entry[name, k, v] *: tail) =>
         val prefix = tablePrefix[Path, name]
         collectSchemaPrefixes[Path, tail](prefix :: acc)
 
@@ -105,8 +105,8 @@ object PrefixFreeValidator:
     // This would typically be used in tests or module assembly
     type Path   = ("app", "accounts")
     type Schema =
-      org.sigilaris.core.application.domain.Entry["balances", String, Int] *:
-        org.sigilaris.core.application.domain.Entry["accounts", String, String] *:
+      org.sigilaris.core.application.state.Entry["balances", String, Int] *:
+        org.sigilaris.core.application.state.Entry["accounts", String, String] *:
         EmptyTuple
 
     val result = validateSchema[Path, Schema]
