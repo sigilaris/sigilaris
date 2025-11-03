@@ -74,7 +74,7 @@ val Dependencies = new {
 }
 Global / onChangedBuildSource := ReloadOnSourceChanges
 ThisBuild / organization      := "org.sigilaris"
-ThisBuild / version           := "0.0.1-SNAPSHOT"
+ThisBuild / version           := "0.1.0"
 ThisBuild / scalaVersion      := V.Scala
 ThisBuild / semanticdbEnabled := true
 
@@ -105,7 +105,7 @@ Global / pgpPassphrase  := sys.env.get("PGP_PASSPHRASE").map(_.toArray)
 ThisBuild / publishTo := {
   val snapshots = "https://central.sonatype.com/repository/maven-snapshots/"
   if (isSnapshot.value) Some("central-snapshots" at snapshots)
-  else Some("releases" at "https://central.sonatype.com/api/v1/publisher")
+  else sonatypePublishToBundle.value
 }
 
 lazy val root = (project in file("."))

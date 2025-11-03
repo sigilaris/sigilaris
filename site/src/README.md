@@ -52,7 +52,7 @@ High-performance cryptographic primitives for blockchain applications.
 - Cross-platform: Unified API for JVM (BouncyCastle) and JS (elliptic.js)
 
 ### API Documentation
-- [Latest Release API](https://javadoc.io/doc/org.sigilaris/sigilaris-core_3/latest/index.html)
+- [Latest Release API](https://javadoc.io/doc/org.sigilaris/core_3/latest/index.html)
 - [Development API](https://sigilaris.github.io/sigilaris/api/index.html)
 
 ### Coming Soon
