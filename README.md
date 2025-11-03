@@ -103,7 +103,6 @@ For commercial licensing inquiries: [contact@sigilaris.org](mailto:contact@sigil
 
 ## Coming Soon
 
-- **Merkle Tree**: Efficient state verification and proof generation
 - **Consensus Algorithms**: Pluggable consensus for private blockchain networks
 - **P2P Networking**: Node discovery and communication protocols
 - **State Management**: Persistent storage abstractions for blockchain state

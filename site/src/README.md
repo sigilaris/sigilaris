@@ -56,7 +56,6 @@ High-performance cryptographic primitives for blockchain applications.
 - [Development API](https://sigilaris.github.io/sigilaris/api/index.html)
 
 ### Coming Soon
-- **Merkle Tree**: Efficient state verification and proof generation
 - **Consensus Algorithms**: Pluggable consensus for private blockchain networks
 - **P2P Networking**: Node discovery and communication protocols
 - **State Management**: Persistent storage abstractions for blockchain state
