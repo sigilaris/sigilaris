@@ -124,4 +124,4 @@ object PublicKey:
     ByteDecoder.fromFixedSizeBytes(64)(identity).emap: bytes =>
       fromByteArray(bytes.toArray).left.map(e => DecodeFailure(e.msg))
 
-//  inline given Hash[PublicKey] = Hash.build
+  inline given Hash[PublicKey] = Hash.build

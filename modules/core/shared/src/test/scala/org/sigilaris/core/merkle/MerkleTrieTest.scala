@@ -18,7 +18,7 @@ import scodec.bits.ByteVector
 import scodec.bits.hex
 
 import codec.byte.{ByteDecoder, ByteEncoder}
-import datatype.BigNat
+import org.sigilaris.core.datatype.BigNat
 import MerkleTrie.NodeStore
 import MerkleTrieNode.{MerkleHash, MerkleRoot}
 import Nibbles.*
