@@ -9,7 +9,7 @@ import org.sigilaris.core.application.module.runtime.{RoutedStateReducer, StateM
 import org.sigilaris.core.application.support.compiletime.Requires
 import org.sigilaris.core.application.transactions.model.{ModuleRoutedTx, Signed, Tx}
 
-/** Facade for executing transactions against a mounted [[StateModule]].
+/** Facade for executing transactions against a mounted [[org.sigilaris.core.application.module.runtime.StateModule]].
   *
   * Typical usage previously required threading through `StateT.run` and
   * `EitherT.value`, which is verbose and obscures intent. This helper wraps the
@@ -70,7 +70,7 @@ object StateModuleExecutor:
   ): Eff[F][(StoreState, (signedTx.value.Result, List[signedTx.value.Event]))] =
     runRoutedWithModule(initial, signedTx, module)
 
-  /** Runs from [[StoreState.empty]] for common testing scenarios. */
+  /** Runs from [[org.sigilaris.core.application.state.StoreState.empty]] for common testing scenarios. */
   def runFromEmptyWithModule[F[_], Path <: Tuple, Owns <: Tuple, Needs <: Tuple, Txs <: Tuple, T <: Tx](
       signedTx: Signed[T],
       module: PlainModule[F, Path, Owns, Needs, Txs],

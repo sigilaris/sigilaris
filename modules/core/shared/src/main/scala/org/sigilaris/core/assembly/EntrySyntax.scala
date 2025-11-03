@@ -7,7 +7,21 @@ import scala.quoted.*
 import org.sigilaris.core.codec.byte.ByteCodec
 import org.sigilaris.core.application.state.Entry
 
-/** String interpolator helpers for declaring [[org.sigilaris.core.application.state.Entry]] values. */
+/** String interpolator helpers for declaring [[org.sigilaris.core.application.state.Entry]] values.
+  *
+  * Provides the `entry` interpolator for creating Entry instances with compile-time
+  * string literal extraction:
+  *
+  * {{{
+  * val usersEntry = entry"users"[String, User]
+  * // Equivalent to: Entry["users", String, User]
+  * }}}
+  *
+  * The interpolator ensures the table name is a literal string (not an expression),
+  * preserving type-level information for schema validation.
+  *
+  * @see [[org.sigilaris.core.application.state.Entry]]
+  */
 object EntrySyntax:
   final class EntryBuilder[Name <: String]:
     inline def apply[K: ByteCodec, V: ByteCodec]: Entry[Name, K, V] =

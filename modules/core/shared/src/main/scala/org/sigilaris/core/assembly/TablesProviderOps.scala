@@ -3,11 +3,15 @@ package org.sigilaris.core.assembly
 /** Convenience extensions for deriving table providers from mounted modules.
   *
   * These helpers bridge the gap between module mounting (which yields a
-  * `StateModule` exposing its owned tables) and downstream modules that depend
-  * on those tables via `TablesProvider`. They simply forward to
-  * `TablesProvider.fromModule`, but live in the support package so that higher
-  * level assembly DSLs can import a single package and gain access to the
-  * standard helpers.
+  * [[org.sigilaris.core.application.module.runtime.StateModule]] exposing its owned tables)
+  * and downstream modules that depend on those tables via
+  * [[org.sigilaris.core.application.module.provider.TablesProvider]].
+  *
+  * They simply forward to `TablesProvider.fromModule`, but live in the assembly package
+  * so that higher level assembly DSLs can import a single package and gain access to
+  * the standard helpers.
+  *
+  * @see [[org.sigilaris.core.application.module.provider.TablesProvider.fromModule]]
   */
 object TablesProviderOps:
   extension[F[_], Path <: Tuple, Owns <: Tuple, Needs <: Tuple, Txs <: Tuple, R](
