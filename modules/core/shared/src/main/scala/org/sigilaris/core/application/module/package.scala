@@ -170,3 +170,12 @@ package object module:
   // Schema instantiation
   export org.sigilaris.core.application.module.blueprint.SchemaInstantiation
   export org.sigilaris.core.application.module.blueprint.SchemaMapper
+  
+  // Runtime types (path-bound)
+  export org.sigilaris.core.application.module.runtime.StateModule
+  export org.sigilaris.core.application.module.runtime.StateReducer
+  export org.sigilaris.core.application.module.runtime.RoutedStateReducer
+  
+  // Provider system
+  export org.sigilaris.core.application.module.provider.TablesProvider
+  export org.sigilaris.core.application.module.provider.TablesProjection
