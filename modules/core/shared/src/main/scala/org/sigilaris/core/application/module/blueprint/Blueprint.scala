@@ -8,7 +8,7 @@ import org.sigilaris.core.application.module.provider.{TablesProjection, TablesP
 import org.sigilaris.core.application.module.runtime.{StateModule, StateReducer}
 import org.sigilaris.core.application.state.{StoreF, Tables}
 import org.sigilaris.core.application.support.compiletime.{PrefixFreePath, Requires, UniqueNames}
-import org.sigilaris.core.application.transactions.model.{ModuleRoutedTx, Signed, Tx, TxRegistry}
+import org.sigilaris.core.application.transactions.{ModuleRoutedTx, Signed, Tx, TxRegistry}
 import org.sigilaris.core.failure.RoutingFailure
 import org.sigilaris.core.merkle.MerkleTrie.NodeStore
 import org.sigilaris.core.util.SafeStringInterp.ss

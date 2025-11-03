@@ -19,7 +19,7 @@ import org.sigilaris.core.application.module.blueprint.SchemaMapper
 import org.sigilaris.core.application.module.blueprint.SchemaMapper.given
 import org.sigilaris.core.application.module.provider.TablesProvider
 import org.sigilaris.core.application.module.runtime.StateModule
-import org.sigilaris.core.application.transactions.model.{AccountSignature, Signed, Tx}
+import org.sigilaris.core.application.transactions.{AccountSignature, Signed, Tx}
 import org.sigilaris.core.datatype.{BigNat, Utf8}
 import org.sigilaris.core.merkle.{MerkleTrie, MerkleTrieNode}
 

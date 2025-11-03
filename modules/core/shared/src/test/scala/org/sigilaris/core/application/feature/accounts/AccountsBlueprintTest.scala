@@ -21,7 +21,7 @@ import org.sigilaris.core.application.feature.accounts.transactions.{
 }
 import org.sigilaris.core.application.state.StoreState
 import org.sigilaris.core.application.module.runtime.StateModule
-import org.sigilaris.core.application.transactions.model.{AccountSignature, Signed, Tx}
+import org.sigilaris.core.application.transactions.{AccountSignature, Signed, Tx}
 import org.sigilaris.core.crypto.{CryptoOps, Hash, KeyPair, Sign}
 import org.sigilaris.core.crypto.Sign.ops.*
 import org.sigilaris.core.datatype.{BigNat, Utf8}

@@ -18,7 +18,7 @@ import org.sigilaris.core.application.module.provider.TablesProvider
 import org.sigilaris.core.application.module.runtime.StateModule
 import org.sigilaris.core.application.support.compiletime.Requires
 import org.sigilaris.core.application.support.encoding.{encodePath, encodeSegment, lenBytes, tablePrefix}
-import org.sigilaris.core.application.transactions.model.{Signed, Tx, TxRegistry}
+import org.sigilaris.core.application.transactions.{Signed, Tx, TxRegistry}
 import org.sigilaris.core.codec.byte.{ByteCodec, ByteDecoder}
 import org.sigilaris.core.codec.byte.ByteDecoder.ops.*
 import org.sigilaris.core.datatype.Utf8

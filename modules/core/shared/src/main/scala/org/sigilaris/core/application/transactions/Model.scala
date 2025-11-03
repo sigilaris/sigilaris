@@ -1,4 +1,4 @@
-package org.sigilaris.core.application.transactions.model
+package org.sigilaris.core.application.transactions
 
 import scala.Tuple.++
 

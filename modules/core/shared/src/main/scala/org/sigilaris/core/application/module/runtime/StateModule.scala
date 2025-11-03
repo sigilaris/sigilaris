@@ -7,7 +7,7 @@ import org.sigilaris.core.application.module.blueprint.{ComposedBlueprint, Modul
 import org.sigilaris.core.application.module.provider.TablesProvider
 import org.sigilaris.core.application.state.{StoreF, StoreState, Tables}
 import org.sigilaris.core.application.support.compiletime.{PrefixFreePath, Requires, UniqueNames}
-import org.sigilaris.core.application.transactions.model.{ModuleRoutedTx, Signed, Tx, TxRegistry}
+import org.sigilaris.core.application.transactions.{ModuleRoutedTx, Signed, Tx, TxRegistry}
 import org.sigilaris.core.merkle.MerkleTrie
 
 /** Path-bound state reducer for single modules.

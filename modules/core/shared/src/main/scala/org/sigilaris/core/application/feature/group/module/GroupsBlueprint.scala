@@ -13,7 +13,7 @@ import org.sigilaris.core.application.feature.group.transactions.*
 import org.sigilaris.core.application.module.blueprint.{ModuleBlueprint, StateReducer0}
 import org.sigilaris.core.application.module.provider.TablesProvider
 import org.sigilaris.core.application.support.compiletime.Requires
-import org.sigilaris.core.application.transactions.model.{AccountSignature, Signed, Tx, TxRegistry}
+import org.sigilaris.core.application.transactions.{AccountSignature, Signed, Tx, TxRegistry}
 import org.sigilaris.core.application.security.SignatureVerifier
 import org.sigilaris.core.codec.byte.{ByteDecoder, ByteEncoder}
 import org.sigilaris.core.codec.byte.ByteEncoder.ops.*

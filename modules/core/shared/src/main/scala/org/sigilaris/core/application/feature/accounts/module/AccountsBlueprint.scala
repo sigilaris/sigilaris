@@ -14,7 +14,7 @@ import org.sigilaris.core.application.module.provider.TablesProvider
 import org.sigilaris.core.application.security.SignatureVerifier
 import org.sigilaris.core.application.state.{Entry, StoreF, Tables}
 import org.sigilaris.core.application.support.compiletime.Requires
-import org.sigilaris.core.application.transactions.model.{AccountSignature, Signed, Tx, TxRegistry}
+import org.sigilaris.core.application.transactions.{AccountSignature, Signed, Tx, TxRegistry}
 
 /** Accounts module schema.
   *

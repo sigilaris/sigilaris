@@ -6,7 +6,7 @@ import org.sigilaris.core.merkle.MerkleTrie
 import org.sigilaris.core.application.module.blueprint.{ComposedBlueprint, ModuleBlueprint, SchemaMapper}
 import org.sigilaris.core.application.module.runtime.{RoutedStateReducer, StateModule, StateReducer}
 import org.sigilaris.core.application.support.compiletime.PrefixFreePath
-import org.sigilaris.core.application.transactions.model.ModuleId
+import org.sigilaris.core.application.transactions.ModuleId
 
 /** High-level DSL for mounting blueprints at specific paths.
   *

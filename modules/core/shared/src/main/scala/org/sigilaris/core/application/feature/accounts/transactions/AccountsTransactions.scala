@@ -10,7 +10,7 @@ import org.sigilaris.core.datatype.{BigNat, Utf8}
 
 import org.sigilaris.core.application.feature.accounts.domain.*
 import org.sigilaris.core.application.state.Entry
-import org.sigilaris.core.application.transactions.model.Tx
+import org.sigilaris.core.application.transactions.Tx
 
 /** Common envelope for all transactions.
   *

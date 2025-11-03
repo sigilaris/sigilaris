@@ -9,7 +9,7 @@ import org.sigilaris.core.datatype.{BigNat, Utf8}
 import org.sigilaris.core.application.feature.accounts.domain.Account
 import org.sigilaris.core.application.feature.accounts.transactions.TxEnvelope
 import org.sigilaris.core.application.state.Entry
-import org.sigilaris.core.application.transactions.model.Tx
+import org.sigilaris.core.application.transactions.Tx
 import org.sigilaris.core.application.feature.group.domain.*
 
 /** Create a new group.

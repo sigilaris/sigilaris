@@ -14,7 +14,7 @@ import org.sigilaris.core.application.support.compiletime.Lookup.given
 import org.sigilaris.core.application.support.compiletime.PrefixFreePath.given
 import org.sigilaris.core.application.support.compiletime.UniqueNames.given
 import org.sigilaris.core.application.support.encoding.PathEncoder.given
-import org.sigilaris.core.application.transactions.model.{Signed, Tx, TxRegistry}
+import org.sigilaris.core.application.transactions.{Signed, Tx, TxRegistry}
 import org.sigilaris.core.assembly.BlueprintDsl
 import org.sigilaris.core.assembly.EntrySyntax.entry
 import org.sigilaris.core.assembly.TablesAccessOps.*

@@ -7,7 +7,7 @@ import cats.syntax.eq.*
 
 import org.sigilaris.core.application.feature.accounts.domain.{Account, KeyId20, KeyInfo}
 import org.sigilaris.core.application.state.StoreF
-import org.sigilaris.core.application.transactions.model.{AccountSignature, Signed, Tx}
+import org.sigilaris.core.application.transactions.{AccountSignature, Signed, Tx}
 import org.sigilaris.core.crypto.{Hash, PublicKey, Recover}
 import org.sigilaris.core.datatype.Utf8
 import org.sigilaris.core.failure.CryptoFailure

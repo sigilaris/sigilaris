@@ -9,7 +9,7 @@ import _root_.org.sigilaris.core.application.module.blueprint.{ModuleBlueprint, 
 import _root_.org.sigilaris.core.application.module.provider.TablesProvider
 import _root_.org.sigilaris.core.application.module.runtime.StateModule
 import _root_.org.sigilaris.core.application.support.compiletime.Requires
-import _root_.org.sigilaris.core.application.transactions.model.{AccountSignature, Signed, Tx, TxRegistry}
+import _root_.org.sigilaris.core.application.transactions.{AccountSignature, Signed, Tx, TxRegistry}
 import _root_.org.sigilaris.core.crypto.Signature
 import _root_.org.sigilaris.core.datatype.UInt256
 import _root_.org.sigilaris.core.merkle

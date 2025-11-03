@@ -1,11 +1,11 @@
 package org.sigilaris.core.application.support.runtime
 
 import org.sigilaris.core.application.feature.accounts.domain.Account
-import org.sigilaris.core.application.transactions.model.{AccountSignature, Signed, Tx}
+import org.sigilaris.core.application.transactions.{AccountSignature, Signed, Tx}
 import org.sigilaris.core.crypto.{Hash, KeyPair, Sign}
 import org.sigilaris.core.failure.SigilarisFailure
 
-/** Helper utilities for building [[org.sigilaris.core.application.transactions.model.Signed]] transactions.
+/** Helper utilities for building [[org.sigilaris.core.application.transactions.Signed]] transactions.
   *
   * Tests and integration code frequently need to sign transactions with real
   * key pairs. Repeating the same `Hash`/`Sign` workflow across the codebase is
@@ -24,7 +24,7 @@ object SignedTxBuilder:
     * @tparam A
     *   transaction type
     * @return
-    *   either a [[org.sigilaris.core.application.transactions.model.Signed]] transaction or the signing failure
+    *   either a [[org.sigilaris.core.application.transactions.Signed]] transaction or the signing failure
     */
   def sign[A <: Tx: Hash: Sign](
       tx: A,

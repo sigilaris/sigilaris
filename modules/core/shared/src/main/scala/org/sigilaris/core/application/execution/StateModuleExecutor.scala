@@ -7,7 +7,7 @@ import org.sigilaris.core.failure.SigilarisFailure
 import org.sigilaris.core.application.state.{Eff, StoreState}
 import org.sigilaris.core.application.module.runtime.{RoutedStateReducer, StateModule, StateReducer}
 import org.sigilaris.core.application.support.compiletime.Requires
-import org.sigilaris.core.application.transactions.model.{ModuleRoutedTx, Signed, Tx}
+import org.sigilaris.core.application.transactions.{ModuleRoutedTx, Signed, Tx}
 
 /** Facade for executing transactions against a mounted [[org.sigilaris.core.application.module.runtime.StateModule]].
   *

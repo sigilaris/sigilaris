@@ -17,7 +17,7 @@ import org.sigilaris.core.application.module.blueprint.{
 import org.sigilaris.core.application.module.provider.TablesProvider
 import org.sigilaris.core.application.module.runtime.{StateModule, StateReducer}
 import org.sigilaris.core.application.support.compiletime.{PrefixFreePath, Requires, UniqueNames}
-import org.sigilaris.core.application.transactions.model.{
+import org.sigilaris.core.application.transactions.{
   AccountSignature,
   ModuleId,
   ModuleRoutedTx,
@@ -373,12 +373,12 @@ class CompositionTest extends FunSuite:
       errors,
       """|error:
         |Found:    (signedTx :
-        |  org.sigilaris.core.application.transactions.model.Signed[
+        |  org.sigilaris.core.application.transactions.Signed[
         |    CompositionTest.this.UnroutedTx]
         |)
-        |Required: org.sigilaris.core.application.transactions.model.Signed[
-        |  org.sigilaris.core.application.transactions.model.Tx &
-        |  org.sigilaris.core.application.transactions.model.ModuleRoutedTx]
+        |Required: org.sigilaris.core.application.transactions.Signed[
+        |  org.sigilaris.core.application.transactions.Tx &
+        |  org.sigilaris.core.application.transactions.ModuleRoutedTx]
          |      composed.reducer0.apply(signedTx)(using
          |                             ^
          |""".stripMargin
