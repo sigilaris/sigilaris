@@ -16,12 +16,17 @@ import org.sigilaris.core.application.feature.accounts.transactions.{
   CreateNamedAccount,
   RemoveAccount,
   RemoveKeyIds,
-  TxEnvelope,
   UpdateAccount,
 }
 import org.sigilaris.core.application.state.StoreState
 import org.sigilaris.core.application.module.runtime.StateModule
-import org.sigilaris.core.application.transactions.{AccountSignature, Signed, Tx}
+import org.sigilaris.core.application.transactions.{
+  AccountSignature,
+  NetworkId,
+  Signed,
+  Tx,
+  TxEnvelope,
+}
 import org.sigilaris.core.crypto.{CryptoOps, Hash, KeyPair, Sign}
 import org.sigilaris.core.crypto.Sign.ops.*
 import org.sigilaris.core.datatype.{BigNat, Utf8}
@@ -75,7 +80,7 @@ class AccountsBlueprintTest extends FunSuite:
 
     val account = Account.Named(Utf8("alice"))
     val envelope = TxEnvelope(
-      networkId = BigNat.unsafeFromLong(1),
+      networkId = NetworkId.unsafeFromLong(1),
       createdAt = Instant.now(),
       memo = Some(Utf8("test account creation")),
     )
@@ -118,7 +123,7 @@ class AccountsBlueprintTest extends FunSuite:
     val account = Account.Named(Utf8("bob"))
 
     val envelope = TxEnvelope(
-      networkId = BigNat.unsafeFromLong(1),
+      networkId = NetworkId.unsafeFromLong(1),
       createdAt = Instant.now(),
       memo = None,
     )
@@ -155,7 +160,7 @@ class AccountsBlueprintTest extends FunSuite:
 
     val account = Account.Named(Utf8("charlie"))
     val envelope = TxEnvelope(
-      networkId = BigNat.unsafeFromLong(1),
+      networkId = NetworkId.unsafeFromLong(1),
       createdAt = Instant.now(),
       memo = None,
     )
@@ -189,7 +194,7 @@ class AccountsBlueprintTest extends FunSuite:
 
     val account = Account.Named(Utf8("dave"))
     val envelope1 = TxEnvelope(
-      networkId = BigNat.unsafeFromLong(1),
+      networkId = NetworkId.unsafeFromLong(1),
       createdAt = Instant.now(),
       memo = None,
     )
@@ -213,7 +218,7 @@ class AccountsBlueprintTest extends FunSuite:
     val newGuardian = Account.Unnamed(newGuardianKeyId)
 
     val envelope2 = TxEnvelope(
-      networkId = BigNat.unsafeFromLong(1),
+      networkId = NetworkId.unsafeFromLong(1),
       createdAt = Instant.now(),
       memo = None,
     )
@@ -250,7 +255,7 @@ class AccountsBlueprintTest extends FunSuite:
 
     val account = Account.Named(Utf8("eve"))
     val envelope1 = TxEnvelope(
-      networkId = BigNat.unsafeFromLong(1),
+      networkId = NetworkId.unsafeFromLong(1),
       createdAt = Instant.now(),
       memo = None,
     )
@@ -269,7 +274,7 @@ class AccountsBlueprintTest extends FunSuite:
 
     // Try to update with wrong nonce
     val envelope2 = TxEnvelope(
-      networkId = BigNat.unsafeFromLong(1),
+      networkId = NetworkId.unsafeFromLong(1),
       createdAt = Instant.now(),
       memo = None,
     )
@@ -296,7 +301,7 @@ class AccountsBlueprintTest extends FunSuite:
 
     val account = Account.Named(Utf8("frank"))
     val envelope1 = TxEnvelope(
-      networkId = BigNat.unsafeFromLong(1),
+      networkId = NetworkId.unsafeFromLong(1),
       createdAt = Instant.now(),
       memo = None,
     )
@@ -323,7 +328,7 @@ class AccountsBlueprintTest extends FunSuite:
     val keyId3 = KeyId20.unsafeApply(ByteVector.view(heidiKeyHash).takeRight(20))
 
     val envelope2 = TxEnvelope(
-      networkId = BigNat.unsafeFromLong(1),
+      networkId = NetworkId.unsafeFromLong(1),
       createdAt = Instant.now(),
       memo = None,
     )
@@ -370,7 +375,7 @@ class AccountsBlueprintTest extends FunSuite:
     val account = Account.Named(Utf8("grace"))
 
     val envelope1 = TxEnvelope(
-      networkId = BigNat.unsafeFromLong(1),
+      networkId = NetworkId.unsafeFromLong(1),
       createdAt = Instant.now(),
       memo = None,
     )
@@ -389,7 +394,7 @@ class AccountsBlueprintTest extends FunSuite:
 
     // Add a second key
     val envelope2 = TxEnvelope(
-      networkId = BigNat.unsafeFromLong(1),
+      networkId = NetworkId.unsafeFromLong(1),
       createdAt = Instant.now(),
       memo = None,
     )
@@ -409,7 +414,7 @@ class AccountsBlueprintTest extends FunSuite:
 
     // Remove the first key
     val envelope3 = TxEnvelope(
-      networkId = BigNat.unsafeFromLong(1),
+      networkId = NetworkId.unsafeFromLong(1),
       createdAt = Instant.now(),
       memo = None,
     )
@@ -420,7 +425,7 @@ class AccountsBlueprintTest extends FunSuite:
       nonce = BigNat.unsafeFromLong(1), // Nonce incremented after AddKeyIds
       keyIds = Set(keyId1),
     )
-    val signedRemoveKeysTx = signTx(removeKeysTx, account, graceKeyPair)
+    val signedRemoveKeysTx = signTx[RemoveKeyIds](removeKeysTx, account, graceKeyPair)
 
     val result3 = mounted.reducer.apply(signedRemoveKeysTx).run(stateAfterAdd).value
     assert(result3.isRight)
@@ -446,7 +451,7 @@ class AccountsBlueprintTest extends FunSuite:
 
     val account = Account.Named(Utf8("heidi"))
     val envelope1 = TxEnvelope(
-      networkId = BigNat.unsafeFromLong(1),
+      networkId = NetworkId.unsafeFromLong(1),
       createdAt = Instant.now(),
       memo = None,
     )
@@ -465,7 +470,7 @@ class AccountsBlueprintTest extends FunSuite:
 
     // Remove account
     val envelope2 = TxEnvelope(
-      networkId = BigNat.unsafeFromLong(1),
+      networkId = NetworkId.unsafeFromLong(1),
       createdAt = Instant.now(),
       memo = None,
     )
@@ -500,7 +505,7 @@ class AccountsBlueprintTest extends FunSuite:
     val bobAccount = Account.Named(Utf8("bob"))
 
     val envelope0 = TxEnvelope(
-      networkId = BigNat.unsafeFromLong(1),
+      networkId = NetworkId.unsafeFromLong(1),
       createdAt = Instant.now(),
       memo = None,
     )
@@ -524,7 +529,7 @@ class AccountsBlueprintTest extends FunSuite:
     val aliceAccount = Account.Named(Utf8("alice"))
 
     val envelope1 = TxEnvelope(
-      networkId = BigNat.unsafeFromLong(1),
+      networkId = NetworkId.unsafeFromLong(1),
       createdAt = Instant.now(),
       memo = None,
     )
@@ -543,7 +548,7 @@ class AccountsBlueprintTest extends FunSuite:
 
     // Bob tries to update Alice's account - this should FAIL
     val envelope2 = TxEnvelope(
-      networkId = BigNat.unsafeFromLong(1),
+      networkId = NetworkId.unsafeFromLong(1),
       createdAt = Instant.now(),
       memo = None,
     )
@@ -584,7 +589,7 @@ class AccountsBlueprintTest extends FunSuite:
     val bobAccount = Account.Named(Utf8("bob"))
 
     val envelope1 = TxEnvelope(
-      networkId = BigNat.unsafeFromLong(1),
+      networkId = NetworkId.unsafeFromLong(1),
       createdAt = Instant.now(),
       memo = None,
     )
@@ -617,7 +622,7 @@ class AccountsBlueprintTest extends FunSuite:
 
     // Bob (as guardian) updates Alice's account - this should SUCCEED
     val envelope2 = TxEnvelope(
-      networkId = BigNat.unsafeFromLong(1),
+      networkId = NetworkId.unsafeFromLong(1),
       createdAt = Instant.now(),
       memo = None,
     )

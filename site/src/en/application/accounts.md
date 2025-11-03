@@ -92,7 +92,7 @@ Entry["utxo", (AccountId, TokenDefId, TokenId, UTXOHash), Unit]
 ## Transactions
 
 All account transactions include an **Envelope** with common fields:
-- `networkId: BigNat` - Chain/network identifier
+- `networkId: NetworkId` - Chain/network identifier (opaque wrapper around `BigNat`)
 - `createdAt: Instant` - Transaction creation timestamp
 - `memo: Option[Utf8]` - Optional memo for audit/operational purposes
 

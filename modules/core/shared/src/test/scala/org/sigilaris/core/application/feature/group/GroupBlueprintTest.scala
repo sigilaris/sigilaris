@@ -11,7 +11,7 @@ import scodec.bits.ByteVector
 import org.sigilaris.core.application.state.StoreState
 import org.sigilaris.core.application.feature.accounts.domain.{Account, KeyId20}
 import org.sigilaris.core.application.feature.accounts.module.AccountsBP
-import org.sigilaris.core.application.feature.accounts.transactions.TxEnvelope
+import org.sigilaris.core.application.transactions.{NetworkId, TxEnvelope}
 import org.sigilaris.core.application.feature.group.domain.GroupId
 import org.sigilaris.core.application.feature.group.module.{GroupsBP, GroupsReducer}
 import org.sigilaris.core.application.feature.group.transactions.*
@@ -37,6 +37,8 @@ class GroupBlueprintTest extends FunSuite:
     EitherT.rightT[Id, String](None)
 
   val initialState: StoreState = StoreState.empty
+
+  private val networkIdOne: NetworkId = NetworkId.unsafeFromLong(1)
 
   /** Stub provider for GroupsNeeds.
     *
@@ -84,7 +86,7 @@ class GroupBlueprintTest extends FunSuite:
     val groupId = GroupId(Utf8("developers"))
 
     val envelope = TxEnvelope(
-      networkId = BigNat.unsafeFromLong(1),
+      networkId = networkIdOne,
       createdAt = Instant.now(),
       memo = Some(Utf8("test group creation")),
     )
@@ -95,7 +97,7 @@ class GroupBlueprintTest extends FunSuite:
       name = Utf8("Developers Group"),
       coordinator = coordinator,
     )
-    val signedTx = signTx(tx, coordinator, aliceKeyPair)
+    val signedTx = signTx[CreateGroup](tx, coordinator, aliceKeyPair)
 
     val result = mounted.reducer.apply(signedTx).run(initialState).value
     assert(result.isRight, s"Expected successful group creation, got: $result")
@@ -120,7 +122,7 @@ class GroupBlueprintTest extends FunSuite:
     val groupId = GroupId(Utf8("admins"))
 
     val envelope = TxEnvelope(
-      networkId = BigNat.unsafeFromLong(1),
+      networkId = networkIdOne,
       createdAt = Instant.now(),
       memo = None,
     )
@@ -131,7 +133,7 @@ class GroupBlueprintTest extends FunSuite:
       name = Utf8("Admins Group"),
       coordinator = coordinator,
     )
-    val signedTx = signTx(tx, coordinator, aliceKeyPair)
+    val signedTx = signTx[CreateGroup](tx, coordinator, aliceKeyPair)
 
     // First creation should succeed
     val result1 = mounted.reducer.apply(signedTx).run(initialState).value
@@ -153,7 +155,7 @@ class GroupBlueprintTest extends FunSuite:
 
     // Create group
     val envelope1 = TxEnvelope(
-      networkId = BigNat.unsafeFromLong(1),
+      networkId = networkIdOne,
       createdAt = Instant.now(),
       memo = None,
     )
@@ -164,7 +166,7 @@ class GroupBlueprintTest extends FunSuite:
       name = Utf8("Team Group"),
       coordinator = coordinator,
     )
-    val signedCreateTx = signTx(createTx, coordinator, aliceKeyPair)
+    val signedCreateTx = signTx[CreateGroup](createTx, coordinator, aliceKeyPair)
 
     val result1 = mounted.reducer.apply(signedCreateTx).run(initialState).value
     assert(result1.isRight)
@@ -177,7 +179,7 @@ class GroupBlueprintTest extends FunSuite:
     val charlieAccount = Account.Unnamed(charlieKeyId)
 
     val envelope2 = TxEnvelope(
-      networkId = BigNat.unsafeFromLong(1),
+      networkId = networkIdOne,
       createdAt = Instant.now(),
       memo = None,
     )
@@ -215,7 +217,7 @@ class GroupBlueprintTest extends FunSuite:
 
     // Create group
     val envelope1 = TxEnvelope(
-      networkId = BigNat.unsafeFromLong(1),
+      networkId = networkIdOne,
       createdAt = Instant.now(),
       memo = None,
     )
@@ -237,7 +239,7 @@ class GroupBlueprintTest extends FunSuite:
     val bobAccount = Account.Unnamed(bobKeyId)
 
     val envelope2 = TxEnvelope(
-      networkId = BigNat.unsafeFromLong(1),
+      networkId = networkIdOne,
       createdAt = Instant.now(),
       memo = None,
     )
@@ -256,7 +258,7 @@ class GroupBlueprintTest extends FunSuite:
 
     // Add Bob again (idempotent - should succeed but report 0 added)
     val envelope3 = TxEnvelope(
-      networkId = BigNat.unsafeFromLong(1),
+      networkId = networkIdOne,
       createdAt = Instant.now(),
       memo = None,
     )
@@ -291,7 +293,7 @@ class GroupBlueprintTest extends FunSuite:
 
     // Create group
     val envelope1 = TxEnvelope(
-      networkId = BigNat.unsafeFromLong(1),
+      networkId = networkIdOne,
       createdAt = Instant.now(),
       memo = None,
     )
@@ -315,7 +317,7 @@ class GroupBlueprintTest extends FunSuite:
     val charlieAccount = Account.Unnamed(charlieKeyId)
 
     val envelope2 = TxEnvelope(
-      networkId = BigNat.unsafeFromLong(1),
+      networkId = networkIdOne,
       createdAt = Instant.now(),
       memo = None,
     )
@@ -334,7 +336,7 @@ class GroupBlueprintTest extends FunSuite:
 
     // Remove Bob
     val envelope3 = TxEnvelope(
-      networkId = BigNat.unsafeFromLong(1),
+      networkId = networkIdOne,
       createdAt = Instant.now(),
       memo = None,
     )
@@ -371,7 +373,7 @@ class GroupBlueprintTest extends FunSuite:
 
     // Create group
     val envelope1 = TxEnvelope(
-      networkId = BigNat.unsafeFromLong(1),
+      networkId = networkIdOne,
       createdAt = Instant.now(),
       memo = None,
     )
@@ -393,7 +395,7 @@ class GroupBlueprintTest extends FunSuite:
     val newCoordinator = Account.Unnamed(bobKeyId)
 
     val envelope2 = TxEnvelope(
-      networkId = BigNat.unsafeFromLong(1),
+      networkId = networkIdOne,
       createdAt = Instant.now(),
       memo = None,
     )
@@ -430,7 +432,7 @@ class GroupBlueprintTest extends FunSuite:
 
     // Create group
     val envelope1 = TxEnvelope(
-      networkId = BigNat.unsafeFromLong(1),
+      networkId = networkIdOne,
       createdAt = Instant.now(),
       memo = None,
     )
@@ -449,7 +451,7 @@ class GroupBlueprintTest extends FunSuite:
 
     // Disband group
     val envelope2 = TxEnvelope(
-      networkId = BigNat.unsafeFromLong(1),
+      networkId = networkIdOne,
       createdAt = Instant.now(),
       memo = None,
     )
@@ -483,7 +485,7 @@ class GroupBlueprintTest extends FunSuite:
 
     // Create group
     val envelope1 = TxEnvelope(
-      networkId = BigNat.unsafeFromLong(1),
+      networkId = networkIdOne,
       createdAt = Instant.now(),
       memo = None,
     )
@@ -505,7 +507,7 @@ class GroupBlueprintTest extends FunSuite:
     val bobAccount = Account.Unnamed(bobKeyId)
 
     val envelope2 = TxEnvelope(
-      networkId = BigNat.unsafeFromLong(1),
+      networkId = networkIdOne,
       createdAt = Instant.now(),
       memo = None,
     )
@@ -531,7 +533,7 @@ class GroupBlueprintTest extends FunSuite:
 
     // Create group with Alice as coordinator
     val envelope1 = TxEnvelope(
-      networkId = BigNat.unsafeFromLong(1),
+      networkId = networkIdOne,
       createdAt = Instant.now(),
       memo = None,
     )
@@ -555,7 +557,7 @@ class GroupBlueprintTest extends FunSuite:
     val charlieAccount = Account.Unnamed(charlieKeyId)
 
     val envelope2 = TxEnvelope(
-      networkId = BigNat.unsafeFromLong(1),
+      networkId = networkIdOne,
       createdAt = Instant.now(),
       memo = None,
     )
@@ -583,7 +585,7 @@ class GroupBlueprintTest extends FunSuite:
 
     // Create group
     val envelope1 = TxEnvelope(
-      networkId = BigNat.unsafeFromLong(1),
+      networkId = networkIdOne,
       createdAt = Instant.now(),
       memo = None,
     )
@@ -602,7 +604,7 @@ class GroupBlueprintTest extends FunSuite:
 
     // Add a member
     val envelope2 = TxEnvelope(
-      networkId = BigNat.unsafeFromLong(1),
+      networkId = networkIdOne,
       createdAt = Instant.now(),
       memo = None,
     )
@@ -621,7 +623,7 @@ class GroupBlueprintTest extends FunSuite:
 
     // Try to disband group with member - should fail
     val envelope3 = TxEnvelope(
-      networkId = BigNat.unsafeFromLong(1),
+      networkId = networkIdOne,
       createdAt = Instant.now(),
       memo = None,
     )
@@ -645,7 +647,7 @@ class GroupBlueprintTest extends FunSuite:
 
     // Now remove the member and try again - should succeed
     val envelope4 = TxEnvelope(
-      networkId = BigNat.unsafeFromLong(1),
+      networkId = networkIdOne,
       createdAt = Instant.now(),
       memo = None,
     )
@@ -664,7 +666,7 @@ class GroupBlueprintTest extends FunSuite:
 
     // Now disband should succeed
     val envelope5 = TxEnvelope(
-      networkId = BigNat.unsafeFromLong(1),
+      networkId = networkIdOne,
       createdAt = Instant.now(),
       memo = None,
     )

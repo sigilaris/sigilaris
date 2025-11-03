@@ -10,24 +10,7 @@ import org.sigilaris.core.datatype.{BigNat, Utf8}
 
 import org.sigilaris.core.application.feature.accounts.domain.*
 import org.sigilaris.core.application.state.Entry
-import org.sigilaris.core.application.transactions.Tx
-
-/** Common envelope for all transactions.
-  *
-  * Contains metadata for auditing and replay protection across chains.
-  *
-  * @param networkId chain/network identifier for cross-chain replay protection
-  * @param createdAt transaction creation timestamp
-  * @param memo optional memo for auditing/operational purposes
-  */
-final case class TxEnvelope(
-    networkId: BigNat,
-    createdAt: Instant,
-    memo: Option[Utf8],
-) derives ByteEncoder, ByteDecoder
-
-object TxEnvelope:
-  given txEnvelopeEq: Eq[TxEnvelope] = Eq.fromUniversalEquals
+import org.sigilaris.core.application.transactions.{Tx, TxEnvelope}
 
 /** Create a new Named account.
   *

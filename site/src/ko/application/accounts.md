@@ -92,7 +92,7 @@ Entry["utxo", (AccountId, TokenDefId, TokenId, UTXOHash), Unit]
 ## 트랜잭션
 
 모든 계정 트랜잭션은 공통 필드가 있는 **Envelope**를 포함합니다:
-- `networkId: BigNat` - 체인/네트워크 식별자
+- `networkId: NetworkId` - 체인/네트워크 식별자 (`BigNat`을 감싼 opaque 타입)
 - `createdAt: Instant` - 트랜잭션 생성 시각
 - `memo: Option[Utf8]` - 감사/운영 목적의 선택적 메모
 

@@ -10,7 +10,7 @@ import scodec.bits.ByteVector
 import org.sigilaris.core.application.state.StoreState
 import org.sigilaris.core.application.feature.accounts.domain.{Account, KeyId20}
 import org.sigilaris.core.application.feature.accounts.module.AccountsBP
-import org.sigilaris.core.application.feature.accounts.transactions.{CreateNamedAccount, TxEnvelope}
+import org.sigilaris.core.application.feature.accounts.transactions.CreateNamedAccount
 import org.sigilaris.core.application.feature.group.domain.GroupId
 import org.sigilaris.core.application.feature.group.domain.GroupsEvent.*
 import org.sigilaris.core.application.feature.group.domain.GroupsResult.*
@@ -19,7 +19,7 @@ import org.sigilaris.core.application.feature.group.transactions.{AddAccounts, C
 import org.sigilaris.core.application.module.blueprint.Blueprint
 import org.sigilaris.core.application.module.provider.TablesProvider
 import org.sigilaris.core.application.module.runtime.StateModule
-import org.sigilaris.core.application.transactions.{AccountSignature, Signed, Tx}
+import org.sigilaris.core.application.transactions.{AccountSignature, NetworkId, Signed, Tx, TxEnvelope}
 import org.sigilaris.core.crypto.{CryptoOps, Hash, KeyPair, Sign}
 import org.sigilaris.core.crypto.Sign.ops.*
 import org.sigilaris.core.datatype.{BigNat, Utf8}
@@ -90,7 +90,7 @@ class AccountsGroupIntegrationTest extends FunSuite:
     val aliceAccount = Account.Named(Utf8("alice"))
     val bobAccount = Account.Named(Utf8("bob"))
 
-    val networkId = BigNat.unsafeFromLong(1)
+    val networkId = NetworkId.unsafeFromLong(1)
     val now = Instant.now()
 
     // Step 1: Create Alice's account
@@ -100,7 +100,7 @@ class AccountsGroupIntegrationTest extends FunSuite:
       initialKeyId = aliceKeyId,
       guardian = None,
     )
-    val signedCreateAlice = signTx(createAliceTx, aliceAccount, aliceKeyPair)
+    val signedCreateAlice = signTx[CreateNamedAccount](createAliceTx, aliceAccount, aliceKeyPair)
 
     val result1 = accountsModule.reducer.apply(signedCreateAlice).run(initialState).value
     assert(result1.isRight, s"Expected successful account creation for Alice, got: $result1")
@@ -114,7 +114,7 @@ class AccountsGroupIntegrationTest extends FunSuite:
       initialKeyId = bobKeyId,
       guardian = None,
     )
-    val signedCreateBob = signTx(createBobTx, bobAccount, bobKeyPair)
+    val signedCreateBob = signTx[CreateNamedAccount](createBobTx, bobAccount, bobKeyPair)
 
     val result2 = accountsModule.reducer.apply(signedCreateBob).run(stateAfterAlice).value
     assert(result2.isRight, s"Expected successful account creation for Bob, got: $result2")
@@ -129,7 +129,7 @@ class AccountsGroupIntegrationTest extends FunSuite:
       name = Utf8("Developers Group"),
       coordinator = aliceAccount,
     )
-    val signedCreateGroup = signTx(createGroupTx, aliceAccount, aliceKeyPair)
+    val signedCreateGroup = signTx[CreateGroup](createGroupTx, aliceAccount, aliceKeyPair)
 
     val result3 = groupsModule.reducer.apply(signedCreateGroup).run(stateAfterBob).value
     assert(result3.isRight, s"Expected successful group creation, got: $result3")
@@ -153,7 +153,7 @@ class AccountsGroupIntegrationTest extends FunSuite:
       accounts = Set(bobAccount),
       groupNonce = BigNat.Zero,
     )
-    val signedAddMember = signTx(addMemberTx, aliceAccount, aliceKeyPair)
+    val signedAddMember = signTx[AddAccounts](addMemberTx, aliceAccount, aliceKeyPair)
 
     val result4 = groupsModule.reducer.apply(signedAddMember).run(stateAfterGroup).value
     assert(result4.isRight, s"Expected successful member addition, got: $result4")
@@ -204,7 +204,7 @@ class AccountsGroupIntegrationTest extends FunSuite:
     val aliceAccount = Account.Named(Utf8("alice"))
     val bobAccount = Account.Named(Utf8("bob"))
 
-    val networkId = BigNat.unsafeFromLong(1)
+    val networkId = NetworkId.unsafeFromLong(1)
     val now = Instant.now()
 
     // Create accounts
@@ -214,7 +214,7 @@ class AccountsGroupIntegrationTest extends FunSuite:
       initialKeyId = aliceKeyId,
       guardian = None,
     )
-    val signedCreateAlice = signTx(createAliceTx, aliceAccount, aliceKeyPair)
+    val signedCreateAlice = signTx[CreateNamedAccount](createAliceTx, aliceAccount, aliceKeyPair)
     val state1 = accountsModule.reducer.apply(signedCreateAlice).run(initialState).value.toOption.get._1
 
     val createBobTx = CreateNamedAccount(
@@ -223,7 +223,7 @@ class AccountsGroupIntegrationTest extends FunSuite:
       initialKeyId = bobKeyId,
       guardian = None,
     )
-    val signedCreateBob = signTx(createBobTx, bobAccount, bobKeyPair)
+    val signedCreateBob = signTx[CreateNamedAccount](createBobTx, bobAccount, bobKeyPair)
     val state2 = accountsModule.reducer.apply(signedCreateBob).run(state1).value.toOption.get._1
 
     // Create group with Alice as coordinator
@@ -234,7 +234,7 @@ class AccountsGroupIntegrationTest extends FunSuite:
       name = Utf8("Restricted Group"),
       coordinator = aliceAccount,
     )
-    val signedCreateGroup = signTx(createGroupTx, aliceAccount, aliceKeyPair)
+    val signedCreateGroup = signTx[CreateGroup](createGroupTx, aliceAccount, aliceKeyPair)
     val state3 = groupsModule.reducer.apply(signedCreateGroup).run(state2).value.toOption.get._1
 
     // Add Bob as a member
@@ -244,7 +244,7 @@ class AccountsGroupIntegrationTest extends FunSuite:
       accounts = Set(bobAccount),
       groupNonce = BigNat.Zero,
     )
-    val signedAddBob = signTx(addBobTx, aliceAccount, aliceKeyPair)
+    val signedAddBob = signTx[AddAccounts](addBobTx, aliceAccount, aliceKeyPair)
     val state4 = groupsModule.reducer.apply(signedAddBob).run(state3).value.toOption.get._1
 
     // Bob (member, not coordinator) tries to disband the group
@@ -253,7 +253,7 @@ class AccountsGroupIntegrationTest extends FunSuite:
       groupId = groupId,
       groupNonce = BigNat.unsafeFromBigInt(1), // Correct nonce after add
     )
-    val signedDisband = signTx(disbandTx, bobAccount, bobKeyPair) // Bob signing!
+    val signedDisband = signTx[DisbandGroup](disbandTx, bobAccount, bobKeyPair) // Bob signing!
 
     val result = groupsModule.reducer.apply(signedDisband).run(state4).value
     assert(result.isLeft, "Bob (member) should NOT be able to disband the group")

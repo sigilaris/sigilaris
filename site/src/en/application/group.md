@@ -64,7 +64,7 @@ Group module depends on Accounts to validate coordinator existence when creating
 ## Transactions
 
 All group transactions include an **Envelope** with:
-- `networkId: BigNat` - Chain/network identifier
+- `networkId: NetworkId` - Chain/network identifier (opaque wrapper around `BigNat`)
 - `createdAt: Instant` - Transaction creation timestamp
 - `memo: Option[Utf8]` - Optional operational memo
 

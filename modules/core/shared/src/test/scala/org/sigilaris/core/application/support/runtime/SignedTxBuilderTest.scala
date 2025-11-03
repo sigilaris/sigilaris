@@ -10,12 +10,13 @@ import scodec.bits.ByteVector
 import _root_.org.sigilaris.core.application.state.StoreState
 import _root_.org.sigilaris.core.application.feature.accounts.domain.{Account, AccountsResult, KeyId20}
 import _root_.org.sigilaris.core.application.feature.accounts.module.AccountsBP
-import _root_.org.sigilaris.core.application.feature.accounts.transactions.{AccountCreated, CreateNamedAccount, TxEnvelope}
+import _root_.org.sigilaris.core.application.feature.accounts.transactions.{AccountCreated, CreateNamedAccount}
 import _root_.org.sigilaris.core.application.module.runtime.StateModule
 import _root_.org.sigilaris.core.application.execution.StateModuleExecutor
+import org.sigilaris.core.application.transactions.{NetworkId, TxEnvelope}
 import _root_.org.sigilaris.core.failure.SigilarisFailure
 import org.sigilaris.core.crypto.{CryptoOps, KeyPair}
-import org.sigilaris.core.datatype.{BigNat, Utf8}
+import org.sigilaris.core.datatype.Utf8
 import org.sigilaris.core.merkle.{MerkleTrie, MerkleTrieNode}
 
 class SignedTxBuilderTest extends FunSuite:
@@ -38,7 +39,7 @@ class SignedTxBuilderTest extends FunSuite:
     val keyId = deriveKeyId(keyPair)
     val account = Account.Named(Utf8("alice"))
     val envelope = TxEnvelope(
-      networkId = BigNat.unsafeFromLong(1),
+      networkId = NetworkId.unsafeFromLong(1),
       createdAt = Instant.now(),
       memo = Some(Utf8("SignedTxBuilder smoke test")),
     )
@@ -73,7 +74,7 @@ class SignedTxBuilderTest extends FunSuite:
     val builder = SignedTxBuilder.forAccount(account, keyPair)
 
     val envelope = TxEnvelope(
-      networkId = BigNat.unsafeFromLong(42),
+      networkId = NetworkId.unsafeFromLong(42),
       createdAt = Instant.now(),
       memo = None,
     )
