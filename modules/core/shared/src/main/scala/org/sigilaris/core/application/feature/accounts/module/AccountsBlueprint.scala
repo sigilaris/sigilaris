@@ -33,10 +33,10 @@ object AccountsSchema:
       keyIdResult <- ByteDecoder[KeyId20].decode(nameResult.remainder)
     yield org.sigilaris.core.codec.byte.DecodeResult((nameResult.value, keyIdResult.value), keyIdResult.remainder)
 
-  type AccountsSchema =
-    Entry["accounts", Utf8, AccountInfo] *:
-      Entry["nameKey", (Utf8, KeyId20), KeyInfo] *:
-      EmptyTuple
+  type AccountsSchema = (
+    Entry["accounts", Utf8, AccountInfo],
+    Entry["nameKey", (Utf8, KeyId20), KeyInfo],
+  )
 
   val accountsEntry = new Entry["accounts", Utf8, AccountInfo]("accounts")
   val nameKeyEntry = new Entry["nameKey", (Utf8, KeyId20), KeyInfo]("nameKey")
