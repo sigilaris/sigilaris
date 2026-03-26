@@ -1,0 +1,15 @@
+# Private-only GitHub Actions workflow.
+.github/workflows/export-public.yml
+
+# Export implementation details stay private too.
+.public-export-ignore
+scripts/export-public.sh
+
+# Internal planning and implementation notes.
+docs/dev
+
+# Archived benchmark baselines stay in the private canonical repo.
+benchmarks/reports
+
+# High-value tests stay private. `find -path` matches this at any depth.
+*/src/test

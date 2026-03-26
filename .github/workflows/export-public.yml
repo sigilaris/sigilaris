@@ -1,0 +1,65 @@
+name: Export public snapshot
+
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: public-export
+  cancel-in-progress: true
+
+jobs:
+  export:
+    if: github.repository == 'sigilaris/sigilaris-private'
+    runs-on: ubuntu-latest
+    env:
+      PUBLIC_REPOSITORY: sigilaris/sigilaris
+    steps:
+      - name: Checkout private repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Build public snapshot
+        run: ./scripts/export-public.sh "${GITHUB_SHA}" "${RUNNER_TEMP}/sigilaris-public-export"
+
+      - name: Push snapshot to public repository
+        env:
+          PUBLIC_REPO_PUSH_TOKEN: ${{ secrets.PUBLIC_REPO_PUSH_TOKEN }}
+        run: |
+          if [ -z "${PUBLIC_REPO_PUSH_TOKEN}" ]; then
+            echo "Missing secret: PUBLIC_REPO_PUSH_TOKEN" >&2
+            exit 1
+          fi
+
+          PUBLIC_DIR="${RUNNER_TEMP}/public-repo"
+          git clone "https://x-access-token:${PUBLIC_REPO_PUSH_TOKEN}@github.com/${PUBLIC_REPOSITORY}.git" "${PUBLIC_DIR}"
+
+          cd "${PUBLIC_DIR}"
+          if ! git checkout main; then
+            git checkout --orphan main
+          fi
+
+          rsync -a --delete --exclude '.git/' "${RUNNER_TEMP}/sigilaris-public-export"/ ./
+
+          git config user.name "sigilaris-export-bot"
+          git config user.email "sigilaris-export-bot@users.noreply.github.com"
+
+          if [ -z "$(git status --porcelain)" ]; then
+            echo "Public repository is already up to date."
+            exit 0
+          fi
+
+          git add -A
+          git commit -m "Export public snapshot"
+          git push origin HEAD:main
+
+          if [ "${GITHUB_REF_TYPE}" = "tag" ]; then
+            git tag -f "${GITHUB_REF_NAME}"
+            git push origin "refs/tags/${GITHUB_REF_NAME}" --force
+          fi
