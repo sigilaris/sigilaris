@@ -3,6 +3,8 @@
 ## Status
 Proposed
 
+> Note: archived benchmark JSON files referenced in this ADR are kept in the canonical private repository and may be omitted from the public mirror.
+
 ## Context
 - Phase 1–4를 통해 수학 타입 통일(BigInteger), 타입체크/래핑 최소화, 캐싱/할당 최적화, 데이터 모델/레이어링이 정비되었습니다. 이제 성능 최적화를 유지하면서 보안 속성(Low‑S, 상수시간 비교, 비밀 데이터 위생)과 표현 규약(엔디언/길이 고정)의 일관성을 공식화·강화할 필요가 있습니다.
 - Phase 5 목표는 다음 세 가지 축을 중심으로 합니다.

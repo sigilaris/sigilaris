@@ -3,6 +3,8 @@
 ## Status
 Accepted
 
+> Note: archived benchmark JSON files referenced in this ADR are kept in the canonical private repository and may be omitted from the public mirror.
+
 ## Context
 - Phase 0–5를 통해 기능/성능/보안 관점의 기반(수학 타입 통일, 타입체크 최소화, 캐싱/레이어링, Low‑S/상수시간 비교/제로화)이 마련되었습니다.
 - 장기적으로 성능/할당 특성이 유지되도록, 자동 계량과 회귀 가드 체계를 CI에 통합하고, 결과를 아티팩트로 보존하며, 문서/사이트에 반영하는 제도화가 필요합니다.

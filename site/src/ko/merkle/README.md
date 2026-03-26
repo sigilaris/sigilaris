@@ -296,7 +296,7 @@ hash(node) = keccak256(encode(node))
 
 - [API 레퍼런스](api.md)에서 상세한 API 문서 읽기
 - `modules/core/shared/src/main/scala/org/sigilaris/core/merkle/`에서 구현 탐색
-- `modules/core/shared/src/test/scala/org/sigilaris/core/merkle/`에서 포괄적인 테스트 스위트 확인
+- 이 가이드의 예제를 public 기준 문서로 사용하고, 전체 회귀 테스트 스위트는 canonical private repo에 유지
 
 ## 제한사항
 

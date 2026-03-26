@@ -49,7 +49,7 @@ Accepted
    - Avoid legacy type aliases; migration is handled entirely by package refactors.
 
 9. **Testing alignment**
-   - Ensure unit tests mirror the production package tree under `modules/core/shared/src/test/scala/org/sigilaris/core/application` (see "Testing Improvements" for concrete tasks).
+   - Ensure the private regression suite mirrors the production package tree (see "Testing Improvements" for concrete tasks).
    - Add property-based tests for path encoding/prefix proofs and module wiring smoke tests to guard the refactor.
 
 ## Testing Improvements

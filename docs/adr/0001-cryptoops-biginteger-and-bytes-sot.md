@@ -3,6 +3,8 @@
 ## Status
 Accepted
 
+> Note: archived benchmark JSON files referenced in this ADR are kept in the canonical private repository and may be omitted from the public mirror.
+
 ## Context
 - BigInt↔BigInteger 변환 비용과 임시 객체 생성이 핫패스 할당/지연을 유발.
 - 수학 연산은 BouncyCastle/EC 연산과의 상호운용을 위해 `java.math.BigInteger`가 자연스러움.
@@ -69,5 +71,4 @@ Accepted
  - Acceptance Criteria: `docs/perf/criteria.md`
  - Bench Guide: `benchmarks/README.md`
  - BouncyCastle secp256k1 구현 세부
-
 

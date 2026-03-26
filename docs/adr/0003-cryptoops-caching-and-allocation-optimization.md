@@ -3,6 +3,8 @@
 ## Status
 Accepted
 
+> Note: archived benchmark JSON files referenced in this ADR are kept in the canonical private repository and may be omitted from the public mirror.
+
 ## Context
 - Phase 1(BigInteger 단일화) 및 Phase 2(타입체크/래핑 최소화) 적용 후 `recover` 경로는 Throughput과 bytes/op가 크게 개선되었으나, `sign`/`fromPrivate`는 여전히 개선 폭이 제한적입니다.
 - 핫패스에서 반복 생성되는 암호 객체(`X9IntegerConverter`, `FixedPointCombMultiplier`, `Keccak.Digest256` 등)와 중간 바이트/수학 자료형은 불필요한 할당과 GC 압력을 유발합니다.
@@ -143,4 +145,3 @@ Accepted
 - `benchmarks/README.md`
 - `site/src/en/performance/crypto-ops.md`
 - `site/src/ko/performance/crypto-ops.md`
-

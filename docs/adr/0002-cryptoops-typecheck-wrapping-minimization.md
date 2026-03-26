@@ -3,6 +3,8 @@
 ## Status
 Accepted
 
+> Note: archived benchmark JSON files referenced in this ADR are kept in the canonical private repository and may be omitted from the public mirror.
+
 ## Context
 - Phase 1(BigInteger 단일화) 이후 `recover` 경로는 크게 개선되었으나 `sign`/`fromPrivate`의 이득은 제한적이었습니다.
 - 핫패스에서 리플렉션 기반 캐스팅, 범용 타입클래스 호출(cats Eq 등), `Either`/옵션 등의 래핑 객체 생성은 분기 예측 실패, 인라이닝 방해, 불필요한 할당으로 이어집니다.
@@ -136,5 +138,4 @@ Accepted
 - 사이트 문서: `site/src/ko/performance/crypto-ops.md`, `site/src/en/performance/crypto-ops.md`
 - 벤치 가이드: `benchmarks/README.md`
 - 성능 기준: `docs/perf/criteria.md`
-
 

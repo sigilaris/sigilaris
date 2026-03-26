@@ -1,5 +1,7 @@
 # Benchmarks
 
+Note: the benchmark harness is public, but archived `benchmarks/reports/` JSON baselines may be omitted from the public mirror.
+
 ## Run
 
 ```bash
@@ -60,7 +62,7 @@ cp target/jmh-result.json benchmarks/reports/${UTC_TS}_${BRANCH}_${SHA}${SUFFIX}
 # cp target/jmh-result.json benchmarks/reports/${UTC_TS}_${BRANCH}_${SHA}_jmh-gc.json
 ```
 
-Examples already present in this repo:
+Examples in the canonical private repo:
 - `2025-10-12T14-42-40Z_feature-crypto-operations_7d539ce_jmh-gc.json`
 - `2025-10-12T14-32-23Z_feature-crypto-operations_7d539ce_jmh.json`
 
@@ -107,5 +109,4 @@ Recover-only:
 sbt benchRecover
 sbt benchRecoverGc
 ```
-
 

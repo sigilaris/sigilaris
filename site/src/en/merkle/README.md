@@ -296,7 +296,7 @@ The root hash uniquely identifies the entire tree state. Any change to any node 
 
 - Read detailed API documentation in [API Reference](api.md)
 - Explore the implementation in `modules/core/shared/src/main/scala/org/sigilaris/core/merkle/`
-- Check the comprehensive test suite in `modules/core/shared/src/test/scala/org/sigilaris/core/merkle/`
+- Use the examples in this guide as the public reference; the full regression suite stays in the canonical private repository
 
 ## Limitations
 

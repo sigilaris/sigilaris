@@ -91,7 +91,7 @@ Comprehensive JMH benchmarks demonstrate:
 - Cross-platform consistency between JVM and JS implementations
 - Deterministic performance characteristics
 
-See [benchmarks/reports/](benchmarks/reports/) for detailed performance data.
+The benchmark harness is public under [benchmarks/](benchmarks/). Archived regression baselines and historical report JSONs stay in the private canonical repository.
 
 ## License
 

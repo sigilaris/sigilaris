@@ -3,6 +3,8 @@
 ## Status
 Accepted
 
+> Note: archived benchmark JSON files referenced in this ADR are kept in the canonical private repository and may be omitted from the public mirror.
+
 ## Context
 - 이전 단계(ADR-0001 BigInteger·Bytes SoT, ADR-0002 타입체크/래핑 최소화, ADR-0003 캐싱/할당 최적화)로 핵심 연산 경로의 불필요한 변환과 객체 생성을 줄였으나, 여전히 데이터 표현과 뷰 생성 간 레이어링이 명확하지 않아 반복적인 인코딩/디코딩과 임시 객체가 남아 있습니다.
 - 본 프로젝트의 규약은 "소스 오브 트루스(SoT)는 고정 길이 big-endian 바이트(32/64바이트)"이며, 수학 연산은 `java.math.BigInteger`로 통일합니다. 이 원칙을 유지하면서도, JVM 실행 환경에서는 원 라이브러리(BouncyCastle 등) 타입의 뷰를 지연 생성하여 성능·할당을 개선할 여지가 있습니다.
@@ -181,4 +183,3 @@ Interpretation:
 
 Note on Variability:
 - Non‑GC와 GC 프로파일 간 차이는 JIT/스케줄링/측정 오차 영향이 있습니다. Phase 6에서 반복 횟수 확장, 파라미터 고정, 자동 비교로 분산을 통제합니다.
-

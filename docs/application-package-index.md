@@ -26,5 +26,5 @@ Maintains a map of the canonical `org.sigilaris.core.application` packages after
 
 ## Working With the Layout
 - Prefer importing from `state`, `module.*`, and `feature.*` directly; legacy `application.domain` aliases have been removed.
-- Tests mirror the production tree under `modules/core/shared/src/test/scala/org/sigilaris/core/application/...` to ensure coverage lines up with the runtime packages.
+- The private regression suite mirrors the production tree so coverage lines up with the runtime packages.
 - When authoring a new feature, follow the `feature.<name>.{domain,transactions,module}` convention so blueprints, reducers, and API types remain discoverable.
