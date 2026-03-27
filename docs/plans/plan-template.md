@@ -44,6 +44,9 @@ YYYY-MM-DD
 ## Implementation Phases
 
 필요한 Phase만 남기고, 맞지 않는 Phase는 삭제한다.
+- Checklist는 `Implementation Phases`와 같은 순서/경계를 반영해 작성한다.
+- 각 체크 항목은 가능한 한 특정 Phase의 deliverable 또는 gate와 1:1로 대응되게 쪼갠다.
+- flat checklist 하나로 끝내지 말고, `### Phase N` 단위의 하위 체크리스트로 정리한다.
 
 ### Phase 0: Policy And Contract Lock
 - 정책, 타입 계약, 외부 노출 형식을 확정한다.
@@ -70,11 +73,20 @@ YYYY-MM-DD
 3. 필요하면 성능, 호환성, 배포 조건을 적는다.
 
 ## Checklist
-- [ ] 코드 변경 완료
-- [ ] 테스트 추가 또는 갱신
-- [ ] 문서 갱신
-- [ ] 관련 ADR 반영 여부 확인
-- [ ] 후속 과제 정리 완료
+
+체크리스트는 반드시 페이즈와 연동해서 적는다.
+
+### Phase 0: <Name>
+- [ ] Phase 0 deliverable 1
+- [ ] Phase 0 deliverable 2
+
+### Phase 1: <Name>
+- [ ] Phase 1 deliverable 1
+- [ ] Phase 1 gate or verification
+
+### Phase 2: <Name>
+- [ ] Phase 2 deliverable 1
+- [ ] Phase 2 documentation or cleanup
 
 ## Follow-Ups
 - 이번 작업 이후 별도 plan이나 ADR로 넘길 후속 과제를 적는다.
