@@ -59,19 +59,26 @@ Completed
 
 ```scala
 trait OpaqueValueCompanion[A, Repr]:
-  protected inline def wrap(repr: Repr): A
-  extension (value: A) inline def repr: Repr
+  protected def wrap(repr: Repr): A
+  protected def unwrap(value: A): Repr
 
-  given Eq[A]          = Eq.by(_.repr)
-  given ByteEncoder[A] = ByteEncoder[Repr].contramap(_.repr)
+  extension (value: A) def repr: Repr = unwrap(value)
+
+  given Eq[A] = new Eq[A]:
+    def eqv(x: A, y: A): Boolean =
+      Eq[Repr].eqv(unwrap(x), unwrap(y))
+
+  given ByteEncoder[A] = ByteEncoder[Repr].contramap(unwrap)
   given ByteDecoder[A] = ByteDecoder[Repr].map(wrap)
-  given JsonEncoder[A] = JsonEncoder[Repr].contramap(_.repr)
+  given JsonEncoder[A] = JsonEncoder[Repr].contramap(unwrap)
   given JsonDecoder[A] = JsonDecoder[Repr].map(wrap)
 
 trait KeyLikeOpaqueValueCompanion[A, Repr]
     extends OpaqueValueCompanion[A, Repr]:
-  given JsonKeyCodec[A] = JsonKeyCodec[Repr].imap(wrap, _.repr)
+  given JsonKeyCodec[A] = JsonKeyCodec[Repr].imap(wrap, unwrap)
 ```
+
+- 위 표면은 `opaque` 범위와 generic trait를 함께 다루기 위해 실제 구현에서 `inline` abstract method 대신 `wrap` / `unwrap` 조합으로 실현한다. public projection은 `repr` extension으로 유지한다.
 
 - `NetworkId`와 `GroupId`는 같은 trait family로 커버한다. `KeyId20`처럼 fixed-size binary 검증이나 custom tag byte가 필요한 타입은 mix-in 대상에서 제외한다.
 - `Show`/`Order` 같은 추가 typeclass는 이번 helper의 기본 표면에 넣지 않는다. 정말 필요한 타입만 별도 수동 인스턴스 또는 후속 확장으로 다룬다.

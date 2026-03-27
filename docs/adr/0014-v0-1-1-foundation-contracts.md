@@ -24,19 +24,26 @@ Accepted
 
 ```scala
 trait OpaqueValueCompanion[A, Repr]:
-  protected inline def wrap(repr: Repr): A
-  extension (value: A) inline def repr: Repr
+  protected def wrap(repr: Repr): A
+  protected def unwrap(value: A): Repr
 
-  given Eq[A]          = Eq.by(_.repr)
-  given ByteEncoder[A] = ByteEncoder[Repr].contramap(_.repr)
+  extension (value: A) def repr: Repr = unwrap(value)
+
+  given Eq[A] = new Eq[A]:
+    def eqv(x: A, y: A): Boolean =
+      Eq[Repr].eqv(unwrap(x), unwrap(y))
+
+  given ByteEncoder[A] = ByteEncoder[Repr].contramap(unwrap)
   given ByteDecoder[A] = ByteDecoder[Repr].map(wrap)
-  given JsonEncoder[A] = JsonEncoder[Repr].contramap(_.repr)
+  given JsonEncoder[A] = JsonEncoder[Repr].contramap(unwrap)
   given JsonDecoder[A] = JsonDecoder[Repr].map(wrap)
 
 trait KeyLikeOpaqueValueCompanion[A, Repr]
     extends OpaqueValueCompanion[A, Repr]:
-  given JsonKeyCodec[A] = JsonKeyCodec[Repr].imap(wrap, _.repr)
+  given JsonKeyCodec[A] = JsonKeyCodec[Repr].imap(wrap, unwrap)
 ```
+
+실제 구현은 generic trait 밖에서 `opaque` companion의 representation projection을 안정적으로 재사용하기 위해 `inline` abstract method 대신 `wrap` / `unwrap` pair를 사용한다. public API는 그대로 `repr` extension을 통해 노출한다.
 
 3. primitive byte contract에서 `Boolean`은 단일 바이트 canonical form으로 잠근다.
    - `false -> 0x00`

@@ -105,6 +105,7 @@ final class JsonDerivationSuite extends FunSuite:
     )
     val back = JsonDecoder[PaymentStatus].decode(json)
     assertEquals(back, Right(Pending))
+
   test("enum: FullyQualified strategy remains a compatibility alias to canonical labels"):
     val cfg = JsonConfig.default.copy(
       discriminator = DiscriminatorConfig(TypeNameStrategy.FullyQualified)
