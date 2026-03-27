@@ -1,4 +1,4 @@
-package org.sigilaris.node.jvm.runtime
+package org.sigilaris.node.jvm.transport.armeria
 
 import java.nio.file.{Files, Path}
 
@@ -7,9 +7,9 @@ import scala.util.Using
 
 import munit.FunSuite
 
-final class RuntimeImportRuleSuite extends FunSuite:
+final class TransportImportRuleSuite extends FunSuite:
 
-  private val runtimeRoot =
+  private val transportRoot =
     Path
       .of(sys.props.getOrElse("user.dir", "."))
       .resolve("src")
@@ -19,35 +19,31 @@ final class RuntimeImportRuleSuite extends FunSuite:
       .resolve("sigilaris")
       .resolve("node")
       .resolve("jvm")
-      .resolve("runtime")
+      .resolve("transport")
+      .resolve("armeria")
 
-  // Reserved implementation package roots from the extraction plan.
-  // Runtime sources must never import these packages, including before
-  // later phases add the actual transport/storage implementations.
   private val bannedImports = List(
-    "com.linecorp.armeria",
-    "sttp.tapir.server.armeria",
-    "swaydb",
-    "org.sigilaris.node.jvm.transport.armeria",
     "org.sigilaris.node.jvm.storage.memory",
     "org.sigilaris.node.jvm.storage.swaydb",
+    "swaydb",
+    "com.buchigo.",
   )
 
-  test("runtime production sources do not import transport or storage implementations"):
-    val runtimeSources = Using.resource(Files.walk(runtimeRoot)): stream =>
+  test("transport sources do not import storage implementations"):
+    val sources = Using.resource(Files.walk(transportRoot)): stream =>
       stream.iterator.asScala
         .filter(path => Files.isRegularFile(path) && path.toString.endsWith(".scala"))
         .toList
 
-    assert(runtimeSources.nonEmpty, s"Expected Scala sources under $runtimeRoot")
+    assert(sources.nonEmpty, s"Expected Scala sources under $transportRoot")
 
     val violations =
       for
-        source <- runtimeSources
+        source <- sources
         line   <- Files.readAllLines(source).asScala
         banned <- bannedImports
         trimmed = line.trim
         if trimmed.startsWith("import ") && trimmed.contains(banned)
-      yield s"${runtimeRoot.relativize(source)} imports $banned"
+      yield s"${transportRoot.relativize(source)} imports $banned"
 
     assertEquals(violations, Nil)

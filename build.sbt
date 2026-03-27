@@ -5,6 +5,7 @@ val V = new {
   val catsEffect = "3.6.3"
   val tapir      = "1.11.44"
   val sttp       = "4.0.11"
+  val openApiCirceYaml = "0.11.10"
   val circe      = "0.14.15"
   val iron       = "3.2.0"
   val scodecBits = "1.2.4"
@@ -70,6 +71,22 @@ val Dependencies = new {
       "org.typelevel" %%% "munit-cats-effect" % V.munitCatsEffect % Test,
     ),
     Test / fork := true,
+  )
+
+  lazy val nodeJvm = Seq(
+    libraryDependencies ++= Seq(
+      "com.softwaremill.sttp.tapir" %% "tapir-armeria-server-cats" % V.tapir,
+      "com.softwaremill.sttp.tapir" %% "tapir-openapi-docs"        % V.tapir,
+      "com.softwaremill.sttp.apispec" %% "openapi-circe-yaml"      % V.openApiCirceYaml,
+      ("io.swaydb" %% "swaydb" % V.sway).cross(CrossVersion.for3Use2_13),
+    ),
+    excludeDependencies ++= Seq(
+      "org.scala-lang.modules" % "scala-collection-compat_2.13",
+      "org.scala-lang.modules" % "scala-java8-compat_2.13",
+      "org.typelevel"          % "cats-core_2.13",
+      "org.typelevel"          % "cats-kernel_2.13",
+      "org.typelevel"          % "cats-effect_2.13",
+    ),
   )
 }
 Global / onChangedBuildSource := ReloadOnSourceChanges
@@ -216,6 +233,7 @@ lazy val tools = (project in file("tools"))
 
 lazy val nodeJvm = (project in file("modules/node-jvm"))
   .dependsOn(core.jvm)
+  .settings(Dependencies.nodeJvm)
   .settings(Dependencies.tests)
   .settings(
     moduleName := "sigilaris-node-jvm",

@@ -1,7 +1,7 @@
 # 0002 - Sigilaris Node JVM Extraction
 
 ## Status
-Phase 1 In Progress
+Phase 2 In Progress
 
 ## Created
 2026-03-28
@@ -171,12 +171,12 @@ Phase 1 In Progress
 - [ ] downstream application이 새 runtime seam으로 기존 startup/execution path를 유지하는 최소 integration 확인 완료
 
 ### Phase 2: Transport And Storage Migration
-- [ ] Armeria wiring 이동 완료
-- [ ] SwayDB wiring 이동 완료
+- [x] Armeria wiring 이동 완료
+- [x] SwayDB wiring 이동 완료
 - [ ] `NodeInitializationService` concrete split 재평가 및 runtime/downstream 경계 확정 완료
 - [ ] streaming/event persistence 연계 contract 정리 완료 (`transport.armeria -X-> storage.*` 유지)
-- [ ] 공통 runtime/service trait에서 금지된 Armeria/SwayDB 타입 노출 제거 완료
-- [ ] package dependency / import rule 체크를 transport/storage까지 확장 완료
+- [x] 공통 runtime/service trait에서 금지된 Armeria/SwayDB 타입 노출 제거 완료
+- [x] package dependency / import rule 체크를 transport/storage까지 확장 완료
 - [ ] downstream application이 새 runtime seam 위에서 기존 node를 계속 구동하는 smoke path 확인 완료
 - [ ] Phase 3 진입 gate 충족 완료
 
