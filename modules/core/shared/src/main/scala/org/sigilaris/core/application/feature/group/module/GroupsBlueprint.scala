@@ -19,7 +19,7 @@ import org.sigilaris.core.codec.byte.{ByteDecoder, ByteEncoder}
 import org.sigilaris.core.codec.byte.ByteEncoder.ops.*
 import org.sigilaris.core.crypto.{Hash, Recover}
 import org.sigilaris.core.datatype.{BigNat, Utf8}
-import org.sigilaris.core.failure.{CryptoFailure, TrieFailure}
+import org.sigilaris.core.failure.{ClientFailureMessage, ConflictMessage, CryptoFailure, TrieFailure}
 
 /** Groups module schema.
   *
@@ -71,6 +71,27 @@ class GroupsReducer[F[_]: Monad] extends StateReducer0[F, GroupsSchema.GroupsSch
   private inline def resultOf[A](value: A): GroupsResult[A] = GroupsResult(value)
   private inline def eventOf[A](value: A): GroupsEvent[A] = GroupsEvent(value)
 
+  private def invalidRequest(
+      reason: String,
+      message: String,
+      detail: Option[String],
+  ): String =
+    ClientFailureMessage.invalidRequest("groups", reason, message, detail)
+
+  private def notFound(
+      reason: String,
+      message: String,
+      detail: Option[String],
+  ): String =
+    ClientFailureMessage.notFound("groups", reason, message, detail)
+
+  private def conflict(
+      reason: String,
+      message: String,
+      detail: Option[String],
+  ): String =
+    ConflictMessage.format("groups", reason, message, detail)
+
   private def verifySigner[T <: Tx](tx: T, sig: AccountSignature, envelopeTimestamp: Instant, context: Option[String])(using
       provider: TablesProvider[F, GroupsReducer.GroupsNeeds],
       hashT: Hash[T],
@@ -108,15 +129,17 @@ class GroupsReducer[F[_]: Monad] extends StateReducer0[F, GroupsSchema.GroupsSch
         case Some(groupData) if groupData.coordinator === accountSig.account =>
           StoreF.pure[F, Unit](())
         case Some(groupData) =>
-          StoreF.raise[F, Unit](
-            CryptoFailure(
+          StoreF.raise[F, Unit]:
+            CryptoFailure:
               s"Unauthorized: ${accountSig.account} is not the coordinator of group ${groupId.toUtf8.asString}"
-            )
-          )
         case None =>
-          StoreF.raise[F, Unit](
-            TrieFailure(s"Group ${groupId.toUtf8.asString} not found during authorization check")
-          )
+          StoreF.raise[F, Unit]:
+            TrieFailure:
+              notFound(
+                "group_not_found",
+                s"Group ${groupId.toUtf8.asString} not found during authorization check",
+                Some(s"groupId=${groupId.toUtf8.asString}"),
+              )
     yield ()
 
   def apply[T <: Tx](signedTx: Signed[T])(using
@@ -140,9 +163,13 @@ class GroupsReducer[F[_]: Monad] extends StateReducer0[F, GroupsSchema.GroupsSch
       case tx: ReplaceCoordinator =>
         verifyAndHandleReplaceCoordinator(tx, signedTx.sig)
       case _ =>
-        StoreF.raise[F, (signedTx.value.Result, List[signedTx.value.Event])](
-          TrieFailure(s"Unknown transaction type: ${tx.getClass.getName}")
-        )
+        StoreF.raise[F, (signedTx.value.Result, List[signedTx.value.Event])]:
+          TrieFailure:
+            invalidRequest(
+              "unsupported_transaction",
+              s"Unknown transaction type: ${tx.getClass.getName}",
+              None,
+            )
 
     result.asInstanceOf[StoreF[F][(signedTx.value.Result, List[signedTx.value.Event])]]
 
@@ -162,19 +189,21 @@ class GroupsReducer[F[_]: Monad] extends StateReducer0[F, GroupsSchema.GroupsSch
 
     // Verify signer is the coordinator
     if sig.account =!= tx.coordinator then
-      StoreF.raise[F, (GroupsResult[Unit], List[GroupsEvent[GroupCreated]])](
-        CryptoFailure(
+      StoreF.raise[F, (GroupsResult[Unit], List[GroupsEvent[GroupCreated]])]:
+        CryptoFailure:
           s"Unauthorized: signer ${sig.account} does not match coordinator ${tx.coordinator}"
-        )
-      )
     else
       for
         maybeExisting <- groupsTable.get(groupsTable.brand(tx.groupId))
         result <- maybeExisting match
           case Some(_) =>
-            StoreF.raise[F, (GroupsResult[Unit], List[GroupsEvent[GroupCreated]])](
-              TrieFailure(s"Group ${tx.groupId.toUtf8.asString} already exists")
-            )
+            StoreF.raise[F, (GroupsResult[Unit], List[GroupsEvent[GroupCreated]])]:
+              TrieFailure:
+                conflict(
+                  "group_already_exists",
+                  s"Group ${tx.groupId.toUtf8.asString} already exists",
+                  Some(s"groupId=${tx.groupId.toUtf8.asString}"),
+                )
           case None =>
             val groupData = GroupData(
               name = tx.name,
@@ -208,9 +237,14 @@ class GroupsReducer[F[_]: Monad] extends StateReducer0[F, GroupsSchema.GroupsSch
       result <- maybeData match
         case Some(groupData) =>
           if groupData.nonce =!= tx.groupNonce then
-            StoreF.raise[F, (GroupsResult[Unit], List[GroupsEvent[GroupDisbanded]])](
-              TrieFailure(s"Nonce mismatch: expected ${groupData.nonce}, got ${tx.groupNonce}")
-            )
+            StoreF.raise[F, (GroupsResult[Unit], List[GroupsEvent[GroupDisbanded]])]:
+              TrieFailure:
+                invalidRequest(
+                  "group_nonce_mismatch",
+                  s"Nonce mismatch: expected ${groupData.nonce}, got ${tx.groupNonce}",
+                  Some(s"groupId=${tx.groupId.toUtf8.asString}"),
+                )
+            
           else if groupData.memberCount =!= BigNat.Zero then
             // SAFETY INVARIANT: Only empty groups can be disbanded.
             // This prevents orphaned membership entries in the groupAccounts table.
@@ -220,17 +254,26 @@ class GroupsReducer[F[_]: Monad] extends StateReducer0[F, GroupsSchema.GroupsSch
             //
             // To disband a group with members, the coordinator must first
             // remove all members via RemoveAccounts transactions.
-            StoreF.raise[F, (GroupsResult[Unit], List[GroupsEvent[GroupDisbanded]])](
-              TrieFailure(s"Cannot disband group ${tx.groupId.toUtf8.asString} with ${groupData.memberCount} members. Remove all members first.")
-            )
+            StoreF.raise[F, (GroupsResult[Unit], List[GroupsEvent[GroupDisbanded]])]:
+              TrieFailure:
+                invalidRequest(
+                  "group_not_empty",
+                  s"Cannot disband group ${tx.groupId.toUtf8.asString} with ${groupData.memberCount} members. Remove all members first.",
+                  Some(s"groupId=${tx.groupId.toUtf8.asString}"),
+                )
+            
           else
             for
               _ <- groupsTable.remove(groupsTable.brand(tx.groupId))
             yield (resultOf(()), List(eventOf(GroupDisbanded(tx.groupId))))
         case None =>
-          StoreF.raise[F, (GroupsResult[Unit], List[GroupsEvent[GroupDisbanded]])](
-            TrieFailure(s"Group ${tx.groupId.toUtf8.asString} not found")
-          )
+          StoreF.raise[F, (GroupsResult[Unit], List[GroupsEvent[GroupDisbanded]])]:
+            TrieFailure:
+              notFound(
+                "group_not_found",
+                s"Group ${tx.groupId.toUtf8.asString} not found",
+                Some(s"groupId=${tx.groupId.toUtf8.asString}"),
+              )
     yield result
 
   private def verifyAndHandleAddAccounts(tx: AddAccounts, sig: AccountSignature)(using
@@ -249,9 +292,13 @@ class GroupsReducer[F[_]: Monad] extends StateReducer0[F, GroupsSchema.GroupsSch
     val (groupsTable *: groupAccountsTable *: EmptyTuple) = ownsTables
 
     if tx.accounts.isEmpty then
-      StoreF.raise[F, (GroupsResult[Unit], List[GroupsEvent[GroupMembersAdded]])](
-        TrieFailure("AddAccounts requires non-empty accounts set")
-      )
+      StoreF.raise[F, (GroupsResult[Unit], List[GroupsEvent[GroupMembersAdded]])]:
+        TrieFailure:
+          invalidRequest(
+            "accounts_empty",
+            "AddAccounts requires non-empty accounts set",
+            Some(s"groupId=${tx.groupId.toUtf8.asString}"),
+          )
     else
       for
         maybeData <- groupsTable.get(groupsTable.brand(tx.groupId))
@@ -285,13 +332,23 @@ class GroupsReducer[F[_]: Monad] extends StateReducer0[F, GroupsSchema.GroupsSch
             yield (resultOf(()), List(eventOf(GroupMembersAdded(tx.groupId, actuallyAdded))))
 
           case Some(groupData) =>
-            StoreF.raise[F, (GroupsResult[Unit], List[GroupsEvent[GroupMembersAdded]])](
-              TrieFailure(s"Nonce mismatch: expected ${groupData.nonce}, got ${tx.groupNonce}")
-            )
+            StoreF.raise[F, (GroupsResult[Unit], List[GroupsEvent[GroupMembersAdded]])]:
+              TrieFailure:
+                invalidRequest(
+                  "group_nonce_mismatch",
+                  s"Nonce mismatch: expected ${groupData.nonce}, got ${tx.groupNonce}",
+                  Some(s"groupId=${tx.groupId.toUtf8.asString}"),
+                )
+            
           case None =>
-            StoreF.raise[F, (GroupsResult[Unit], List[GroupsEvent[GroupMembersAdded]])](
-              TrieFailure(s"Group ${tx.groupId.toUtf8.asString} not found")
-            )
+            StoreF.raise[F, (GroupsResult[Unit], List[GroupsEvent[GroupMembersAdded]])]:
+              TrieFailure:
+                notFound(
+                  "group_not_found",
+                  s"Group ${tx.groupId.toUtf8.asString} not found",
+                  Some(s"groupId=${tx.groupId.toUtf8.asString}"),
+                )
+            
       yield result
 
   private def verifyAndHandleRemoveAccounts(tx: RemoveAccounts, sig: AccountSignature)(using
@@ -310,9 +367,13 @@ class GroupsReducer[F[_]: Monad] extends StateReducer0[F, GroupsSchema.GroupsSch
     val (groupsTable *: groupAccountsTable *: EmptyTuple) = ownsTables
 
     if tx.accounts.isEmpty then
-      StoreF.raise[F, (GroupsResult[Unit], List[GroupsEvent[GroupMembersRemoved]])](
-        TrieFailure("RemoveAccounts requires non-empty accounts set")
-      )
+      StoreF.raise[F, (GroupsResult[Unit], List[GroupsEvent[GroupMembersRemoved]])]:
+        TrieFailure:
+          invalidRequest(
+            "accounts_empty",
+            "RemoveAccounts requires non-empty accounts set",
+            Some(s"groupId=${tx.groupId.toUtf8.asString}"),
+          )
     else
       for
         maybeData <- groupsTable.get(groupsTable.brand(tx.groupId))
@@ -339,13 +400,23 @@ class GroupsReducer[F[_]: Monad] extends StateReducer0[F, GroupsSchema.GroupsSch
             yield (resultOf(()), List(eventOf(GroupMembersRemoved(tx.groupId, actuallyRemoved))))
 
           case Some(groupData) =>
-            StoreF.raise[F, (GroupsResult[Unit], List[GroupsEvent[GroupMembersRemoved]])](
-              TrieFailure(s"Nonce mismatch: expected ${groupData.nonce}, got ${tx.groupNonce}")
-            )
+            StoreF.raise[F, (GroupsResult[Unit], List[GroupsEvent[GroupMembersRemoved]])]:
+              TrieFailure:
+                invalidRequest(
+                  "group_nonce_mismatch",
+                  s"Nonce mismatch: expected ${groupData.nonce}, got ${tx.groupNonce}",
+                  Some(s"groupId=${tx.groupId.toUtf8.asString}"),
+                )
+            
           case None =>
-            StoreF.raise[F, (GroupsResult[Unit], List[GroupsEvent[GroupMembersRemoved]])](
-              TrieFailure(s"Group ${tx.groupId.toUtf8.asString} not found")
-            )
+            StoreF.raise[F, (GroupsResult[Unit], List[GroupsEvent[GroupMembersRemoved]])]:
+              TrieFailure:
+                notFound(
+                  "group_not_found",
+                  s"Group ${tx.groupId.toUtf8.asString} not found",
+                  Some(s"groupId=${tx.groupId.toUtf8.asString}"),
+                )
+            
       yield result
 
   private def verifyAndHandleReplaceCoordinator(tx: ReplaceCoordinator, sig: AccountSignature)(using
@@ -380,13 +451,23 @@ class GroupsReducer[F[_]: Monad] extends StateReducer0[F, GroupsSchema.GroupsSch
           yield (resultOf(()), List(eventOf(GroupCoordinatorReplaced(tx.groupId, oldCoordinator, tx.newCoordinator))))
 
         case Some(groupData) =>
-          StoreF.raise[F, (GroupsResult[Unit], List[GroupsEvent[GroupCoordinatorReplaced]])](
-            TrieFailure(s"Nonce mismatch: expected ${groupData.nonce}, got ${tx.groupNonce}")
-          )
+          StoreF.raise[F, (GroupsResult[Unit], List[GroupsEvent[GroupCoordinatorReplaced]])]:
+            TrieFailure:
+              invalidRequest(
+                "group_nonce_mismatch",
+                s"Nonce mismatch: expected ${groupData.nonce}, got ${tx.groupNonce}",
+                Some(s"groupId=${tx.groupId.toUtf8.asString}"),
+              )
+            
         case None =>
-          StoreF.raise[F, (GroupsResult[Unit], List[GroupsEvent[GroupCoordinatorReplaced]])](
-            TrieFailure(s"Group ${tx.groupId.toUtf8.asString} not found")
-          )
+          StoreF.raise[F, (GroupsResult[Unit], List[GroupsEvent[GroupCoordinatorReplaced]])]:
+            TrieFailure:
+              notFound(
+                "group_not_found",
+                s"Group ${tx.groupId.toUtf8.asString} not found",
+                Some(s"groupId=${tx.groupId.toUtf8.asString}"),
+              )
+            
     yield result
 
 object GroupsReducer:
