@@ -65,6 +65,33 @@ val byteDecoded = ByteDecoder[Byte].decode(byteEncoded)
 // Result: Right(DecodeResult(0x42, ByteVector(empty)))
 ```
 
+### Boolean
+
+**Encoding Rule:**
+```
+Boolean → single byte (false = 0x00, true = 0x01)
+```
+
+**Decoding Rule:**
+```
+Read 1 byte:
+  - 0x00 → false
+  - 0x01 → true
+  - any other value → DecodeFailure
+```
+
+**Examples:**
+```scala mdoc:silent
+val trueEncoded = ByteEncoder[Boolean].encode(true)
+// Result: ByteVector(0x01)
+
+val falseEncoded = ByteEncoder[Boolean].encode(false)
+// Result: ByteVector(0x00)
+
+val trueDecoded = ByteDecoder[Boolean].decode(trueEncoded)
+// Result: Right(DecodeResult(true, ByteVector(empty)))
+```
+
 ### Long
 
 **Encoding Rule:**
@@ -474,6 +501,7 @@ val negative = ByteVector(0x03)  // encodes -1 as BigInt
 |------|-------|-------|
 | Unit | 0 bytes | No data |
 | Byte | 1 byte | Fixed |
+| Boolean | 1 byte | Fixed (`0x00` / `0x01`) |
 | Long | 8 bytes | Fixed |
 | Instant | 8 bytes | Fixed |
 | BigInt 0-64 | 1 byte | Single byte range |

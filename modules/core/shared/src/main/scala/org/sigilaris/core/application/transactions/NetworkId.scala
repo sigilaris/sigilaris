@@ -1,10 +1,6 @@
 package org.sigilaris.core.application.transactions
 
-import cats.Eq
-
-import org.sigilaris.core.codec.byte.{ByteDecoder, ByteEncoder}
-import org.sigilaris.core.codec.json.{JsonDecoder, JsonEncoder}
-import org.sigilaris.core.datatype.BigNat
+import org.sigilaris.core.datatype.{BigNat, OpaqueValueCompanion}
 
 /** Opaque identifier for a blockchain network.
   *
@@ -19,12 +15,16 @@ import org.sigilaris.core.datatype.BigNat
   */
 opaque type NetworkId = BigNat
 
-object NetworkId:
+object NetworkId extends OpaqueValueCompanion[NetworkId, BigNat]:
   /** Construct a `NetworkId` from a validated `BigNat`. */
   inline def apply(value: BigNat): NetworkId = value
 
   /** Alias for `apply` to emphasize validated input. */
   inline def fromBigNat(value: BigNat): NetworkId = value
+
+  protected def wrap(repr: BigNat): NetworkId = repr
+
+  protected def unwrap(value: NetworkId): BigNat = value
 
   /** Unsafe helper for tests and constants.
     *
@@ -41,17 +41,3 @@ object NetworkId:
       * the raw representation.
       */
     inline def toBigNat: BigNat = id
-
-  given Eq[NetworkId] = Eq.fromUniversalEquals
-
-  given ByteEncoder[NetworkId] =
-    ByteEncoder[BigNat].contramap(_.toBigNat)
-
-  given ByteDecoder[NetworkId] =
-    ByteDecoder[BigNat].map(apply)
-
-  given JsonEncoder[NetworkId] =
-    JsonEncoder[BigNat].contramap(_.toBigNat)
-
-  given JsonDecoder[NetworkId] =
-    JsonDecoder[BigNat].map(apply)

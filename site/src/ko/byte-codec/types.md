@@ -65,6 +65,33 @@ val byteDecoded = ByteDecoder[Byte].decode(byteEncoded)
 // 결과: Right(DecodeResult(0x42, ByteVector(empty)))
 ```
 
+### Boolean
+
+**인코딩 규칙:**
+```
+Boolean → 단일 바이트 (false = 0x00, true = 0x01)
+```
+
+**디코딩 규칙:**
+```
+1 바이트를 읽고:
+  - 0x00 → false
+  - 0x01 → true
+  - 그 외 값 → DecodeFailure
+```
+
+**예제:**
+```scala mdoc:silent
+val trueEncoded = ByteEncoder[Boolean].encode(true)
+// 결과: ByteVector(0x01)
+
+val falseEncoded = ByteEncoder[Boolean].encode(false)
+// 결과: ByteVector(0x00)
+
+val trueDecoded = ByteDecoder[Boolean].decode(trueEncoded)
+// 결과: Right(DecodeResult(true, ByteVector(empty)))
+```
+
 ### Long
 
 **인코딩 규칙:**
@@ -474,6 +501,7 @@ val negative = ByteVector(0x03)  // BigInt로 -1 인코딩
 |------|-------|-------|
 | Unit | 0 바이트 | 데이터 없음 |
 | Byte | 1 바이트 | 고정 |
+| Boolean | 1 바이트 | 고정 (`0x00` / `0x01`) |
 | Long | 8 바이트 | 고정 |
 | Instant | 8 바이트 | 고정 |
 | BigInt 0-64 | 1 바이트 | 단일 바이트 범위 |

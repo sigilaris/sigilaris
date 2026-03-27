@@ -132,7 +132,7 @@ val config = JsonConfig(
 
 ### Discriminator 전략
 
-Coproduct(sealed trait)는 **wrapped-by-type-key** 인코딩 사용:
+Coproduct(sealed trait와 enum)는 **wrapped-by-type-key** 인코딩 사용:
 
 ```scala
 sealed trait Color
@@ -143,9 +143,9 @@ case object Blue extends Color
 ```
 
 타입명 전략:
-- `SimpleName`: case class/object 이름 사용
-- `FullyQualified`: 전체 패키지 경로 사용 (현재는 simple로 폴백)
-- `Custom(Map[String, String])`: 커스텀 매핑 제공
+- `SimpleName`: canonical Scala 3 Mirror label 사용
+- `FullyQualified`: `v0.1.1`에서는 canonical Mirror label과 동일하게 동작하는 compatibility alias
+- `Custom(Map[String, String])`: canonical label에서 JSON key로의 명시 매핑 제공
 
 ## 설계 철학
 

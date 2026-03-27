@@ -6,7 +6,7 @@ import cats.syntax.eq.*
 import org.sigilaris.core.codec.byte.{ByteDecoder, ByteEncoder}
 import org.sigilaris.core.codec.byte.ByteEncoder.ops.*
 import org.sigilaris.core.datatype.{BigNat, Utf8}
-import org.sigilaris.core.failure.{TrieFailure, CryptoFailure}
+import org.sigilaris.core.failure.{ClientFailureMessage, ConflictMessage, CryptoFailure, FailureCode, TrieFailure}
 import org.sigilaris.core.application.feature.accounts.domain.*
 import org.sigilaris.core.application.feature.accounts.transactions.*
 import org.sigilaris.core.application.module.blueprint.{ModuleBlueprint, StateReducer0}
@@ -14,7 +14,7 @@ import org.sigilaris.core.application.module.provider.TablesProvider
 import org.sigilaris.core.application.security.SignatureVerifier
 import org.sigilaris.core.application.state.{Entry, StoreF, Tables}
 import org.sigilaris.core.application.support.compiletime.Requires
-import org.sigilaris.core.application.transactions.{AccountSignature, Signed, Tx, TxRegistry}
+import org.sigilaris.core.application.transactions.{AccountSignature, ReducerCoverage, Signed, Tx, TxRegistry}
 
 /** Accounts module schema.
   *
@@ -60,8 +60,37 @@ object AccountsSchema:
 class AccountsReducer[F[_]: Monad] extends StateReducer0[F, AccountsSchema.AccountsSchema, EmptyTuple]:
   import AccountsSchema.*
 
+  private val UnsupportedTransactionCode = FailureCode("accounts.unsupported_transaction")
+  private val AccountNotFoundCode        = FailureCode("accounts.account_not_found")
+  private val AccountAlreadyExistsCode   = FailureCode("accounts.account_already_exists")
+  private val AccountNonceMismatchCode   = FailureCode("accounts.account_nonce_mismatch")
+
   private inline def resultOf[A](value: A): AccountsResult[A] = AccountsResult(value)
   private inline def eventOf[A](value: A): AccountsEvent[A] = AccountsEvent(value)
+
+  private def invalidRequest(
+      code: FailureCode,
+      reason: String,
+      message: String,
+      detail: Option[String],
+  ): String =
+    ClientFailureMessage.invalidRequestWithCode("accounts", reason, message, detail, code)
+
+  private def notFound(
+      code: FailureCode,
+      reason: String,
+      message: String,
+      detail: Option[String],
+  ): String =
+    ClientFailureMessage.notFoundWithCode("accounts", reason, message, detail, code)
+
+  private def conflict(
+      code: FailureCode,
+      reason: String,
+      message: String,
+      detail: Option[String],
+  ): String =
+    ConflictMessage.formatWithCode("accounts", reason, message, detail, code)
 
   /** Verify authorization for account mutation operations.
     *
@@ -93,15 +122,18 @@ class AccountsReducer[F[_]: Monad] extends StateReducer0[F, AccountsSchema.Accou
           case Some(info) if info.guardian.contains(accountSig.account) =>
             StoreF.pure[F, Unit](())
           case Some(_) =>
-            StoreF.raise[F, Unit](
-              CryptoFailure(
+            StoreF.raise[F, Unit]:
+              CryptoFailure:
                 s"Unauthorized: ${accountSig.account} is not owner or guardian of account ${targetName.asString}"
-              )
-            )
           case None =>
-            StoreF.raise[F, Unit](
-              TrieFailure(s"Account ${targetName.asString} not found during authorization check")
-            )
+            StoreF.raise[F, Unit]:
+              TrieFailure:
+                notFound(
+                  AccountNotFoundCode,
+                  "account_not_found",
+                  s"Account ${targetName.asString} not found during authorization check",
+                  Some(s"name=${targetName.asString}"),
+                )
       yield ()
 
   /** Verify transaction signature according to ADR-0012.
@@ -147,9 +179,14 @@ class AccountsReducer[F[_]: Monad] extends StateReducer0[F, AccountsSchema.Accou
       case tx: RemoveAccount =>
         verifyAndHandleRemoveAccount(tx, signedTx.sig)
       case _ =>
-        StoreF.raise[F, (Unit, List[Nothing])](
-          TrieFailure(s"Unknown transaction type: ${tx.getClass.getName}")
-        )
+        StoreF.raise[F, (Unit, List[Nothing])]:
+          TrieFailure:
+            invalidRequest(
+              UnsupportedTransactionCode,
+              "unsupported_transaction",
+              s"Unknown transaction type: ${tx.getClass.getName}",
+              None,
+            )
 
     result.asInstanceOf[StoreF[F][(signedTx.value.Result, List[signedTx.value.Event])]]
 
@@ -165,19 +202,22 @@ class AccountsReducer[F[_]: Monad] extends StateReducer0[F, AccountsSchema.Accou
       )
       result <-
         if recoveredKeyId =!= tx.initialKeyId then
-          StoreF.raise[F, (AccountsResult[Unit], List[AccountsEvent[AccountCreated]])](
-            CryptoFailure(
+          StoreF.raise[F, (AccountsResult[Unit], List[AccountsEvent[AccountCreated]])]:
+            CryptoFailure:
               s"Recovered key ${recoveredKeyId.bytes.toHex} does not match initialKeyId ${tx.initialKeyId.bytes.toHex}"
-            )
-          )
         else
           for
             maybeExisting <- accountsTable.get(accountsTable.brand(tx.name))
             created <- maybeExisting match
               case Some(_) =>
-                StoreF.raise[F, (AccountsResult[Unit], List[AccountsEvent[AccountCreated]])](
-                  TrieFailure(s"Account ${tx.name.asString} already exists")
-                )
+                StoreF.raise[F, (AccountsResult[Unit], List[AccountsEvent[AccountCreated]])]:
+                  TrieFailure:
+                    conflict(
+                      AccountAlreadyExistsCode,
+                      "account_already_exists",
+                      s"Account ${tx.name.asString} already exists",
+                      Some(s"name=${tx.name.asString}"),
+                    )
               case None =>
                 val accountInfo = AccountInfo(guardian = tx.guardian, nonce = BigNat.Zero)
                 val keyInfo = KeyInfo(addedAt = tx.envelope.createdAt, expiresAt = None, description = Utf8(""))
@@ -223,13 +263,23 @@ class AccountsReducer[F[_]: Monad] extends StateReducer0[F, AccountsSchema.Accou
               _ <- accountsTable.put(accountsTable.brand(tx.name), newInfo)
             yield (resultOf(()), List(eventOf(AccountUpdated(tx.name, tx.newGuardian))))
           else
-            StoreF.raise[F, (AccountsResult[Unit], List[AccountsEvent[AccountUpdated]])](
-              TrieFailure(s"Nonce mismatch: expected ${info.nonce}, got ${tx.nonce}")
-            )
+            StoreF.raise[F, (AccountsResult[Unit], List[AccountsEvent[AccountUpdated]])]:
+              TrieFailure:
+                invalidRequest(
+                  AccountNonceMismatchCode,
+                  "account_nonce_mismatch",
+                  s"Nonce mismatch: expected ${info.nonce}, got ${tx.nonce}",
+                  Some(s"name=${tx.name.asString}"),
+                )
         case None =>
-          StoreF.raise[F, (AccountsResult[Unit], List[AccountsEvent[AccountUpdated]])](
-            TrieFailure(s"Account ${tx.name.asString} not found")
-          )
+          StoreF.raise[F, (AccountsResult[Unit], List[AccountsEvent[AccountUpdated]])]:
+            TrieFailure:
+              notFound(
+                AccountNotFoundCode,
+                "account_not_found",
+                s"Account ${tx.name.asString} not found",
+                Some(s"name=${tx.name.asString}"),
+              )
     yield result
 
   private def verifyAndHandleAddKeyIds(tx: AddKeyIds, sig: AccountSignature)(using
@@ -286,13 +336,23 @@ class AccountsReducer[F[_]: Monad] extends StateReducer0[F, AccountsSchema.Accou
               _ <- accountsTable.put(accountsTable.brand(tx.name), newInfo)
             yield (resultOf(()), List(eventOf(KeysAdded(tx.name, tx.keyIds.keySet))))
           else
-            StoreF.raise[F, (AccountsResult[Unit], List[AccountsEvent[KeysAdded]])](
-              TrieFailure(s"Nonce mismatch: expected ${info.nonce}, got ${tx.nonce}")
-            )
+            StoreF.raise[F, (AccountsResult[Unit], List[AccountsEvent[KeysAdded]])]:
+              TrieFailure:
+                invalidRequest(
+                  AccountNonceMismatchCode,
+                  "account_nonce_mismatch",
+                  s"Nonce mismatch: expected ${info.nonce}, got ${tx.nonce}",
+                  Some(s"name=${tx.name.asString}"),
+                )
         case None =>
-          StoreF.raise[F, (AccountsResult[Unit], List[AccountsEvent[KeysAdded]])](
-            TrieFailure(s"Account ${tx.name.asString} not found")
-          )
+          StoreF.raise[F, (AccountsResult[Unit], List[AccountsEvent[KeysAdded]])]:
+            TrieFailure:
+              notFound(
+                AccountNotFoundCode,
+                "account_not_found",
+                s"Account ${tx.name.asString} not found",
+                Some(s"name=${tx.name.asString}"),
+              )
     yield result
 
   private def verifyAndHandleRemoveKeyIds(tx: RemoveKeyIds, sig: AccountSignature)(using
@@ -340,13 +400,23 @@ class AccountsReducer[F[_]: Monad] extends StateReducer0[F, AccountsSchema.Accou
               _ <- accountsTable.put(accountsTable.brand(tx.name), newInfo)
             yield (resultOf(()), List(eventOf(KeysRemoved(tx.name, tx.keyIds))))
           else
-            StoreF.raise[F, (AccountsResult[Unit], List[AccountsEvent[KeysRemoved]])](
-              TrieFailure(s"Nonce mismatch: expected ${info.nonce}, got ${tx.nonce}")
-            )
+            StoreF.raise[F, (AccountsResult[Unit], List[AccountsEvent[KeysRemoved]])]:
+              TrieFailure:
+                invalidRequest(
+                  AccountNonceMismatchCode,
+                  "account_nonce_mismatch",
+                  s"Nonce mismatch: expected ${info.nonce}, got ${tx.nonce}",
+                  Some(s"name=${tx.name.asString}"),
+                )
         case None =>
-          StoreF.raise[F, (AccountsResult[Unit], List[AccountsEvent[KeysRemoved]])](
-            TrieFailure(s"Account ${tx.name.asString} not found")
-          )
+          StoreF.raise[F, (AccountsResult[Unit], List[AccountsEvent[KeysRemoved]])]:
+            TrieFailure:
+              notFound(
+                AccountNotFoundCode,
+                "account_not_found",
+                s"Account ${tx.name.asString} not found",
+                Some(s"name=${tx.name.asString}"),
+              )
     yield result
 
   private def verifyAndHandleRemoveAccount(tx: RemoveAccount, sig: AccountSignature)(using
@@ -384,13 +454,23 @@ class AccountsReducer[F[_]: Monad] extends StateReducer0[F, AccountsSchema.Accou
               // TODO: Add streaming API to iterate over all keys with prefix (name, *)
               (resultOf(()), List(eventOf(AccountRemoved(tx.name))))
           else
-            StoreF.raise[F, (AccountsResult[Unit], List[AccountsEvent[AccountRemoved]])](
-              TrieFailure(s"Nonce mismatch: expected ${info.nonce}, got ${tx.nonce}")
-            )
+            StoreF.raise[F, (AccountsResult[Unit], List[AccountsEvent[AccountRemoved]])]:
+              TrieFailure:
+                invalidRequest(
+                  AccountNonceMismatchCode,
+                  "account_nonce_mismatch",
+                  s"Nonce mismatch: expected ${info.nonce}, got ${tx.nonce}",
+                  Some(s"name=${tx.name.asString}"),
+                )
         case None =>
-          StoreF.raise[F, (AccountsResult[Unit], List[AccountsEvent[AccountRemoved]])](
-            TrieFailure(s"Account ${tx.name.asString} not found")
-          )
+          StoreF.raise[F, (AccountsResult[Unit], List[AccountsEvent[AccountRemoved]])]:
+            TrieFailure:
+              notFound(
+                AccountNotFoundCode,
+                "account_not_found",
+                s"Account ${tx.name.asString} not found",
+                Some(s"name=${tx.name.asString}"),
+              )
     yield result
 
 /** Accounts module blueprint.
@@ -398,12 +478,26 @@ class AccountsReducer[F[_]: Monad] extends StateReducer0[F, AccountsSchema.Accou
   * Phase 6 example blueprint implementing ADR-0010 (Blockchain Account Model and Key Management).
   */
 object AccountsBP:
-  def apply[F[_]: Monad](using @annotation.unused nodeStore: org.sigilaris.core.merkle.MerkleTrie.NodeStore[F]): ModuleBlueprint[F, "accounts", AccountsSchema.AccountsSchema, EmptyTuple, EmptyTuple] =
+  type AccountsTxs =
+    CreateNamedAccount *:
+      UpdateAccount *:
+      AddKeyIds *:
+      RemoveKeyIds *:
+      RemoveAccount *:
+      EmptyTuple
+
+  given ReducerCoverage[CreateNamedAccount] with {}
+  given ReducerCoverage[UpdateAccount] with {}
+  given ReducerCoverage[AddKeyIds] with {}
+  given ReducerCoverage[RemoveKeyIds] with {}
+  given ReducerCoverage[RemoveAccount] with {}
+
+  def apply[F[_]: Monad](using @annotation.unused nodeStore: org.sigilaris.core.merkle.MerkleTrie.NodeStore[F]): ModuleBlueprint[F, "accounts", AccountsSchema.AccountsSchema, EmptyTuple, AccountsTxs] =
     import AccountsSchema.*
 
-    new ModuleBlueprint[F, "accounts", AccountsSchema, EmptyTuple, EmptyTuple](
+    new ModuleBlueprint[F, "accounts", AccountsSchema, EmptyTuple, AccountsTxs](
       owns = accountsEntries,
       reducer0 = new AccountsReducer[F],
-      txs = TxRegistry.empty,
+      txs = TxRegistry.of[AccountsTxs],
       provider = TablesProvider.empty[F],
     )

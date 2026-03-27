@@ -71,6 +71,19 @@ All group transactions include an **Envelope** with:
 All group management transactions (except CreateGroup) require:
 - `groupNonce: BigNat` - Must match current group nonce for replay protection
 
+**Example envelope setup:**
+```scala
+import java.time.Instant
+import org.sigilaris.core.application.transactions.{NetworkId, TxEnvelope}
+import org.sigilaris.core.datatype.Utf8
+
+val envelope = TxEnvelope(
+  networkId = NetworkId.unsafeFromLong(1),
+  createdAt = Instant.parse("2026-03-27T00:00:00Z"),
+  memo = Some(Utf8("Create developers group"))
+)
+```
+
 ### CreateGroup
 
 Creates a new group with specified coordinator.

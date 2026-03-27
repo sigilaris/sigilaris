@@ -91,13 +91,6 @@ trait JsonEncoderInstances:
       case FieldNamingPolicy.KebabCase =>
         name.replaceAll("([a-z0-9])([A-Z])", "$1-$2").toLowerCase(Locale.ROOT)
 
-  private def typeKeyFor(label: String, d: DiscriminatorConfig): String =
-    d.typeNameStrategy match
-      case TypeNameStrategy.SimpleName => label
-      case TypeNameStrategy.FullyQualified =>
-        label // fallback to simple; FQ not available from Mirror label
-      case TypeNameStrategy.Custom(mapping) => mapping.getOrElse(label, label)
-
   given booleanEncoder: JsonEncoder[Boolean] = mk((b, _) => JsonValue.JBool(b))
   given stringEncoder: JsonEncoder[String] = mk((s, _) => JsonValue.JString(s))
   given intEncoder: JsonEncoder[Int] =
@@ -167,9 +160,12 @@ trait JsonEncoderInstances:
   @SuppressWarnings(Array("org.wartremover.warts.AsInstanceOf"))
   inline given derivedSumEncoder[A](using m: Mirror.SumOf[A]): JsonEncoder[A] =
     mk: (a, cfg) =>
-      val labels = elemLabels[m.MirroredElemLabels]
-      val ord    = m.ordinal(a)
-      val key    = typeKeyFor(labels(ord), cfg.discriminator)
+      val labels = JsonSubtypeLabels.fromMirrorLabels(
+        elemLabels[m.MirroredElemLabels],
+        cfg.discriminator,
+      )
+      val ord = m.ordinal(a)
+      val key = labels.labelAt(ord)
       // summon encoder for the active subtype and encode
       val encs: List[JsonEncoder[?]] =
         inline erasedValue[m.MirroredElemTypes] match

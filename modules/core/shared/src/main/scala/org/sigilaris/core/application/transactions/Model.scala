@@ -1,5 +1,6 @@
 package org.sigilaris.core.application.transactions
 
+import scala.compiletime.{erasedValue, summonInline}
 import scala.Tuple.++
 
 import org.sigilaris.core.application.feature.accounts.domain.Account
@@ -106,6 +107,19 @@ trait ModuleRoutedTx extends Tx:
     */
   def moduleId: ModuleId.Any
 
+/** Compile-time marker that a reducer stack handles the given transaction. */
+trait ReducerCoverage[T <: Tx]
+
+object TxRegistryCoverage:
+  @SuppressWarnings(Array("org.wartremover.warts.Recursion"))
+  transparent inline def ensureAll[Txs <: Tuple]: Unit =
+    inline erasedValue[Txs] match
+      case _: EmptyTuple =>
+        ()
+      case _: (h *: t) =>
+        val _ = summonInline[ReducerCoverage[h & Tx]]
+        ensureAll[t]
+
 /** Transaction registry holding a tuple of transaction types.
   *
   * This is a compile-time marker used for type-level transaction set
@@ -130,6 +144,13 @@ final class TxRegistry[Txs <: Tuple]:
 object TxRegistry:
   /** Create an empty transaction registry. */
   def empty: TxRegistry[EmptyTuple] = new TxRegistry[EmptyTuple]
+
+  /** Create a registry after proving every registered transaction has reducer
+    * coverage.
+    */
+  inline def of[Txs <: Tuple]: TxRegistry[Txs] =
+    TxRegistryCoverage.ensureAll[Txs]
+    new TxRegistry[Txs]
 
 /** Account signature containing both the signing account and the signature.
   *

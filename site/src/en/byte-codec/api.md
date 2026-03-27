@@ -260,8 +260,12 @@ result.map(_.value)  // Extract just the value
 Decoding failures are represented by `DecodeFailure`:
 
 ```scala
-case class DecodeFailure(message: String)
+case class DecodeFailure(msg: String) extends SigilarisFailure
+// inherited metadata: def code: FailureCode
 ```
+
+Every `SigilarisFailure` also exposes a stable `code: FailureCode` for
+machine-readable mapping.
 
 Common failure scenarios:
 - **Insufficient bytes**: Not enough data to decode required type

@@ -1,6 +1,6 @@
 # Sigilaris
 
-[![Maven Central](https://img.shields.io/maven-central/v/org.sigilaris/core_3.svg)](https://central.sonatype.com/artifact/org.sigilaris/core_3)
+[![Maven Central](https://img.shields.io/maven-central/v/org.sigilaris/sigilaris-core_3.svg)](https://central.sonatype.com/artifact/org.sigilaris/sigilaris-core_3)
 [![Scala Version](https://img.shields.io/badge/scala-3.7.3-red.svg)](https://www.scala-lang.org/)
 [![License](https://img.shields.io/badge/license-AGPL--3.0-blue.svg)](https://www.gnu.org/licenses/agpl-3.0.en.html)
 
@@ -24,7 +24,7 @@ Sigilaris provides type-safe, deterministic building blocks for constructing cus
 Add Sigilaris to your `build.sbt`:
 
 ```scala
-libraryDependencies += "org.sigilaris" %%% "core" % "0.1.0"
+libraryDependencies += "org.sigilaris" %%% "sigilaris-core" % "0.1.1"
 ```
 
 Cross-platform support:
@@ -67,7 +67,8 @@ High-performance cryptographic primitives for blockchain applications.
 
 ## Documentation
 
-- **[API Documentation](https://javadoc.io/doc/org.sigilaris/core_3/latest/index.html)** — Comprehensive Scaladoc
+- **[API Documentation](https://javadoc.io/doc/org.sigilaris/sigilaris-core_3/latest/index.html)** — Comprehensive Scaladoc
+- **[v0.1.1 Release Notes](docs/dev/v0.1.1-release-notes.md)** — Highlights, upgrade notes, and verification summary for the current release
 - **[Latest Release](https://github.com/sigilaris/sigilaris/releases/latest)** — Release notes and artifacts
 - **[GitHub Repository](https://github.com/sigilaris/sigilaris)** — Source code and examples
 
@@ -122,7 +123,7 @@ Built with:
 ---
 
 **Maven Coordinates:**
-- JVM: `org.sigilaris:core_3:0.1.0`
-- Scala.js: `org.sigilaris:core_sjs1_3:0.1.0`
+- JVM: `org.sigilaris:sigilaris-core_3:0.1.1`
+- Scala.js: `org.sigilaris:sigilaris-core_sjs1_3:0.1.1`
 
 **Scala Version:** 3.7.3

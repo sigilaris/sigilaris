@@ -5,7 +5,7 @@ import java.time.Instant
 import cats.Eq
 
 import org.sigilaris.core.codec.byte.{ByteDecoder, ByteEncoder}
-import org.sigilaris.core.datatype.{BigNat, Utf8}
+import org.sigilaris.core.datatype.{BigNat, KeyLikeOpaqueValueCompanion, Utf8}
 import org.sigilaris.core.application.feature.accounts.domain.Account
 
 /** Group identifier using UTF-8 string (no format constraints).
@@ -15,19 +15,15 @@ import org.sigilaris.core.application.feature.accounts.domain.Account
   */
 opaque type GroupId = Utf8
 
-object GroupId:
-  def apply(utf8: Utf8): GroupId = utf8
+object GroupId extends KeyLikeOpaqueValueCompanion[GroupId, Utf8]:
+  inline def apply(utf8: Utf8): GroupId = utf8
+
+  protected def wrap(repr: Utf8): GroupId = repr
+
+  protected def unwrap(value: GroupId): Utf8 = value
 
   extension (g: GroupId)
-    def toUtf8: Utf8 = g
-
-  given groupIdEq: Eq[GroupId] = Eq.fromUniversalEquals
-
-  given groupIdByteEncoder: ByteEncoder[GroupId] = (g: GroupId) =>
-    ByteEncoder[Utf8].encode(g.toUtf8)
-
-  given groupIdByteDecoder: ByteDecoder[GroupId] = bytes =>
-    ByteDecoder[Utf8].decode(bytes).map(r => r.copy(value = apply(r.value)))
+    inline def toUtf8: Utf8 = g
 
 /** Group metadata stored on-chain.
   *

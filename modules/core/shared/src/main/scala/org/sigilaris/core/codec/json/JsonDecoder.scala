@@ -260,16 +260,14 @@ trait JsonDecoderInstances:
   inline given derivedSumDecoder[A](using m: Mirror.SumOf[A]): JsonDecoder[A] =
     mk:
       case (JsonValue.JObject(fields), cfg) =>
-        val labels = elemLabels[m.MirroredElemLabels]
+        val labels = JsonSubtypeLabels.fromMirrorLabels(
+          elemLabels[m.MirroredElemLabels],
+          cfg.discriminator,
+        )
         // find the single key and map to subtype without using == / size
         fields.toList match
           case (rawKey, body) :: Nil =>
-            val idx = cfg.discriminator.typeNameStrategy match
-              case TypeNameStrategy.SimpleName     => labels.indexOf(rawKey)
-              case TypeNameStrategy.FullyQualified => labels.indexOf(rawKey)
-              case TypeNameStrategy.Custom(mapping) =>
-                val normalized = labels.map(l => mapping.getOrElse(l, l))
-                normalized.indexOf(rawKey)
+            val idx = labels.indexOfEncoded(rawKey)
             if idx < 0 then DecodeFailure(ss"Unknown subtype: ${rawKey}").asLeft
             else
               val decs: List[JsonDecoder[?]] =

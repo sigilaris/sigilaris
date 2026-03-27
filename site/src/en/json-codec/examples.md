@@ -58,7 +58,9 @@ JsonEncoder[Employee].encode(employee)
 
 ## Coproduct (Sealed Trait) Encoding
 
-Sealed traits use **wrapped-by-type-key** discriminator:
+Sealed traits and enums use the same **wrapped-by-type-key** discriminator. By
+default the JSON key is the canonical Scala 3 Mirror label, and custom renames
+must be expressed through `TypeNameStrategy.Custom`.
 
 ```scala mdoc:reset:silent
 import org.sigilaris.core.codec.json.*

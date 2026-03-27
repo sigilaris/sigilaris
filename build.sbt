@@ -74,7 +74,7 @@ val Dependencies = new {
 }
 Global / onChangedBuildSource := ReloadOnSourceChanges
 ThisBuild / organization      := "org.sigilaris"
-ThisBuild / version           := "0.1.1-SNAPSHOT"
+ThisBuild / version           := "0.1.1"
 ThisBuild / scalaVersion      := V.Scala
 ThisBuild / semanticdbEnabled := true
 
@@ -141,6 +141,7 @@ lazy val core = crossProject(JSPlatform, JVMPlatform)
   .settings(Dependencies.core)
   .settings(Dependencies.tests)
   .settings(
+    moduleName := "sigilaris-core",
     Compile / compile / wartremoverErrors ++= Warts
       .allBut(Wart.SeqApply, Wart.SeqUpdated),
   )
