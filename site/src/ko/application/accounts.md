@@ -98,6 +98,19 @@ Entry["utxo", (AccountId, TokenDefId, TokenId, UTXOHash), Unit]
 
 서명은 Envelope를 포함한 전체 페이로드의 해시 위에서 검증됩니다.
 
+**Envelope 설정 예시:**
+```scala
+import java.time.Instant
+import org.sigilaris.core.application.transactions.{NetworkId, TxEnvelope}
+import org.sigilaris.core.datatype.Utf8
+
+val envelope = TxEnvelope(
+  networkId = NetworkId.unsafeFromLong(1),
+  createdAt = Instant.parse("2026-03-27T00:00:00Z"),
+  memo = Some(Utf8("Create alice"))
+)
+```
+
 ### CreateNamedAccount
 
 초기 키와 선택적 가디언으로 새 Named Account를 생성합니다.

@@ -1,7 +1,7 @@
 # 0001 - v0.1.1 Foundation Features
 
 ## Status
-In Progress
+Completed
 
 ## Created
 2026-03-27
@@ -188,10 +188,10 @@ trait KeyLikeOpaqueValueCompanion[A, Repr]
 - [x] `FailureCode` / `ErrorKey` foundation 추가 완료
 
 ### Phase 4: Verification And Docs
-- [ ] 선택된 packaging 경로에 맞는 codec law helper 적용 완료
-- [ ] `TxEnvelope` / `NetworkId` 공개 문서 및 예제 갱신 완료
-- [ ] 핵심 JVM/JS 회귀 검증 완료 또는 미실행 사유 기록
-- [ ] 후속 과제 정리 완료
+- [x] 선택된 packaging 경로에 맞는 codec law helper 적용 완료
+- [x] `TxEnvelope` / `NetworkId` 공개 문서 및 예제 갱신 완료
+- [x] 핵심 JVM/JS 회귀 검증 완료 또는 미실행 사유 기록
+- [x] 후속 과제 정리 완료
 
 ## Follow-Ups
 - byte-level sum encoding과 scodec-inspired `DiscriminatorCodec` 설계

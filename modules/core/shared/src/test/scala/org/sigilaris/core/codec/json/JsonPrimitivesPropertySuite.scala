@@ -4,36 +4,29 @@ package codec.json
 import hedgehog.munit.HedgehogSuite
 import hedgehog.*
 import java.time.Instant
+import org.sigilaris.core.codec.CodecLawSupport.JsonLaws
 
 final class JsonPrimitivesPropertySuite extends HedgehogSuite:
 
   property("Boolean roundtrip"):
     for b <- Gen.boolean.forAll
     yield
-      val json = JsonEncoder[Boolean].encode(b)
-      val res  = JsonDecoder[Boolean].decode(json)
-      res ==== Right(b)
+      Result.all(List(JsonLaws.roundTrip(b), JsonLaws.deterministicEncoding(b)))
 
   property("String roundtrip"):
     for s <- Gen.string(Gen.unicode, Range.linear(0, 64)).forAll
     yield
-      val json = JsonEncoder[String].encode(s)
-      val res  = JsonDecoder[String].decode(json)
-      res ==== Right(s)
+      Result.all(List(JsonLaws.roundTrip(s), JsonLaws.deterministicEncoding(s)))
 
   property("Int roundtrip"):
     for n <- Gen.int(Range.linearFrom(0, Int.MinValue, Int.MaxValue)).forAll
     yield
-      val json = JsonEncoder[Int].encode(n)
-      val res  = JsonDecoder[Int].decode(json)
-      res ==== Right(n)
+      Result.all(List(JsonLaws.roundTrip(n), JsonLaws.deterministicEncoding(n)))
 
   property("Long roundtrip"):
     for n <- Gen.long(Range.linearFrom(0L, Long.MinValue, Long.MaxValue)).forAll
     yield
-      val json = JsonEncoder[Long].encode(n)
-      val res  = JsonDecoder[Long].decode(json)
-      res ==== Right(n)
+      Result.all(List(JsonLaws.roundTrip(n), JsonLaws.deterministicEncoding(n)))
 
   property("BigInt roundtrip (default writes as string; decoder accepts both)"):
     for bi <- Gen.bytes(Range.linear(1, 64)).map(BigInt(_)).forAll
@@ -43,11 +36,11 @@ final class JsonPrimitivesPropertySuite extends HedgehogSuite:
       val isStringEncoded = enc match
         case JsonValue.JString(_) => true
         case _                    => false
-      val back = JsonDecoder[BigInt].decode(enc)
       Result.all:
         List(
           isStringEncoded ==== true,
-          back ==== Right(bi),
+          JsonLaws.roundTrip(bi),
+          JsonLaws.deterministicEncoding(bi),
         )
 
   property("BigDecimal roundtrip (default writes as string; decoder accepts both)"):
@@ -64,11 +57,11 @@ final class JsonPrimitivesPropertySuite extends HedgehogSuite:
       val isStringEncoded = enc match
         case JsonValue.JString(_) => true
         case _                    => false
-      val back = JsonDecoder[BigDecimal].decode(enc)
       Result.all:
         List(
           isStringEncoded ==== true,
-          back ==== Right(bd),
+          JsonLaws.roundTrip(bd),
+          JsonLaws.deterministicEncoding(bd),
         )
 
   property("Instant roundtrip (millisecond precision)"):
@@ -76,7 +69,13 @@ final class JsonPrimitivesPropertySuite extends HedgehogSuite:
         .long(Range.linearFrom(0L, Long.MinValue, Long.MaxValue))
         .forAll
     yield
-      val inst   = Instant.ofEpochMilli(epochMilli)
-      val enc    = JsonEncoder[Instant].encode(inst)
-      val decoded = JsonDecoder[Instant].decode(enc)
-      decoded ==== Right(inst.truncatedTo(java.time.temporal.ChronoUnit.MILLIS))
+      val inst = Instant.ofEpochMilli(epochMilli)
+      val truncated = inst.truncatedTo(java.time.temporal.ChronoUnit.MILLIS)
+      val encoded = JsonEncoder[Instant].encode(inst)
+      val decoded = JsonDecoder[Instant].decode(encoded)
+      Result.all(
+        List(
+          decoded ==== Right(truncated),
+          JsonLaws.deterministicEncoding(truncated),
+        ),
+      )

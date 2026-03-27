@@ -98,6 +98,19 @@ All account transactions include an **Envelope** with common fields:
 
 Signatures are verified over the hash of the entire payload including the envelope.
 
+**Example envelope setup:**
+```scala
+import java.time.Instant
+import org.sigilaris.core.application.transactions.{NetworkId, TxEnvelope}
+import org.sigilaris.core.datatype.Utf8
+
+val envelope = TxEnvelope(
+  networkId = NetworkId.unsafeFromLong(1),
+  createdAt = Instant.parse("2026-03-27T00:00:00Z"),
+  memo = Some(Utf8("Create alice"))
+)
+```
+
 ### CreateNamedAccount
 
 Creates a new Named Account with initial key and optional guardian.

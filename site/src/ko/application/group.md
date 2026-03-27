@@ -71,6 +71,19 @@ Group 모듈은 그룹 생성 시 코디네이터 존재를 검증하기 위해 
 모든 그룹 관리 트랜잭션(CreateGroup 제외)은 다음을 요구합니다:
 - `groupNonce: BigNat` - 재생 방지를 위해 현재 그룹 nonce와 일치해야 함
 
+**Envelope 설정 예시:**
+```scala
+import java.time.Instant
+import org.sigilaris.core.application.transactions.{NetworkId, TxEnvelope}
+import org.sigilaris.core.datatype.Utf8
+
+val envelope = TxEnvelope(
+  networkId = NetworkId.unsafeFromLong(1),
+  createdAt = Instant.parse("2026-03-27T00:00:00Z"),
+  memo = Some(Utf8("Create developers group"))
+)
+```
+
 ### CreateGroup
 
 지정된 코디네이터로 새 그룹을 생성합니다.

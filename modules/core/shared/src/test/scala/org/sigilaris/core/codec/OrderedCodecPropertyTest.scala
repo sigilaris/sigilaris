@@ -4,6 +4,7 @@ import hedgehog.munit.HedgehogSuite
 import hedgehog.*
 import scodec.bits.ByteVector
 import org.sigilaris.core.datatype.{BigNat, UInt256, Utf8Key}
+import org.sigilaris.core.codec.CodecLawSupport.OrderedLaws
 
 /** Property-based tests for OrderedCodec instances using Hedgehog.
   *
@@ -18,8 +19,7 @@ class OrderedCodecPropertyTest extends HedgehogSuite:
       x <- Gen.bytes(Range.linear(0, 32)).map(ByteVector(_)).forAll
       y <- Gen.bytes(Range.linear(0, 32)).map(ByteVector(_)).forAll
     yield
-      val oc = OrderedCodec[ByteVector]
-      Result.assert(oc.satisfiesLaw(x, y))
+      OrderedLaws.preservesOrdering(x, y)
 
   property("ByteVector - Round-trip"):
     for x <- Gen.bytes(Range.linear(0, 32)).map(ByteVector(_)).forAll
@@ -42,8 +42,7 @@ class OrderedCodecPropertyTest extends HedgehogSuite:
       x <- Gen.long(Range.linear(0, 1000000)).map(BigNat.unsafeFromLong).forAll
       y <- Gen.long(Range.linear(0, 1000000)).map(BigNat.unsafeFromLong).forAll
     yield
-      val oc = OrderedCodec[BigNat]
-      Result.assert(oc.satisfiesLaw(x, y))
+      OrderedLaws.preservesOrdering(x, y)
 
   property("BigNat - Round-trip"):
     for x <- Gen.long(Range.linear(0, 1000000)).map(BigNat.unsafeFromLong).forAll
@@ -82,8 +81,7 @@ class OrderedCodecPropertyTest extends HedgehogSuite:
       x <- Gen.long(Range.linear(0, Long.MaxValue)).map(n => UInt256.unsafeFromBigIntUnsigned(BigInt(n))).forAll
       y <- Gen.long(Range.linear(0, Long.MaxValue)).map(n => UInt256.unsafeFromBigIntUnsigned(BigInt(n))).forAll
     yield
-      val oc = OrderedCodec[UInt256]
-      Result.assert(oc.satisfiesLaw(x, y))
+      OrderedLaws.preservesOrdering(x, y)
 
   property("UInt256 - Round-trip"):
     for x <- Gen.long(Range.linear(0, Long.MaxValue)).map(n => UInt256.unsafeFromBigIntUnsigned(BigInt(n))).forAll
@@ -115,8 +113,7 @@ class OrderedCodecPropertyTest extends HedgehogSuite:
       x <- genUtf8Key.forAll
       y <- genUtf8Key.forAll
     yield
-      val oc = OrderedCodec[Utf8Key]
-      Result.assert(oc.satisfiesLaw(x, y))
+      OrderedLaws.preservesOrdering(x, y)
 
   property("Utf8Key - Round-trip"):
     for x <- genUtf8Key.forAll
@@ -173,5 +170,5 @@ class OrderedCodecPropertyTest extends HedgehogSuite:
 
       Result.all(List(
         Result.assert(oc.compare(small, large) < 0),
-        Result.assert(oc.satisfiesLaw(small, large))
+        OrderedLaws.preservesOrdering(small, large)
       ))

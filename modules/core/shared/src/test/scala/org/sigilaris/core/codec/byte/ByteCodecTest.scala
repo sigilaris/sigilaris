@@ -5,23 +5,20 @@ import java.time.Instant
 import hedgehog.munit.HedgehogSuite
 import hedgehog.*
 import scodec.bits.ByteVector
+import org.sigilaris.core.codec.CodecLawSupport.ByteLaws
 
 class ByteCodecTest extends HedgehogSuite:
   property("Boolean roundtrip"):
     for boolean <- Gen.boolean.forAll
     yield
       val encoded = ByteEncoder[Boolean].encode(boolean)
-
-      ByteDecoder[Boolean].decode(encoded) match
-        case Right(DecodeResult(decoded, remainder)) =>
-          Result.all(
-            List(
-              decoded ==== boolean,
-              encoded ==== (if boolean then ByteVector(0x01.toByte) else ByteVector(0x00.toByte)),
-              Result.assert(remainder.isEmpty),
-            ),
-          )
-        case _ => Result.failure
+      Result.all(
+        List(
+          ByteLaws.roundTrip(boolean),
+          ByteLaws.deterministicEncoding(boolean),
+          encoded ==== (if boolean then ByteVector(0x01.toByte) else ByteVector(0x00.toByte)),
+        ),
+      )
 
   property("BigInt roundtrip"):
     for bignat <- Gen
@@ -29,49 +26,36 @@ class ByteCodecTest extends HedgehogSuite:
         .map(BigInt(_))
         .forAll
     yield
-      val encoded = ByteEncoder[BigInt].encode(bignat)
-
-      ByteDecoder[BigInt].decode(encoded) match
-        case Right(DecodeResult(decoded, remainder)) =>
-          Result.all(
-            List(
-              decoded ==== bignat,
-              Result.assert(remainder.isEmpty),
-            ),
-          )
-        case _ => Result.failure
+      Result.all(
+        List(
+          ByteLaws.roundTrip(bignat),
+          ByteLaws.deterministicEncoding(bignat),
+        ),
+      )
 
   property("Byte roundtrip"):
     for byte <- Gen
         .byte(Range.linearFrom(0, Byte.MinValue, Byte.MaxValue))
         .forAll
     yield
-      val encoded = ByteEncoder[Byte].encode(byte)
-
-      ByteDecoder[Byte].decode(encoded) match
-        case Right(DecodeResult(decoded, remainder)) =>
-          Result.all:
-            List(
-              decoded ==== byte,
-              Result.assert(remainder.isEmpty),
-            )
-        case _ => Result.failure
+      Result.all(
+        List(
+          ByteLaws.roundTrip(byte),
+          ByteLaws.deterministicEncoding(byte),
+        ),
+      )
 
   property("Long roundtrip"):
     for long <- Gen
         .long(Range.linearFrom(0L, Long.MinValue, Long.MaxValue))
         .forAll
     yield
-      val encoded = ByteEncoder[Long].encode(long)
-
-      ByteDecoder[Long].decode(encoded) match
-        case Right(DecodeResult(decoded, remainder)) =>
-          Result.all:
-            List(
-              decoded ==== long,
-              Result.assert(remainder.isEmpty),
-            )
-        case _ => Result.failure
+      Result.all(
+        List(
+          ByteLaws.roundTrip(long),
+          ByteLaws.deterministicEncoding(long),
+        ),
+      )
 
   property("Instant roundtrip"):
     for epochMilli <- Gen
@@ -84,16 +68,12 @@ class ByteCodecTest extends HedgehogSuite:
         .forAll
     yield
       val instant = Instant.ofEpochMilli(epochMilli)
-      val encoded = ByteEncoder[Instant].encode(instant)
-
-      ByteDecoder[Instant].decode(encoded) match
-        case Right(DecodeResult(decoded, remainder)) =>
-          Result.all:
-            List(
-              decoded ==== instant,
-              Result.assert(remainder.isEmpty),
-            )
-        case _ => Result.failure
+      Result.all(
+        List(
+          ByteLaws.roundTrip(instant),
+          ByteLaws.deterministicEncoding(instant),
+        ),
+      )
 
   property("Option[Long] roundtrip"):
     for opt <- Gen
@@ -101,16 +81,12 @@ class ByteCodecTest extends HedgehogSuite:
         .option
         .forAll
     yield
-      val encoded = ByteEncoder[Option[Long]].encode(opt)
-
-      ByteDecoder[Option[Long]].decode(encoded) match
-        case Right(DecodeResult(decoded, remainder)) =>
-          Result.all:
-            List(
-              decoded ==== opt,
-              Result.assert(remainder.isEmpty),
-            )
-        case _ => Result.failure
+      Result.all(
+        List(
+          ByteLaws.roundTrip(opt),
+          ByteLaws.deterministicEncoding(opt),
+        ),
+      )
 
   property("Set[Byte] roundtrip"):
     for set <- Gen
@@ -121,16 +97,12 @@ class ByteCodecTest extends HedgehogSuite:
         .map(_.toSet)
         .forAll
     yield
-      val encoded = ByteEncoder[Set[Byte]].encode(set)
-
-      ByteDecoder[Set[Byte]].decode(encoded) match
-        case Right(DecodeResult(decoded, remainder)) =>
-          Result.all:
-            List(
-              decoded ==== set,
-              Result.assert(remainder.isEmpty),
-            )
-        case _ => Result.failure
+      Result.all(
+        List(
+          ByteLaws.roundTrip(set),
+          ByteLaws.deterministicEncoding(set),
+        ),
+      )
 
   property("Map[Byte, Long] roundtrip"):
     for map <- Gen
@@ -144,13 +116,9 @@ class ByteCodecTest extends HedgehogSuite:
         .map(_.toMap)
         .forAll
     yield
-      val encoded = ByteEncoder[Map[Byte, Long]].encode(map)
-
-      ByteDecoder[Map[Byte, Long]].decode(encoded) match
-        case Right(DecodeResult(decoded, remainder)) =>
-          Result.all:
-            List(
-              decoded ==== map,
-              Result.assert(remainder.isEmpty),
-            )
-        case _ => Result.failure
+      Result.all(
+        List(
+          ByteLaws.roundTrip(map),
+          ByteLaws.deterministicEncoding(map),
+        ),
+      )
