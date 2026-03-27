@@ -178,9 +178,9 @@ trait KeyLikeOpaqueValueCompanion[A, Repr]
 - [x] JSON 관련 regression fixture 및 문서 동기화 완료
 
 ### Phase 2: Opaque Derivation Foundations
-- [ ] shared opaque companion helper 추가 완료
-- [ ] `GroupId`, `NetworkId` 적용 완료
-- [ ] 특수 codec 유지 대상 수동 구현 정리 완료
+- [x] shared opaque companion helper 추가 완료
+- [x] `GroupId`, `NetworkId` 적용 완료
+- [x] 특수 codec 유지 대상 수동 구현 정리 완료
 
 ### Phase 3: Registry And Failure Safety
 - [ ] `ReducerCoverage` evidence 및 `TxRegistry` guard 추가 완료
