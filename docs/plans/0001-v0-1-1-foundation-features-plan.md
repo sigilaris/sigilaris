@@ -183,9 +183,9 @@ trait KeyLikeOpaqueValueCompanion[A, Repr]
 - [x] 특수 codec 유지 대상 수동 구현 정리 완료
 
 ### Phase 3: Registry And Failure Safety
-- [ ] `ReducerCoverage` evidence 및 `TxRegistry` guard 추가 완료
-- [ ] `accounts`/`group` blueprint wiring 반영 완료
-- [ ] `FailureCode` / `ErrorKey` foundation 추가 완료
+- [x] `ReducerCoverage` evidence 및 `TxRegistry` guard 추가 완료
+- [x] `accounts`/`group` blueprint wiring 반영 완료
+- [x] `FailureCode` / `ErrorKey` foundation 추가 완료
 
 ### Phase 4: Verification And Docs
 - [ ] 선택된 packaging 경로에 맞는 codec law helper 적용 완료

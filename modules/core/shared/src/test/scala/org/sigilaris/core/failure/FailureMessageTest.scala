@@ -5,6 +5,18 @@ import munit.FunSuite
 
 class FailureMessageTest extends FunSuite:
 
+  test("ErrorKey keeps failure code while rendering client message keys"):
+    val code = FailureCode("accounts.account_not_found")
+    val key = ClientFailureMessage.errorKey(
+      ClientFailureMessage.Kind.NotFound,
+      domain = "accounts",
+      reason = "account_not_found",
+      code = code,
+    )
+
+    assertEquals(key.rendered, "not_found.accounts.account_not_found")
+    assertEquals(key.code, code)
+
   test("ClientFailureMessage falls back to safe key for invalid domain or reason"):
     val message = ClientFailureMessage.invalidRequest(
       domain = "Bad-Domain",
@@ -54,3 +66,31 @@ class FailureMessageTest extends FunSuite:
     )
 
     assertEquals(message, "conflict.unknown.invalid_error_key: duplicate")
+
+  test("ConflictMessage keeps failure code while rendering conflict keys"):
+    val code = FailureCode("groups.group_already_exists")
+    val key = ConflictMessage.errorKey(
+      domain = "groups",
+      reason = "group_already_exists",
+      code = code,
+    )
+    val message = ConflictMessage.formatWithCode(
+      domain = "groups",
+      reason = "group_already_exists",
+      message = "duplicate",
+      detail = None,
+      code = code,
+    )
+
+    assertEquals(key.rendered, "conflict.groups.group_already_exists")
+    assertEquals(key.code, code)
+    assertEquals(message, "conflict.groups.group_already_exists: duplicate")
+
+  test("SigilarisFailure exposes stable failure codes without changing messages"):
+    val failure = DecodeFailure("broken")
+    assertEquals(failure.msg, "broken")
+    assertEquals(failure.code, FailureCode.Decode)
+
+  test("FailureCode rejects non-machine-readable values"):
+    interceptMessage[IllegalArgumentException]("requirement failed: Invalid FailureCode: bad code"):
+      FailureCode("bad code")

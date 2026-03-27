@@ -18,13 +18,26 @@ object ClientFailureMessage:
   private val KeyPattern: Regex =
     "^(invalid_request|forbidden|not_found)\\.[a-z0-9_]+\\.[a-z0-9_]+$".r
 
+  val InvalidRequestCode: FailureCode = FailureCode("client.invalid_request")
+  val ForbiddenCode: FailureCode      = FailureCode("client.forbidden")
+  val NotFoundCode: FailureCode       = FailureCode("client.not_found")
+
   def invalidRequest(
       domain: String,
       reason: String,
       message: String,
       detail: Option[String],
   ): String =
-    encode(Kind.InvalidRequest, domain, reason, message, detail)
+    invalidRequestWithCode(domain, reason, message, detail, InvalidRequestCode)
+
+  def invalidRequestWithCode(
+      domain: String,
+      reason: String,
+      message: String,
+      detail: Option[String],
+      code: FailureCode,
+  ): String =
+    encode(Kind.InvalidRequest, domain, reason, message, detail, code)
 
   def forbidden(
       domain: String,
@@ -32,7 +45,16 @@ object ClientFailureMessage:
       message: String,
       detail: Option[String],
   ): String =
-    encode(Kind.Forbidden, domain, reason, message, detail)
+    forbiddenWithCode(domain, reason, message, detail, ForbiddenCode)
+
+  def forbiddenWithCode(
+      domain: String,
+      reason: String,
+      message: String,
+      detail: Option[String],
+      code: FailureCode,
+  ): String =
+    encode(Kind.Forbidden, domain, reason, message, detail, code)
 
   def notFound(
       domain: String,
@@ -40,7 +62,29 @@ object ClientFailureMessage:
       message: String,
       detail: Option[String],
   ): String =
-    encode(Kind.NotFound, domain, reason, message, detail)
+    notFoundWithCode(domain, reason, message, detail, NotFoundCode)
+
+  def notFoundWithCode(
+      domain: String,
+      reason: String,
+      message: String,
+      detail: Option[String],
+      code: FailureCode,
+  ): String =
+    encode(Kind.NotFound, domain, reason, message, detail, code)
+
+  def errorKey(
+      kind: Kind,
+      domain: String,
+      reason: String,
+      code: FailureCode,
+  ): ErrorKey =
+    ErrorKey.fromCandidate(
+      candidate = kind.prefix + "." + domain + "." + reason,
+      fallback = kind.prefix + ".unknown.invalid_error_key",
+      code = code,
+      keyPattern = KeyPattern,
+    )
 
   private def encode(
       kind: Kind,
@@ -48,12 +92,10 @@ object ClientFailureMessage:
       reason: String,
       message: String,
       detail: Option[String],
+      code: FailureCode,
   ): String =
-    val errorKey: String = kind.prefix + "." + domain + "." + reason
     FailureMessageFormat.encode(
-      errorKey = errorKey,
-      fallbackKey = kind.prefix + ".unknown.invalid_error_key",
+      errorKey = errorKey(kind, domain, reason, code),
       message = message,
       detail = detail,
-      keyPattern = KeyPattern,
     )

@@ -260,8 +260,12 @@ result.map(_.value)  // 값만 추출
 디코딩 실패는 `DecodeFailure`로 표현됩니다:
 
 ```scala
-case class DecodeFailure(msg: String)
+case class DecodeFailure(msg: String) extends SigilarisFailure
+// 상속된 metadata: def code: FailureCode
 ```
+
+모든 `SigilarisFailure`는 machine-readable 매핑용 안정 식별자인
+`code: FailureCode`도 함께 제공합니다.
 
 일반적인 실패 시나리오:
 - **바이트 부족**: 필요한 타입을 디코딩하기에 데이터가 충분하지 않음

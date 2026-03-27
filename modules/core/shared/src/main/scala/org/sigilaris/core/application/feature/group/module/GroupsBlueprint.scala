@@ -13,13 +13,13 @@ import org.sigilaris.core.application.feature.group.transactions.*
 import org.sigilaris.core.application.module.blueprint.{ModuleBlueprint, StateReducer0}
 import org.sigilaris.core.application.module.provider.TablesProvider
 import org.sigilaris.core.application.support.compiletime.Requires
-import org.sigilaris.core.application.transactions.{AccountSignature, Signed, Tx, TxRegistry}
+import org.sigilaris.core.application.transactions.{AccountSignature, ReducerCoverage, Signed, Tx, TxRegistry}
 import org.sigilaris.core.application.security.SignatureVerifier
 import org.sigilaris.core.codec.byte.{ByteDecoder, ByteEncoder}
 import org.sigilaris.core.codec.byte.ByteEncoder.ops.*
 import org.sigilaris.core.crypto.{Hash, Recover}
 import org.sigilaris.core.datatype.{BigNat, Utf8}
-import org.sigilaris.core.failure.{ClientFailureMessage, ConflictMessage, CryptoFailure, TrieFailure}
+import org.sigilaris.core.failure.{ClientFailureMessage, ConflictMessage, CryptoFailure, FailureCode, TrieFailure}
 
 /** Groups module schema.
   *
@@ -68,29 +68,39 @@ object GroupsSchema:
 class GroupsReducer[F[_]: Monad] extends StateReducer0[F, GroupsSchema.GroupsSchema, GroupsReducer.GroupsNeeds]:
   import GroupsSchema.*
 
+  private val UnsupportedTransactionCode = FailureCode("groups.unsupported_transaction")
+  private val GroupNotFoundCode          = FailureCode("groups.group_not_found")
+  private val GroupAlreadyExistsCode     = FailureCode("groups.group_already_exists")
+  private val GroupNonceMismatchCode     = FailureCode("groups.group_nonce_mismatch")
+  private val GroupNotEmptyCode          = FailureCode("groups.group_not_empty")
+  private val AccountsEmptyCode          = FailureCode("groups.accounts_empty")
+
   private inline def resultOf[A](value: A): GroupsResult[A] = GroupsResult(value)
   private inline def eventOf[A](value: A): GroupsEvent[A] = GroupsEvent(value)
 
   private def invalidRequest(
+      code: FailureCode,
       reason: String,
       message: String,
       detail: Option[String],
   ): String =
-    ClientFailureMessage.invalidRequest("groups", reason, message, detail)
+    ClientFailureMessage.invalidRequestWithCode("groups", reason, message, detail, code)
 
   private def notFound(
+      code: FailureCode,
       reason: String,
       message: String,
       detail: Option[String],
   ): String =
-    ClientFailureMessage.notFound("groups", reason, message, detail)
+    ClientFailureMessage.notFoundWithCode("groups", reason, message, detail, code)
 
   private def conflict(
+      code: FailureCode,
       reason: String,
       message: String,
       detail: Option[String],
   ): String =
-    ConflictMessage.format("groups", reason, message, detail)
+    ConflictMessage.formatWithCode("groups", reason, message, detail, code)
 
   private def verifySigner[T <: Tx](tx: T, sig: AccountSignature, envelopeTimestamp: Instant, context: Option[String])(using
       provider: TablesProvider[F, GroupsReducer.GroupsNeeds],
@@ -136,6 +146,7 @@ class GroupsReducer[F[_]: Monad] extends StateReducer0[F, GroupsSchema.GroupsSch
           StoreF.raise[F, Unit]:
             TrieFailure:
               notFound(
+                GroupNotFoundCode,
                 "group_not_found",
                 s"Group ${groupId.toUtf8.asString} not found during authorization check",
                 Some(s"groupId=${groupId.toUtf8.asString}"),
@@ -166,6 +177,7 @@ class GroupsReducer[F[_]: Monad] extends StateReducer0[F, GroupsSchema.GroupsSch
         StoreF.raise[F, (signedTx.value.Result, List[signedTx.value.Event])]:
           TrieFailure:
             invalidRequest(
+              UnsupportedTransactionCode,
               "unsupported_transaction",
               s"Unknown transaction type: ${tx.getClass.getName}",
               None,
@@ -200,6 +212,7 @@ class GroupsReducer[F[_]: Monad] extends StateReducer0[F, GroupsSchema.GroupsSch
             StoreF.raise[F, (GroupsResult[Unit], List[GroupsEvent[GroupCreated]])]:
               TrieFailure:
                 conflict(
+                  GroupAlreadyExistsCode,
                   "group_already_exists",
                   s"Group ${tx.groupId.toUtf8.asString} already exists",
                   Some(s"groupId=${tx.groupId.toUtf8.asString}"),
@@ -240,6 +253,7 @@ class GroupsReducer[F[_]: Monad] extends StateReducer0[F, GroupsSchema.GroupsSch
             StoreF.raise[F, (GroupsResult[Unit], List[GroupsEvent[GroupDisbanded]])]:
               TrieFailure:
                 invalidRequest(
+                  GroupNonceMismatchCode,
                   "group_nonce_mismatch",
                   s"Nonce mismatch: expected ${groupData.nonce}, got ${tx.groupNonce}",
                   Some(s"groupId=${tx.groupId.toUtf8.asString}"),
@@ -257,6 +271,7 @@ class GroupsReducer[F[_]: Monad] extends StateReducer0[F, GroupsSchema.GroupsSch
             StoreF.raise[F, (GroupsResult[Unit], List[GroupsEvent[GroupDisbanded]])]:
               TrieFailure:
                 invalidRequest(
+                  GroupNotEmptyCode,
                   "group_not_empty",
                   s"Cannot disband group ${tx.groupId.toUtf8.asString} with ${groupData.memberCount} members. Remove all members first.",
                   Some(s"groupId=${tx.groupId.toUtf8.asString}"),
@@ -270,6 +285,7 @@ class GroupsReducer[F[_]: Monad] extends StateReducer0[F, GroupsSchema.GroupsSch
           StoreF.raise[F, (GroupsResult[Unit], List[GroupsEvent[GroupDisbanded]])]:
             TrieFailure:
               notFound(
+                GroupNotFoundCode,
                 "group_not_found",
                 s"Group ${tx.groupId.toUtf8.asString} not found",
                 Some(s"groupId=${tx.groupId.toUtf8.asString}"),
@@ -295,6 +311,7 @@ class GroupsReducer[F[_]: Monad] extends StateReducer0[F, GroupsSchema.GroupsSch
       StoreF.raise[F, (GroupsResult[Unit], List[GroupsEvent[GroupMembersAdded]])]:
         TrieFailure:
           invalidRequest(
+            AccountsEmptyCode,
             "accounts_empty",
             "AddAccounts requires non-empty accounts set",
             Some(s"groupId=${tx.groupId.toUtf8.asString}"),
@@ -335,6 +352,7 @@ class GroupsReducer[F[_]: Monad] extends StateReducer0[F, GroupsSchema.GroupsSch
             StoreF.raise[F, (GroupsResult[Unit], List[GroupsEvent[GroupMembersAdded]])]:
               TrieFailure:
                 invalidRequest(
+                  GroupNonceMismatchCode,
                   "group_nonce_mismatch",
                   s"Nonce mismatch: expected ${groupData.nonce}, got ${tx.groupNonce}",
                   Some(s"groupId=${tx.groupId.toUtf8.asString}"),
@@ -344,6 +362,7 @@ class GroupsReducer[F[_]: Monad] extends StateReducer0[F, GroupsSchema.GroupsSch
             StoreF.raise[F, (GroupsResult[Unit], List[GroupsEvent[GroupMembersAdded]])]:
               TrieFailure:
                 notFound(
+                  GroupNotFoundCode,
                   "group_not_found",
                   s"Group ${tx.groupId.toUtf8.asString} not found",
                   Some(s"groupId=${tx.groupId.toUtf8.asString}"),
@@ -370,6 +389,7 @@ class GroupsReducer[F[_]: Monad] extends StateReducer0[F, GroupsSchema.GroupsSch
       StoreF.raise[F, (GroupsResult[Unit], List[GroupsEvent[GroupMembersRemoved]])]:
         TrieFailure:
           invalidRequest(
+            AccountsEmptyCode,
             "accounts_empty",
             "RemoveAccounts requires non-empty accounts set",
             Some(s"groupId=${tx.groupId.toUtf8.asString}"),
@@ -403,6 +423,7 @@ class GroupsReducer[F[_]: Monad] extends StateReducer0[F, GroupsSchema.GroupsSch
             StoreF.raise[F, (GroupsResult[Unit], List[GroupsEvent[GroupMembersRemoved]])]:
               TrieFailure:
                 invalidRequest(
+                  GroupNonceMismatchCode,
                   "group_nonce_mismatch",
                   s"Nonce mismatch: expected ${groupData.nonce}, got ${tx.groupNonce}",
                   Some(s"groupId=${tx.groupId.toUtf8.asString}"),
@@ -412,6 +433,7 @@ class GroupsReducer[F[_]: Monad] extends StateReducer0[F, GroupsSchema.GroupsSch
             StoreF.raise[F, (GroupsResult[Unit], List[GroupsEvent[GroupMembersRemoved]])]:
               TrieFailure:
                 notFound(
+                  GroupNotFoundCode,
                   "group_not_found",
                   s"Group ${tx.groupId.toUtf8.asString} not found",
                   Some(s"groupId=${tx.groupId.toUtf8.asString}"),
@@ -454,6 +476,7 @@ class GroupsReducer[F[_]: Monad] extends StateReducer0[F, GroupsSchema.GroupsSch
           StoreF.raise[F, (GroupsResult[Unit], List[GroupsEvent[GroupCoordinatorReplaced]])]:
             TrieFailure:
               invalidRequest(
+                GroupNonceMismatchCode,
                 "group_nonce_mismatch",
                 s"Nonce mismatch: expected ${groupData.nonce}, got ${tx.groupNonce}",
                 Some(s"groupId=${tx.groupId.toUtf8.asString}"),
@@ -463,6 +486,7 @@ class GroupsReducer[F[_]: Monad] extends StateReducer0[F, GroupsSchema.GroupsSch
           StoreF.raise[F, (GroupsResult[Unit], List[GroupsEvent[GroupCoordinatorReplaced]])]:
             TrieFailure:
               notFound(
+                GroupNotFoundCode,
                 "group_not_found",
                 s"Group ${tx.groupId.toUtf8.asString} not found",
                 Some(s"groupId=${tx.groupId.toUtf8.asString}"),
@@ -485,14 +509,28 @@ object GroupsReducer:
   * The provider parameter must supply the accounts and nameKey tables from AccountsBP.
   */
 object GroupsBP:
+  type GroupsTxs =
+    CreateGroup *:
+      DisbandGroup *:
+      AddAccounts *:
+      RemoveAccounts *:
+      ReplaceCoordinator *:
+      EmptyTuple
+
+  given ReducerCoverage[CreateGroup] with {}
+  given ReducerCoverage[DisbandGroup] with {}
+  given ReducerCoverage[AddAccounts] with {}
+  given ReducerCoverage[RemoveAccounts] with {}
+  given ReducerCoverage[ReplaceCoordinator] with {}
+
   def apply[F[_]: Monad](
       provider: TablesProvider[F, GroupsReducer.GroupsNeeds],
-  )(using @annotation.unused nodeStore: org.sigilaris.core.merkle.MerkleTrie.NodeStore[F]): ModuleBlueprint[F, "groups", GroupsSchema.GroupsSchema, GroupsReducer.GroupsNeeds, EmptyTuple] =
+  )(using @annotation.unused nodeStore: org.sigilaris.core.merkle.MerkleTrie.NodeStore[F]): ModuleBlueprint[F, "groups", GroupsSchema.GroupsSchema, GroupsReducer.GroupsNeeds, GroupsTxs] =
     import GroupsSchema.*
 
-    new ModuleBlueprint[F, "groups", GroupsSchema, GroupsReducer.GroupsNeeds, EmptyTuple](
+    new ModuleBlueprint[F, "groups", GroupsSchema, GroupsReducer.GroupsNeeds, GroupsTxs](
       owns = groupsEntries,
       reducer0 = new GroupsReducer[F],
-      txs = TxRegistry.empty,
+      txs = TxRegistry.of[GroupsTxs],
       provider = provider,
     )

@@ -6,7 +6,7 @@ import cats.syntax.eq.*
 import org.sigilaris.core.codec.byte.{ByteDecoder, ByteEncoder}
 import org.sigilaris.core.codec.byte.ByteEncoder.ops.*
 import org.sigilaris.core.datatype.{BigNat, Utf8}
-import org.sigilaris.core.failure.{ClientFailureMessage, ConflictMessage, TrieFailure, CryptoFailure}
+import org.sigilaris.core.failure.{ClientFailureMessage, ConflictMessage, CryptoFailure, FailureCode, TrieFailure}
 import org.sigilaris.core.application.feature.accounts.domain.*
 import org.sigilaris.core.application.feature.accounts.transactions.*
 import org.sigilaris.core.application.module.blueprint.{ModuleBlueprint, StateReducer0}
@@ -14,7 +14,7 @@ import org.sigilaris.core.application.module.provider.TablesProvider
 import org.sigilaris.core.application.security.SignatureVerifier
 import org.sigilaris.core.application.state.{Entry, StoreF, Tables}
 import org.sigilaris.core.application.support.compiletime.Requires
-import org.sigilaris.core.application.transactions.{AccountSignature, Signed, Tx, TxRegistry}
+import org.sigilaris.core.application.transactions.{AccountSignature, ReducerCoverage, Signed, Tx, TxRegistry}
 
 /** Accounts module schema.
   *
@@ -60,29 +60,37 @@ object AccountsSchema:
 class AccountsReducer[F[_]: Monad] extends StateReducer0[F, AccountsSchema.AccountsSchema, EmptyTuple]:
   import AccountsSchema.*
 
+  private val UnsupportedTransactionCode = FailureCode("accounts.unsupported_transaction")
+  private val AccountNotFoundCode        = FailureCode("accounts.account_not_found")
+  private val AccountAlreadyExistsCode   = FailureCode("accounts.account_already_exists")
+  private val AccountNonceMismatchCode   = FailureCode("accounts.account_nonce_mismatch")
+
   private inline def resultOf[A](value: A): AccountsResult[A] = AccountsResult(value)
   private inline def eventOf[A](value: A): AccountsEvent[A] = AccountsEvent(value)
 
   private def invalidRequest(
+      code: FailureCode,
       reason: String,
       message: String,
       detail: Option[String],
   ): String =
-    ClientFailureMessage.invalidRequest("accounts", reason, message, detail)
+    ClientFailureMessage.invalidRequestWithCode("accounts", reason, message, detail, code)
 
   private def notFound(
+      code: FailureCode,
       reason: String,
       message: String,
       detail: Option[String],
   ): String =
-    ClientFailureMessage.notFound("accounts", reason, message, detail)
+    ClientFailureMessage.notFoundWithCode("accounts", reason, message, detail, code)
 
   private def conflict(
+      code: FailureCode,
       reason: String,
       message: String,
       detail: Option[String],
   ): String =
-    ConflictMessage.format("accounts", reason, message, detail)
+    ConflictMessage.formatWithCode("accounts", reason, message, detail, code)
 
   /** Verify authorization for account mutation operations.
     *
@@ -121,6 +129,7 @@ class AccountsReducer[F[_]: Monad] extends StateReducer0[F, AccountsSchema.Accou
             StoreF.raise[F, Unit]:
               TrieFailure:
                 notFound(
+                  AccountNotFoundCode,
                   "account_not_found",
                   s"Account ${targetName.asString} not found during authorization check",
                   Some(s"name=${targetName.asString}"),
@@ -173,6 +182,7 @@ class AccountsReducer[F[_]: Monad] extends StateReducer0[F, AccountsSchema.Accou
         StoreF.raise[F, (Unit, List[Nothing])]:
           TrieFailure:
             invalidRequest(
+              UnsupportedTransactionCode,
               "unsupported_transaction",
               s"Unknown transaction type: ${tx.getClass.getName}",
               None,
@@ -203,6 +213,7 @@ class AccountsReducer[F[_]: Monad] extends StateReducer0[F, AccountsSchema.Accou
                 StoreF.raise[F, (AccountsResult[Unit], List[AccountsEvent[AccountCreated]])]:
                   TrieFailure:
                     conflict(
+                      AccountAlreadyExistsCode,
                       "account_already_exists",
                       s"Account ${tx.name.asString} already exists",
                       Some(s"name=${tx.name.asString}"),
@@ -255,6 +266,7 @@ class AccountsReducer[F[_]: Monad] extends StateReducer0[F, AccountsSchema.Accou
             StoreF.raise[F, (AccountsResult[Unit], List[AccountsEvent[AccountUpdated]])]:
               TrieFailure:
                 invalidRequest(
+                  AccountNonceMismatchCode,
                   "account_nonce_mismatch",
                   s"Nonce mismatch: expected ${info.nonce}, got ${tx.nonce}",
                   Some(s"name=${tx.name.asString}"),
@@ -263,6 +275,7 @@ class AccountsReducer[F[_]: Monad] extends StateReducer0[F, AccountsSchema.Accou
           StoreF.raise[F, (AccountsResult[Unit], List[AccountsEvent[AccountUpdated]])]:
             TrieFailure:
               notFound(
+                AccountNotFoundCode,
                 "account_not_found",
                 s"Account ${tx.name.asString} not found",
                 Some(s"name=${tx.name.asString}"),
@@ -326,6 +339,7 @@ class AccountsReducer[F[_]: Monad] extends StateReducer0[F, AccountsSchema.Accou
             StoreF.raise[F, (AccountsResult[Unit], List[AccountsEvent[KeysAdded]])]:
               TrieFailure:
                 invalidRequest(
+                  AccountNonceMismatchCode,
                   "account_nonce_mismatch",
                   s"Nonce mismatch: expected ${info.nonce}, got ${tx.nonce}",
                   Some(s"name=${tx.name.asString}"),
@@ -334,6 +348,7 @@ class AccountsReducer[F[_]: Monad] extends StateReducer0[F, AccountsSchema.Accou
           StoreF.raise[F, (AccountsResult[Unit], List[AccountsEvent[KeysAdded]])]:
             TrieFailure:
               notFound(
+                AccountNotFoundCode,
                 "account_not_found",
                 s"Account ${tx.name.asString} not found",
                 Some(s"name=${tx.name.asString}"),
@@ -388,6 +403,7 @@ class AccountsReducer[F[_]: Monad] extends StateReducer0[F, AccountsSchema.Accou
             StoreF.raise[F, (AccountsResult[Unit], List[AccountsEvent[KeysRemoved]])]:
               TrieFailure:
                 invalidRequest(
+                  AccountNonceMismatchCode,
                   "account_nonce_mismatch",
                   s"Nonce mismatch: expected ${info.nonce}, got ${tx.nonce}",
                   Some(s"name=${tx.name.asString}"),
@@ -396,6 +412,7 @@ class AccountsReducer[F[_]: Monad] extends StateReducer0[F, AccountsSchema.Accou
           StoreF.raise[F, (AccountsResult[Unit], List[AccountsEvent[KeysRemoved]])]:
             TrieFailure:
               notFound(
+                AccountNotFoundCode,
                 "account_not_found",
                 s"Account ${tx.name.asString} not found",
                 Some(s"name=${tx.name.asString}"),
@@ -440,6 +457,7 @@ class AccountsReducer[F[_]: Monad] extends StateReducer0[F, AccountsSchema.Accou
             StoreF.raise[F, (AccountsResult[Unit], List[AccountsEvent[AccountRemoved]])]:
               TrieFailure:
                 invalidRequest(
+                  AccountNonceMismatchCode,
                   "account_nonce_mismatch",
                   s"Nonce mismatch: expected ${info.nonce}, got ${tx.nonce}",
                   Some(s"name=${tx.name.asString}"),
@@ -448,6 +466,7 @@ class AccountsReducer[F[_]: Monad] extends StateReducer0[F, AccountsSchema.Accou
           StoreF.raise[F, (AccountsResult[Unit], List[AccountsEvent[AccountRemoved]])]:
             TrieFailure:
               notFound(
+                AccountNotFoundCode,
                 "account_not_found",
                 s"Account ${tx.name.asString} not found",
                 Some(s"name=${tx.name.asString}"),
@@ -459,12 +478,26 @@ class AccountsReducer[F[_]: Monad] extends StateReducer0[F, AccountsSchema.Accou
   * Phase 6 example blueprint implementing ADR-0010 (Blockchain Account Model and Key Management).
   */
 object AccountsBP:
-  def apply[F[_]: Monad](using @annotation.unused nodeStore: org.sigilaris.core.merkle.MerkleTrie.NodeStore[F]): ModuleBlueprint[F, "accounts", AccountsSchema.AccountsSchema, EmptyTuple, EmptyTuple] =
+  type AccountsTxs =
+    CreateNamedAccount *:
+      UpdateAccount *:
+      AddKeyIds *:
+      RemoveKeyIds *:
+      RemoveAccount *:
+      EmptyTuple
+
+  given ReducerCoverage[CreateNamedAccount] with {}
+  given ReducerCoverage[UpdateAccount] with {}
+  given ReducerCoverage[AddKeyIds] with {}
+  given ReducerCoverage[RemoveKeyIds] with {}
+  given ReducerCoverage[RemoveAccount] with {}
+
+  def apply[F[_]: Monad](using @annotation.unused nodeStore: org.sigilaris.core.merkle.MerkleTrie.NodeStore[F]): ModuleBlueprint[F, "accounts", AccountsSchema.AccountsSchema, EmptyTuple, AccountsTxs] =
     import AccountsSchema.*
 
-    new ModuleBlueprint[F, "accounts", AccountsSchema, EmptyTuple, EmptyTuple](
+    new ModuleBlueprint[F, "accounts", AccountsSchema, EmptyTuple, AccountsTxs](
       owns = accountsEntries,
       reducer0 = new AccountsReducer[F],
-      txs = TxRegistry.empty,
+      txs = TxRegistry.of[AccountsTxs],
       provider = TablesProvider.empty[F],
     )

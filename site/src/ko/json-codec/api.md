@@ -451,8 +451,12 @@ parsed.map(CirceJsonOps.print)
 디코딩 실패는 `DecodeFailure`로 표현됩니다:
 
 ```scala
-case class DecodeFailure(message: String) extends SigilarisFailure
+case class DecodeFailure(msg: String) extends SigilarisFailure
+// 상속된 metadata: def code: FailureCode
 ```
+
+모든 `SigilarisFailure`는 machine-readable 매핑용 안정 식별자인
+`code: FailureCode`도 함께 제공합니다.
 
 일반적인 실패 시나리오:
 - **타입 불일치**: 예상된 타입이 JSON 구조와 일치하지 않음
