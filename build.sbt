@@ -141,6 +141,7 @@ lazy val core = crossProject(JSPlatform, JVMPlatform)
   .settings(Dependencies.core)
   .settings(Dependencies.tests)
   .settings(
+    moduleName := "sigilaris-core",
     Compile / compile / wartremoverErrors ++= Warts
       .allBut(Wart.SeqApply, Wart.SeqUpdated),
   )
