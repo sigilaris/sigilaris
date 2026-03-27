@@ -33,6 +33,12 @@ import org.sigilaris.core.merkle.{MerkleTrie, MerkleTrieNode}
   *   - Idempotent operations
   */
 class GroupBlueprintTest extends FunSuite:
+  private final case class UnknownGroupTx() extends Tx:
+    type Reads = EmptyTuple
+    type Writes = EmptyTuple
+    type Result = Unit
+    type Event = Nothing
+
   given MerkleTrie.NodeStore[Id] = Kleisli: (_: MerkleTrieNode.MerkleHash) =>
     EitherT.rightT[Id, String](None)
 
@@ -144,6 +150,15 @@ class GroupBlueprintTest extends FunSuite:
     // Second creation should fail
     val result2 = mounted.reducer.apply(signedTx).run(stateAfterFirst).value
     assert(result2.isLeft, "Expected error for duplicate group creation")
+    result2 match
+      case Left(err) =>
+        assert(
+          err.msg.startsWith("conflict.groups.group_already_exists:"),
+          s"Expected structured conflict error, got: ${err.msg}"
+        )
+        assert(err.msg.contains("groupId=admins"), s"Expected group detail, got: ${err.msg}")
+      case Right(_) =>
+        fail("Expected duplicate group creation to fail")
 
   test("GroupsBP: add accounts to group"):
     val bp = GroupsBP[Id](stubGroupsNeedsProvider)
@@ -522,6 +537,79 @@ class GroupBlueprintTest extends FunSuite:
 
     val result2 = mounted.reducer.apply(signedAddTx).run(stateAfterCreate).value
     assert(result2.isLeft, "Expected nonce mismatch error")
+    result2 match
+      case Left(err) =>
+        assert(
+          err.msg.startsWith("invalid_request.groups.group_nonce_mismatch:"),
+          s"Expected structured invalid_request error, got: ${err.msg}"
+        )
+        assert(err.msg.contains("groupId=nonce-test"), s"Expected group detail, got: ${err.msg}")
+      case Right(_) =>
+        fail("Expected nonce mismatch to fail")
+
+  test("GroupsBP: missing group returns structured not found failure"):
+    val bp = GroupsBP[Id](stubGroupsNeedsProvider)
+    val mounted = StateModule.mount[("app", "groups")](bp)
+
+    val aliceKeyId = deriveKeyId(aliceKeyPair)
+    val coordinator = Account.Unnamed(aliceKeyId)
+    val groupId = GroupId(Utf8("missing-group"))
+
+    val disbandTx = DisbandGroup(
+      envelope = TxEnvelope(
+        networkId = networkIdOne,
+        createdAt = Instant.now(),
+        memo = None,
+      ),
+      groupId = groupId,
+      groupNonce = BigNat.Zero,
+    )
+    val signedDisbandTx = signTx(disbandTx, coordinator, aliceKeyPair)
+
+    val result = mounted.reducer.apply(signedDisbandTx).run(initialState).value
+    assert(result.isLeft, "Expected missing group error")
+    result match
+      case Left(err) =>
+        assert(
+          err.msg.startsWith("not_found.groups.group_not_found:"),
+          s"Expected structured not_found error, got: ${err.msg}"
+        )
+        assert(err.msg.contains("groupId=missing-group"), s"Expected group detail, got: ${err.msg}")
+      case Right(_) =>
+        fail("Expected missing group request to fail")
+
+  test("GroupsBP: unknown transaction type returns structured invalid request failure"):
+    val bp = GroupsBP[Id](stubGroupsNeedsProvider)
+    val mounted = StateModule.mount[("app", "groups")](bp)
+
+    val coordinator = Account.Unnamed(deriveKeyId(aliceKeyPair))
+    val signatureTx = CreateGroup(
+      envelope = TxEnvelope(
+        networkId = networkIdOne,
+        createdAt = Instant.now(),
+        memo = None,
+      ),
+      groupId = GroupId(Utf8("developers")),
+      name = Utf8("Developers"),
+      coordinator = coordinator,
+    )
+    val arbitrarySig = signTx(signatureTx, coordinator, aliceKeyPair).sig.sig
+
+    val signedUnknown = Signed(
+      AccountSignature(coordinator, arbitrarySig),
+      UnknownGroupTx(),
+    )
+
+    val result = mounted.reducer.apply(signedUnknown).run(initialState).value
+    assert(result.isLeft, "Expected unsupported transaction error")
+    result match
+      case Left(err) =>
+        assert(
+          err.msg.startsWith("invalid_request.groups.unsupported_transaction:"),
+          s"Expected structured unsupported transaction error, got: ${err.msg}"
+        )
+      case Right(_) =>
+        fail("Expected unknown transaction to fail")
 
   test("GroupsBP: unauthorized coordinator cannot manage group"):
     val bp = GroupsBP[Id](stubGroupsNeedsProvider)

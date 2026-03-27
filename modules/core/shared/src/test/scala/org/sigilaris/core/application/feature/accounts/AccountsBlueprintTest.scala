@@ -41,6 +41,12 @@ import org.sigilaris.core.merkle.{MerkleTrie, MerkleTrieNode}
   *   - Guardian management
   */
 class AccountsBlueprintTest extends FunSuite:
+  private final case class UnknownAccountsTx() extends Tx:
+    type Reads = EmptyTuple
+    type Writes = EmptyTuple
+    type Result = Unit
+    type Event = Nothing
+
   given MerkleTrie.NodeStore[Id] = Kleisli: (_: MerkleTrieNode.MerkleHash) =>
     EitherT.rightT[Id, String](None)
 
@@ -182,6 +188,15 @@ class AccountsBlueprintTest extends FunSuite:
     // Second creation should fail
     val result2 = mounted.reducer.apply(signedTx).run(stateAfterFirst).value
     assert(result2.isLeft, "Expected error for duplicate account creation")
+    result2 match
+      case Left(err) =>
+        assert(
+          err.msg.startsWith("conflict.accounts.account_already_exists:"),
+          s"Expected structured conflict error, got: ${err.msg}"
+        )
+        assert(err.msg.contains("name=charlie"), s"Expected account detail, got: ${err.msg}")
+      case Right(_) =>
+        fail("Expected duplicate account creation to fail")
 
   test("AccountsBP: update account guardian"):
     val bp = AccountsBP[Id]
@@ -289,6 +304,101 @@ class AccountsBlueprintTest extends FunSuite:
 
     val result2 = mounted.reducer.apply(signedUpdateTx).run(stateAfterCreate).value
     assert(result2.isLeft, "Expected error for nonce mismatch")
+    result2 match
+      case Left(err) =>
+        assert(
+          err.msg.startsWith("invalid_request.accounts.account_nonce_mismatch:"),
+          s"Expected structured invalid_request error, got: ${err.msg}"
+        )
+        assert(err.msg.contains("name=eve"), s"Expected account detail, got: ${err.msg}")
+      case Right(_) =>
+        fail("Expected nonce mismatch to fail")
+
+  test("AccountsBP: missing target account returns structured not found failure"):
+    val bp = AccountsBP[Id]
+    val mounted = StateModule.mount[("app", "accounts")](bp)
+
+    val bobPubKeyBytes = bobKeyPair.publicKey.toBytes
+    val bobKeyHash = CryptoOps.keccak256(bobPubKeyBytes.toArray)
+    val bobKeyId = KeyId20.unsafeApply(ByteVector.view(bobKeyHash).takeRight(20))
+    val bobAccount = Account.Named(Utf8("bob"))
+
+    val createEnvelope = TxEnvelope(
+      networkId = NetworkId.unsafeFromLong(1),
+      createdAt = Instant.now(),
+      memo = None,
+    )
+
+    val createBobTx = CreateNamedAccount(
+      envelope = createEnvelope,
+      name = Utf8("bob"),
+      initialKeyId = bobKeyId,
+      guardian = None,
+    )
+    val signedCreateBobTx = signTx(createBobTx, bobAccount, bobKeyPair)
+
+    val createResult = mounted.reducer.apply(signedCreateBobTx).run(initialState).value
+    assert(createResult.isRight)
+    val stateAfterBob = createResult.toOption.get._1
+
+    val updateEnvelope = TxEnvelope(
+      networkId = NetworkId.unsafeFromLong(1),
+      createdAt = Instant.now(),
+      memo = None,
+    )
+
+    val updateMissingTx = UpdateAccount(
+      envelope = updateEnvelope,
+      name = Utf8("alice"),
+      nonce = BigNat.Zero,
+      newGuardian = None,
+    )
+    val signedMissingTx = signTx(updateMissingTx, bobAccount, bobKeyPair)
+
+    val result = mounted.reducer.apply(signedMissingTx).run(stateAfterBob).value
+    assert(result.isLeft, "Expected missing target account error")
+    result match
+      case Left(err) =>
+        assert(
+          err.msg.startsWith("not_found.accounts.account_not_found:"),
+          s"Expected structured not_found error, got: ${err.msg}"
+        )
+        assert(err.msg.contains("name=alice"), s"Expected account detail, got: ${err.msg}")
+      case Right(_) =>
+        fail("Expected missing target account update to fail")
+
+  test("AccountsBP: unknown transaction type returns structured invalid request failure"):
+    val bp = AccountsBP[Id]
+    val mounted = StateModule.mount[("app", "accounts")](bp)
+
+    val signatureEnvelope = TxEnvelope(
+      networkId = NetworkId.unsafeFromLong(1),
+      createdAt = Instant.now(),
+      memo = None,
+    )
+    val signatureTx = CreateNamedAccount(
+      envelope = signatureEnvelope,
+      name = Utf8("alice"),
+      initialKeyId = KeyId20.unsafeApply(ByteVector.low(20)),
+      guardian = None,
+    )
+    val arbitrarySig = signTx(signatureTx, Account.Named(Utf8("alice")), aliceKeyPair).sig.sig
+
+    val signedUnknown = Signed(
+      AccountSignature(Account.Named(Utf8("alice")), arbitrarySig),
+      UnknownAccountsTx(),
+    )
+
+    val result = mounted.reducer.apply(signedUnknown).run(initialState).value
+    assert(result.isLeft, "Expected unsupported transaction error")
+    result match
+      case Left(err) =>
+        assert(
+          err.msg.startsWith("invalid_request.accounts.unsupported_transaction:"),
+          s"Expected structured unsupported transaction error, got: ${err.msg}"
+        )
+      case Right(_) =>
+        fail("Expected unknown transaction to fail")
 
   test("AccountsBP: add keys to account"):
     val bp = AccountsBP[Id]
