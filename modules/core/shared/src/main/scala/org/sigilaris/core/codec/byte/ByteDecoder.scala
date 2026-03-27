@@ -281,6 +281,29 @@ object ByteDecoder:
   /** Decodes Byte as single byte. */
   given byteDecoder: ByteDecoder[Byte] = fromFixedSizeBytes(1)(_.toByte())
 
+  /** Decodes Boolean from a canonical single-byte flag.
+    *
+    * Accepted encodings:
+    *   - 0x00: false
+    *   - 0x01: true
+    *
+    * Any other leading byte fails.
+    */
+  given booleanDecoder: ByteDecoder[Boolean] = bytes =>
+    Either
+      .cond(bytes.nonEmpty, bytes, DecodeFailure("Empty bytes"))
+      .flatMap: nonEmptyBytes =>
+        val head      = nonEmptyBytes.head & 0xff
+        val remainder = nonEmptyBytes.tail
+        head match
+          case 0x00 => DecodeResult(false, remainder).asRight[DecodeFailure]
+          case 0x01 => DecodeResult(true, remainder).asRight[DecodeFailure]
+          case _ =>
+            val rawHex = Integer.toHexString(head)
+            val hex    = if head < 16 then "0" + rawHex else rawHex
+            DecodeFailure("Invalid boolean byte: 0x" + hex)
+              .asLeft[DecodeResult[Boolean]]
+
   /** Decodes Long as 8-byte big-endian representation. */
   given longDecoder: ByteDecoder[Long] = fromFixedSizeBytes(8)(_.toLong())
 

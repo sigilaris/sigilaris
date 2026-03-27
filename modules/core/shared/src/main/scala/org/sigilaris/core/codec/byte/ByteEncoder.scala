@@ -115,6 +115,15 @@ object ByteEncoder:
   /** Encodes Byte as single byte. */
   given byteEncoder: ByteEncoder[Byte] = ByteVector.fromByte(_)
 
+  /** Encodes Boolean as a canonical single-byte flag.
+    *
+    * Encoding:
+    *   - false: 0x00
+    *   - true: 0x01
+    */
+  given booleanEncoder: ByteEncoder[Boolean] = value =>
+    if value then ByteVector(0x01.toByte) else ByteVector(0x00.toByte)
+
   /** Encodes Long as 8-byte big-endian representation. */
   given longEncoder: ByteEncoder[Long] = ByteVector.fromLong(_)
 

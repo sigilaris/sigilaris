@@ -52,7 +52,11 @@ final class JsonDerivationSuite extends FunSuite:
     case class Circle(r: Int)       extends Shape
     case class Rect(w: Int, h: Int) extends Shape
 
+  enum PaymentStatus:
+    case Pending, Settled
+
   import Shape.*
+  import PaymentStatus.*
 
   test("sum: encode uses wrapped-by-type-key with SimpleName; decode roundtrip"):
     val s: Shape = Circle(3)
@@ -67,6 +71,56 @@ final class JsonDerivationSuite extends FunSuite:
     )
     val back = JsonDecoder[Shape].decode(json)
     assertEquals(back, Right(s))
+
+  test("sum: custom discriminator mapping is shared between encode and decode"):
+    val cfg = JsonConfig.default.copy(
+      discriminator = DiscriminatorConfig(
+        TypeNameStrategy.Custom(Map("Circle" -> "circle", "Rect" -> "rect"))
+      )
+    )
+    val encs = JsonEncoder.configured(cfg)
+    val decs = JsonDecoder.configured(cfg)
+    import encs.given
+    import decs.given
+
+    val s: Shape = Rect(4, 9)
+    val json     = summon[JsonEncoder[Shape]].encode(s)
+    assertEquals(
+      json,
+      JsonValue.obj(
+        "rect" -> JsonValue.obj(
+          "w" -> JsonValue.JNumber(BigDecimal(4)),
+          "h" -> JsonValue.JNumber(BigDecimal(9)),
+        ),
+      ),
+    )
+    val back = summon[JsonDecoder[Shape]].decode(json)
+    assertEquals(back, Right(s))
+
+  test("enum: encode uses wrapped-by-type-key with canonical mirror labels"):
+    val json = JsonEncoder[PaymentStatus].encode(Pending)
+    assertEquals(
+      json,
+      JsonValue.obj("Pending" -> JsonValue.obj()),
+    )
+    val back = JsonDecoder[PaymentStatus].decode(json)
+    assertEquals(back, Right(Pending))
+  test("enum: FullyQualified strategy remains a compatibility alias to canonical labels"):
+    val cfg = JsonConfig.default.copy(
+      discriminator = DiscriminatorConfig(TypeNameStrategy.FullyQualified)
+    )
+    val encs = JsonEncoder.configured(cfg)
+    val decs = JsonDecoder.configured(cfg)
+    import encs.given
+    import decs.given
+
+    val json = summon[JsonEncoder[PaymentStatus]].encode(Settled)
+    assertEquals(
+      json,
+      JsonValue.obj("Settled" -> JsonValue.obj()),
+    )
+    val back = summon[JsonDecoder[PaymentStatus]].decode(json)
+    assertEquals(back, Right(Settled))
 
   test("sum: unknown subtype key fails"):
     val bad = JsonValue.obj("Triangle" -> JsonValue.JObject(Map.empty))

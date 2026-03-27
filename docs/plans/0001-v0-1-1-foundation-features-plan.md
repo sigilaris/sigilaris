@@ -173,9 +173,9 @@ trait KeyLikeOpaqueValueCompanion[A, Repr]
 - [x] codec law helper packaging 경로 확정
 
 ### Phase 1: Codec Contract Consolidation
-- [ ] `Boolean` byte codec 구현 완료
-- [ ] sealed trait/enum label abstraction 정리 완료
-- [ ] JSON 관련 regression fixture 및 문서 동기화 완료
+- [x] `Boolean` byte codec 구현 완료
+- [x] sealed trait/enum label abstraction 정리 완료
+- [x] JSON 관련 regression fixture 및 문서 동기화 완료
 
 ### Phase 2: Opaque Derivation Foundations
 - [ ] shared opaque companion helper 추가 완료

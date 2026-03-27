@@ -96,3 +96,32 @@ final class JsonDerivationPropertySuite extends HedgehogSuite:
           structuralOk ==== true,
         ),
       )
+
+  property("sum: custom discriminator mapping roundtrip"):
+    val cfg = JsonConfig.default.copy(
+      discriminator = DiscriminatorConfig(
+        TypeNameStrategy.Custom(Map("Circle" -> "circle", "Rect" -> "rect"))
+      )
+    )
+    val encs = JsonEncoder.configured(cfg)
+    val decs = JsonDecoder.configured(cfg)
+    import encs.given
+    import decs.given
+
+    for s <- genShape.forAll
+    yield
+      val json = summon[JsonEncoder[Shape]].encode(s)
+      val back = summon[JsonDecoder[Shape]].decode(json)
+      val structuralOk = json match
+        case JsonValue.JObject(fields) if fields.size == 1 =>
+          fields.head._1 match
+            case "circle" => s.isInstanceOf[Circle]
+            case "rect"   => s.isInstanceOf[Rect]
+            case _        => false
+        case _ => false
+      Result.all(
+        List(
+          back ==== Right(s),
+          structuralOk ==== true,
+        ),
+      )

@@ -29,21 +29,24 @@ enum FieldNamingPolicy:
 /** Strategy for representing subtype names in coproduct discriminator.
   *
   * Used in the wrapped-by-type-key encoding: `{ "SubtypeName": { ... } }`.
+  * The starting point is always the canonical Scala 3 Mirror label shared by
+  * sealed traits and enums.
   */
 enum TypeNameStrategy:
   /** Use simple class name (e.g., `Red` for `sealed trait Color`). */
   case SimpleName
 
-  /** Use fully qualified name (e.g., `com.example.Color.Red`).
+  /** Compatibility alias for the canonical Mirror label.
     *
-    * ''Note:'' Currently falls back to simple name; full qualification
-    * is not available from Scala 3 Mirror labels.
+    * ''Note:'' Scala 3 Mirror labels do not expose fully qualified subtype
+    * names, so `v0.1.1` intentionally keeps this strategy aligned with the
+    * canonical label instead of inventing a second public wire format.
     */
   case FullyQualified
 
-  /** Use custom mapping for subtype names.
+  /** Use custom mapping for canonical subtype labels.
     *
-    * @param mapping map from simple name to desired JSON key
+    * @param mapping map from canonical Mirror label to desired JSON key
     *
     * @example
     * ```scala
@@ -54,7 +57,7 @@ enum TypeNameStrategy:
 
 /** Discriminator configuration for coproducts (wrapped-by-type-key form).
   *
-  * @param typeNameStrategy how to derive the type key for each subtype
+  * @param typeNameStrategy how to project canonical subtype labels to JSON keys
   *
   * @example
   * ```scala
@@ -129,5 +132,4 @@ object JsonConfig:
 object DiscriminatorConfig:
   /** Default discriminator configuration using simple type names. */
   val default: DiscriminatorConfig = DiscriminatorConfig(TypeNameStrategy.SimpleName)
-
 

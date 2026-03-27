@@ -4,8 +4,25 @@ import java.time.Instant
 
 import hedgehog.munit.HedgehogSuite
 import hedgehog.*
+import scodec.bits.ByteVector
 
 class ByteCodecTest extends HedgehogSuite:
+  property("Boolean roundtrip"):
+    for boolean <- Gen.boolean.forAll
+    yield
+      val encoded = ByteEncoder[Boolean].encode(boolean)
+
+      ByteDecoder[Boolean].decode(encoded) match
+        case Right(DecodeResult(decoded, remainder)) =>
+          Result.all(
+            List(
+              decoded ==== boolean,
+              encoded ==== (if boolean then ByteVector(0x01.toByte) else ByteVector(0x00.toByte)),
+              Result.assert(remainder.isEmpty),
+            ),
+          )
+        case _ => Result.failure
+
   property("BigInt roundtrip"):
     for bignat <- Gen
         .bytes(Range.linear(1, 64))
