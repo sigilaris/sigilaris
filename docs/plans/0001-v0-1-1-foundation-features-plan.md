@@ -1,7 +1,7 @@
 # 0001 - v0.1.1 Foundation Features
 
 ## Status
-Draft
+In Progress
 
 ## Created
 2026-03-27
@@ -42,6 +42,7 @@ Draft
 - ADR-0009: Blockchain Application Architecture
 - ADR-0012: Signed Transaction Requirement
 - ADR-0013: Application Package Realignment
+- ADR-0014: v0.1.1 Foundation Contracts
 - `docs/dev/v0.1.1-feature-summary.md`
 - `docs/dev/codec-and-prefix-laws.md`
 - `docs/application-package-index.md`
@@ -51,7 +52,8 @@ Draft
 ## Decisions To Lock Before Implementation
 - Phase 0의 확정 결과는 최소한 세 곳에 남긴다: 이 plan의 `Decisions To Lock Before Implementation` 갱신, 장기 정책이면 ADR 링크 추가 또는 ADR 초안 생성, 대표 API 예시를 담은 scaladoc/fixture/test 추가.
 - JSON sum/enum contract는 `wrapped-by-type-key`를 `v0.1.1`의 유일한 public representation으로 유지한다.
-- label 선택은 sealed trait와 enum 모두가 공유하는 단일 전략으로 잠그고, rename이 필요하면 코드상 명시 매핑으로만 허용한다.
+- canonical label은 Scala 3 Mirror가 노출하는 subtype label 그대로 사용한다. sealed trait와 enum은 동일한 label selection 경로를 공유하고, rename이 필요하면 `TypeNameStrategy.Custom`의 명시 매핑으로만 허용한다.
+- `TypeNameStrategy.FullyQualified`는 실제 fully qualified label source가 생기기 전까지 별도 public wire format을 만들지 않는다. `v0.1.1`에서는 canonical label과 동일하게 동작하는 compatibility alias로 유지한다.
 - opaque companion mix-in은 representation type별로 쪼개지지 않는 하나의 trait family로 설계한다. base trait는 `Eq`, `ByteEncoder`, `ByteDecoder`, `JsonEncoder`, `JsonDecoder`를 representation evidence만으로 forwarding하고, key-safe variant만 `JsonKeyCodec[Repr]`를 추가 요구한다.
 - 대상 API 표면은 아래 수준으로 잠근다.
 
@@ -73,14 +75,13 @@ trait KeyLikeOpaqueValueCompanion[A, Repr]
 
 - `NetworkId`와 `GroupId`는 같은 trait family로 커버한다. `KeyId20`처럼 fixed-size binary 검증이나 custom tag byte가 필요한 타입은 mix-in 대상에서 제외한다.
 - `Show`/`Order` 같은 추가 typeclass는 이번 helper의 기본 표면에 넣지 않는다. 정말 필요한 타입만 별도 수동 인스턴스 또는 후속 확장으로 다룬다.
+- `Boolean` byte codec의 canonical encoding은 `false -> 0x00`, `true -> 0x01`의 단일 바이트로 잠근다. decoder는 빈 입력과 `0x00/0x01` 이외의 첫 바이트를 모두 실패로 처리한다.
 - transaction coverage proof는 `TxRegistry[Txs]` 경계에서 검증한다. 조립 모델과 무관한 “모든 `Tx` subtype 검사”는 이번 마일스톤에 넣지 않는다.
 - transaction coverage proof는 Scala 3의 `erasedValue`/`summonInline` 기반 tuple recursion으로 구현하고, evidence는 예를 들어 `ReducerCoverage[T <: Tx]`처럼 transaction 단위로 모델링한다. 매크로나 runtime reflection은 사용하지 않는다.
 - `ReducerCoverage[T]` evidence는 해당 transaction을 실제로 처리하는 feature blueprint/module 쪽이 제공한다. registry guard는 이 evidence를 소비만 하고, 자동 reflection으로 생성하지 않는다.
 - failure metadata는 `SigilarisFailure`의 보조 계약으로 추가한다. `msg`는 유지하되, transport별 상태 코드는 core 밖에서 매핑한다.
 - `FailureCode`는 core가 소유하는 stable, transport-neutral, machine-readable identifier이고, `ErrorKey`는 formatter/adapter가 사용하는 normalized external mapping key다. `ErrorKey`는 `FailureCode`와 feature context에서 투영되며, core failure가 곧바로 HTTP status를 뜻하지는 않는다.
-- codec law helper packaging은 Phase 0에서 두 경로 중 하나로 잠근다.
-  - publishable testkit 모듈 추가
-  - 내부 전용 test support로 유지
+- codec law helper packaging은 `internal-only support`로 잠근다. `v0.1.1`에서는 build/publish surface를 늘리지 않고 `modules/core/shared/src/test/scala` 아래 재사용 helper로 유지한다.
 
 ## Phase 0 Deliverables
 - 이 plan의 정책 placeholder를 실제 선택된 계약으로 갱신한다.
@@ -166,10 +167,10 @@ trait KeyLikeOpaqueValueCompanion[A, Repr]
 ## Phase Checklists
 
 ### Phase 0: Policy And Contract Lock
-- [ ] 이 plan에 잠긴 정책을 실제 선택안으로 갱신
-- [ ] 장기 유지할 결정의 ADR 링크 추가 또는 ADR 초안 생성
-- [ ] opaque mix-in / failure metadata 대표 API 예시 추가
-- [ ] codec law helper packaging 경로 확정
+- [x] 이 plan에 잠긴 정책을 실제 선택안으로 갱신
+- [x] 장기 유지할 결정의 ADR 링크 추가 또는 ADR 초안 생성
+- [x] opaque mix-in / failure metadata 대표 API 예시 추가
+- [x] codec law helper packaging 경로 확정
 
 ### Phase 1: Codec Contract Consolidation
 - [ ] `Boolean` byte codec 구현 완료
