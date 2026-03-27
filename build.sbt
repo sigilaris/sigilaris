@@ -112,6 +112,7 @@ lazy val root = (project in file("."))
   .aggregate(
     core.jvm,
     core.js,
+    nodeJvm,
     benchmarks,
     tools,
   )
@@ -211,6 +212,13 @@ lazy val tools = (project in file("tools"))
     libraryDependencies ++= Seq(
       "com.lihaoyi" %% "ujson" % "3.3.1",
     ),
+  )
+
+lazy val nodeJvm = (project in file("modules/node-jvm"))
+  .dependsOn(core.jvm)
+  .settings(Dependencies.tests)
+  .settings(
+    moduleName := "sigilaris-node-jvm",
   )
 
 // One-command aliases for Phase 6 (Scala-based orchestrations)

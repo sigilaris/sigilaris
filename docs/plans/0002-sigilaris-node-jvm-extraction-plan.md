@@ -1,7 +1,7 @@
 # 0002 - Sigilaris Node JVM Extraction
 
 ## Status
-Phase 0 Complete
+Phase 1 In Progress
 
 ## Created
 2026-03-28
@@ -161,13 +161,13 @@ Phase 0 Complete
 - [x] Phase 0 sign-off commit 기준 정리 완료
 
 ### Phase 1: Module Skeleton And Runtime Seam
-- [ ] `sigilaris-node-jvm` build wiring 추가 완료
-- [ ] `sigilaris-node-jvm -> sigilaris-core` 의존 방향 구성 완료
-- [ ] `runtime` seam 추출 완료 (`NodeRuntime` lifecycle shell 기준)
-- [ ] `NodeInitializationService` bootstrap invocation contract boundary 고정 완료
-- [ ] `storage` abstract contract 파일 추가 완료
-- [ ] `storage.memory` in-memory implementation 추가 완료
-- [ ] 첫 package dependency / import rule 체크 연결 완료
+- [x] `sigilaris-node-jvm` build wiring 추가 완료
+- [x] `sigilaris-node-jvm -> sigilaris-core` 의존 방향 구성 완료
+- [x] `runtime` seam 추출 완료 (`NodeRuntime` lifecycle shell 기준)
+- [x] `NodeInitializationService` bootstrap invocation contract boundary 고정 완료
+- [x] `storage` abstract contract 파일 추가 완료
+- [x] `storage.memory` in-memory implementation 추가 완료
+- [x] 첫 package dependency / import rule 체크 연결 완료
 - [ ] downstream application이 새 runtime seam으로 기존 startup/execution path를 유지하는 최소 integration 확인 완료
 
 ### Phase 2: Transport And Storage Migration
