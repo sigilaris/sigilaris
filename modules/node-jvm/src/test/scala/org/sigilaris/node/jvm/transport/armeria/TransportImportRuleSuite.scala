@@ -28,6 +28,7 @@ final class TransportImportRuleSuite extends FunSuite:
     "swaydb",
     "com.buchigo.",
   )
+  // `com.buchigo.` is the downstream package prefix and must never flow back into sigilaris.
 
   test("transport sources do not import storage implementations"):
     val sources = Using.resource(Files.walk(transportRoot)): stream =>

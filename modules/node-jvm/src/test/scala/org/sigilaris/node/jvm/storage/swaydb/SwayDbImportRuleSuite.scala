@@ -28,6 +28,7 @@ final class SwayDbImportRuleSuite extends FunSuite:
     "sttp.tapir",
     "com.buchigo.",
   )
+  // `com.buchigo.` is the downstream package prefix and must never flow back into sigilaris.
 
   test("swaydb storage sources do not import transport or downstream packages"):
     val sources = Using.resource(Files.walk(swayDbRoot)): stream =>

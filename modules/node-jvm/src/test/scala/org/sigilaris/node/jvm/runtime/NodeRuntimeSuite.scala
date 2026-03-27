@@ -35,6 +35,20 @@ final class NodeRuntimeSuite extends CatsEffectSuite:
       val selected = StorageMode.fromArgs(List("--in-memory"), TestLayout("data"))
       assertEquals(selected, StorageMode.InMemory)
 
+  test("StorageMode.fromArgs selects persistent when the flag is absent"):
+    IO:
+      val selected = StorageMode.fromArgs(List("--other"), TestLayout("disk"))
+      assertEquals(selected, StorageMode.Persistent(TestLayout("disk")))
+
+  test("StorageMode.fromArgs supports a custom in-memory flag"):
+    IO:
+      val selected = StorageMode.fromArgs(
+        args = List("--ram"),
+        persistentLayout = TestLayout("disk"),
+        inMemoryFlag = "--ram",
+      )
+      assertEquals(selected, StorageMode.InMemory)
+
   test("NodeRuntime.resource selects the persistent bootstrap for persistent mode"):
     val mode = StorageMode.Persistent(TestLayout("disk"))
     NodeRuntime

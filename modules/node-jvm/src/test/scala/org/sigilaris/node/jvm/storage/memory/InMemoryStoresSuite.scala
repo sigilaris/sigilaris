@@ -23,6 +23,7 @@ final class InMemoryStoresSuite extends CatsEffectSuite:
           _ <- store.remove("alpha")
           removed <- store.get("alpha").value
           _ <- IO(assertEquals(removed, Right(None)))
+          _ <- store.remove("missing")
         yield ()
 
   test("singleValue overwrites the previous value"):
@@ -60,6 +61,18 @@ final class InMemoryStoresSuite extends CatsEffectSuite:
           _ <- index.put(4, "four")
           page <- index.from(2, offset = 1, limit = 2).value
           _ <- IO(assertEquals(page, Right(List(3 -> "three", 4 -> "four"))))
+        yield ()
+
+  test("storeIndex returns empty results for limit zero and oversized offsets"):
+    InMemoryStores
+      .storeIndex[IO, Int, String]
+      .use: index =>
+        for
+          _ <- index.put(1, "one")
+          zeroLimit <- index.from(1, offset = 0, limit = 0).value
+          _ <- IO(assertEquals(zeroLimit, Right(Nil)))
+          oversizedOffset <- index.from(1, offset = 10, limit = 2).value
+          _ <- IO(assertEquals(oversizedOffset, Right(Nil)))
         yield ()
 
   test("HashStore derives from KeyValueStore for hashable values"):

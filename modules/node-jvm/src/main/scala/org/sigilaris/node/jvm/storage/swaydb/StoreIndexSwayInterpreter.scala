@@ -75,6 +75,7 @@ object StoreIndexSwayInterpreter:
         Slice[Byte](ByteEncoder[A].encode(data).toArray)
 
       override def read(data: Slice[Byte]): A =
+        // SwayDB's serializer contract is exception-based on decode failure.
         ByteDecoder[A].decode(ByteVector.view(data.toArray)) match
           case Right(DecodeResult(value, remainder)) if remainder.isEmpty =>
             value
