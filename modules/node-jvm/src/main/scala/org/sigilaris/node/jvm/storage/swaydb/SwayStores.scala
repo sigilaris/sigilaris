@@ -15,17 +15,17 @@ object SwayStores:
 
   def keyValue[K: ByteEncoder: ByteDecoder, V: ByteEncoder: ByteDecoder](
       dir: Path
-  )(using swaydb.Bag.Async[IO]): Resource[IO, KeyValueStore[IO, K, V]] =
+  )(using Bag.Async[IO]): Resource[IO, KeyValueStore[IO, K, V]] =
     Resource.make(ensureDirectory(dir).flatMap(_ => KeyValueSwayStore[K, V](dir)))(_.close())
 
-  def singleValue[V: ByteEncoder: ByteDecoder](dir: Path)(using swaydb.Bag.Async[IO]): Resource[IO, SingleValueStore[IO, V]] =
+  def singleValue[V: ByteEncoder: ByteDecoder](dir: Path)(using Bag.Async[IO]): Resource[IO, SingleValueStore[IO, V]] =
     keyValue[ByteVector, V](dir).map: kvStore =>
       given KeyValueStore[IO, ByteVector, V] = kvStore
       SingleValueStore.fromKeyValueStore[IO, V]
 
   def storeIndex[K: ByteEncoder: ByteDecoder, V: ByteEncoder: ByteDecoder](
       dir: Path,
-  )(using swaydb.Bag.Async[IO]): Resource[IO, StoreIndex[IO, K, V]] =
+  )(using Bag.Async[IO]): Resource[IO, StoreIndex[IO, K, V]] =
     Resource.make(ensureDirectory(dir).flatMap(_ => StoreIndexSwayInterpreter[K, V](dir)))(_.close())
 
   private def ensureDirectory(dir: Path): IO[Unit] =

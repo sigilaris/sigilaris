@@ -11,7 +11,7 @@ import munit.CatsEffectSuite
 import org.sigilaris.core.datatype.Utf8
 
 final class SwayStoresSuite extends CatsEffectSuite:
-  private given swaydb.Bag.Async[IO] = Bag.global
+  private given Bag.Async[IO] = Bag.global
 
   private def tempDirResource: Resource[IO, Path] =
     Resource.make(IO.blocking(Files.createTempDirectory("sigilaris-node-jvm-sway"))) { dir =>

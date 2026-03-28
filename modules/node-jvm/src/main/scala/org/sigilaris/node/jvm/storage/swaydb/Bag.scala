@@ -4,12 +4,13 @@ import scala.concurrent.{ExecutionContext, Future, Promise}
 
 import cats.effect.IO
 import cats.effect.unsafe.IORuntime
-import swaydb.Bag.Async
 import swaydb.{IO as SwayIO}
 
 object Bag:
-  def fromRuntime(runtime: IORuntime): swaydb.Bag.Async[IO] =
-    new Async[IO]:
+  type Async[F[_]] = swaydb.Bag.Async[F]
+
+  def fromRuntime(runtime: IORuntime): Async[IO] =
+    new swaydb.Bag.Async[IO]:
       given IORuntime = runtime
 
       override def executionContext: ExecutionContext =
@@ -60,5 +61,5 @@ object Bag:
       override def flatten[A](fa: IO[IO[A]]): IO[A] =
         fa.flatMap(identity)
 
-  val global: swaydb.Bag.Async[IO] =
+  val global: Async[IO] =
     fromRuntime(cats.effect.unsafe.implicits.global)

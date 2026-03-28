@@ -48,7 +48,7 @@ final class KeyValueSwayStore[K, V: ByteEncoder: ByteDecoder](
 object KeyValueSwayStore:
   private[swaydb] def openMap[K: ByteEncoder: ByteDecoder](
       dir: Path,
-  )(using swaydb.Bag.Async[IO]): IO[Map[K, Array[Byte], Nothing, IO]] =
+  )(using Bag.Async[IO]): IO[Map[K, Array[Byte], Nothing, IO]] =
     given KeyOrder[Slice[Byte]] = KeyOrder.default
     given KeyOrder[K] with
       override def compare(left: K, right: K): Int =
@@ -60,5 +60,5 @@ object KeyValueSwayStore:
 
   def apply[K: ByteEncoder: ByteDecoder, V: ByteEncoder: ByteDecoder](
       dir: Path
-  )(using swaydb.Bag.Async[IO]): IO[KeyValueSwayStore[K, V]] =
+  )(using Bag.Async[IO]): IO[KeyValueSwayStore[K, V]] =
     openMap[K](dir).map(new KeyValueSwayStore[K, V](_))

@@ -55,7 +55,7 @@ final class StoreIndexSwayInterpreter[K, V: ByteEncoder: ByteDecoder](
 object StoreIndexSwayInterpreter:
   def apply[K: ByteEncoder: ByteDecoder, V: ByteEncoder: ByteDecoder](
       dir: Path,
-  )(using swaydb.Bag.Async[IO]): IO[StoreIndexSwayInterpreter[K, V]] =
+  )(using Bag.Async[IO]): IO[StoreIndexSwayInterpreter[K, V]] =
     KeyValueSwayStore.openMap[K](dir).map(new StoreIndexSwayInterpreter[K, V](_))
 
   def ensureNoRemainder[A](
