@@ -24,14 +24,26 @@ Sigilaris provides type-safe, deterministic building blocks for constructing cus
 Add Sigilaris to your `build.sbt`:
 
 ```scala
-libraryDependencies += "org.sigilaris" %%% "sigilaris-core" % "0.1.1"
+libraryDependencies += "org.sigilaris" %%% "sigilaris-core" % "VERSION"
 ```
 
 Cross-platform support:
 - `%%` for JVM-only projects
 - `%%%` for cross-platform (JVM + Scala.js) projects
 
+When you need the JVM node/runtime bundle as well:
+
+```scala
+libraryDependencies ++= Seq(
+  "org.sigilaris" %%% "sigilaris-core" % "VERSION",
+  "org.sigilaris" %% "sigilaris-node-jvm" % "VERSION",
+)
+```
+
 ## Core Modules
+
+- `sigilaris-core`: cross-platform deterministic blockchain primitives, codecs, crypto, and state/model abstractions.
+- `sigilaris-node-jvm`: JVM-only node bundle layered on top of `sigilaris-core`, providing runtime lifecycle seams, Armeria server/OpenAPI helpers, and SwayDB storage helpers.
 
 ### Data Types
 Type-safe opaque types for blockchain primitives with built-in codec support.
@@ -68,7 +80,7 @@ High-performance cryptographic primitives for blockchain applications.
 ## Documentation
 
 - **[API Documentation](https://javadoc.io/doc/org.sigilaris/sigilaris-core_3/latest/index.html)** — Comprehensive Scaladoc
-- **[v0.1.1 Release Notes](docs/dev/v0.1.1-release-notes.md)** — Highlights, upgrade notes, and verification summary for the current release
+- **[v0.1.1 Release Notes](docs/dev/v0.1.1-release-notes.md)** — Latest published release notes and upgrade notes
 - **[Latest Release](https://github.com/sigilaris/sigilaris/releases/latest)** — Release notes and artifacts
 - **[GitHub Repository](https://github.com/sigilaris/sigilaris)** — Source code and examples
 
@@ -123,7 +135,10 @@ Built with:
 ---
 
 **Maven Coordinates:**
-- JVM: `org.sigilaris:sigilaris-core_3:0.1.1`
-- Scala.js: `org.sigilaris:sigilaris-core_sjs1_3:0.1.1`
+- JVM core: `org.sigilaris:sigilaris-core_3:VERSION`
+- Scala.js core: `org.sigilaris:sigilaris-core_sjs1_3:VERSION`
+- JVM node bundle: `org.sigilaris:sigilaris-node-jvm_3:VERSION`
+
+Current downstream adoption work in this repository uses local `0.1.2-SNAPSHOT` artifacts via `publishLocal`.
 
 **Scala Version:** 3.7.3

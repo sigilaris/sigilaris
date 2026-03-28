@@ -1,7 +1,7 @@
 # 0002 - Sigilaris Node JVM Extraction
 
 ## Status
-Phase 2 In Progress
+Phase 4 Complete
 
 ## Created
 2026-03-28
@@ -168,29 +168,29 @@ Phase 2 In Progress
 - [x] `storage` abstract contract 파일 추가 완료
 - [x] `storage.memory` in-memory implementation 추가 완료
 - [x] 첫 package dependency / import rule 체크 연결 완료
-- [ ] downstream application이 새 runtime seam으로 기존 startup/execution path를 유지하는 최소 integration 확인 완료
+- [x] downstream application이 새 runtime seam으로 기존 startup/execution path를 유지하는 최소 integration 확인 완료
 
 ### Phase 2: Transport And Storage Migration
 - [x] Armeria wiring 이동 완료
 - [x] SwayDB wiring 이동 완료
-- [ ] `NodeInitializationService` concrete split 재평가 및 runtime/downstream 경계 확정 완료
-- [ ] streaming/event persistence 연계 contract 정리 완료 (`transport.armeria -X-> storage.*` 유지)
+- [x] `NodeInitializationService` concrete split 재평가 및 runtime/downstream 경계 확정 완료
+- [x] streaming/event persistence 연계 contract 정리 완료 (`transport.armeria -X-> storage.*` 유지)
 - [x] 공통 runtime/service trait에서 금지된 Armeria/SwayDB 타입 노출 제거 완료
 - [x] package dependency / import rule 체크를 transport/storage까지 확장 완료
-- [ ] downstream application이 새 runtime seam 위에서 기존 node를 계속 구동하는 smoke path 확인 완료
-- [ ] Phase 3 진입 gate 충족 완료
+- [x] downstream application이 새 runtime seam 위에서 기존 node를 계속 구동하는 smoke path 확인 완료
+- [x] Phase 3 진입 gate 충족 완료
 
 ### Phase 3: Downstream Adoption And Cleanup
-- [ ] downstream application의 `sigilaris-node-jvm` 정식 의존 전환 완료
-- [ ] downstream node 모듈의 공통 인프라 중복 구현/소스 파일 제거 완료
-- [ ] application-specific domain/reducer/query/view/assembly가 downstream에 남아 있는지 점검 완료
-- [ ] application-specific dependency 역류 없음 확인 완료
+- [x] downstream application의 `sigilaris-node-jvm` 정식 의존 전환 완료
+- [x] downstream node 모듈의 공통 인프라 중복 구현/소스 파일 제거 완료
+- [x] application-specific domain/reducer/query/view/assembly가 downstream에 남아 있는지 점검 완료
+- [x] application-specific dependency 역류 없음 확인 완료
 
 ### Phase 4: Verification And Docs
-- [ ] `sigilaris-node-jvm` compile/test와 downstream integration 검증 완료
-- [ ] OpenAPI export / server startup / SwayDB persistence smoke-regression 기록 완료
-- [ ] 문서 갱신 완료
-- [ ] 후속 과제 정리 완료
+- [x] `sigilaris-node-jvm` compile/test와 downstream integration 검증 완료
+- [x] OpenAPI export / server startup / SwayDB persistence smoke-regression 기록 완료
+- [x] 문서 갱신 완료
+- [x] 후속 과제 정리 완료
 
 ## Phase 0 Artifacts
 
@@ -287,6 +287,23 @@ Phase 2 In Progress
 - Phase 4 완료 gate:
   - `sigilaris-node-jvm` compile/test, package dependency rule, smoke/regression 기록, README/adoption note 갱신이 모두 완료된다.
   - Acceptance Criteria 전체가 충족되었음을 검토 결과와 검증 로그로 확인한다.
+
+### Completion Appendix
+- `NodeInitializationService` concrete split 재평가 결과:
+  - 공통 모듈에는 `NodeInitializer` 기반 bootstrap invocation contract만 유지한다.
+  - BBGO의 `NodeInitializationService` concrete implementation은 `BlockRepo`, `StateRepo`, genesis/application bootstrap semantics에 직접 묶여 있으므로 downstream retained 로 확정한다.
+- streaming/event persistence contract 정리 결과:
+  - `bbgo3`의 `NodeApp`은 endpoint catalog 와 `QueryService`/`TxStreamService` assembly 만 유지한다.
+  - 공통 `org.sigilaris.node.jvm.transport.armeria.ArmeriaServer` helper 는 `ArmeriaServerConfig` 와 `List[ServerEndpoint[Any, F]]` 만 받고 storage type 이나 opaque handle 을 직접 받지 않는다.
+  - event streaming/persistence 연계는 downstream service abstraction 경유로만 유지되며 `transport.armeria -> storage.*` 직접 의존은 없다.
+- downstream adoption / cleanup 결과:
+  - `bbgo3/build.sbt` 는 `org.sigilaris:sigilaris-node-jvm_3:0.1.2-SNAPSHOT` 을 정식 dependency 로 사용한다.
+  - `bbgo3/modules/node` 의 공통 store/runtime infrastructure source 는 제거하고, domain/reducer/query/view/assembly 코드는 downstream 에 유지했다.
+- verification log (2026-03-28):
+  - `sigilaris`: `sbt nodeJvm/test`
+  - `sigilaris`: `sbt publishLocal`
+  - `bbgo3`: `sbt node/compile`
+  - `bbgo3`: `sbt node/test`
 
 ## Follow-Ups
 - transport/storage를 실제로 독립 artifact로 분리할 시점과 기준 재평가
