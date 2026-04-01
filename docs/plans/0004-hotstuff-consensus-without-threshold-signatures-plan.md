@@ -1,13 +1,13 @@
 # 0004 - HotStuff Consensus Without Threshold Signatures Plan
 
 ## Status
-Implemented
+Phase 3 Complete; Residual Integration And Bootstrap Closure Pending
 
 ## Created
 2026-03-29
 
 ## Last Updated
-2026-04-01
+2026-04-02
 
 ## Background
 - 이 문서는 ADR-0017의 implementation plan 이다.
@@ -15,6 +15,9 @@ Implemented
 - 선택한 baseline은 BLS threshold signature를 사용하지 않는 HotStuff 계열이다. 따라서 proposal, vote, QC는 individually signed vote set 기반 validation을 전제로 해야 한다.
 - 이전 문서 구조에서는 gossip substrate와 consensus semantics가 섞여 있었지만, 이제는 proposal/vote/QC identity, sign-bytes, QC assembly, validator-set window 검증을 consensus plan 아래에서 독립적으로 관리한다.
 - initial deployment baseline은 ADR-0018의 static peer topology, validator/audit node role 분리, same-DC validator placement, `100ms` block production target을 전제로 한다.
+- `2026-04-02` 문서-구현 대조 리뷰에서 artifact model, validation, topic contract, in-memory loopback baseline은 compile/test 기준으로 green 이지만, concrete JVM bootstrap wiring, audit follower re-broadcast path, same-window retry budget enforcement, vote exact-known regression locking, shipped-baseline 문서 정렬에 갭이 확인되었다.
+- 위 리뷰는 `docs/plans/0004-hotstuff-consensus-without-threshold-signatures-plan.md`, `docs/adr/0017-hotstuff-consensus-without-threshold-signatures.md`, `README.md`, `org.sigilaris.node.jvm.runtime.consensus.hotstuff` 구현, HotStuff test suite 를 대조하는 방식으로 수행했다.
+- 기존 Phase 0-3 checklist 는 landed HotStuff artifact/runtime slice 를 기록하고, 위 residual gap closure 는 이 문서의 Phase 3A 에서 별도로 추적한다.
 
 ## Goal
 - `sigilaris-node-jvm` 안에 HotStuff non-threshold-signature consensus runtime을 도입한다.
@@ -128,6 +131,15 @@ Implemented
 - 문서, README, follow-up dependency를 갱신한다.
 - pacemaker artifact follow-up과 미구현 blocker를 문서에 명시한다.
 
+### Phase 3A: Residual Integration And Bootstrap Closure
+- Phase 3A residual closure item 은 `3A-1` 부터 `3A-6` 까지의 stable id 로 추적한다. Test plan, acceptance criteria, checklist 는 이 id 를 기준으로 서로 대응한다.
+- `3A-1` concrete JVM baseline 에서 사용할 HotStuff bootstrap wiring 을 추가한다. static peer topology / gossip runtime bootstrap 과 일관된 loader or bootstrap contract 위에 HotStuff runtime source/sink/topic-contract wiring 이 올라가야 한다.
+- `3A-2` `HotStuffNodeRuntime.create` 가 test-only in-memory assembly 에 머물지 않도록 runtime-owned service contract 와 concrete bootstrap surface 를 분리한다. 최소 범위는 local role, validator-set, key-holder state, local signer map, gossip registry wiring 이다.
+- `3A-3` audit follower 가 수신한 proposal/vote artifact 를 검증/저장만 하지 않고 policy-controlled re-broadcast source 에 반영할 수 있도록 source/sink ownership 을 재구성한다. 구현은 dedicated relay source 또는 runtime-owned sink-to-source feed-through 중 하나를 택할 수 있지만, validator-only local emission policy 를 우회하거나 새로운 validator signature 를 합성해서는 안 된다.
+- `3A-4` same-window retry budget `2`회 baseline 을 control/request path 에 실제로 연결한다. `(chainId, height, view, validatorSetHash, topic)` 또는 동등 key 기준 retry state 를 두고 상한 초과 시 rejection 또는 no-op policy 를 고정한다.
+- `3A-5` proposal 중심으로만 잠겨 있는 exact-known/request-by-id integration coverage 를 vote topic 까지 확장한다. `consensus.vote` 의 exact known-set query, bounded `requestById`, wrong-window rejection, duplicate relay semantics 를 regression test 로 고정한다.
+- `3A-6` gossip substrate 와 consensus runtime 사이의 dependency rule 검증을 문서 선언이 아니라 compile/test asset 으로 추가하고, README / ADR / plan 텍스트를 shipped artifact contract, 미완료 bootstrap/relay/retry work, follow-up pacemaker dependency 기준으로 다시 정렬한다. 검증 메커니즘은 import-rule test, compile-time module boundary assertion, CI 에서 실행되는 dependency snapshot assertion 중 무엇이든 사용할 수 있지만, 결과는 compile/test path 에 포함되어야 한다.
+
 ## Test Plan
 - Phase 1 Success: pure unit test로 `BlockId`, `ProposalId`, `VoteId`가 서로 다른 타입과 equality contract를 가지는지를 검증한다.
 - Phase 1 Success: pure unit test로 `validator`와 `audit` local role이 proposal/vote emission 권한을 다르게 가지는지를 검증한다.
@@ -144,6 +156,13 @@ Implemented
 - Phase 2 Failure: integration test로 same validator private key가 old/new holder에 동시에 active 하게 남아 있는 dual-holder 상태가 reject 되거나 startup/admission failure로 막히는지를 검증한다.
 - Phase 2 Failure: integration test로 unknown proposal request, oversize request, stale justification, conflicting vote, wrong window key, missing justify QC subject를 rejection path로 투영하는지를 검증한다.
 - Phase 3 Regression: gossip substrate regression suite와 HotStuff suite가 함께 green 상태를 유지해야 한다.
+- Phase 3A Success (검증 대상: `3A-1`, 완료 체크: Acceptance Criteria 8): bootstrap test로 static topology / gossip bootstrap 과 호환되는 HotStuff runtime bootstrap 이 local role, validator set, holder state, signer inventory, topic registry 를 실제 서비스 graph 에 연결하는지를 검증한다.
+- Phase 3A Success (검증 대상: `3A-2`, 완료 체크: Acceptance Criteria 9): bootstrap/service test로 runtime-owned service contract 가 in-memory test assembly 와 분리되고, concrete bootstrap surface 가 local role, validator set, holder state, signer inventory, gossip registry wiring 을 명시적으로 드러내는지를 검증한다.
+- Phase 3A Success (검증 대상: `3A-3`, 완료 체크: Acceptance Criteria 10): integration test로 audit follower 가 remote proposal/vote 를 검증/저장한 뒤 local validator-only signing 없이 relay source 에 반영하고, downstream peer 가 이를 재수신할 수 있는지를 검증한다.
+- Phase 3A Success (검증 대상: `3A-4`, 완료 체크: Acceptance Criteria 11): control-path test로 same window 에 대한 proposal/vote `requestById` retry 가 `2`회를 넘기면 baseline policy 대로 reject 또는 terminal no-op 으로 처리되는지를 검증한다.
+- Phase 3A Success (검증 대상: `3A-5`, 완료 체크: Acceptance Criteria 12): integration test로 `consensus.vote` exact known-set, bounded `requestById`, wrong-window rejection, duplicate replay dedupe 가 proposal topic 과 대칭적으로 동작하는지를 검증한다.
+- Phase 3A Failure (검증 대상: `3A-6`, 완료 체크: Acceptance Criteria 13): import/dependency rule test로 `runtime.gossip` 가 `runtime.consensus.hotstuff` 를 직접 import 하지 않고, `runtime.consensus.hotstuff` 가 transport/storage concrete package 를 직접 소유하지 않는지를 검증한다. 구현 메커니즘은 import-rule assertion, compile-time module boundary check, dependency snapshot assertion 중 하나로 고정한다.
+- Phase 3A Success (검증 대상: `3A-6`, 완료 체크: Acceptance Criteria 14): docs regression check 로 `README.md`, ADR-0017, plan 0004 가 shipped HotStuff baseline 과 pending residual work 를 일관된 용어로 기술하는지 검증한다.
 
 ## Risks And Mitigations
 - `ProposalId`, `BlockId`, `VoteId`를 느슨하게 다루면 replay와 QC assembly에서 버그가 생길 수 있다. 별도 타입과 dedicated test로 혼용을 막는다.
@@ -161,6 +180,13 @@ Implemented
 5. audit node가 read-only follow role로 동작하고 local validator-only emission을 하지 않는 contract가 문서와 테스트에 반영된다.
 6. operator-managed key relocation에서 same validator private key의 dual-holder active 상태가 금지되고, old-holder fencing contract가 문서와 테스트에 반영된다.
 7. pacemaker timeout/new-view의 follow-up dependency와 미구현 blocker가 문서에 명시되고 silent assumption 이 남지 않는다.
+8. (`3A-1`) concrete JVM baseline 에서 사용할 HotStuff runtime bootstrap 이 static topology / gossip bootstrap 과 일관된 서비스 graph 로 제공된다.
+9. (`3A-2`) runtime-owned service contract 와 concrete bootstrap surface 가 test-only in-memory assembly 와 분리돼, bootstrap input/output surface 가 문서와 코드에서 명시적으로 드러난다.
+10. (`3A-3`) audit follower 는 local proposal/vote signing 없이도 validated artifact relay path 를 통해 proposal/vote 를 downstream peer 에 재전파할 수 있다.
+11. (`3A-4`) same-window retry budget `2`회 baseline 이 proposal/vote `requestById` path 에 실제 enforcement 로 연결되고 테스트로 고정된다.
+12. (`3A-5`) `consensus.vote` exact known-set / bounded `requestById` / wrong-window rejection coverage 가 proposal topic 과 대칭적으로 regression lock 된다.
+13. (`3A-6`) gossip substrate 와 consensus runtime 사이의 dependency rule 이 compile/test asset 으로 enforce 되고, `runtime.gossip -X-> runtime.consensus.hotstuff`, `runtime.consensus.hotstuff -X-> transport/storage concrete package` ownership 침범이 방지된다.
+14. (`3A-6`) README / ADR / plan 이 shipped HotStuff artifact baseline 과 residual implementation gap 을 일관되게 기술한다.
 
 ## Checklist
 
@@ -199,6 +225,14 @@ Implemented
 - [x] gossip-substrate dependency rule 검증
 - [x] docs / README 갱신
 - [x] pacemaker follow-up blocker 문서화
+
+### Phase 3A: Residual Integration And Bootstrap Closure
+- [ ] `3A-1` HotStuff concrete JVM bootstrap wiring 추가
+- [ ] `3A-2` HotStuff runtime-owned service contract / bootstrap surface 분리
+- [ ] `3A-3` audit follower relay source/sink wiring 추가
+- [ ] `3A-4` same-window retry budget enforcement 추가
+- [ ] `3A-5` `consensus.vote` exact-known/request-by-id regression 확장
+- [ ] `3A-6` gossip/consensus dependency rule test 및 README / ADR / plan shipped-vs-pending 상태 정렬
 
 ## Follow-Ups
 - static peer topology, same-DC validator placement, emergency promotion baseline은 ADR-0018이 소유한다.
