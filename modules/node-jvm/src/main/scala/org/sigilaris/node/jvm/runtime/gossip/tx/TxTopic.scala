@@ -12,17 +12,19 @@ object TxIdentity:
     (value: A) =>
       StableArtifactId.unsafeFromBytes(value.toHash.toUInt256.bytes)
 
-object TxTopic extends GossipTopicContract[Any]:
-  override val topic: GossipTopic = GossipTopic.tx
+object TxTopic:
+  def contract[A]: GossipTopicContract[A] =
+    new GossipTopicContract[A]:
+      override val topic: GossipTopic = GossipTopic.tx
 
-  override def validateArtifact(
-      event: GossipEvent[Any],
-  ): Either[CanonicalRejection.ArtifactContractRejected, Unit] =
-    Either.cond(
-      event.topic == GossipTopic.tx,
-      (),
-      CanonicalRejection.ArtifactContractRejected(
-        reason = "unexpectedTopic",
-        detail = Some(event.topic.value),
-      ),
-    )
+      override def validateArtifact(
+          event: GossipEvent[A],
+      ): Either[CanonicalRejection.ArtifactContractRejected, Unit] =
+        Either.cond(
+          event.topic == GossipTopic.tx,
+          (),
+          CanonicalRejection.ArtifactContractRejected(
+            reason = "unexpectedTopic",
+            detail = Some(event.topic.value),
+          ),
+        )
