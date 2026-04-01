@@ -43,7 +43,13 @@ libraryDependencies ++= Seq(
 ## Core Modules
 
 - `sigilaris-core`: cross-platform deterministic blockchain primitives, codecs, crypto, and state/model abstractions.
-- `sigilaris-node-jvm`: JVM-only node bundle layered on top of `sigilaris-core`, providing runtime lifecycle seams, Armeria server/OpenAPI helpers, and SwayDB storage helpers.
+- `sigilaris-node-jvm`: JVM-only node bundle layered on top of `sigilaris-core`, providing runtime lifecycle seams, runtime-owned gossip/session sync substrate, Armeria HTTP transport adapters, and SwayDB storage helpers.
+
+### JVM Networking Baseline
+- `sigilaris-node-jvm` now ships a runtime-owned tx gossip/session substrate under `org.sigilaris.node.jvm.runtime.gossip` and `org.sigilaris.node.jvm.runtime.gossip.tx`.
+- The current HTTP-friendly baseline maps directional sessions to Armeria resources for session-open handshake, NDJSON event polling/keepalive, and batched control requests.
+- Static peer topology and direct-neighbor admission are the current deployment baseline. Dynamic discovery and peer scoring remain follow-up work.
+- The shipped substrate currently fixes tx-topic anti-entropy first. Consensus proposal/vote/QC semantics remain follow-up work owned by ADR-0017 and `docs/plans/0004-hotstuff-consensus-without-threshold-signatures-plan.md`.
 
 ### Data Types
 Type-safe opaque types for blockchain primitives with built-in codec support.
