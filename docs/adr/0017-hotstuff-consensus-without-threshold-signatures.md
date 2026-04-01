@@ -1,7 +1,7 @@
 # ADR-0017: HotStuff Consensus Without Threshold Signatures
 
 ## Status
-Proposed
+Accepted
 
 ## Context
 - `sigilaris`는 gossip/session substrate와 consensus artifact semantics를 별도 문서로 관리하기로 했다. transport-neutral gossip/session 규약은 ADR-0016이 소유한다.
@@ -48,7 +48,7 @@ Proposed
    - gossip substrate는 이 progress dimension을 HotStuff topic contract가 해석하는 topic-specific metadata로만 취급해야 하며, 자체적으로 다른 consensus progress 용어로 재해석해서는 안 된다.
    - proposal, vote, QC 검증은 최소한 `(chainId, height, view, validatorSetHash)` window 안에서 수행한다.
    - `validatorSetHash`는 해당 view에서 quorum membership을 결정하는 validator set commitment다.
-   - quorum rule은 baseline으로 active validator set의 `2f + 1` vote를 요구한다.
+   - quorum rule은 baseline으로 active validator set의 `n - floor((n - 1) / 3)` vote를 요구한다. `n = 3f + 1` 배치에서는 이는 `2f + 1`과 같다.
 
 7. **QC는 threshold signature가 아니라 exact validator vote set을 전제로 검증한다.**
    - receiver는 QC를 단일 aggregate signature로 검증하지 않는다.
@@ -62,6 +62,7 @@ Proposed
    - proposal exact known-set sync는 `(chainId, height, view, validatorSetHash)` window 안의 `ProposalId` 집합 기준으로 수행한다.
    - vote exact known-set sync는 같은 window 안의 `VoteId` 집합 기준으로 수행한다.
    - bounded explicit fetch가 필요하면 ADR-0016의 `requestById` control op를 사용해 missing `ProposalId` 또는 `VoteId`를 요청할 수 있다.
+   - initial baseline request cap 은 proposal `128`, vote `512`, same window retry budget `2`회다.
 
 9. **QC dissemination baseline은 self-contained justification을 선호한다.**
    - 어떤 proposal이 justify QC를 필요로 하면, receiver가 그 proposal 하나만으로 validation을 시작할 수 있을 정도의 QC subject를 함께 운반하는 것을 baseline으로 둔다.

@@ -1,13 +1,13 @@
 # 0004 - HotStuff Consensus Without Threshold Signatures Plan
 
 ## Status
-Draft
+Implemented
 
 ## Created
 2026-03-29
 
 ## Last Updated
-2026-03-29
+2026-04-01
 
 ## Background
 - 이 문서는 ADR-0017의 implementation plan 이다.
@@ -61,12 +61,12 @@ Draft
 - proposal known-set은 `ProposalId` 집합, vote known-set은 `VoteId` 집합 기준으로 동작한다.
 - proposal은 receiver가 validation을 시작할 수 있을 정도의 justify QC subject를 self-contained 하게 운반하는 것을 baseline으로 둔다.
 - 별도 `consensus.qc` gossip topic은 baseline에 두지 않는다. QC는 proposal justification payload 또는 locally assembled cache로 다룬다.
-- bounded explicit fetch는 ADR-0016의 `requestById`를 사용한다. HotStuff path에서 허용하는 최대 request id 수와 retry 정책은 Phase 0에서 잠근다.
+- bounded explicit fetch는 ADR-0016의 `requestById`를 사용한다. HotStuff path의 baseline request cap 은 proposal `128`, vote `512`, same window retry budget `2`회로 Phase 0에서 잠근다.
 - emergency promotion from `audit` to `validator`는 explicit operator-managed config change와 validator-set reconfiguration을 전제로 하며, automatic runtime failover contract로 shipped 하지 않는다.
 - 위 promotion baseline에서 validator key relocation을 허용한다. operator는 promoted node에 validator identity별 private key를 주입할 수 있지만, old holder는 먼저 fence 되거나 key access를 잃어야 한다.
 - 동일 validator private key가 old holder와 new holder에서 동시에 active 상태가 되는 dual-holder baseline은 금지한다.
 - initial deployment target block production interval은 `100ms`다. 이는 batching/QoS/pacing budget을 제약하지만, exact pacemaker wire contract를 대신하지 않는다.
-- quorum rule은 active validator set의 `2f + 1` vote 로 고정한다.
+- quorum rule은 active validator set의 `n - floor((n - 1) / 3)` vote 로 고정한다. `n = 3f + 1` 배치에서는 이는 `2f + 1`과 같다.
 - equivocation detection key는 baseline으로 `(chainId, validatorId, height, view)` 기준으로 모델링한다. 같은 key에서 서로 다른 target `ProposalId`가 관찰되면 equivocation으로 판정한다.
 - pacemaker timeout/new-view는 placeholder seam만 둘 수 있고, production wire contract는 follow-up ADR 없이는 shipped contract 로 고정하지 않는다.
 - consensus runtime은 gossip substrate의 generic rejection class 위에 topic-local reason을 얹을 수 있지만, transport-neutral projection은 ADR-0016 rejection family를 따른다.
@@ -165,40 +165,40 @@ Draft
 ## Checklist
 
 ### Phase 0: Consensus Contract Lock
-- [ ] `BlockId` / `ProposalId` / `VoteId` 타입 분리 계약 확정
-- [ ] validator / audit local role contract 확정
-- [ ] validator key relocation / old-holder fencing / dual-holder prohibition 확정
-- [ ] proposal / vote sign-bytes semantic inputs 확정
-- [ ] validator-set window key / quorum rule / equivocation key 확정
-- [ ] self-contained justification baseline 확정
-- [ ] explicit audit-to-validator promotion baseline 확정
-- [ ] `100ms` deployment target scope 확정
-- [ ] `requestById` HotStuff policy 상한 확정
+- [x] `BlockId` / `ProposalId` / `VoteId` 타입 분리 계약 확정
+- [x] validator / audit local role contract 확정
+- [x] validator key relocation / old-holder fencing / dual-holder prohibition 확정
+- [x] proposal / vote sign-bytes semantic inputs 확정
+- [x] validator-set window key / quorum rule / equivocation key 확정
+- [x] self-contained justification baseline 확정
+- [x] explicit audit-to-validator promotion baseline 확정
+- [x] `100ms` deployment target scope 확정
+- [x] `requestById` HotStuff policy 상한 확정
 
 ### Phase 1: Artifact Model And Validation
-- [ ] proposal / vote / QC value model 추가
-- [ ] local node role type 및 role-gated emission policy 추가
-- [ ] validator key holder state 및 fencing state model 추가
-- [ ] canonical deterministic encoding helper 추가
-- [ ] proposal signature validation 추가
-- [ ] vote signature validation 추가
-- [ ] QC validation 및 signer uniqueness 검증 추가
-- [ ] equivocation detection 추가
+- [x] proposal / vote / QC value model 추가
+- [x] local node role type 및 role-gated emission policy 추가
+- [x] validator key holder state 및 fencing state model 추가
+- [x] canonical deterministic encoding helper 추가
+- [x] proposal signature validation 추가
+- [x] vote signature validation 추가
+- [x] QC validation 및 signer uniqueness 검증 추가
+- [x] equivocation detection 추가
 
 ### Phase 2: Gossip Integration And QC Assembly
-- [ ] `consensus.proposal` / `consensus.vote` topic contract 구현 추가
-- [ ] proposal / vote exact known-set query wiring 추가
-- [ ] bounded `requestById` fetch integration 추가
-- [ ] vote accumulation / QC assembly runtime 추가
-- [ ] consensus QoS priority wiring 추가
-- [ ] audit node read-only follow path wiring 추가
-- [ ] key relocation after fencing path wiring 추가
+- [x] `consensus.proposal` / `consensus.vote` topic contract 구현 추가
+- [x] proposal / vote exact known-set query wiring 추가
+- [x] bounded `requestById` fetch integration 추가
+- [x] vote accumulation / QC assembly runtime 추가
+- [x] consensus QoS priority wiring 추가
+- [x] audit node read-only follow path wiring 추가
+- [x] key relocation after fencing path wiring 추가
 
 ### Phase 3: Verification And Docs
-- [ ] HotStuff unit / integration / regression test green
-- [ ] gossip-substrate dependency rule 검증
-- [ ] docs / README 갱신
-- [ ] pacemaker follow-up blocker 문서화
+- [x] HotStuff unit / integration / regression test green
+- [x] gossip-substrate dependency rule 검증
+- [x] docs / README 갱신
+- [x] pacemaker follow-up blocker 문서화
 
 ## Follow-Ups
 - static peer topology, same-DC validator placement, emergency promotion baseline은 ADR-0018이 소유한다.

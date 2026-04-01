@@ -53,7 +53,8 @@ libraryDependencies ++= Seq(
 - The concrete JVM baseline loader reads static peer topology from `sigilaris.node.gossip.peers` (`local-node-identity`, `known-peers`, `direct-neighbors`) and wires it into runtime bootstrap/admission.
 - Reconnect now replays a full re-handshake under the existing peer correlation id for half-open recovery, and new directional sessions start with empty filter/control state instead of carrying prior `setFilter` state.
 - Topic-neutral producer session state, polling, and batching/QoS hooks are available under `org.sigilaris.node.jvm.runtime.gossip`, so follow-up topic owners do not need to rewrite the tx runtime internals just to reuse the substrate.
-- The shipped substrate currently fixes tx-topic anti-entropy first. Consensus proposal/vote/QC semantics remain follow-up work owned by ADR-0017 and `docs/plans/0004-hotstuff-consensus-without-threshold-signatures-plan.md`.
+- The shipped JVM baseline now includes HotStuff non-threshold-signature proposal/vote/QC artifact modeling under `org.sigilaris.node.jvm.runtime.consensus.hotstuff`, plus `consensus.proposal` / `consensus.vote` gossip integration with exact known-set windows, bounded `requestById`, QC assembly, audit read-only follow, and consensus-priority QoS.
+- Pacemaker timeout vote / timeout certificate / new-view wire contracts remain follow-up work owned by ADR-0017 and `docs/plans/0004-hotstuff-consensus-without-threshold-signatures-plan.md`.
 
 ### Data Types
 Type-safe opaque types for blockchain primitives with built-in codec support.
