@@ -26,6 +26,7 @@ final case class DirectionalSession(
     status: DirectionalSessionStatus,
     createdAt: Instant,
     openedAt: Option[Instant],
+    lastActivityAt: Instant,
 ):
   def isAlive: Boolean =
     status == DirectionalSessionStatus.Open || status == DirectionalSessionStatus.Opening
@@ -139,6 +140,7 @@ final case class GossipSessionEngine(
             status = DirectionalSessionStatus.Opening,
             createdAt = now,
             openedAt = None,
+            lastActivityAt = now,
           )
           val updatedRelationship =
             recomputeRelationship(
@@ -294,6 +296,7 @@ final case class GossipSessionEngine(
                   negotiated = Some(negotiated),
                   status = DirectionalSessionStatus.Open,
                   openedAt = Some(now),
+                  lastActivityAt = now,
                 )
                 val updatedRelationship = recomputeRelationship(
                   relationship.copy(
@@ -362,16 +365,40 @@ final case class GossipSessionEngine(
   def markSessionDead(sessionId: DirectionalSessionId): Either[HandshakeRejected, GossipSessionEngine] =
     updateSession(sessionId)(session => Right(session.copy(status = DirectionalSessionStatus.Dead)))
 
+  def touchSessionActivity(
+      sessionId: DirectionalSessionId,
+      now: Instant,
+  ): Either[HandshakeRejected, GossipSessionEngine] =
+    updateSession(sessionId):
+      session =>
+        Either.cond(
+          session.status == DirectionalSessionStatus.Open,
+          session.copy(lastActivityAt = now),
+          HandshakeRejected(
+            reason = "sessionNotOpen",
+            detail = Some(session.sessionId.value),
+          ),
+        )
+
   def expireOpeningHandshakes(now: Instant): GossipSessionEngine =
+    expireTimedOutSessions(now)
+
+  def expireTimedOutSessions(now: Instant): GossipSessionEngine =
     relationships.values.foldLeft(this):
       case (engine, relationship) =>
         List(relationship.outbound, relationship.inbound).flatten.foldLeft(engine):
           case (acc, session) =>
-            if session.status == DirectionalSessionStatus.Opening &&
-                !now.isBefore(session.createdAt.plus(policy.openingHandshakeTimeout))
-            then
-              acc.markSessionDead(session.sessionId).getOrElse(acc)
-            else acc
+            session.status match
+              case DirectionalSessionStatus.Opening
+                  if !now.isBefore(session.createdAt.plus(policy.openingHandshakeTimeout)) =>
+                acc.markSessionDead(session.sessionId).getOrElse(acc)
+              case DirectionalSessionStatus.Open
+                  if session.negotiated.exists(params =>
+                    !now.isBefore(session.lastActivityAt.plus(params.livenessTimeout))
+                  ) =>
+                acc.markSessionDead(session.sessionId).getOrElse(acc)
+              case _ =>
+                acc
 
   private def buildAcceptedInboundSession(
       proposal: SessionOpenProposal,
@@ -388,6 +415,7 @@ final case class GossipSessionEngine(
       status = DirectionalSessionStatus.Open,
       createdAt = now,
       openedAt = Some(now),
+      lastActivityAt = now,
     )
 
   private def hasAliveDirection(relationship: PeerRelationship): Boolean =

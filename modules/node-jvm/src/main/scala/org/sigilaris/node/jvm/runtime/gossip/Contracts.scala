@@ -10,6 +10,11 @@ final case class ArtifactApplyResult(
     duplicate: Boolean,
 )
 
+final case class AvailableGossipEvent[A](
+    event: GossipEvent[A],
+    availableAt: Instant,
+)
+
 trait GossipClock[F[_]]:
   def now: F[Instant]
 
@@ -82,13 +87,13 @@ trait GossipArtifactSource[F[_], A]:
       chainId: ChainId,
       topic: GossipTopic,
       cursor: Option[CursorToken],
-  ): F[Either[CanonicalRejection, Vector[GossipEvent[A]]]]
+  ): F[Either[CanonicalRejection, Vector[AvailableGossipEvent[A]]]]
 
   def readByIds(
       chainId: ChainId,
       topic: GossipTopic,
       ids: Vector[StableArtifactId],
-  ): F[Vector[GossipEvent[A]]]
+  ): F[Vector[AvailableGossipEvent[A]]]
 
 trait GossipArtifactSink[F[_], A]:
   def applyEvent(

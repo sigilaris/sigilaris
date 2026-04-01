@@ -27,6 +27,7 @@ final class TxLoopbackSuite extends CatsEffectSuite:
       sessionId = opened.proposal.sessionId
       first <- a.source.append(chainId, TestTx("tx-1"), baseInstant.minusSeconds(5))
       _ <- a.source.append(chainId, TestTx("tx-2"), baseInstant.minusSeconds(4))
+      _ <- a.clock.advance(Duration.ofSeconds(1))
       polled1 <- a.runtime.pollEvents(sessionId)
       messages1 = polled1.toOption.get
       received1 <- b.runtime.receiveEvents(sessionId, messages1)
@@ -87,6 +88,7 @@ final class TxLoopbackSuite extends CatsEffectSuite:
           Vector(ControlOp.SetKnownTx(chainId, Vector(txOther.id))),
         ),
       )
+      _ <- a.clock.advance(Duration.ofSeconds(1))
       polled1 <- a.runtime.pollEvents(sessionId)
       messages1 = polled1.toOption.get
       received1 <- b.runtime.receiveEvents(sessionId, messages1)
@@ -217,6 +219,50 @@ final class TxLoopbackSuite extends CatsEffectSuite:
       assertEquals(extractEvents(firstMessages).map(_.payload.body), Vector("tx-1", "tx-2"))
       assertEquals(extractEvents(secondMessages).map(_.payload.body), Vector("tx-3"))
 
+  test("flushInterval uses producer-local availability time instead of artifact ts"):
+    for
+      a <- Harness.create("node-a", "node-b", baseInstant)
+      b <- Harness.create("node-b", "node-a", baseInstant)
+      opened <- openOutbound(a, b)
+      sessionId = opened.proposal.sessionId
+      _ <- a.runtime.receiveControlBatch(
+        sessionId,
+        controlBatch(
+          "18181818-1818-4818-8818-181818181818",
+          Vector(
+            ControlOp.Config(
+              Map(
+                SessionConfigKey.TxMaxBatchItems -> 10L,
+                SessionConfigKey.TxFlushIntervalMs -> 5000L,
+              )
+            )
+          ),
+        ),
+      )
+      _ <- a.source.append(chainId, TestTx("old-ts"), baseInstant.minus(Duration.ofDays(1)))
+      firstImmediate <- a.runtime.pollEvents(sessionId)
+      _ <- a.clock.advance(Duration.ofSeconds(5))
+      firstDelayed <- a.runtime.pollEvents(sessionId)
+      firstMessages = firstDelayed.toOption.get
+      firstReceive <- b.runtime.receiveEvents(sessionId, firstMessages)
+      firstCursor = firstReceive.toOption.get.lastCursor.get
+      _ <- a.runtime.receiveControlBatch(
+        sessionId,
+        controlBatch(
+          "19191919-1919-4919-8919-191919191919",
+          Vector(ControlOp.SetCursor(CompositeCursor(Map(ChainTopic(chainId, GossipTopic.tx) -> firstCursor)))),
+        ),
+      )
+      _ <- a.source.append(chainId, TestTx("future-ts"), baseInstant.plus(Duration.ofDays(1)))
+      secondImmediate <- a.runtime.pollEvents(sessionId)
+      _ <- a.clock.advance(Duration.ofSeconds(5))
+      secondDelayed <- a.runtime.pollEvents(sessionId)
+    yield
+      assertEquals(firstImmediate, Right(Vector.empty))
+      assertEquals(extractEvents(firstMessages).map(_.payload.body), Vector("old-ts"))
+      assertEquals(secondImmediate, Right(Vector.empty))
+      assertEquals(extractEvents(secondDelayed.toOption.get).map(_.payload.body), Vector("future-ts"))
+
   test("explicit requestById delivery does not move the stream cursor backwards"):
     for
       a <- Harness.create("node-a", "node-b", baseInstant)
@@ -225,6 +271,7 @@ final class TxLoopbackSuite extends CatsEffectSuite:
       sessionId = opened.proposal.sessionId
       oldEvent <- a.source.append(chainId, TestTx("tx-1"), baseInstant.minusSeconds(3))
       _ <- a.source.append(chainId, TestTx("tx-2"), baseInstant.minusSeconds(2))
+      _ <- a.clock.advance(Duration.ofSeconds(1))
       initialPoll <- a.runtime.pollEvents(sessionId)
       initialMessages = initialPoll.toOption.get
       initialReceive <- b.runtime.receiveEvents(sessionId, initialMessages)
@@ -255,6 +302,7 @@ final class TxLoopbackSuite extends CatsEffectSuite:
       event1 <- a.source.append(chainId, TestTx("tx-1"), baseInstant.minusSeconds(3))
       _ <- a.source.append(chainId, TestTx("tx-2"), baseInstant.minusSeconds(2))
       _ <- a.source.append(chainId, TestTx("tx-3"), baseInstant.minusSeconds(1))
+      _ <- a.clock.advance(Duration.ofSeconds(1))
       initialPoll <- a.runtime.pollEvents(sessionId)
       initialMessages = initialPoll.toOption.get
       initialReceive <- b.runtime.receiveEvents(sessionId, initialMessages)
@@ -286,6 +334,7 @@ final class TxLoopbackSuite extends CatsEffectSuite:
       sessionId = opened.proposal.sessionId
       _ <- a.source.append(chainId, TestTx("tx-1"), baseInstant.minusSeconds(3))
       _ <- a.source.append(chainId, TestTx("tx-2"), baseInstant.minusSeconds(2))
+      _ <- a.clock.advance(Duration.ofSeconds(1))
       initialPoll <- a.runtime.pollEvents(sessionId)
       initialMessages = initialPoll.toOption.get
       initialReceive <- b.runtime.receiveEvents(sessionId, initialMessages)
@@ -364,6 +413,7 @@ final class TxLoopbackSuite extends CatsEffectSuite:
         registry = StaticPeerRegistry(topology)
         authenticator = StaticPeerAuthenticator[IO](registry)
         clock <- TestClock.create(instant)
+        given GossipClock[IO] = clock
         source <- InMemoryTxArtifactSource.create[IO, TestTx]
         sink <- InMemoryTxArtifactSink.create[IO, TestTx]
         stateStore <- TxGossipStateStore.inMemory[IO](GossipSessionEngine(registry.localPeer, topology))

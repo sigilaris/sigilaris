@@ -24,7 +24,8 @@ object InMemoryTxSinkSnapshot:
     )
 
 final class InMemoryTxArtifactSource[F[_]: Sync, A] private (
-    ref: Ref[F, Map[ChainId, Vector[GossipEvent[A]]]],
+    clock: GossipClock[F],
+    ref: Ref[F, Map[ChainId, Vector[AvailableGossipEvent[A]]]],
 )(using txIdentity: TxIdentity[A])
     extends GossipArtifactSource[F, A]:
 
@@ -33,27 +34,32 @@ final class InMemoryTxArtifactSource[F[_]: Sync, A] private (
       payload: A,
       ts: Instant,
   ): F[GossipEvent[A]] =
-    ref.modify: state =>
-      val chainEvents = state.getOrElse(chainId, Vector.empty)
-      val nextSequence = chainEvents.size.toLong + 1L
-      val event = GossipEvent(
-        chainId = chainId,
-        topic = GossipTopic.tx,
-        id = txIdentity.stableIdOf(payload),
-        cursor = cursorFor(nextSequence),
-        ts = ts,
-        payload = payload,
-      )
-      state.updated(chainId, chainEvents :+ event) -> event
+    clock.now.flatMap: availableAt =>
+      ref.modify: state =>
+        val chainEvents = state.getOrElse(chainId, Vector.empty)
+        val nextSequence = chainEvents.size.toLong + 1L
+        val event = GossipEvent(
+          chainId = chainId,
+          topic = GossipTopic.tx,
+          id = txIdentity.stableIdOf(payload),
+          cursor = cursorFor(nextSequence),
+          ts = ts,
+          payload = payload,
+        )
+        val available = AvailableGossipEvent(
+          event = event,
+          availableAt = availableAt,
+        )
+        state.updated(chainId, chainEvents :+ available) -> event
 
   def snapshot(chainId: ChainId): F[Vector[GossipEvent[A]]] =
-    ref.get.map(_.getOrElse(chainId, Vector.empty))
+    ref.get.map(_.getOrElse(chainId, Vector.empty).map(_.event))
 
   override def readAfter(
       chainId: ChainId,
       topic: GossipTopic,
       cursor: Option[CursorToken],
-  ): F[Either[CanonicalRejection, Vector[GossipEvent[A]]]] =
+  ): F[Either[CanonicalRejection, Vector[AvailableGossipEvent[A]]]] =
     ref.get.map: state =>
       if topic != GossipTopic.tx then
         Left(
@@ -83,14 +89,14 @@ final class InMemoryTxArtifactSource[F[_]: Sync, A] private (
       chainId: ChainId,
       topic: GossipTopic,
       ids: Vector[StableArtifactId],
-  ): F[Vector[GossipEvent[A]]] =
+  ): F[Vector[AvailableGossipEvent[A]]] =
     ref.get.map: state =>
       if topic != GossipTopic.tx then Vector.empty
       else
         val latestById = state
           .getOrElse(chainId, Vector.empty)
-          .foldLeft(Map.empty[StableArtifactId, GossipEvent[A]]): (acc, event) =>
-            acc.updated(event.id, event)
+          .foldLeft(Map.empty[StableArtifactId, AvailableGossipEvent[A]]): (acc, available) =>
+            acc.updated(available.event.id, available)
         ids.distinct.flatMap(latestById.get)
 
   private def cursorFor(sequence: Long): CursorToken =
@@ -111,11 +117,12 @@ final class InMemoryTxArtifactSource[F[_]: Sync, A] private (
 
 object InMemoryTxArtifactSource:
   def create[F[_]: Sync, A](using
+      clock: GossipClock[F],
       txIdentity: TxIdentity[A]
   ): F[InMemoryTxArtifactSource[F, A]] =
     Ref
-      .of[F, Map[ChainId, Vector[GossipEvent[A]]]](Map.empty)
-      .map(new InMemoryTxArtifactSource[F, A](_))
+      .of[F, Map[ChainId, Vector[AvailableGossipEvent[A]]]](Map.empty)
+      .map(new InMemoryTxArtifactSource[F, A](clock, _))
 
 final class InMemoryTxArtifactSink[F[_], A] private (
     ref: Ref[F, InMemoryTxSinkSnapshot[A]],

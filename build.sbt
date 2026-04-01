@@ -78,6 +78,7 @@ val Dependencies = new {
       "com.softwaremill.sttp.tapir" %% "tapir-armeria-server-cats" % V.tapir,
       "com.softwaremill.sttp.tapir" %% "tapir-openapi-docs"        % V.tapir,
       "com.softwaremill.sttp.apispec" %% "openapi-circe-yaml"      % V.openApiCirceYaml,
+      "com.typesafe" % "config" % "1.4.3",
       ("io.swaydb" %% "swaydb" % V.sway).cross(CrossVersion.for3Use2_13),
     ),
     excludeDependencies ++= Seq(

@@ -50,7 +50,11 @@ final class TxControlInterpreterSuite extends CatsEffectSuite:
       first <- harness.runtime.receiveControlBatch(sessionId, batch)
       stateAfterFirst <- harness.runtime.snapshotState
       second <- harness.runtime.receiveControlBatch(sessionId, batch)
-      _ <- harness.clock.advance(Duration.ofSeconds(61))
+      _ <- harness.clock.advance(Duration.ofSeconds(20))
+      _ <- harness.runtime.controlKeepAlive(sessionId)
+      _ <- harness.clock.advance(Duration.ofSeconds(20))
+      _ <- harness.runtime.controlKeepAlive(sessionId)
+      _ <- harness.clock.advance(Duration.ofSeconds(21))
       third <- harness.runtime.receiveControlBatch(sessionId, batch)
       stateAfterThird <- harness.runtime.snapshotState
     yield
@@ -119,6 +123,33 @@ final class TxControlInterpreterSuite extends CatsEffectSuite:
       assert(oldFilter != filter1)
       assertEquals(replaced.outboundSessions(sessionId).filters.get(chainId), Some(filter2))
       assertEquals(reconnected.outboundSessions(newSessionId).filters.get(chainId), None)
+
+  test("pre-open event traffic rejects with the dedicated reason and closes the opening lineage"):
+    for
+      harness <- Harness.create("node-a", startedAt)
+      sessionId <- startOutboundOpening(harness)
+      polled <- harness.runtime.pollEvents(sessionId)
+      state <- harness.runtime.snapshotState
+    yield
+      assertEquals(polled.left.map(_.rejectionClass), Left("handshakeRejected"))
+      assertEquals(polled.left.map(_.reason), Left("preOpenEventTraffic"))
+      assertEquals(state.engine.sessionById(sessionId).map(_.status), Some(DirectionalSessionStatus.Closed))
+
+  test("pre-open control traffic rejects with the dedicated reason and closes the opening lineage"):
+    for
+      harness <- Harness.create("node-a", startedAt)
+      sessionId <- startOutboundOpening(harness)
+      result <- harness.runtime.receiveControlBatch(
+        sessionId,
+        controlBatch(
+          "34343434-3434-4434-8434-343434343434",
+          Vector(ControlOp.Config(Map(SessionConfigKey.TxMaxBatchItems -> 1L))),
+        ),
+      )
+      state <- harness.runtime.snapshotState
+    yield
+      assertEquals(result.left.map(_.reason), Left("preOpenControlTraffic"))
+      assertEquals(state.engine.sessionById(sessionId).map(_.status), Some(DirectionalSessionStatus.Closed))
 
   test("requestById rejects oversize requests and unknown ids"):
     for
@@ -237,6 +268,7 @@ final class TxControlInterpreterSuite extends CatsEffectSuite:
       registry = StaticPeerRegistry(topology)
       authenticator = StaticPeerAuthenticator[IO](registry)
       clock <- TestClock.create(startedAt)
+      given GossipClock[IO] = clock
       delegate <- InMemoryTxArtifactSource.create[IO, TestTx]
       started <- Deferred[IO, Unit]
       release <- Deferred[IO, Unit]
@@ -293,6 +325,7 @@ final class TxControlInterpreterSuite extends CatsEffectSuite:
       registry = StaticPeerRegistry(topology)
       authenticator = StaticPeerAuthenticator[IO](registry)
       clock <- TestClock.create(startedAt)
+      given GossipClock[IO] = clock
       delegate <- InMemoryTxArtifactSource.create[IO, TestTx]
       started <- Deferred[IO, Unit]
       release <- Deferred[IO, Unit]
@@ -333,6 +366,7 @@ final class TxControlInterpreterSuite extends CatsEffectSuite:
       registry = StaticPeerRegistry(topology)
       authenticator = StaticPeerAuthenticator[IO](registry)
       clock <- TestClock.create(startedAt)
+      given GossipClock[IO] = clock
       delegate <- InMemoryTxArtifactSource.create[IO, TestTx]
       firstStarted <- Deferred[IO, Unit]
       firstRelease <- Deferred[IO, Unit]
@@ -409,6 +443,14 @@ final class TxControlInterpreterSuite extends CatsEffectSuite:
       _ <- IO.fromEither(ackResult.leftMap(rejection => new IllegalStateException(rejection.reason)))
     yield proposal.sessionId
 
+  private def startOutboundOpening(
+      harness: Harness,
+  ): IO[DirectionalSessionId] =
+    harness.runtime
+      .startOutbound(remotePeer, subscription)
+      .flatMap(result => IO.fromEither(result.leftMap(rejection => new IllegalStateException(rejection.reason))))
+      .map(_.sessionId)
+
   private def controlBatch(
       idempotencyKey: String,
       ops: Vector[ControlOp],
@@ -438,6 +480,7 @@ final class TxControlInterpreterSuite extends CatsEffectSuite:
         registry = StaticPeerRegistry(topology)
         authenticator = StaticPeerAuthenticator[IO](registry)
         clock <- TestClock.create(instant)
+        given GossipClock[IO] = clock
         source <- InMemoryTxArtifactSource.create[IO, TestTx]
         sink <- InMemoryTxArtifactSink.create[IO, TestTx]
         stateStore <- TxGossipStateStore.inMemory[IO](GossipSessionEngine(registry.localPeer, topology))
@@ -475,14 +518,14 @@ final class TxControlInterpreterSuite extends CatsEffectSuite:
         chainId: ChainId,
         topic: GossipTopic,
         cursor: Option[CursorToken],
-    ): IO[Either[CanonicalRejection, Vector[GossipEvent[TestTx]]]] =
+    ): IO[Either[CanonicalRejection, Vector[AvailableGossipEvent[TestTx]]]] =
       started.complete(()).attempt *> release.get *> delegate.readAfter(chainId, topic, cursor)
 
     override def readByIds(
         chainId: ChainId,
         topic: GossipTopic,
         ids: Vector[StableArtifactId],
-    ): IO[Vector[GossipEvent[TestTx]]] =
+    ): IO[Vector[AvailableGossipEvent[TestTx]]] =
       delegate.readByIds(chainId, topic, ids)
 
   private final case class SequencedBlockingSource(
@@ -497,7 +540,7 @@ final class TxControlInterpreterSuite extends CatsEffectSuite:
         chainId: ChainId,
         topic: GossipTopic,
         cursor: Option[CursorToken],
-    ): IO[Either[CanonicalRejection, Vector[GossipEvent[TestTx]]]] =
+    ): IO[Either[CanonicalRejection, Vector[AvailableGossipEvent[TestTx]]]] =
       callCount.modify(count => (count + 1, count)).flatMap:
         case 0 =>
           firstStarted.complete(()).attempt *> firstRelease.get *> delegate.readAfter(chainId, topic, cursor)
@@ -508,7 +551,7 @@ final class TxControlInterpreterSuite extends CatsEffectSuite:
         chainId: ChainId,
         topic: GossipTopic,
         ids: Vector[StableArtifactId],
-    ): IO[Vector[GossipEvent[TestTx]]] =
+    ): IO[Vector[AvailableGossipEvent[TestTx]]] =
       delegate.readByIds(chainId, topic, ids)
 
   private final case class TestTx(body: String)

@@ -150,6 +150,7 @@ final class SessionEngineSuite extends FunSuite:
               status = DirectionalSessionStatus.Opening,
               createdAt = createdAt,
               openedAt = None,
+              lastActivityAt = createdAt,
             )
           ),
           inbound = Some(
@@ -169,6 +170,7 @@ final class SessionEngineSuite extends FunSuite:
               status = DirectionalSessionStatus.Closed,
               createdAt = createdAt.minusSeconds(10),
               openedAt = Some(createdAt.minusSeconds(9)),
+              lastActivityAt = createdAt.minusSeconds(9),
             )
           ),
           status = PeerRelationshipStatus.HalfOpen,
@@ -254,6 +256,7 @@ final class SessionEngineSuite extends FunSuite:
               status = DirectionalSessionStatus.Opening,
               createdAt = createdAt,
               openedAt = None,
+              lastActivityAt = createdAt,
             )
           ),
           status = PeerRelationshipStatus.Opening,
@@ -428,6 +431,7 @@ final class SessionEngineSuite extends FunSuite:
               status = DirectionalSessionStatus.Opening,
               createdAt = createdAt,
               openedAt = None,
+              lastActivityAt = createdAt,
             )
           ),
           status = PeerRelationshipStatus.Opening,
@@ -481,6 +485,7 @@ final class SessionEngineSuite extends FunSuite:
               status = DirectionalSessionStatus.Closed,
               createdAt = createdAt.minusSeconds(10),
               openedAt = Some(createdAt.minusSeconds(9)),
+              lastActivityAt = createdAt.minusSeconds(9),
             )
           ),
           status = PeerRelationshipStatus.Closed,
@@ -538,6 +543,35 @@ final class SessionEngineSuite extends FunSuite:
     assertEquals(halfOpen.relationshipWith(remotePeer).map(_.status), Some(PeerRelationshipStatus.HalfOpen))
     assertEquals(
       halfOpen.relationshipWith(remotePeer).flatMap(_.outbound).map(_.status),
+      Some(DirectionalSessionStatus.Dead),
+    )
+
+  test("open session idle timeout uses the negotiated liveness timeout and keepalive refreshes activity"):
+    val engine = GossipSessionEngine(localPeer, topology)
+    val (afterOutbound, proposal) =
+      engine.startOutbound(remotePeer, subscription, createdAt).toOption.get
+
+    val ack = SessionNegotiation
+      .acknowledge(
+        proposal = proposal,
+        heartbeatInterval = Duration.ofSeconds(10),
+        livenessTimeout = Duration.ofSeconds(30),
+        maxControlRetryInterval = Duration.ofSeconds(30),
+      )
+      .toOption
+      .get
+
+    val opened = afterOutbound.applyHandshakeAck(ack, createdAt.plusSeconds(1)).toOption.get
+    val refreshed = opened.touchSessionActivity(proposal.sessionId, createdAt.plusSeconds(20)).toOption.get
+    val stillOpen = refreshed.expireTimedOutSessions(createdAt.plusSeconds(49))
+    val expired = refreshed.expireTimedOutSessions(createdAt.plusSeconds(50))
+
+    assertEquals(
+      stillOpen.relationshipWith(remotePeer).flatMap(_.outbound).map(_.status),
+      Some(DirectionalSessionStatus.Open),
+    )
+    assertEquals(
+      expired.relationshipWith(remotePeer).flatMap(_.outbound).map(_.status),
       Some(DirectionalSessionStatus.Dead),
     )
 

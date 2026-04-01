@@ -48,7 +48,11 @@ libraryDependencies ++= Seq(
 ### JVM Networking Baseline
 - `sigilaris-node-jvm` now ships a runtime-owned tx gossip/session substrate under `org.sigilaris.node.jvm.runtime.gossip` and `org.sigilaris.node.jvm.runtime.gossip.tx`.
 - The current HTTP-friendly baseline maps directional sessions to Armeria resources for session-open handshake, NDJSON event polling/keepalive, and batched control requests.
+- Negotiated heartbeat/liveness, opening timeout expiry, and pre-open reject-and-close are now enforced by the shipped runtime/Armeria baseline rather than manual disconnect hooks alone.
 - Static peer topology and direct-neighbor admission are the current deployment baseline. Dynamic discovery and peer scoring remain follow-up work.
+- The concrete JVM baseline loader reads static peer topology from `sigilaris.node.gossip.peers` (`local-node-identity`, `known-peers`, `direct-neighbors`) and wires it into runtime bootstrap/admission.
+- Reconnect now replays a full re-handshake under the existing peer correlation id for half-open recovery, and new directional sessions start with empty filter/control state instead of carrying prior `setFilter` state.
+- Topic-neutral producer session state, polling, and batching/QoS hooks are available under `org.sigilaris.node.jvm.runtime.gossip`, so follow-up topic owners do not need to rewrite the tx runtime internals just to reuse the substrate.
 - The shipped substrate currently fixes tx-topic anti-entropy first. Consensus proposal/vote/QC semantics remain follow-up work owned by ADR-0017 and `docs/plans/0004-hotstuff-consensus-without-threshold-signatures-plan.md`.
 
 ### Data Types

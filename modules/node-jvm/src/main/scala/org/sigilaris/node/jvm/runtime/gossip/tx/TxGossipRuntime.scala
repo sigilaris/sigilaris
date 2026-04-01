@@ -60,6 +60,67 @@ final class TxGossipRuntime[F[_]: Sync, A](
     policy: TxRuntimePolicy = TxRuntimePolicy(),
     cascadeStrategy: TxCascadeStrategy[A] = TxCascadeStrategy.exactKnownOrBackfillUnavailable[A],
 ):
+  private def expireState(
+      state: TxGossipRuntimeState,
+      now: Instant,
+  ): TxGossipRuntimeState =
+    val updatedEngine = state.engine.expireTimedOutSessions(now)
+    val liveOutboundSessions = state.outboundSessions.filter:
+      case (sessionId, _) =>
+        updatedEngine
+          .sessionById(sessionId)
+          .exists(_.status == DirectionalSessionStatus.Open)
+    state.copy(
+      engine = updatedEngine,
+      outboundSessions = liveOutboundSessions,
+    )
+
+  private def snapshotAt(
+      now: Instant,
+  ): F[TxGossipRuntimeState] =
+    stateStore.modify: state =>
+      val updated = expireState(state, now)
+      updated -> updated
+
+  private def touchSessionActivity(
+      state: TxGossipRuntimeState,
+      sessionId: DirectionalSessionId,
+      now: Instant,
+  ): Either[CanonicalRejection.HandshakeRejected, TxGossipRuntimeState] =
+    state.engine
+      .touchSessionActivity(sessionId, now)
+      .map(updatedEngine => state.copy(engine = updatedEngine))
+
+  private def rejectPreOpenTrafficIfNeeded(
+      snapshot: TxGossipRuntimeState,
+      sessionId: DirectionalSessionId,
+      kind: PreOpenTrafficKind,
+  ): F[Option[CanonicalRejection.HandshakeRejected]] =
+    snapshot.engine.sessionById(sessionId) match
+      case Some(session)
+          if session.direction == SessionDirection.Outbound &&
+            session.status == DirectionalSessionStatus.Opening =>
+        stateStore.modify: state =>
+          state.engine.rejectPreOpenTraffic(sessionId, kind).fold(
+            error => state -> Left(error),
+            {
+              case (updatedEngine, rejection) =>
+                state.copy(
+                  engine = updatedEngine,
+                  outboundSessions = state.outboundSessions - sessionId,
+                ) -> Right(rejection)
+            },
+          )
+        .map:
+          case Right(rejection) =>
+            Some(rejection)
+          case Left(error) if error.reason == "sessionNotOpening" =>
+            None
+          case Left(error) =>
+            Some(error)
+      case _ =>
+        none[CanonicalRejection.HandshakeRejected].pure[F]
+
   def startOutbound(
       peer: PeerIdentity,
       subscriptions: SessionSubscription,
@@ -73,7 +134,8 @@ final class TxGossipRuntime[F[_]: Sync, A](
       case Right(_) =>
         clock.now.flatMap: now =>
           stateStore.modify: state =>
-            state.engine
+            val currentState = expireState(state, now)
+            currentState.engine
               .startOutbound(
                 peer = peer,
                 subscriptions = subscriptions,
@@ -83,9 +145,9 @@ final class TxGossipRuntime[F[_]: Sync, A](
                 maxControlRetryInterval = maxControlRetryInterval,
               )
               .fold(
-                error => state -> Left(error),
+                error => currentState -> Left(error),
                 (updatedEngine, proposal) =>
-                  state.copy(engine = updatedEngine) -> Right(proposal),
+                  currentState.copy(engine = updatedEngine) -> Right(proposal),
               )
 
   def handleInboundProposal(
@@ -100,8 +162,9 @@ final class TxGossipRuntime[F[_]: Sync, A](
       case Right(_) =>
         clock.now.flatMap: now =>
           stateStore.modify: state =>
+            val currentState = expireState(state, now)
             val (updatedEngine, result) =
-              state.engine.handleInboundProposal(
+              currentState.engine.handleInboundProposal(
                 proposal = proposal,
                 now = now,
                 heartbeatInterval = heartbeatInterval,
@@ -110,11 +173,11 @@ final class TxGossipRuntime[F[_]: Sync, A](
               )
             val updatedSessions = result match
               case InboundHandshakeResult.Accepted(_, supersededSessionId) =>
-                supersededSessionId.foldLeft(state.outboundSessions):
+                supersededSessionId.foldLeft(currentState.outboundSessions):
                   case (sessions, sessionId) => sessions - sessionId
               case InboundHandshakeResult.Rejected(_) =>
-                state.outboundSessions
-            state.copy(
+                currentState.outboundSessions
+            currentState.copy(
               engine = updatedEngine,
               outboundSessions = updatedSessions,
             ) -> result
@@ -124,12 +187,13 @@ final class TxGossipRuntime[F[_]: Sync, A](
   ): F[Either[HandshakeRejected, Unit]] =
     clock.now.flatMap: now =>
       stateStore.modify: state =>
-        state.engine.applyHandshakeAck(ack, now).fold(
-          error => state -> Left(error),
+        val currentState = expireState(state, now)
+        currentState.engine.applyHandshakeAck(ack, now).fold(
+          error => currentState -> Left(error),
           updatedEngine =>
             updatedEngine.sessionById(ack.sessionId) match
               case None =>
-                state -> Left(handshakeRejected("unknownSession", ack.sessionId.value))
+                currentState -> Left(handshakeRejected("unknownSession", ack.sessionId.value))
               case Some(session) =>
                 val runtimeSession = TxProducerSessionState(
                   sessionId = session.sessionId,
@@ -139,37 +203,41 @@ final class TxGossipRuntime[F[_]: Sync, A](
                   negotiated = ack.negotiated,
                   batchingConfig = policy.defaultBatchingConfig,
                 )
-                state.copy(
+                currentState.copy(
                   engine = updatedEngine,
-                  outboundSessions = state.outboundSessions.updated(session.sessionId, runtimeSession),
+                  outboundSessions = currentState.outboundSessions.updated(session.sessionId, runtimeSession),
                 ) -> Right(())
         )
 
   def closeSession(
       sessionId: DirectionalSessionId,
   ): F[Either[HandshakeRejected, Unit]] =
-    stateStore.modify: state =>
-      state.engine.closeSession(sessionId).fold(
-        error => state -> Left(error),
-        updatedEngine =>
-          state.copy(
-            engine = updatedEngine,
-            outboundSessions = state.outboundSessions - sessionId,
-          ) -> Right(())
-      )
+    clock.now.flatMap: now =>
+      stateStore.modify: state =>
+        val currentState = expireState(state, now)
+        currentState.engine.closeSession(sessionId).fold(
+          error => currentState -> Left(error),
+          updatedEngine =>
+            currentState.copy(
+              engine = updatedEngine,
+              outboundSessions = currentState.outboundSessions - sessionId,
+            ) -> Right(())
+        )
 
   def markSessionDead(
       sessionId: DirectionalSessionId,
   ): F[Either[HandshakeRejected, Unit]] =
-    stateStore.modify: state =>
-      state.engine.markSessionDead(sessionId).fold(
-        error => state -> Left(error),
-        updatedEngine =>
-          state.copy(
-            engine = updatedEngine,
-            outboundSessions = state.outboundSessions - sessionId,
-          ) -> Right(())
-      )
+    clock.now.flatMap: now =>
+      stateStore.modify: state =>
+        val currentState = expireState(state, now)
+        currentState.engine.markSessionDead(sessionId).fold(
+          error => currentState -> Left(error),
+          updatedEngine =>
+            currentState.copy(
+              engine = updatedEngine,
+              outboundSessions = currentState.outboundSessions - sessionId,
+            ) -> Right(())
+        )
 
   def receiveControlBatch(
       sessionId: DirectionalSessionId,
@@ -177,26 +245,38 @@ final class TxGossipRuntime[F[_]: Sync, A](
   ): F[Either[CanonicalRejection.ControlBatchRejected, ControlBatchOutcome]] =
     for
       now <- clock.now
-      snapshot <- stateStore.get
-      validation <- prevalidateControlBatch(snapshot, sessionId, batch)
-      result <- validation match
-        case Left(rejection) =>
-          rejection.asLeft[ControlBatchOutcome].pure[F]
-        case Right(()) =>
-          stateStore.modify: state =>
-            openOutboundProducerSession(state, sessionId).fold(
-              rejection => state -> Left(rejection),
-              (_, sessionState) =>
-                applyControlBatch(now, batch, sessionState).fold(
-                  rejection => state -> Left(rejection),
-                  {
-                    case (updatedSession, outcome) =>
-                      state.copy(
-                        outboundSessions = state.outboundSessions.updated(sessionId, updatedSession)
-                      ) -> Right(outcome)
-                  },
-                ),
-            )
+      snapshot <- snapshotAt(now)
+      preOpenRejection <- rejectPreOpenTrafficIfNeeded(snapshot, sessionId, PreOpenTrafficKind.ControlChannel)
+      result <- preOpenRejection match
+        case Some(rejection) =>
+          controlRejected(rejection.reason, rejection.detail.getOrElse(sessionId.value))
+            .asLeft[ControlBatchOutcome]
+            .pure[F]
+        case None =>
+          prevalidateControlBatch(snapshot, sessionId, batch).flatMap:
+            case Left(rejection) =>
+              rejection.asLeft[ControlBatchOutcome].pure[F]
+            case Right(()) =>
+              stateStore.modify: state =>
+                val currentState = expireState(state, now)
+                openOutboundProducerSession(currentState, sessionId).fold(
+                  rejection => currentState -> Left(rejection),
+                  (_, sessionState) =>
+                    applyControlBatch(now, batch, sessionState).fold(
+                      rejection => currentState -> Left(rejection),
+                      {
+                        case (updatedSession, outcome) =>
+                          touchSessionActivity(currentState, sessionId, now).fold(
+                            rejection =>
+                              currentState -> Left(controlRejected(rejection.reason, rejection.detail.getOrElse(sessionId.value))),
+                            updatedState =>
+                              updatedState.copy(
+                                outboundSessions = updatedState.outboundSessions.updated(sessionId, updatedSession)
+                              ) -> Right(outcome),
+                          )
+                      },
+                    ),
+                )
     yield result
 
   def pollEvents(
@@ -204,69 +284,92 @@ final class TxGossipRuntime[F[_]: Sync, A](
   ): F[Either[CanonicalRejection, Vector[EventStreamMessage[A]]]] =
     for
       now <- clock.now
-      snapshot <- stateStore.get
-      result <- openOutboundEventSession(snapshot, sessionId).fold(
-        rejection => rejection.asLeft[Vector[EventStreamMessage[A]]].pure[F],
-        (_, sessionState) =>
-          pollOpenSession(now, sessionState).flatMap:
-            case Left(rejection) =>
-              rejection.asLeft[Vector[EventStreamMessage[A]]].pure[F]
-            case Right((updatedSession, emittedEvents)) =>
-              stateStore.modify: state =>
-                state.outboundSessions.get(sessionId) match
-                  case None =>
-                    state -> Left(handshakeRejected("unknownSession", sessionId.value))
-                  case Some(current) =>
-                    val mergedSessions =
-                      state.outboundSessions.updated(
-                        sessionId,
-                        mergePolledSessionState(current, sessionState, updatedSession)
-                      )
-                    state.copy(outboundSessions = mergedSessions) ->
-                      Right(emittedEvents.map(EventStreamMessage.Event(_)))
-      )
+      snapshot <- snapshotAt(now)
+      preOpenRejection <- rejectPreOpenTrafficIfNeeded(snapshot, sessionId, PreOpenTrafficKind.EventStream)
+      result <- preOpenRejection match
+        case Some(rejection) =>
+          rejection.asLeft[Vector[EventStreamMessage[A]]].pure[F]
+        case None =>
+          openOutboundEventSession(snapshot, sessionId).fold(
+            rejection => rejection.asLeft[Vector[EventStreamMessage[A]]].pure[F],
+            (_, sessionState) =>
+              pollOpenSession(now, sessionState).flatMap:
+                case Left(rejection) =>
+                  rejection.asLeft[Vector[EventStreamMessage[A]]].pure[F]
+                case Right((updatedSession, emittedEvents)) =>
+                  stateStore.modify: state =>
+                    val currentState = expireState(state, now)
+                    currentState.outboundSessions.get(sessionId) match
+                      case None =>
+                        currentState -> Left(handshakeRejected("unknownSession", sessionId.value))
+                      case Some(current) =>
+                        touchSessionActivity(currentState, sessionId, now).fold(
+                          rejection => currentState -> Left(rejection),
+                          updatedState =>
+                            val mergedSessions =
+                              updatedState.outboundSessions.updated(
+                                sessionId,
+                                mergePolledSessionState(current, sessionState, updatedSession)
+                              )
+                            updatedState.copy(outboundSessions = mergedSessions) ->
+                              Right(emittedEvents.map(EventStreamMessage.Event(_))),
+                        )
+          )
     yield result
 
   def receiveEvents(
       sessionId: DirectionalSessionId,
       messages: Vector[EventStreamMessage[A]],
   ): F[Either[CanonicalRejection, TxReceiveEventsResult[A]]] =
-    stateStore.get.flatMap: state =>
-      openInboundConsumerSession(state, sessionId).fold(
-        rejection => rejection.asLeft[TxReceiveEventsResult[A]].pure[F],
-        _ =>
-          messages.foldLeftM(
-            TxReceiveEventsResult[A](
-              applied = Vector.empty,
-              duplicates = Vector.empty,
-              lastCursor = None,
-            ).asRight[CanonicalRejection]
-          ):
-            case (left @ Left(_), _) =>
-              left.pure[F]
-            case (Right(result), EventStreamMessage.KeepAlive(_, _)) =>
-              Right(result).pure[F]
-            case (_, EventStreamMessage.Rejection(rejection)) =>
-              rejection.asLeft[TxReceiveEventsResult[A]].pure[F]
-            case (Right(result), EventStreamMessage.Event(event)) =>
-              validateAndApplyEvent(event).map:
-                case Left(rejection) =>
-                  Left(rejection)
-                case Right(applyResult) =>
-                  if applyResult.duplicate then
-                    Right(
-                      result.copy(
-                        duplicates = result.duplicates :+ event,
-                        lastCursor = Some(event.cursor),
-                      )
-                    )
-                  else
-                    Right(
-                      result.copy(
-                        applied = result.applied :+ event,
-                        lastCursor = Some(event.cursor),
-                      )
-                    )
+    clock.now.flatMap: now =>
+      snapshotAt(now).flatMap: state =>
+        openInboundConsumerSession(state, sessionId).fold(
+          rejection => rejection.asLeft[TxReceiveEventsResult[A]].pure[F],
+          _ =>
+            (
+              stateStore.modify: current =>
+                val currentState = expireState(current, now)
+                touchSessionActivity(currentState, sessionId, now) match
+                  case Left(rejection) =>
+                    currentState -> rejection.asLeft[TxReceiveEventsResult[A]]
+                  case Right(updatedState) =>
+                    updatedState -> Right(())
+            ).flatMap:
+              case Left(rejection) =>
+                rejection.asLeft[TxReceiveEventsResult[A]].pure[F]
+              case Right(_) =>
+                messages.foldLeftM(
+                  TxReceiveEventsResult[A](
+                    applied = Vector.empty,
+                    duplicates = Vector.empty,
+                    lastCursor = None,
+                  ).asRight[CanonicalRejection]
+                ):
+                  case (left @ Left(_), _) =>
+                    left.pure[F]
+                  case (Right(result), EventStreamMessage.KeepAlive(_, _)) =>
+                    Right(result).pure[F]
+                  case (_, EventStreamMessage.Rejection(rejection)) =>
+                    rejection.asLeft[TxReceiveEventsResult[A]].pure[F]
+                  case (Right(result), EventStreamMessage.Event(event)) =>
+                    validateAndApplyEvent(event).map:
+                      case Left(rejection) =>
+                        Left(rejection)
+                      case Right(applyResult) =>
+                        if applyResult.duplicate then
+                          Right(
+                            result.copy(
+                              duplicates = result.duplicates :+ event,
+                              lastCursor = Some(event.cursor),
+                            )
+                          )
+                        else
+                          Right(
+                            result.copy(
+                              applied = result.applied :+ event,
+                              lastCursor = Some(event.cursor),
+                            )
+                          )
       )
 
   def eventKeepAlive(
@@ -274,25 +377,55 @@ final class TxGossipRuntime[F[_]: Sync, A](
   ): F[Either[CanonicalRejection.HandshakeRejected, EventStreamMessage[A]]] =
     for
       now <- clock.now
-      state <- stateStore.get
-    yield openOutboundEventSession(state, sessionId).fold(
-      _.asLeft[EventStreamMessage[A]],
-      _ => Right(EventStreamMessage.KeepAlive(sessionId, now)),
-    )
+      state <- snapshotAt(now)
+      preOpenRejection <- rejectPreOpenTrafficIfNeeded(state, sessionId, PreOpenTrafficKind.EventStream)
+      result <- preOpenRejection match
+        case Some(rejection) =>
+          rejection.asLeft[EventStreamMessage[A]].pure[F]
+        case None =>
+          openOutboundEventSession(state, sessionId).fold(
+            _.asLeft[EventStreamMessage[A]].pure[F],
+            _ =>
+              stateStore.modify: current =>
+                val currentState = expireState(current, now)
+                touchSessionActivity(currentState, sessionId, now).fold(
+                  rejection => currentState -> Left(rejection),
+                  updatedState => updatedState -> Right(EventStreamMessage.KeepAlive(sessionId, now)),
+                )
+          )
+    yield result
 
   def controlKeepAlive(
       sessionId: DirectionalSessionId,
   ): F[Either[CanonicalRejection.ControlBatchRejected, ControlChannelMessage]] =
     for
       now <- clock.now
-      state <- stateStore.get
-    yield openOutboundProducerSession(state, sessionId).map(_ => ControlChannelMessage.Ack(sessionId, now))
+      state <- snapshotAt(now)
+      preOpenRejection <- rejectPreOpenTrafficIfNeeded(state, sessionId, PreOpenTrafficKind.ControlChannel)
+      result <- preOpenRejection match
+        case Some(rejection) =>
+          controlRejected(rejection.reason, rejection.detail.getOrElse(sessionId.value))
+            .asLeft[ControlChannelMessage]
+            .pure[F]
+        case None =>
+          openOutboundProducerSession(state, sessionId).fold(
+            _.asLeft[ControlChannelMessage].pure[F],
+            _ =>
+              stateStore.modify: current =>
+                val currentState = expireState(current, now)
+                touchSessionActivity(currentState, sessionId, now).fold(
+                  rejection =>
+                    currentState -> Left(controlRejected(rejection.reason, rejection.detail.getOrElse(sessionId.value))),
+                  updatedState => updatedState -> Right(ControlChannelMessage.Ack(sessionId, now)),
+                )
+          )
+    yield result
 
   def snapshotState: F[TxGossipRuntimeState] =
-    stateStore.get
+    clock.now.flatMap(snapshotAt)
 
   def relationshipWith(peer: PeerIdentity): F[Option[PeerRelationship]] =
-    stateStore.get.map(_.engine.relationshipWith(peer))
+    snapshotState.map(_.engine.relationshipWith(peer))
 
   private def validateAndApplyEvent(
       event: GossipEvent[A],
@@ -327,7 +460,7 @@ final class TxGossipRuntime[F[_]: Sync, A](
               ).asLeft[Unit].pure[F]
             else
               source.readByIds(chainId, GossipTopic.tx, distinctIds).map: events =>
-                val foundIds = events.map(_.id).toSet
+                val foundIds = events.map(_.event.id).toSet
                 val missing = distinctIds.filterNot(foundIds.contains)
                 Either.cond(
                   missing.isEmpty,
@@ -399,8 +532,8 @@ final class TxGossipRuntime[F[_]: Sync, A](
           cursor.values.keySet.filterNot(sessionState.subscriptions.contains)
         Either.cond(
           unsupportedKeys.isEmpty,
-          sessionState.copy(
-            durableCursor = CompositeCursor(sessionState.durableCursor.values ++ cursor.values)
+          sessionState.withProducerState(
+            sessionState.producerState.withDurableCursor(cursor)
           ),
           controlRejected(
             "cursorOutOfSubscription",
@@ -410,8 +543,8 @@ final class TxGossipRuntime[F[_]: Sync, A](
 
       case ControlOp.Nack(chainId, topic, cursor) =>
         validateTxSubscription(sessionState, chainId, topic).map: _ =>
-          sessionState.copy(
-            pendingReplay = sessionState.pendingReplay.updated(ChainTopic(chainId, topic), cursor)
+          sessionState.withProducerState(
+            sessionState.producerState.withReplay(ChainTopic(chainId, topic), cursor)
           )
 
       case ControlOp.RequestByIdTx(chainId, ids) =>
@@ -475,44 +608,44 @@ final class TxGossipRuntime[F[_]: Sync, A](
       chainTopic: ChainTopic,
   ): F[Either[CanonicalRejection, (TxProducerSessionState, Vector[GossipEvent[A]])]] =
     val requestedIds = sessionState.pendingRequestByIds.getOrElse(chainTopic.chainId, Vector.empty)
-    val cursorOverride = sessionState.pendingReplay.get(chainTopic)
-    val startCursor =
-      cursorOverride.getOrElse(
-        sessionState.streamCursor
-          .tokenFor(chainTopic)
-          .orElse(sessionState.durableCursor.tokenFor(chainTopic))
-      )
+    val producerState = sessionState.producerState
+    val cursorOverride = producerState.pendingReplay.get(chainTopic)
+    val startCursor = cursorOverride.getOrElse(producerState.startCursorFor(chainTopic))
 
     for
-      explicitEvents <-
-        if requestedIds.isEmpty then Vector.empty[GossipEvent[A]].pure[F]
+      explicitArtifacts <-
+        if requestedIds.isEmpty then Vector.empty[AvailableGossipEvent[A]].pure[F]
         else source.readByIds(chainTopic.chainId, chainTopic.topic, requestedIds)
       afterCursor <- source.readAfter(chainTopic.chainId, chainTopic.topic, startCursor)
     yield afterCursor.flatMap: candidates =>
+      val explicitEvents = explicitArtifacts.map(_.event)
+      val liveCandidates = candidates.filterNot(candidate => explicitEvents.exists(_.id == candidate.event.id))
       cascadeStrategy
         .selectLiveEvents(
           filter = sessionState.filters.get(chainTopic.chainId),
           exactKnownIds = sessionState.exactKnownIds.getOrElse(chainTopic.chainId, Set.empty),
-          candidates = candidates.filterNot(event => explicitEvents.exists(_.id == event.id)),
+          candidates = liveCandidates.map(_.event),
         )
-        .map: liveCandidates =>
+        .map: selectedLiveEvents =>
+          val selectedLiveArtifacts = selectArtifacts(liveCandidates, selectedLiveEvents)
           val explicitBatch = explicitEvents.take(sessionState.batchingConfig.maxBatchItems)
           val remainingCapacity = (sessionState.batchingConfig.maxBatchItems - explicitBatch.size).max(0)
           val forceFlush = cursorOverride.nonEmpty
           val liveBatch =
-            if remainingCapacity <= 0 then Vector.empty
-            else batchLiveEvents(now, liveCandidates, sessionState.batchingConfig, forceFlush, remainingCapacity)
+            GossipProducerPolling.batchAvailableEvents(
+              now = now,
+              candidates = selectedLiveArtifacts,
+              qos = sessionState.batchingConfig,
+              forceFlush = forceFlush,
+              limit = remainingCapacity,
+            )
           val emitted = explicitBatch ++ liveBatch
-          val updatedStreamCursor =
-            if liveBatch.isEmpty then sessionState.streamCursor
-            else
-              CompositeCursor(
-                sessionState.streamCursor.values.updated(chainTopic, liveBatch.last.cursor)
-              )
           val servedExplicitIds = explicitBatch.map(_.id).toSet
-          val updatedState = sessionState.copy(
-            streamCursor = updatedStreamCursor,
-            pendingReplay = sessionState.pendingReplay - chainTopic,
+          val updatedProducerState =
+            producerState
+              .advanceStreamCursor(chainTopic, liveBatch)
+              .clearReplay(chainTopic)
+          val updatedState = sessionState.withProducerState(updatedProducerState).copy(
             pendingRequestByIds =
               if servedExplicitIds.isEmpty then sessionState.pendingRequestByIds
               else sessionState.pendingRequestByIds.updatedWith(chainTopic.chainId):
@@ -522,21 +655,6 @@ final class TxGossipRuntime[F[_]: Sync, A](
                   remaining.some.filter(_.nonEmpty)
           )
           updatedState -> emitted
-
-  private def batchLiveEvents(
-      now: Instant,
-      candidates: Vector[GossipEvent[A]],
-      batchingConfig: TxBatchingConfig,
-      forceFlush: Boolean,
-      limit: Int,
-  ): Vector[GossipEvent[A]] =
-    val threshold = batchingConfig.maxBatchItems.min(limit)
-    if candidates.isEmpty then Vector.empty
-    else if forceFlush || candidates.size >= threshold then
-      candidates.take(threshold)
-    else if !now.isBefore(candidates.head.ts.plus(batchingConfig.flushInterval)) then
-      candidates.take(threshold)
-    else Vector.empty
 
   private def pruneIdempotencyKeys(
       now: Instant,
@@ -614,6 +732,21 @@ final class TxGossipRuntime[F[_]: Sync, A](
   ): Vector[StableArtifactId] =
     additions.foldLeft(existing): (acc, id) =>
       if acc.contains(id) then acc else acc :+ id
+
+  private def selectArtifacts(
+      candidates: Vector[AvailableGossipEvent[A]],
+      selectedEvents: Vector[GossipEvent[A]],
+  ): Vector[AvailableGossipEvent[A]] =
+    selectedEvents
+      .foldLeft((candidates, Vector.empty[AvailableGossipEvent[A]])):
+        case ((remaining, acc), selectedEvent) =>
+          val index = remaining.indexWhere(_.event == selectedEvent)
+          if index < 0 then
+            remaining -> acc
+          else
+            val matched = remaining(index)
+            remaining.patch(index, Nil, 1) -> (acc :+ matched)
+      ._2
 
   private def positiveIntConfig(
       key: String,

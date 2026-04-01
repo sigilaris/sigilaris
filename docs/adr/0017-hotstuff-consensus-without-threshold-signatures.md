@@ -5,11 +5,13 @@ Proposed
 
 ## Context
 - `sigilaris`는 gossip/session substrate와 consensus artifact semantics를 별도 문서로 관리하기로 했다. transport-neutral gossip/session 규약은 ADR-0016이 소유한다.
+- `2026-04-01` 기준 ADR-0016 아래의 tx-topic gossip/session HTTP baseline은 이미 shipped 되었고, static peer topology bootstrap, topic-neutral producer polling/QoS seam, half-open recovery baseline까지 `sigilaris-node-jvm`에 landed 되었다.
 - 현재 합의 알고리즘 후보는 BLS threshold signature를 적용하지 않은 HotStuff 계열이다.
 - threshold signature가 없으면 quorum certificate는 단일 aggregated signature가 아니라 개별 validator vote 집합 또는 그와 동등한 검증 가능 구조로 표현되어야 한다.
 - 이 경우 proposal, vote, quorum certificate의 identity, sign-bytes, validation rule을 gossip envelope와 별도로 고정해야 한다.
 - block hash, proposal id, vote id를 같은 값으로 취급하면 dedup, replay, exact known-set sync, QC assembly, leader justification 검증이 서로 엉킬 수 있다.
 - 또한 `tx` anti-entropy와 consensus artifact sync는 같은 gossip substrate 위에서 공존할 수 있지만, consensus artifact의 의미론은 gossip runtime이 아니라 consensus runtime이 소유해야 한다.
+- 따라서 consensus follow-up은 shipped tx runtime을 재작성하는 대신 ADR-0016 substrate seam과 generic producer/polling hook을 재사용하는 방향으로 붙어야 한다.
 - 초기 deployment baseline은 static peer topology, validator/audit node role 분리, same-DC validator 배치, `100ms` block production target을 전제로 할 수 있다. 이 운영 baseline은 ADR-0018이 소유하고, 이 ADR은 그 위에서 필요한 consensus artifact semantics를 고정한다.
 
 ## Decision

@@ -10,7 +10,7 @@ import org.sigilaris.node.jvm.runtime.gossip.*
 final case class TxBatchingConfig(
     maxBatchItems: Int,
     flushInterval: Duration,
-)
+) extends GossipProducerQoS
 
 object TxBatchingConfig:
   val default: TxBatchingConfig =
@@ -50,7 +50,27 @@ final case class TxProducerSessionState(
     pendingRequestByIds: Map[ChainId, Vector[StableArtifactId]] = Map.empty,
     idempotencyKeys: Map[ControlIdempotencyKey, Instant] = Map.empty,
     batchingConfig: TxBatchingConfig = TxBatchingConfig.default,
-)
+):
+  def producerState: GossipProducerSessionState =
+    GossipProducerSessionState(
+      sessionId = sessionId,
+      peer = peer,
+      peerCorrelationId = peerCorrelationId,
+      subscriptions = subscriptions,
+      negotiated = negotiated,
+      durableCursor = durableCursor,
+      streamCursor = streamCursor,
+      pendingReplay = pendingReplay,
+    )
+
+  def withProducerState(
+      producerState: GossipProducerSessionState,
+  ): TxProducerSessionState =
+    copy(
+      durableCursor = producerState.durableCursor,
+      streamCursor = producerState.streamCursor,
+      pendingReplay = producerState.pendingReplay,
+    )
 
 final case class TxGossipRuntimeState(
     engine: GossipSessionEngine,

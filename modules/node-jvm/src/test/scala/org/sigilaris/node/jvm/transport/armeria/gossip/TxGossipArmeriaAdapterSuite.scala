@@ -293,6 +293,7 @@ final class TxGossipArmeriaAdapterSuite extends CatsEffectSuite:
         sessionId <- harness.openOutboundLocally
         tx1 <- harness.source.append(chainId, TestTx("tx-1"), baseInstant.minusSeconds(2))
         tx2 <- harness.source.append(chainId, TestTx("tx-2"), baseInstant.minusSeconds(1))
+        _ <- harness.clock.advance(Duration.ofSeconds(1))
         pollResponse <- harness.postJson(
           s"/gossip/events/${sessionId.value}",
           EventRequestWire("poll").asJson.noSpaces,
@@ -384,16 +385,248 @@ final class TxGossipArmeriaAdapterSuite extends CatsEffectSuite:
         assertEquals(response.status, 200)
         assertEquals(state.engine.sessionById(sessionId).map(_.status), Some(DirectionalSessionStatus.Dead))
 
+  test("half-open recovery reuses the existing peer correlation id and keeps the surviving direction live"):
+    MeshHarness.resource(baseInstant).use: mesh =>
+      for
+        aToB <- openOutboundViaHttp(mesh.a, mesh.b)
+        bToA <- openOutboundViaHttp(mesh.b, mesh.a)
+        _ <- mesh.a.postNoBody(s"/gossip/session/${aToB.proposal.sessionId.value}/disconnect")
+        _ <- mesh.b.postNoBody(s"/gossip/session/${aToB.proposal.sessionId.value}/disconnect")
+        relationshipHalfOpenA <- mesh.a.runtime.relationshipWith(PeerIdentity.unsafe(mesh.b.localNodeId))
+        relationshipHalfOpenB <- mesh.b.runtime.relationshipWith(PeerIdentity.unsafe(mesh.a.localNodeId))
+        recoveryProposalEither <- mesh.a.runtime.startOutbound(PeerIdentity.unsafe(mesh.b.localNodeId), subscription)
+        recoveryProposal <- IO.fromEither(
+          recoveryProposalEither.leftMap(rejection => new IllegalStateException(rejection.reason))
+        )
+        _ <- mesh.b.source.append(chainId, TestTx("surviving"), baseInstant.minusSeconds(1))
+        _ <- mesh.b.clock.advance(Duration.ofSeconds(1))
+        survivingPoll <- mesh.b.postJson(
+          s"/gossip/events/${bToA.proposal.sessionId.value}",
+          EventRequestWire("poll").asJson.noSpaces,
+        )
+        survivingLines <- decodeNdjson[EventEnvelopeWire[TestTx]](survivingPoll.body)
+        survivingControl <- mesh.b.postJson(
+          s"/gossip/control/${bToA.proposal.sessionId.value}",
+          ControlRequestWire("controlKeepAlive").asJson.noSpaces,
+        )
+        survivingAck <- IO.fromEither(
+          decode[ControlResponseWire](survivingControl.body).leftMap(new IllegalStateException(_))
+        )
+        recoveryResponse <- mesh.b.postJson(
+          "/gossip/session/open",
+          toProposalWire(recoveryProposal).asJson.noSpaces,
+        )
+        recoveryAckWire <- IO.fromEither(
+          decode[SessionOpenAckWire](recoveryResponse.body).leftMap(new IllegalStateException(_))
+        )
+        recoveryAck <- IO.fromEither(toAck(recoveryAckWire).leftMap(new IllegalArgumentException(_)))
+        applyResult <- mesh.a.runtime.applyHandshakeAck(recoveryAck)
+        _ <- IO.fromEither(applyResult.leftMap(rejection => new IllegalStateException(rejection.reason)))
+        relationshipOpenA <- mesh.a.runtime.relationshipWith(PeerIdentity.unsafe(mesh.b.localNodeId))
+        relationshipOpenB <- mesh.b.runtime.relationshipWith(PeerIdentity.unsafe(mesh.a.localNodeId))
+      yield
+        assertEquals(relationshipHalfOpenA.map(_.status), Some(PeerRelationshipStatus.HalfOpen))
+        assertEquals(relationshipHalfOpenB.map(_.status), Some(PeerRelationshipStatus.HalfOpen))
+        assertEquals(recoveryProposal.peerCorrelationId, aToB.proposal.peerCorrelationId)
+        assert(recoveryProposal.sessionId != aToB.proposal.sessionId)
+        assertEquals(survivingPoll.status, 200)
+        assertEquals(survivingLines.flatMap(_.event).map(_.payload.body), Vector("surviving"))
+        assertEquals(survivingControl.status, 200)
+        assertEquals(survivingAck.status, "ack")
+        assertEquals(relationshipOpenA.map(_.status), Some(PeerRelationshipStatus.Open))
+        assertEquals(relationshipOpenB.map(_.status), Some(PeerRelationshipStatus.Open))
+
+  test("reconnect starts with an empty filter state and does not carry over prior setFilter state"):
+    Harness.resource(baseInstant).use: harness =>
+      for
+        session1 <- harness.openOutboundLocally
+        known <- harness.source.append(chainId, TestTx("known"), baseInstant.minusSeconds(2))
+        filter = TxBloomFilterSupport.build(Vector(known.id), bitsetBytes = 8, numHashes = 2)
+        filterResponse <- harness.postJson(
+          s"/gossip/control/${session1.value}",
+          ControlRequestWire(
+            kind = "batch",
+            batch = Some(
+              ControlBatchWire(
+                idempotencyKey = "45454545-4545-4454-8454-454545454545",
+                ops = Vector(
+                  ControlOpWire(
+                    kind = "setFilter",
+                    chainId = Some(chainId.value),
+                    topic = Some(GossipTopic.tx.value),
+                    filter = Some(
+                      TxBloomFilterWire(
+                        bitsetBase64Url = Base64.getUrlEncoder.withoutPadding().encodeToString(filter.bitset.toArray),
+                        numHashes = filter.numHashes,
+                        hashFamilyId = filter.hashFamilyId,
+                      )
+                    ),
+                  )
+                ),
+              )
+            ),
+          ).asJson.noSpaces,
+        )
+        _ <- IO.fromEither(decode[ControlResponseWire](filterResponse.body).leftMap(new IllegalStateException(_)))
+        filteredState <- harness.runtime.snapshotState
+        _ <- harness.postNoBody(s"/gossip/session/${session1.value}/disconnect")
+        session2 <- harness.openOutboundLocally
+        _ <- harness.clock.advance(Duration.ofSeconds(1))
+        pollResponse <- harness.postJson(
+          s"/gossip/events/${session2.value}",
+          EventRequestWire("poll").asJson.noSpaces,
+        )
+        pollLines <- decodeNdjson[EventEnvelopeWire[TestTx]](pollResponse.body)
+        state <- harness.runtime.snapshotState
+      yield
+        assertEquals(filterResponse.status, 200)
+        assertEquals(pollResponse.status, 200)
+        assertEquals(pollLines.flatMap(_.event).map(_.payload.body), Vector("known"))
+        assertEquals(filteredState.outboundSessions(session1).filters.get(chainId), Some(filter))
+        assertEquals(state.engine.sessionById(session1), None)
+        assertEquals(state.outboundSessions.get(session1), None)
+        assertEquals(state.outboundSessions(session2).filters.get(chainId), None)
+
+  test("opening timeout and open-session idle timeout move sessions to dead without manual disconnect"):
+    (
+      for
+        openingHarness <- Harness.resource(baseInstant)
+        openHarness <- Harness.resource(baseInstant)
+      yield (openingHarness, openHarness)
+    ).use: (openingHarness, openHarness) =>
+      for
+        openingSessionId <- openingHarness.startOutboundOpening
+        openSessionId <- openHarness.openOutboundLocally
+        _ <- openingHarness.clock.advance(Duration.ofSeconds(31))
+        _ <- openHarness.clock.advance(Duration.ofSeconds(31))
+        timedOutState <- openingHarness.runtime.snapshotState
+        idleState <- openHarness.runtime.snapshotState
+        idlePoll <- openHarness.postJson(
+          s"/gossip/events/${openSessionId.value}",
+          EventRequestWire("poll").asJson.noSpaces,
+        )
+        idleLines <- decodeNdjson[EventEnvelopeWire[TestTx]](idlePoll.body)
+      yield
+        assertEquals(
+          timedOutState.engine.sessionById(openingSessionId).map(_.status),
+          Some(DirectionalSessionStatus.Dead),
+        )
+        assertEquals(
+          idleState.engine.sessionById(openSessionId).map(_.status),
+          Some(DirectionalSessionStatus.Dead),
+        )
+        assertEquals(idlePoll.status, 200)
+        assertEquals(idleLines.map(_.kind), Vector("rejection"))
+        assertEquals(idleLines.flatMap(_.rejection).map(_.reason), Vector("sessionNotOpen"))
+
+  test("pre-open event and control traffic reject and close the opening lineage over HTTP"):
+    Harness.resource(baseInstant).use: harness =>
+      for
+        openingEventSession <- harness.startOutboundOpening
+        eventResponse <- harness.postJson(
+          s"/gossip/events/${openingEventSession.value}",
+          EventRequestWire("poll").asJson.noSpaces,
+        )
+        eventLines <- decodeNdjson[EventEnvelopeWire[TestTx]](eventResponse.body)
+        stateAfterEvent <- harness.runtime.snapshotState
+        openingControlSession <- harness.startOutboundOpening
+        controlResponse <- harness.postJson(
+          s"/gossip/control/${openingControlSession.value}",
+          ControlRequestWire("controlKeepAlive").asJson.noSpaces,
+        )
+        controlRejection <- IO.fromEither(
+          decode[RejectionWire](controlResponse.body).leftMap(new IllegalStateException(_))
+        )
+        stateAfterControl <- harness.runtime.snapshotState
+      yield
+        assertEquals(eventResponse.status, 200)
+        assertEquals(eventLines.map(_.kind), Vector("rejection"))
+        assertEquals(eventLines.flatMap(_.rejection).map(_.reason), Vector("preOpenEventTraffic"))
+        assertEquals(
+          stateAfterEvent.engine.sessionById(openingEventSession).map(_.status),
+          Some(DirectionalSessionStatus.Closed),
+        )
+        assertEquals(controlResponse.status, 400)
+        assertEquals(controlRejection.reason, "preOpenControlTraffic")
+        assertEquals(
+          stateAfterControl.engine.sessionById(openingControlSession).map(_.status),
+          Some(DirectionalSessionStatus.Closed),
+        )
+
   private def decodeNdjson[A: Decoder](body: String): IO[Vector[A]] =
     body.linesIterator.toVector.filter(_.nonEmpty).traverse: line =>
       IO.fromEither(decode[A](line).leftMap(new IllegalStateException(_)))
+
+  private def toProposalWire(
+      proposal: SessionOpenProposal,
+  ): SessionOpenProposalWire =
+    SessionOpenProposalWire(
+      sessionId = proposal.sessionId.value,
+      peerCorrelationId = proposal.peerCorrelationId.value,
+      initiator = proposal.initiator.value,
+      acceptor = proposal.acceptor.value,
+      subscriptions = proposal.subscriptions.values.toVector.map(ct => ChainTopicWire(ct.chainId.value, ct.topic.value)),
+      heartbeatIntervalMs = proposal.heartbeatInterval.map(_.toMillis),
+      livenessTimeoutMs = proposal.livenessTimeout.map(_.toMillis),
+      maxControlRetryIntervalMs = proposal.maxControlRetryInterval.map(_.toMillis),
+    )
+
+  private def toAck(
+      wire: SessionOpenAckWire,
+  ): Either[String, SessionOpenAck] =
+    for
+      sessionId <- DirectionalSessionId.parse(wire.sessionId)
+      peerCorrelationId <- PeerCorrelationId.parse(wire.peerCorrelationId)
+      initiator <- PeerIdentity.parse(wire.initiator)
+      acceptor <- PeerIdentity.parse(wire.acceptor)
+      subscriptions <- wire.subscriptions.toVector
+        .traverse: entry =>
+          for
+            chainId <- ChainId.parse(entry.chainId)
+            topic <- GossipTopic.parse(entry.topic)
+          yield ChainTopic(chainId, topic)
+        .map(_.toSet)
+        .flatMap(SessionSubscription.fromSet)
+    yield SessionOpenAck(
+      sessionId = sessionId,
+      peerCorrelationId = peerCorrelationId,
+      initiator = initiator,
+      acceptor = acceptor,
+      subscriptions = subscriptions,
+      negotiated = NegotiatedSessionParameters(
+        heartbeatInterval = Duration.ofMillis(wire.heartbeatIntervalMs),
+        livenessTimeout = Duration.ofMillis(wire.livenessTimeoutMs),
+        maxControlRetryInterval = Duration.ofMillis(wire.maxControlRetryIntervalMs),
+      ),
+    )
+
+  private def openOutboundViaHttp(
+      from: Harness,
+      to: Harness,
+  ): IO[OpenedSession] =
+    for
+      proposalEither <- from.runtime.startOutbound(PeerIdentity.unsafe(to.localNodeId), subscription)
+      proposal <- IO.fromEither(proposalEither.leftMap(rejection => new IllegalStateException(rejection.reason)))
+      response <- to.postJson("/gossip/session/open", toProposalWire(proposal).asJson.noSpaces)
+      ackWire <- IO.fromEither(decode[SessionOpenAckWire](response.body).leftMap(new IllegalStateException(_)))
+      ack <- IO.fromEither(toAck(ackWire).leftMap(new IllegalArgumentException(_)))
+      applyResult <- from.runtime.applyHandshakeAck(ack)
+      _ <- IO.fromEither(applyResult.leftMap(rejection => new IllegalStateException(rejection.reason)))
+    yield OpenedSession(proposal, ack)
 
   private final case class Response(
       status: Int,
       body: String,
   )
 
+  private final case class OpenedSession(
+      proposal: SessionOpenProposal,
+      ack: SessionOpenAck,
+  )
+
   private final case class Harness(
+      localNodeId: String,
+      remoteNodeId: String,
       runtime: TxGossipRuntime[IO, TestTx],
       source: InMemoryTxArtifactSource[IO, TestTx],
       clock: TestClock,
@@ -421,16 +654,23 @@ final class TxGossipArmeriaAdapterSuite extends CatsEffectSuite:
         Response(response.statusCode(), response.body())
 
     def openOutboundLocally: IO[DirectionalSessionId] =
+      openOutboundLocally()
+
+    def openOutboundLocally(
+        heartbeatInterval: Duration = Duration.ofSeconds(10),
+        livenessTimeout: Duration = Duration.ofSeconds(30),
+        maxControlRetryInterval: Duration = Duration.ofSeconds(30),
+    ): IO[DirectionalSessionId] =
       for
-        proposalEither <- runtime.startOutbound(PeerIdentity.unsafe("node-b"), subscription)
+        proposalEither <- runtime.startOutbound(PeerIdentity.unsafe(remoteNodeId), subscription)
         proposal <- IO.fromEither(proposalEither.leftMap(rejection => new IllegalStateException(rejection.reason)))
         ack <- IO.fromEither(
           SessionNegotiation
             .acknowledge(
               proposal = proposal,
-              heartbeatInterval = Duration.ofSeconds(10),
-              livenessTimeout = Duration.ofSeconds(30),
-              maxControlRetryInterval = Duration.ofSeconds(30),
+              heartbeatInterval = heartbeatInterval,
+              livenessTimeout = livenessTimeout,
+              maxControlRetryInterval = maxControlRetryInterval,
             )
             .leftMap(rejection => new IllegalStateException(rejection.reason))
         )
@@ -438,16 +678,38 @@ final class TxGossipArmeriaAdapterSuite extends CatsEffectSuite:
         _ <- IO.fromEither(applied.leftMap(rejection => new IllegalStateException(rejection.reason)))
       yield proposal.sessionId
 
+    def startOutboundOpening: IO[DirectionalSessionId] =
+      runtime
+        .startOutbound(PeerIdentity.unsafe(remoteNodeId), subscription)
+        .flatMap(result => IO.fromEither(result.leftMap(rejection => new IllegalStateException(rejection.reason))))
+        .map(_.sessionId)
+
+  private final case class MeshHarness(
+      a: Harness,
+      b: Harness,
+  )
+
+  private object MeshHarness:
+    def resource(start: Instant): Resource[IO, MeshHarness] =
+      for
+        a <- Harness.resource(start, localNodeId = "node-a", remoteNodeId = "node-b")
+        b <- Harness.resource(start, localNodeId = "node-b", remoteNodeId = "node-a")
+      yield MeshHarness(a = a, b = b)
+
   private object Harness:
-    def resource(start: Instant): Resource[IO, Harness] =
+    def resource(
+        start: Instant,
+        localNodeId: String = "node-a",
+        remoteNodeId: String = "node-b",
+    ): Resource[IO, Harness] =
       for
         topology <- Resource.eval(
           IO.fromEither(
             StaticPeerTopology
               .parse(
-                localNodeIdentity = "node-a",
-                knownPeers = List("node-b"),
-                directNeighbors = List("node-b"),
+                localNodeIdentity = localNodeId,
+                knownPeers = List(remoteNodeId),
+                directNeighbors = List(remoteNodeId),
               )
               .leftMap(new IllegalArgumentException(_))
           )
@@ -455,6 +717,7 @@ final class TxGossipArmeriaAdapterSuite extends CatsEffectSuite:
         registry = StaticPeerRegistry(topology)
         authenticator = StaticPeerAuthenticator[IO](registry)
         clock <- Resource.eval(TestClock.create(start))
+        given GossipClock[IO] = clock
         source <- Resource.eval(InMemoryTxArtifactSource.create[IO, TestTx])
         sink <- Resource.eval(InMemoryTxArtifactSink.create[IO, TestTx])
         stateStore <- Resource.eval(TxGossipStateStore.inMemory[IO](GossipSessionEngine(registry.localPeer, topology)))
@@ -471,6 +734,8 @@ final class TxGossipArmeriaAdapterSuite extends CatsEffectSuite:
           TxGossipArmeriaAdapter.endpoints[IO, TestTx](runtime),
         )
       yield Harness(
+        localNodeId = localNodeId,
+        remoteNodeId = remoteNodeId,
         runtime = runtime,
         source = source,
         clock = clock,
@@ -480,6 +745,9 @@ final class TxGossipArmeriaAdapterSuite extends CatsEffectSuite:
   private final class TestClock private (ref: Ref[IO, Instant]) extends GossipClock[IO]:
     override def now: IO[Instant] =
       ref.get
+
+    def advance(duration: Duration): IO[Unit] =
+      ref.update(_.plus(duration))
 
   private object TestClock:
     def create(instant: Instant): IO[TestClock] =

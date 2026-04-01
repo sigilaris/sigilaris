@@ -1,7 +1,7 @@
 # 0003 - Multiplexed Gossip Session Sync Plan
 
 ## Status
-Phase 3 Complete; Phase 3A Gap Closure And Armeria Parity Hardening Planned
+Phase 3A Complete; Tx HTTP Baseline And Substrate Hardening Landed
 
 ## Created
 2026-03-28
@@ -21,6 +21,7 @@ Phase 3 Complete; Phase 3A Gap Closure And Armeria Parity Hardening Planned
 - 위 리뷰는 landed runtime model, Armeria request path, bootstrap wiring, test coverage를 이 문서의 checklist / acceptance criteria 와 대조하는 방식으로 수행했다.
 - Phase 3A scope 는 위 confirmed gap closure 외에도 Armeria parity hardening 항목으로 `half-open -> open` recovery re-handshake 와 reconnect 후 filter state reset 의 end-to-end verification을 포함한다.
 - 기존 Phase 0-3 checklist 는 처음 landed slice 를 기록하고, 위 implementation-review gap closure 와 추가 Armeria parity hardening 은 이 문서의 Phase 3A 에서 별도로 추적한다.
+- `2026-04-01` Phase 3A gap closure implementation 이 landed 되면서 negotiated liveness/opening timeout wiring, pre-open reject-and-close, producer-local batching clock, static peer config bootstrap, topic-neutral producer seam, half-open re-handshake, reconnect filter reset, 그리고 대응 regression test 가 모두 compile/test 기준으로 green 상태가 되었다.
 
 ## Goal
 - `sigilaris-node-jvm` 안에 runtime-owned gossip/session sync substrate를 도입한다.
@@ -286,21 +287,21 @@ Phase 3 Complete; Phase 3A Gap Closure And Armeria Parity Hardening Planned
 - [x] docs / README 갱신
 
 ### Phase 3A: Post-Implementation Gap Closure And Armeria Parity Hardening
-- [ ] `3A-1` negotiated heartbeat/liveness timer 와 opening timeout end-to-end wiring 추가
-- [ ] `3A-2` pre-open event/control reject-and-close 를 runtime / Armeria request path 에 연결
-- [ ] `3A-3` `tx.flushIntervalMs` batching clock 를 `GossipEvent.ts` 와 분리
-- [ ] `3A-4` static peer config loader / runtime bootstrap / transport admission wiring 추가
-- [ ] `3A-5` topic-neutral producer session state / polling / QoS hook hardening
-- [ ] `3A-6` `half-open -> open` recovery 의 Armeria parity hardening 추가
-- [ ] `3A-7` reconnect filter reset 의 Armeria parity hardening 추가
-- [ ] `3A-8` liveness / opening-timeout integration regression test green
-- [ ] `3A-9` pre-open reject-and-close integration regression test green
-- [ ] `3A-10` batching clock regression test green
-- [ ] `3A-11` bootstrap regression test green
-- [ ] `3A-12` seam regression test green
-- [ ] `3A-13` half-open recovery Armeria regression test green
-- [ ] `3A-14` reconnect filter reset Armeria regression test green
-- [ ] `3A-15` README / ADR / plan wording refresh
+- [x] `3A-1` negotiated heartbeat/liveness timer 와 opening timeout end-to-end wiring 추가
+- [x] `3A-2` pre-open event/control reject-and-close 를 runtime / Armeria request path 에 연결
+- [x] `3A-3` `tx.flushIntervalMs` batching clock 를 `GossipEvent.ts` 와 분리
+- [x] `3A-4` static peer config loader / runtime bootstrap / transport admission wiring 추가
+- [x] `3A-5` topic-neutral producer session state / polling / QoS hook hardening
+- [x] `3A-6` `half-open -> open` recovery 의 Armeria parity hardening 추가
+- [x] `3A-7` reconnect filter reset 의 Armeria parity hardening 추가
+- [x] `3A-8` liveness / opening-timeout integration regression test green
+- [x] `3A-9` pre-open reject-and-close integration regression test green
+- [x] `3A-10` batching clock regression test green
+- [x] `3A-11` bootstrap regression test green
+- [x] `3A-12` seam regression test green
+- [x] `3A-13` half-open recovery Armeria regression test green
+- [x] `3A-14` reconnect filter reset Armeria regression test green
+- [x] `3A-15` README / ADR / plan wording refresh
 
 ## Follow-Ups
 - `docs/plans/0004-hotstuff-consensus-without-threshold-signatures-plan.md`에서 HotStuff proposal/vote/QC integration을 진행한다.

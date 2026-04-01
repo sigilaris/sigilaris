@@ -1,7 +1,7 @@
 # ADR-0016: Multiplexed Gossip Session Sync Substrate
 
 ## Status
-Proposed
+Accepted
 
 ## Context
 - `sigilaris`는 현재 `sigilaris-core`와 JVM node bundle `sigilaris-node-jvm`을 중심으로 구성되어 있고, 향후 P2P networking과 node discovery는 아직 "coming soon" 영역으로 남아 있다.
@@ -13,9 +13,10 @@ Proposed
 - 따라서 이 ADR은 transport-neutral gossip/session substrate만 고정하고, consensus-specific artifact contract는 별도 ADR이 소유한다. HotStuff non-threshold-signature baseline은 ADR-0017이 담당한다.
 - 초기 deployment topology와 node role 운영 baseline은 ADR-0018이 소유한다. 이 ADR은 peer discovery나 validator admission policy 자체를 고정하지 않고, gossip substrate가 그 위에서 동작할 수 있는 transport/runtime contract만 다룬다.
 - 현재 `docs/plans/0002-sigilaris-node-jvm-extraction-plan.md`는 multi-node networking을 범위 밖으로 두고 있으므로, 이 ADR은 현재 extraction plan의 즉시 구현 범위를 넓히는 문서가 아니라 후속 networking 설계를 고정하기 위한 정책 문서다.
+- `2026-04-01` 기준 `sigilaris-node-jvm`에는 tx-topic gossip/session baseline이 landed 되었고, negotiated liveness wiring, pre-open reject-and-close, static peer config bootstrap, topic-neutral producer polling/QoS seam, half-open re-handshake, reconnect filter reset까지 HTTP baseline에 반영되었다. snapshot/backfill, production auth binding, consensus topic semantics는 여전히 follow-up 범위다.
 
 ## Decision
-이 절의 규칙은 networking/session sync 구현이 실제로 범위에 들어올 때 적용할 미래 지향적 normative policy이며, 현재 `sigilaris-node-jvm` 코드가 즉시 이 계약을 이미 구현하고 있어야 한다는 뜻은 아니다.
+이 절의 규칙은 `sigilaris-node-jvm`의 shipped tx-topic HTTP baseline과 follow-up topic/runtime work 모두에 적용되는 normative policy다. 현재 구현은 tx-topic anti-entropy와 static peer topology baseline을 제공하지만, snapshot/backfill, production-grade peer authentication binding, consensus topic semantics는 여전히 follow-up 범위다.
 
 1. **Peer synchronization은 endpoint-per-type RPC가 아니라 session-based anti-entropy protocol로 정의한다.**
    - canonical 모델은 방향성을 가진 "peer session"이며, session은 한 producer에서 한 consumer로 향하는 delta 전송 흐름과 그에 대한 known-set 교환, replay/backfill, heartbeat를 포함한다.
