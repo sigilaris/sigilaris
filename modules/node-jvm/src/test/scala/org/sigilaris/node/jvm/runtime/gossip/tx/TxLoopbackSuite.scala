@@ -354,6 +354,37 @@ final class TxLoopbackSuite extends CatsEffectSuite:
     yield
       assertEquals(extractEvents(replayMessages).map(_.payload.body), Vector("tx-1", "tx-2"))
 
+  test("receiveEvents does not refresh inbound activity when artifact validation rejects"):
+    for
+      a <- Harness.create("node-a", "node-b", baseInstant)
+      b <- Harness.create("node-b", "node-a", baseInstant)
+      opened <- openOutbound(a, b)
+      sessionId = opened.proposal.sessionId
+      before <- b.runtime.snapshotState
+      _ <- b.clock.advance(Duration.ofSeconds(5))
+      rejected <- b.runtime.receiveEvents(
+        sessionId,
+        Vector(
+          EventStreamMessage.Event(
+            GossipEvent(
+              chainId = chainId,
+              topic = GossipTopic.unsafe("audit"),
+              id = StableArtifactId.unsafeFromHex("01"),
+              cursor = CursorToken.issue(ByteVector.fromLong(1L)),
+              ts = baseInstant,
+              payload = TestTx("bad"),
+            )
+          )
+        ),
+      )
+      after <- b.runtime.snapshotState
+    yield
+      assertEquals(rejected.left.map(_.rejectionClass), Left("artifactContractRejected"))
+      assertEquals(
+        after.engine.sessionById(sessionId).map(_.lastActivityAt),
+        before.engine.sessionById(sessionId).map(_.lastActivityAt),
+      )
+
   private def openOutbound(
       from: Harness,
       to: Harness,

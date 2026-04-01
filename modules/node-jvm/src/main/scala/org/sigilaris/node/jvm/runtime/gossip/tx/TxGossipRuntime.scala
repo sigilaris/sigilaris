@@ -258,6 +258,7 @@ final class TxGossipRuntime[F[_]: Sync, A](
               rejection.asLeft[ControlBatchOutcome].pure[F]
             case Right(()) =>
               stateStore.modify: state =>
+                // Defensive reaping: state may have changed since snapshotAt(now).
                 val currentState = expireState(state, now)
                 openOutboundProducerSession(currentState, sessionId).fold(
                   rejection => currentState -> Left(rejection),
@@ -298,6 +299,7 @@ final class TxGossipRuntime[F[_]: Sync, A](
                   rejection.asLeft[Vector[EventStreamMessage[A]]].pure[F]
                 case Right((updatedSession, emittedEvents)) =>
                   stateStore.modify: state =>
+                    // Defensive reaping: state may have changed since snapshotAt(now).
                     val currentState = expireState(state, now)
                     currentState.outboundSessions.get(sessionId) match
                       case None =>
@@ -326,50 +328,52 @@ final class TxGossipRuntime[F[_]: Sync, A](
         openInboundConsumerSession(state, sessionId).fold(
           rejection => rejection.asLeft[TxReceiveEventsResult[A]].pure[F],
           _ =>
-            (
-              stateStore.modify: current =>
-                val currentState = expireState(current, now)
-                touchSessionActivity(currentState, sessionId, now) match
-                  case Left(rejection) =>
-                    currentState -> rejection.asLeft[TxReceiveEventsResult[A]]
-                  case Right(updatedState) =>
-                    updatedState -> Right(())
-            ).flatMap:
-              case Left(rejection) =>
-                rejection.asLeft[TxReceiveEventsResult[A]].pure[F]
-              case Right(_) =>
-                messages.foldLeftM(
-                  TxReceiveEventsResult[A](
-                    applied = Vector.empty,
-                    duplicates = Vector.empty,
-                    lastCursor = None,
-                  ).asRight[CanonicalRejection]
-                ):
-                  case (left @ Left(_), _) =>
-                    left.pure[F]
-                  case (Right(result), EventStreamMessage.KeepAlive(_, _)) =>
-                    Right(result).pure[F]
-                  case (_, EventStreamMessage.Rejection(rejection)) =>
-                    rejection.asLeft[TxReceiveEventsResult[A]].pure[F]
-                  case (Right(result), EventStreamMessage.Event(event)) =>
-                    validateAndApplyEvent(event).map:
-                      case Left(rejection) =>
-                        Left(rejection)
-                      case Right(applyResult) =>
-                        if applyResult.duplicate then
-                          Right(
-                            result.copy(
-                              duplicates = result.duplicates :+ event,
-                              lastCursor = Some(event.cursor),
-                            )
+            messages
+              .foldLeftM(
+                TxReceiveEventsResult[A](
+                  applied = Vector.empty,
+                  duplicates = Vector.empty,
+                  lastCursor = None,
+                ).asRight[CanonicalRejection]
+              ):
+                case (left @ Left(_), _) =>
+                  left.pure[F]
+                case (Right(result), EventStreamMessage.KeepAlive(_, _)) =>
+                  Right(result).pure[F]
+                case (_, EventStreamMessage.Rejection(rejection)) =>
+                  rejection.asLeft[TxReceiveEventsResult[A]].pure[F]
+                case (Right(result), EventStreamMessage.Event(event)) =>
+                  validateAndApplyEvent(event).map:
+                    case Left(rejection) =>
+                      Left(rejection)
+                    case Right(applyResult) =>
+                      if applyResult.duplicate then
+                        Right(
+                          result.copy(
+                            duplicates = result.duplicates :+ event,
+                            lastCursor = Some(event.cursor),
                           )
-                        else
-                          Right(
-                            result.copy(
-                              applied = result.applied :+ event,
-                              lastCursor = Some(event.cursor),
-                            )
+                        )
+                      else
+                        Right(
+                          result.copy(
+                            applied = result.applied :+ event,
+                            lastCursor = Some(event.cursor),
                           )
+                        )
+              .flatMap:
+                case left @ Left(_) =>
+                  left.pure[F]
+                case right @ Right(_) if messages.isEmpty =>
+                  right.pure[F]
+                case right @ Right(_) =>
+                  stateStore.modify: current =>
+                    // Defensive reaping: state may have changed since snapshotAt(now).
+                    val currentState = expireState(current, now)
+                    touchSessionActivity(currentState, sessionId, now).fold(
+                      rejection => currentState -> Left(rejection),
+                      updatedState => updatedState -> right,
+                    )
       )
 
   def eventKeepAlive(
@@ -387,6 +391,7 @@ final class TxGossipRuntime[F[_]: Sync, A](
             _.asLeft[EventStreamMessage[A]].pure[F],
             _ =>
               stateStore.modify: current =>
+                // Defensive reaping: state may have changed since snapshotAt(now).
                 val currentState = expireState(current, now)
                 touchSessionActivity(currentState, sessionId, now).fold(
                   rejection => currentState -> Left(rejection),
@@ -412,6 +417,7 @@ final class TxGossipRuntime[F[_]: Sync, A](
             _.asLeft[ControlChannelMessage].pure[F],
             _ =>
               stateStore.modify: current =>
+                // Defensive reaping: state may have changed since snapshotAt(now).
                 val currentState = expireState(current, now)
                 touchSessionActivity(currentState, sessionId, now).fold(
                   rejection =>
@@ -737,16 +743,9 @@ final class TxGossipRuntime[F[_]: Sync, A](
       candidates: Vector[AvailableGossipEvent[A]],
       selectedEvents: Vector[GossipEvent[A]],
   ): Vector[AvailableGossipEvent[A]] =
-    selectedEvents
-      .foldLeft((candidates, Vector.empty[AvailableGossipEvent[A]])):
-        case ((remaining, acc), selectedEvent) =>
-          val index = remaining.indexWhere(_.event == selectedEvent)
-          if index < 0 then
-            remaining -> acc
-          else
-            val matched = remaining(index)
-            remaining.patch(index, Nil, 1) -> (acc :+ matched)
-      ._2
+    val byCursor =
+      candidates.iterator.map(candidate => candidate.event.cursor -> candidate).toMap
+    selectedEvents.flatMap(event => byCursor.get(event.cursor))
 
   private def positiveIntConfig(
       key: String,

@@ -66,10 +66,11 @@ object GossipProducerPolling:
     else
       val threshold = qos.maxBatchItems.min(limit)
       val availableSince = candidates.head.availableAt
-      val flushByCount = threshold > 0 && candidates.size >= threshold
-      val flushByInterval = threshold > 0 && !now.isBefore(availableSince.plus(qos.flushInterval))
       if threshold <= 0 then Vector.empty
-      else if forceFlush || flushByCount || flushByInterval then
-        candidates.take(threshold).map(_.event)
       else
-        Vector.empty
+        val flushByCount = candidates.size >= threshold
+        val flushByInterval = !now.isBefore(availableSince.plus(qos.flushInterval))
+        if forceFlush || flushByCount || flushByInterval then
+          candidates.take(threshold).map(_.event)
+        else
+          Vector.empty
