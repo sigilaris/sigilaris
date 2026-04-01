@@ -135,6 +135,8 @@ opaque type GossipTopic = String
 
 object GossipTopic:
   val tx: GossipTopic = "tx"
+  val consensusProposal: GossipTopic = "consensus.proposal"
+  val consensusVote: GossipTopic = "consensus.vote"
 
   def parse(value: String): Either[String, GossipTopic] =
     GossipFieldValidation.validateTopic(value).map(_ => value)
@@ -199,6 +201,47 @@ object StableArtifactId:
   extension (id: StableArtifactId)
     def bytes: ByteVector = id
     def toHexLower: String = id.toHex
+
+opaque type TopicWindowKey = ByteVector
+
+object TopicWindowKey:
+  def fromBytes(
+      bytes: ByteVector,
+  ): Either[String, TopicWindowKey] =
+    Either.cond(bytes.nonEmpty, bytes, "topic window key must not be empty")
+
+  def fromHex(
+      value: String,
+  ): Either[String, TopicWindowKey] =
+    ByteVector
+      .fromHexDescriptive(value)
+      .left
+      .map(error => s"invalid topic window key hex: $error")
+      .flatMap(fromBytes)
+
+  def unsafeFromHex(
+      value: String,
+  ): TopicWindowKey =
+    fromHex(value) match
+      case Right(windowKey) => windowKey
+      case Left(error)      => throw new IllegalArgumentException(error)
+
+  def unsafeFromBytes(
+      bytes: ByteVector,
+  ): TopicWindowKey =
+    fromBytes(bytes) match
+      case Right(windowKey) => windowKey
+      case Left(error)      => throw new IllegalArgumentException(error)
+
+  extension (windowKey: TopicWindowKey)
+    def bytes: ByteVector = windowKey
+    def toHexLower: String = windowKey.toHex
+
+final case class ExactKnownSetScope(
+    chainId: ChainId,
+    topic: GossipTopic,
+    windowKey: TopicWindowKey,
+)
 
 opaque type CursorToken = ByteVector
 
@@ -278,9 +321,11 @@ object GossipFilter:
 enum ControlOpKind(val wireName: String):
   case SetFilter extends ControlOpKind("setFilter")
   case SetKnownTx extends ControlOpKind("setKnown.tx")
+  case SetKnownExact extends ControlOpKind("setKnown.exact")
   case SetCursor extends ControlOpKind("setCursor")
   case Nack extends ControlOpKind("nack")
   case RequestByIdTx extends ControlOpKind("requestById.tx")
+  case RequestByIdExact extends ControlOpKind("requestById.exact")
   case Config extends ControlOpKind("config")
 
 object ControlOpKind:
@@ -314,9 +359,11 @@ object SessionConfigKey:
 enum ControlOp:
   case SetFilter(chainId: ChainId, topic: GossipTopic, filter: GossipFilter)
   case SetKnownTx(chainId: ChainId, ids: Vector[StableArtifactId])
+  case SetKnownExact(scope: ExactKnownSetScope, ids: Vector[StableArtifactId])
   case SetCursor(cursor: CompositeCursor)
   case Nack(chainId: ChainId, topic: GossipTopic, cursor: Option[CursorToken])
   case RequestByIdTx(chainId: ChainId, ids: Vector[StableArtifactId])
+  case RequestByIdExact(scope: ExactKnownSetScope, ids: Vector[StableArtifactId])
   case Config(values: Map[SessionConfigKey, Long])
 
 opaque type ControlIdempotencyKey = String
@@ -600,3 +647,14 @@ enum ControlChannelMessage:
 trait GossipTopicContract[A]:
   def topic: GossipTopic
   def validateArtifact(event: GossipEvent[A]): Either[CanonicalRejection.ArtifactContractRejected, Unit]
+  def exactKnownScopeOf(
+      @annotation.unused event: GossipEvent[A],
+  ): Either[CanonicalRejection.ArtifactContractRejected, Option[ExactKnownSetScope]] =
+    Right(None)
+  def exactKnownSetLimit: Option[Int] = None
+  def requestByIdLimit: Option[Int] = None
+  def deliveryPriority: Int = 0
+  def producerQoS(
+      default: GossipProducerQoS,
+  ): GossipProducerQoS =
+    default
