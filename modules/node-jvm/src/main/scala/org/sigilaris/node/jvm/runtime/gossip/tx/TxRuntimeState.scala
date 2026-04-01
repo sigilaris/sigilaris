@@ -46,8 +46,10 @@ final case class TxProducerSessionState(
     streamCursor: CompositeCursor = CompositeCursor.empty,
     filters: Map[ChainId, GossipFilter.TxBloomFilter] = Map.empty,
     exactKnownIds: Map[ChainId, Set[StableArtifactId]] = Map.empty,
+    exactKnownScopeIds: Map[ExactKnownSetScope, Set[StableArtifactId]] = Map.empty,
     pendingReplay: Map[ChainTopic, Option[CursorToken]] = Map.empty,
     pendingRequestByIds: Map[ChainId, Vector[StableArtifactId]] = Map.empty,
+    pendingRequestScopeIds: Map[ExactKnownSetScope, Vector[StableArtifactId]] = Map.empty,
     idempotencyKeys: Map[ControlIdempotencyKey, Instant] = Map.empty,
     batchingConfig: TxBatchingConfig = TxBatchingConfig.default,
 ):

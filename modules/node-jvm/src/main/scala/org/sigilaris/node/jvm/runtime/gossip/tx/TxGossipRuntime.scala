@@ -476,6 +476,51 @@ final class TxGossipRuntime[F[_]: Sync, A](
                     missing.map(_.toHexLower).mkString(","),
                   ),
                 )
+          case (Right(_), ControlOp.RequestByIdExact(scope, ids)) =>
+            openExactKnownContract(scope.topic) match
+              case Left(rejection) =>
+                rejection.asLeft[Unit].pure[F]
+              case Right(contract) =>
+                val distinctIds = ids.distinct
+                contract.requestByIdLimit match
+                  case Some(limit) if distinctIds.size > limit =>
+                    controlRejected(
+                      "requestByIdTooLarge",
+                      s"max=$limit actual=${distinctIds.size}",
+                    ).asLeft[Unit].pure[F]
+                  case Some(_) =>
+                    source.readByIds(scope.chainId, scope.topic, distinctIds).map: events =>
+                      val (wrongWindow, foundIds) =
+                        events.foldLeft((Vector.empty[StableArtifactId], Set.empty[StableArtifactId])):
+                          case ((wrongWindowAcc, foundAcc), available) =>
+                            contract.exactKnownScopeOf(available.event) match
+                              case Right(Some(eventScope)) if eventScope == scope =>
+                                wrongWindowAcc -> (foundAcc + available.event.id)
+                              case Right(Some(_)) =>
+                                (wrongWindowAcc :+ available.event.id) -> foundAcc
+                              case Right(None) =>
+                                (wrongWindowAcc :+ available.event.id) -> foundAcc
+                              case Left(_) =>
+                                (wrongWindowAcc :+ available.event.id) -> foundAcc
+                      val missing = distinctIds.filterNot(foundIds.contains)
+                      if wrongWindow.nonEmpty then
+                        Left(
+                          controlRejected(
+                            "wrongWindowKey",
+                            wrongWindow.map(_.toHexLower).mkString(","),
+                          )
+                        )
+                      else
+                        Either.cond(
+                          missing.isEmpty,
+                          (),
+                          controlRejected(
+                            "unknownRequestedArtifact",
+                            missing.map(_.toHexLower).mkString(","),
+                          ),
+                        )
+                  case None =>
+                    controlRejected("unsupportedTopic", scope.topic.value).asLeft[Unit].pure[F]
           case (Right(_), _) =>
             Right(()).pure[F]
     )
@@ -533,6 +578,26 @@ final class TxGossipRuntime[F[_]: Sync, A](
             ),
           )
 
+      case ControlOp.SetKnownExact(scope, ids) =>
+        validateExactKnownSubscription(sessionState, scope).flatMap: contract =>
+          val distinctNewIds = ids.toSet
+          val existing = sessionState.exactKnownScopeIds.getOrElse(scope, Set.empty)
+          val mergedIds = existing ++ distinctNewIds
+          contract.exactKnownSetLimit match
+            case Some(limit) =>
+              Either.cond(
+                distinctNewIds.size <= limit && mergedIds.size <= limit,
+                sessionState.copy(
+                  exactKnownScopeIds = sessionState.exactKnownScopeIds.updated(scope, mergedIds)
+                ),
+                controlRejected(
+                  "setKnownTooLarge",
+                  s"max=$limit actual=${mergedIds.size}",
+                ),
+              )
+            case None =>
+              Left(controlRejected("unsupportedTopic", scope.topic.value))
+
       case ControlOp.SetCursor(cursor) =>
         val unsupportedKeys =
           cursor.values.keySet.filterNot(sessionState.subscriptions.contains)
@@ -548,7 +613,7 @@ final class TxGossipRuntime[F[_]: Sync, A](
         )
 
       case ControlOp.Nack(chainId, topic, cursor) =>
-        validateTxSubscription(sessionState, chainId, topic).map: _ =>
+        validateSubscription(sessionState, chainId, topic).map: _ =>
           sessionState.withProducerState(
             sessionState.producerState.withReplay(ChainTopic(chainId, topic), cursor)
           )
@@ -569,6 +634,30 @@ final class TxGossipRuntime[F[_]: Sync, A](
               s"max=${policy.maxTxRequestIds} actual=${distinctIds.size}",
             ),
           )
+
+      case ControlOp.RequestByIdExact(scope, ids) =>
+        validateExactKnownSubscription(sessionState, scope).flatMap: contract =>
+          val distinctIds = ids.distinct
+          contract.requestByIdLimit match
+            case Some(limit) =>
+              Either.cond(
+                distinctIds.size <= limit,
+                sessionState.copy(
+                  pendingRequestScopeIds = sessionState.pendingRequestScopeIds.updated(
+                    scope,
+                    appendUnique(
+                      sessionState.pendingRequestScopeIds.getOrElse(scope, Vector.empty),
+                      distinctIds,
+                    ),
+                  )
+                ),
+                controlRejected(
+                  "requestByIdTooLarge",
+                  s"max=$limit actual=${distinctIds.size}",
+                ),
+              )
+            case None =>
+              Left(controlRejected("unsupportedTopic", scope.topic.value))
 
       case ControlOp.Config(values) =>
         values.foldLeft[Either[CanonicalRejection.ControlBatchRejected, TxBatchingConfig]](
@@ -591,8 +680,14 @@ final class TxGossipRuntime[F[_]: Sync, A](
       sessionState: TxProducerSessionState,
   ): F[Either[CanonicalRejection, (TxProducerSessionState, Vector[GossipEvent[A]])]] =
     sessionState.subscriptions.values.toVector
-      .filter(_.topic == GossipTopic.tx)
-      .sortBy(chainTopic => chainTopic.chainId.value)
+      .sortBy: chainTopic =>
+        val priority =
+          topicContracts
+            .contractFor(chainTopic.topic)
+            .toOption
+            .map(_.deliveryPriority)
+            .getOrElse(0)
+        (-priority, chainTopic.chainId.value, chainTopic.topic.value)
       .foldLeftM(
         (
           sessionState,
@@ -602,13 +697,24 @@ final class TxGossipRuntime[F[_]: Sync, A](
         case (Left(rejection), _) =>
           Left(rejection).pure[F]
         case (Right((currentState, emitted)), chainTopic) =>
-          pollChain(now, currentState, chainTopic).map:
-            case Left(rejection) =>
-              Left(rejection)
-            case Right((updatedState, chainEvents)) =>
-              Right(updatedState -> (emitted ++ chainEvents))
+          if chainTopic.topic == GossipTopic.tx then
+            pollTxChain(now, currentState, chainTopic).map:
+              case Left(rejection) =>
+                Left(rejection)
+              case Right((updatedState, chainEvents)) =>
+                Right(updatedState -> (emitted ++ chainEvents))
+          else
+            topicContracts.contractFor(chainTopic.topic) match
+              case Left(rejection) =>
+                rejection.asLeft[(TxProducerSessionState, Vector[GossipEvent[A]])].pure[F]
+              case Right(contract) =>
+                pollExactKnownChain(now, currentState, chainTopic, contract).map:
+                  case Left(rejection) =>
+                    Left(rejection)
+                  case Right((updatedState, chainEvents)) =>
+                    Right(updatedState -> (emitted ++ chainEvents))
 
-  private def pollChain(
+  private def pollTxChain(
       now: Instant,
       sessionState: TxProducerSessionState,
       chainTopic: ChainTopic,
@@ -662,6 +768,84 @@ final class TxGossipRuntime[F[_]: Sync, A](
           )
           updatedState -> emitted
 
+  private def pollExactKnownChain(
+      now: Instant,
+      sessionState: TxProducerSessionState,
+      chainTopic: ChainTopic,
+      contract: GossipTopicContract[A],
+  ): F[Either[CanonicalRejection, (TxProducerSessionState, Vector[GossipEvent[A]])]] =
+    val requestedScopes =
+      sessionState.pendingRequestScopeIds.toVector.collect:
+        case (scope, ids) if scope.chainId == chainTopic.chainId && scope.topic == chainTopic.topic =>
+          scope -> ids
+
+    val requestedIds = requestedScopes.flatMap(_._2).distinct
+    val producerState = sessionState.producerState
+    val cursorOverride = producerState.pendingReplay.get(chainTopic)
+    val startCursor = cursorOverride.getOrElse(producerState.startCursorFor(chainTopic))
+    val qos = contract.producerQoS(sessionState.batchingConfig)
+
+    for
+      explicitArtifacts <-
+        if requestedIds.isEmpty then Vector.empty[AvailableGossipEvent[A]].pure[F]
+        else source.readByIds(chainTopic.chainId, chainTopic.topic, requestedIds)
+      afterCursor <- source.readAfter(chainTopic.chainId, chainTopic.topic, startCursor)
+    yield
+      val explicitResult = explicitArtifacts.traverse: available =>
+        contract.exactKnownScopeOf(available.event).map(scope => scope -> available)
+
+      afterCursor.flatMap: candidates =>
+        explicitResult.flatMap: scopedExplicitArtifacts =>
+          val requestedScopeSet = requestedScopes.map(_._1).toSet
+          val explicitMatched =
+            scopedExplicitArtifacts.collect:
+              case (Some(scope), available) if requestedScopeSet.contains(scope) =>
+                scope -> available
+          val explicitEvents = explicitMatched.map(_._2.event)
+          val liveCandidates = candidates.filterNot(candidate => explicitEvents.exists(_.id == candidate.event.id))
+          liveCandidates
+            .traverse: candidate =>
+              contract.exactKnownScopeOf(candidate.event).map(scope => scope -> candidate)
+            .map: scopedLiveCandidates =>
+              val filteredLiveArtifacts =
+                scopedLiveCandidates.collect:
+                  case (Some(scope), candidate)
+                      if !sessionState.exactKnownScopeIds.getOrElse(scope, Set.empty).contains(candidate.event.id) =>
+                    candidate
+              val explicitBatch = explicitEvents.take(qos.maxBatchItems)
+              val remainingCapacity = (qos.maxBatchItems - explicitBatch.size).max(0)
+              val forceFlush = cursorOverride.nonEmpty
+              val liveBatch =
+                GossipProducerPolling.batchAvailableEvents(
+                  now = now,
+                  candidates = filteredLiveArtifacts,
+                  qos = qos,
+                  forceFlush = forceFlush,
+                  limit = remainingCapacity,
+                )
+              val emitted = explicitBatch ++ liveBatch
+              val servedByScope =
+                explicitMatched.foldLeft(Map.empty[ExactKnownSetScope, Set[StableArtifactId]]): (acc, entry) =>
+                  val (scope, available) = entry
+                  acc.updated(scope, acc.getOrElse(scope, Set.empty) + available.event.id)
+              val updatedProducerState =
+                producerState
+                  .advanceStreamCursor(chainTopic, liveBatch)
+                  .clearReplay(chainTopic)
+              val updatedState = sessionState.withProducerState(updatedProducerState).copy(
+                pendingRequestScopeIds =
+                  if servedByScope.isEmpty then sessionState.pendingRequestScopeIds
+                  else
+                    servedByScope.foldLeft(sessionState.pendingRequestScopeIds): (acc, entry) =>
+                      val (scope, servedIds) = entry
+                      acc.updatedWith(scope):
+                        case None => None
+                        case Some(existing) =>
+                          val remaining = existing.filterNot(servedIds.contains)
+                          remaining.some.filter(_.nonEmpty)
+              )
+              updatedState -> emitted
+
   private def pruneIdempotencyKeys(
       now: Instant,
       sessionState: TxProducerSessionState,
@@ -674,14 +858,55 @@ final class TxGossipRuntime[F[_]: Sync, A](
       chainId: ChainId,
       topic: GossipTopic,
   ): Either[CanonicalRejection.ControlBatchRejected, Unit] =
+    validateSubscription(sessionState, chainId, topic).flatMap: _ =>
+      Either.cond(
+        topic == GossipTopic.tx,
+        (),
+        controlRejected(
+          "topicOutOfSubscription",
+          s"${chainId.value}:${topic.value}",
+        ),
+      )
+
+  private def validateSubscription(
+      sessionState: TxProducerSessionState,
+      chainId: ChainId,
+      topic: GossipTopic,
+  ): Either[CanonicalRejection.ControlBatchRejected, Unit] =
     Either.cond(
-      sessionState.subscriptions.contains(chainId, topic) && topic == GossipTopic.tx,
+      sessionState.subscriptions.contains(chainId, topic),
       (),
       controlRejected(
         "topicOutOfSubscription",
         s"${chainId.value}:${topic.value}",
       ),
     )
+
+  private def validateExactKnownSubscription(
+      sessionState: TxProducerSessionState,
+      scope: ExactKnownSetScope,
+  ): Either[CanonicalRejection.ControlBatchRejected, GossipTopicContract[A]] =
+    Either.cond(
+      sessionState.subscriptions.contains(scope.chainId, scope.topic),
+      (),
+      controlRejected(
+        "topicOutOfSubscription",
+        s"${scope.chainId.value}:${scope.topic.value}",
+      ),
+    ).flatMap(_ => openExactKnownContract(scope.topic))
+
+  private def openExactKnownContract(
+      topic: GossipTopic,
+  ): Either[CanonicalRejection.ControlBatchRejected, GossipTopicContract[A]] =
+    topicContracts
+      .contractFor(topic)
+      .leftMap(rejection => controlRejected(rejection.reason, rejection.detail.getOrElse(topic.value)))
+      .flatMap: contract =>
+        Either.cond(
+          contract.exactKnownSetLimit.nonEmpty || contract.requestByIdLimit.nonEmpty,
+          contract,
+          controlRejected("unsupportedTopic", topic.value),
+        )
 
   private def openOutboundProducerSession(
       state: TxGossipRuntimeState,
@@ -807,8 +1032,22 @@ final class TxGossipRuntime[F[_]: Sync, A](
               val remaining = existing.filterNot(servedIds.contains)
               remaining.some.filter(_.nonEmpty)
 
+    val mergedPendingScopedRequests =
+      polledFrom.pendingRequestScopeIds.keySet.foldLeft(current.pendingRequestScopeIds): (acc, scope) =>
+        val before = polledFrom.pendingRequestScopeIds.getOrElse(scope, Vector.empty)
+        val after = updated.pendingRequestScopeIds.getOrElse(scope, Vector.empty)
+        val servedIds = before.filterNot(after.contains).toSet
+        if servedIds.isEmpty then acc
+        else
+          acc.updatedWith(scope):
+            case None => None
+            case Some(existing) =>
+              val remaining = existing.filterNot(servedIds.contains)
+              remaining.some.filter(_.nonEmpty)
+
     current.copy(
       streamCursor = CompositeCursor(mergedStreamCursor),
       pendingReplay = mergedPendingReplay,
       pendingRequestByIds = mergedPendingRequests,
+      pendingRequestScopeIds = mergedPendingScopedRequests,
     )

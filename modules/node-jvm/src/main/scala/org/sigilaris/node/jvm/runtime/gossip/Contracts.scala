@@ -69,17 +69,19 @@ trait GossipTopicContractRegistry[A]:
 
 object GossipTopicContractRegistry:
   def single[A](contract: GossipTopicContract[A]): GossipTopicContractRegistry[A] =
+    of(contract)
+
+  def of[A](contracts: GossipTopicContract[A]*): GossipTopicContractRegistry[A] =
+    val byTopic = contracts.iterator.map(contract => contract.topic -> contract).toMap
     new GossipTopicContractRegistry[A]:
       override def contractFor(
           topic: GossipTopic,
       ): Either[CanonicalRejection.ArtifactContractRejected, GossipTopicContract[A]] =
-        Either.cond(
-          contract.topic == topic,
-          contract,
+        byTopic.get(topic).toRight(
           CanonicalRejection.ArtifactContractRejected(
             reason = "unsupportedTopic",
             detail = Some(topic.value),
-          ),
+          )
         )
 
 trait GossipArtifactSource[F[_], A]:

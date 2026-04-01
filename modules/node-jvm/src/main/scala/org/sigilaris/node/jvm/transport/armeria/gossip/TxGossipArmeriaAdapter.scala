@@ -76,6 +76,7 @@ final case class ControlOpWire(
     kind: String,
     chainId: Option[String] = None,
     topic: Option[String] = None,
+    windowKey: Option[String] = None,
     cursor: Option[Vector[CursorEntryWire]] = None,
     cursorToken: Option[String] = None,
     ids: Option[Vector[String]] = None,
@@ -409,6 +410,9 @@ object TxGossipArmeriaAdapter:
       case ControlOpKind.SetKnownTx =>
         requiredChainId(wire).flatMap: chainId =>
           requiredIds(wire).map(ids => ControlOp.SetKnownTx(chainId, ids))
+      case ControlOpKind.SetKnownExact =>
+        requiredExactKnownScope(wire).flatMap: scope =>
+          requiredIds(wire).map(ids => ControlOp.SetKnownExact(scope, ids))
       case ControlOpKind.SetCursor =>
         requiredCursorEntries(wire).flatMap(entries => toCompositeCursor(entries).map(ControlOp.SetCursor(_)))
       case ControlOpKind.Nack =>
@@ -420,6 +424,9 @@ object TxGossipArmeriaAdapter:
       case ControlOpKind.RequestByIdTx =>
         requiredChainId(wire).flatMap: chainId =>
           requiredIds(wire).map(ids => ControlOp.RequestByIdTx(chainId, ids))
+      case ControlOpKind.RequestByIdExact =>
+        requiredExactKnownScope(wire).flatMap: scope =>
+          requiredIds(wire).map(ids => ControlOp.RequestByIdExact(scope, ids))
       case ControlOpKind.Config =>
         wire.config.toRight(controlRejected("missingConfigValues", "config")).flatMap: config =>
           config.toVector.traverse:
@@ -456,6 +463,17 @@ object TxGossipArmeriaAdapter:
   ): Either[CanonicalRejection.ControlBatchRejected, Vector[StableArtifactId]] =
     wire.ids.toRight(controlRejected("missingIds", wire.kind)).flatMap: values =>
       values.traverse(value => StableArtifactId.fromHex(value).leftMap(controlRejected("invalidStableId", _)))
+
+  private def requiredExactKnownScope(
+      wire: ControlOpWire,
+  ): Either[CanonicalRejection.ControlBatchRejected, ExactKnownSetScope] =
+    for
+      chainId <- requiredChainId(wire)
+      topic <- requiredTopic(wire)
+      windowKey <- wire.windowKey
+        .toRight(controlRejected("missingWindowKey", wire.kind))
+        .flatMap(value => TopicWindowKey.fromHex(value).leftMap(controlRejected("invalidWindowKey", _)))
+    yield ExactKnownSetScope(chainId, topic, windowKey)
 
   private def requiredCursorEntries(
       wire: ControlOpWire,
