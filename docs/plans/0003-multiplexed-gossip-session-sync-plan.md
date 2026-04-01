@@ -1,13 +1,13 @@
 # 0003 - Multiplexed Gossip Session Sync Plan
 
 ## Status
-Draft
+Phase 3 Complete; Phase 3A Gap Closure And Armeria Parity Hardening Planned
 
 ## Created
 2026-03-28
 
 ## Last Updated
-2026-03-29
+2026-04-01
 
 ## Background
 - 이 문서는 `ADR-0016` Follow-Up `P1`에 해당하는 구현 plan 이다.
@@ -17,6 +17,10 @@ Draft
 - initial deployment baseline은 static peer topology와 static neighbor list를 `application.conf` 또는 동등한 JVM config source에서 읽어 오는 방식으로 출발할 수 있다. 이 운영 baseline은 ADR-0018이 소유한다.
 - 현재 `sigilaris-node-jvm`은 `runtime`, `transport.armeria`, `storage` seam만 제공하며, 실제 gossip/session sync runtime과 transport adapter는 아직 없다.
 - `docs/plans/0002-sigilaris-node-jvm-extraction-plan.md`는 multi-node networking을 명시적으로 범위 밖에 두었으므로, 새 networking 구현은 별도 plan으로 단계와 gate를 관리해야 한다.
+- `2026-04-01` 문서-구현 대조 리뷰에서 Phase 3 shipped baseline은 compile/test 기준으로 green 이지만, negotiated liveness wiring, pre-open reject-and-close 의 end-to-end enforcement, `tx.flushIntervalMs` timer ownership, static peer config bootstrap wiring, generic topic seam hardening에 갭이 확인되었다.
+- 위 리뷰는 landed runtime model, Armeria request path, bootstrap wiring, test coverage를 이 문서의 checklist / acceptance criteria 와 대조하는 방식으로 수행했다.
+- Phase 3A scope 는 위 confirmed gap closure 외에도 Armeria parity hardening 항목으로 `half-open -> open` recovery re-handshake 와 reconnect 후 filter state reset 의 end-to-end verification을 포함한다.
+- 기존 Phase 0-3 checklist 는 처음 landed slice 를 기록하고, 위 implementation-review gap closure 와 추가 Armeria parity hardening 은 이 문서의 Phase 3A 에서 별도로 추적한다.
 
 ## Goal
 - `sigilaris-node-jvm` 안에 runtime-owned gossip/session sync substrate를 도입한다.
@@ -32,6 +36,7 @@ Draft
 - `requestById`를 포함한 control op model과 transport mapping을 추가한다.
 - initial JVM baseline용 static peer registry와 direct-neighbor config loader를 추가한다.
 - `org.sigilaris.node.jvm.transport.armeria.gossip` 계열 package에 session-open, event stream, control endpoint adapter를 추가한다.
+- shipped HTTP baseline parity hardening 범위로 `half-open -> open` recovery 와 reconnect 후 filter state reset 의 Armeria end-to-end verification을 포함한다.
 - runtime과 transport seam을 검증하는 import rule / integration test / loopback test를 추가한다.
 
 ## Non-Goals
@@ -124,6 +129,7 @@ Draft
 - `requestById.tx` bounded fetch test
 - static peer config parse / peer registry / neighbor admission test
 - Armeria stream/control end-to-end test
+- Armeria half-open recovery / reconnect filter reset parity test
 - runtime / transport import rule test 확장
 
 ### Docs
@@ -181,6 +187,16 @@ Draft
 - static peer registry 기준 neighbor admission과 non-neighbor rejection을 검증한다.
 - README 및 관련 문서에 baseline transport와 follow-up consensus dependency를 반영한다.
 
+### Phase 3A: Post-Implementation Gap Closure And Armeria Parity Hardening
+- negotiated `heartbeatInterval` / `livenessTimeout` 을 runtime-owned liveness driver 와 transport lifecycle 에 실제로 연결한다. `openingHandshakeTimeout` 과 open-session idle timeout 이 수동 `/disconnect` 없이도 `dead` 또는 동등한 lifecycle 전이로 반영되어야 한다.
+- `opening` 상태의 event/control traffic 을 runtime/transport request path 에서 `rejectPreOpenTraffic` 또는 동등 state transition 으로 연결한다. explicit rejection 이후 session lineage 는 close/dead 처리되고 단순 `sessionNotOpen` 응답으로 끝나지 않아야 한다.
+- `tx.flushIntervalMs` 는 `GossipEvent.ts` 가 아니라 producer-local enqueue/availability clock 또는 동등한 runtime-owned batching clock 을 기준으로 해석한다. `ts` 는 계속 진단 메타데이터로만 유지한다.
+- static peer topology 를 `application.conf` 또는 동등한 config source 에서 읽어 `PeerRegistry`, runtime bootstrap, transport admission wiring 으로 연결하는 concrete JVM baseline loader 를 추가한다.
+- generic topic contract seam 이 surface-only abstraction 에 머물지 않도록 topic-neutral producer session state / polling / QoS hook 을 추출한다. 후속 topic owner 가 `TxGossipRuntime` 재작성 없이 substrate 를 재사용할 수 있어야 한다.
+- `half-open -> open` recovery 가 existing peer correlation id 아래 full re-handshake 로 runtime/Armeria handshake path 에서 end-to-end 로 동작하도록 harden 한다. dead direction recovery 중 surviving direction 의 stream/control path 는 유지되어야 한다.
+- reconnect 로 새 directional session 이 열릴 때 이전 session 의 `setFilter` state 가 Armeria path 에서 carry-over 되지 않고, 새 session control state 에서 다시 설정되도록 harden 한다.
+- README / ADR / plan 텍스트를 shipped tx baseline, 남아 있는 substrate-hardening work, consensus follow-up dependency 기준으로 다시 정렬한다.
+
 ## Test Plan
 - Phase 1 Success: pure unit test로 UUID format validation, lexicographic tie-break, simultaneous-open loser close/retry, heartbeat/liveness negotiation default/range, `livenessTimeout >= 3 * heartbeatInterval`, `maxControlRetryInterval` default/echo/shorten 규칙, immutable subscription baseline을 검증한다.
 - Phase 1 Success: pure unit test로 simultaneous-open detection key가 `PeerIdentity` placeholder 또는 동등 authenticated peer identity abstraction 기준으로 모델링되는지를 검증한다.
@@ -198,6 +214,13 @@ Draft
 - Phase 3 Success: Armeria integration test로 session-open, stream keepalive, control endpoint, `requestById.tx`, transport disconnect 기반 dead 판정을 검증한다.
 - Phase 3 Failure: integration test로 static config의 direct neighbor set 밖 peer에 대한 outbound/open 또는 inbound admission이 baseline policy대로 reject 되는지를 검증한다.
 - Phase 3 Failure: import rule test로 `runtime.gossip` 가 Armeria/SwayDB 구현 타입과 text transport encoding helper를 import 하지 않고, `transport.armeria.gossip` 가 `storage.*` 구현 타입을 import 하지 않는지 확인한다.
+- Phase 3A Success (검증 대상: `3A-1`, 완료 체크: `3A-8`): runtime/transport integration test로 negotiated heartbeat/liveness 값이 실제 opening timeout 및 open-session idle timeout 판정에 연결되고, 수동 `/disconnect` 없이도 session 이 `dead` 로 전이되는지를 검증한다.
+- Phase 3A Failure (검증 대상: `3A-2`, 완료 체크: `3A-9`): integration test로 `opening` 상태 session 에 event/control traffic 을 보내면 `preOpenEventTraffic` 또는 `preOpenControlTraffic` rejection 이 반환되고, 이후 session lineage 가 close/dead 처리되는지를 검증한다.
+- Phase 3A Success (검증 대상: `3A-3`, 완료 체크: `3A-10`): batching test로 과거 또는 미래 `ts` 값을 가진 artifact 도 `tx.flushIntervalMs` 의미를 왜곡하지 않고, producer-local batching clock 만이 flush 시점을 결정하는지를 검증한다.
+- Phase 3A Success (검증 대상: `3A-4`, 완료 체크: `3A-11`): bootstrap test로 `application.conf` 또는 동등한 config source 가 local node identity, known peers, direct neighbors 를 파싱하고 runtime/transport admission wiring 에 실제 연결되는지를 검증한다.
+- Phase 3A Success (검증 대상: `3A-5`, 완료 체크: `3A-12`): seam test로 `tx` 외 topic stub 이 topic-neutral producer session state / polling / QoS hook 을 재사용할 수 있고, 추가 topic support 를 위해 `tx` runtime 내부를 다시 소유할 필요가 없는지를 검증한다.
+- Phase 3A Success (검증 대상: `3A-6`, 완료 체크: `3A-13`): Armeria integration test로 dead direction 이 기존 peer correlation id 아래 fresh session id 로 full re-handshake 를 완료해 `half-open -> open` recovery 를 달성하고, surviving direction 의 stream/control path 가 recovery 중 유지되는지를 검증한다.
+- Phase 3A Success (검증 대상: `3A-7`, 완료 체크: `3A-14`): Armeria integration test로 reconnect 뒤 새 session 의 filter state 가 비어 있고 이전 session 의 `setFilter` state 가 carry-over 되지 않으며, 새 control batch 로만 다시 설정되는지를 검증한다.
 
 ## Risks And Mitigations
 - gossip substrate와 topic semantics가 다시 섞이면 follow-up consensus plan과 경계가 무너질 수 있다. generic topic contract seam과 문서 링크로 ownership 을 분리한다.
@@ -213,47 +236,71 @@ Draft
 3. `transport.armeria.gossip` 는 HTTP-friendly baseline adapter 를 제공하되 `storage.*` 구현 타입에 직접 의존하지 않는다.
 4. generic topic contract seam이 존재해 후속 consensus plan이 gossip substrate를 재사용할 수 있다.
 5. snapshot/backfill, production peer authentication binding, HotStuff consensus semantics 의 후속 의존성이 문서에 명확히 기록되고 silent fallback 이 남지 않는다.
+6. negotiated heartbeat/liveness 와 `openingHandshakeTimeout` 이 shipped HTTP baseline 에서 end-to-end 로 동작하고, manual disconnect path 는 보조 운영 hook 으로만 남는다.
+7. `opening` 상태의 pre-open event/control traffic 이 shipped HTTP baseline 에서 explicit reject-and-close 로 강제되고, 단순 `sessionNotOpen` 응답으로 끝나지 않는다.
+8. `tx.flushIntervalMs` 가 `GossipEvent.ts` 에 의존하지 않고 producer-local batching clock 기준으로만 해석된다.
+9. static peer topology 가 config source 에서 bootstrap 되어 `PeerRegistry`, runtime bootstrap, transport admission wiring 에 실제 연결된다.
+10. generic topic seam 이 surface-only abstraction 이 아니라 topic-neutral producer session state / polling / QoS hook 을 제공하는 reusable substrate seam 으로 강화된다.
+11. `half-open -> open` recovery 가 shipped HTTP baseline 에서 existing peer correlation id 아래 full re-handshake 로 동작하고, surviving direction 의 stream/control path 는 recovery 중 유지된다.
+12. reconnect 뒤 새 directional session 의 filter state 가 shipped HTTP baseline 에서 empty control state 로 시작하고, 이전 session 의 `setFilter` state 를 carry-over 하지 않는다.
 
 ## Checklist
 
 ### Phase 0: Policy And Contract Lock
-- [ ] runtime / transport / follow-up ownership inventory 확정
-- [ ] gossip package root 와 public surface 확정
-- [ ] HTTP baseline resource family 와 phase gate 정의
-- [ ] static peer config schema 확정
-- [ ] baseline Bloom filter, baseline `config` key set, `requestById.tx` policy 확정
-- [ ] `tx.toHash` direct availability 또는 `TxIdentity` abstraction 필요 여부 확정
-- [ ] generic topic contract seam ownership 문서화
+- [x] runtime / transport / follow-up ownership inventory 확정
+- [x] gossip package root 와 public surface 확정
+- [x] HTTP baseline resource family 와 phase gate 정의
+- [x] static peer config schema 확정
+- [x] baseline Bloom filter, baseline `config` key set, `requestById.tx` policy 확정
+- [x] `tx.toHash` direct availability 또는 `TxIdentity` abstraction 필요 여부 확정
+- [x] generic topic contract seam ownership 문서화
 
 ### Phase 1: Runtime Protocol Model And Session Engine
-- [ ] session id / correlation id / handshake / lifecycle model 추가
-- [ ] handshake-ack round-trip 과 `open` 진입 규칙 추가
-- [ ] `opening` 상태 pre-open traffic reject-and-close/dead guard 구현
-- [ ] `GossipEvent`, `CompositeCursor`, `ControlBatch`, `ControlOp`, `CanonicalRejection` 추가
-- [ ] `requestById.tx` 를 포함한 full `ControlOp` ADT 추가
-- [ ] event-stream keepalive 와 control-channel keepalive/ack typed message 추가
-- [ ] `PeerIdentity` placeholder 또는 동등 authenticated peer identity abstraction 추가
-- [ ] static peer registry / local node identity bootstrap model 추가
-- [ ] generic topic contract seam 추가
-- [ ] runtime gossip import rule test 추가
+- [x] session id / correlation id / handshake / lifecycle model 추가
+- [x] handshake-ack round-trip 과 `open` 진입 규칙 추가
+- [x] `opening` 상태 pre-open traffic reject-and-close/dead guard 구현
+- [x] `GossipEvent`, `CompositeCursor`, `ControlBatch`, `ControlOp`, `CanonicalRejection` 추가
+- [x] `requestById.tx` 를 포함한 full `ControlOp` ADT 추가
+- [x] event-stream keepalive 와 control-channel keepalive/ack typed message 추가
+- [x] `PeerIdentity` placeholder 또는 동등 authenticated peer identity abstraction 추가
+- [x] static peer registry / local node identity bootstrap model 추가
+- [x] generic topic contract seam 추가
+- [x] runtime gossip import rule test 추가
 
 ### Phase 2: Tx Sync Baseline And Atomic Apply
-- [ ] artifact source/sink/topic-contract/authenticator contract 추가
-- [ ] `tx.toHash` direct availability 확인 또는 `TxIdentity` abstraction 추가
-- [ ] runtime-owned gossip state store contract 추가
-- [ ] atomic apply interpreter isolated unit gate 추가
-- [ ] static peer config to runtime registry wiring 추가
-- [ ] Bloom `setFilter` apply path 구현
-- [ ] `tx` exact known-set, cursor, replay, `requestById.tx` baseline 구현
-- [ ] `tx.maxBatchItems` / `tx.flushIntervalMs` config apply path 구현
-- [ ] tx loopback integration test green
+- [x] artifact source/sink/topic-contract/authenticator contract 추가
+- [x] `tx.toHash` direct availability 확인 또는 `TxIdentity` abstraction 추가
+- [x] runtime-owned gossip state store contract 추가
+- [x] atomic apply interpreter isolated unit gate 추가
+- [x] static peer config to runtime registry wiring 추가
+- [x] Bloom `setFilter` apply path 구현
+- [x] `tx` exact known-set, cursor, replay, `requestById.tx` baseline 구현
+- [x] `tx.maxBatchItems` / `tx.flushIntervalMs` config apply path 구현
+- [x] tx loopback integration test green
 
 ### Phase 3: Armeria HTTP Adapter And Verification
-- [ ] session-open handshake endpoint, event stream endpoint, control endpoint adapter 추가
-- [ ] SSE 또는 NDJSON baseline 결정 및 serialization projection 구현
-- [ ] canonical rejection projection 구현
-- [ ] Armeria integration test green
-- [ ] docs / README 갱신
+- [x] session-open handshake endpoint, event stream endpoint, control endpoint adapter 추가
+- [x] SSE 또는 NDJSON baseline 결정 및 serialization projection 구현
+- [x] canonical rejection projection 구현
+- [x] Armeria integration test green
+- [x] docs / README 갱신
+
+### Phase 3A: Post-Implementation Gap Closure And Armeria Parity Hardening
+- [ ] `3A-1` negotiated heartbeat/liveness timer 와 opening timeout end-to-end wiring 추가
+- [ ] `3A-2` pre-open event/control reject-and-close 를 runtime / Armeria request path 에 연결
+- [ ] `3A-3` `tx.flushIntervalMs` batching clock 를 `GossipEvent.ts` 와 분리
+- [ ] `3A-4` static peer config loader / runtime bootstrap / transport admission wiring 추가
+- [ ] `3A-5` topic-neutral producer session state / polling / QoS hook hardening
+- [ ] `3A-6` `half-open -> open` recovery 의 Armeria parity hardening 추가
+- [ ] `3A-7` reconnect filter reset 의 Armeria parity hardening 추가
+- [ ] `3A-8` liveness / opening-timeout integration regression test green
+- [ ] `3A-9` pre-open reject-and-close integration regression test green
+- [ ] `3A-10` batching clock regression test green
+- [ ] `3A-11` bootstrap regression test green
+- [ ] `3A-12` seam regression test green
+- [ ] `3A-13` half-open recovery Armeria regression test green
+- [ ] `3A-14` reconnect filter reset Armeria regression test green
+- [ ] `3A-15` README / ADR / plan wording refresh
 
 ## Follow-Ups
 - `docs/plans/0004-hotstuff-consensus-without-threshold-signatures-plan.md`에서 HotStuff proposal/vote/QC integration을 진행한다.
