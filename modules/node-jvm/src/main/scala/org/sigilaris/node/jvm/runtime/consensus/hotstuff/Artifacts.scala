@@ -1,5 +1,7 @@
 package org.sigilaris.node.jvm.runtime.consensus.hotstuff
 
+import scala.collection.immutable.VectorMap
+
 import cats.syntax.all.*
 import scodec.bits.ByteVector
 
@@ -9,31 +11,37 @@ import org.sigilaris.core.crypto.{CryptoOps, KeyPair, PublicKey, Signature}
 import org.sigilaris.core.datatype.{UInt256, Utf8}
 import org.sigilaris.node.jvm.runtime.gossip.ChainId
 
-given ByteEncoder[ChainId] = ByteEncoder[Utf8].contramap(chainId => Utf8(chainId.value))
+given ByteEncoder[ChainId] =
+  ByteEncoder[Utf8].contramap(chainId => Utf8(chainId.value))
 given ByteEncoder[HotStuffWindow] = ByteEncoder.derived
 given ByteEncoder[Signature] = signature =>
-  ByteEncoder[Long].encode(signature.v.toLong) ++ signature.r.bytes ++ signature.s.bytes
-given [A: ByteEncoder]: ByteEncoder[Vector[A]] = ByteEncoder[List[A]].contramap(_.toList)
+  ByteEncoder[Long].encode:
+    signature.v.toLong
+  ++ signature.r.bytes ++ signature.s.bytes
+given [A: ByteEncoder]: ByteEncoder[Vector[A]] =
+  ByteEncoder[List[A]].contramap(_.toList)
 
 final case class HotStuffValidationFailure(
     reason: String,
-    detail: Option[String] = None,
+    detail: Option[String],
 )
+
+object HotStuffValidationFailure:
+  def withoutDetail(
+      reason: String,
+  ): HotStuffValidationFailure =
+    HotStuffValidationFailure(reason = reason, detail = None)
 
 final case class ValidatorMember(
     id: ValidatorId,
     publicKey: PublicKey,
 ) derives ByteEncoder
 
-final case class ValidatorSet(
-    members: Vector[ValidatorMember],
+final class ValidatorSet private (
+    private val membersById: VectorMap[ValidatorId, ValidatorMember],
 ):
-  require(members.nonEmpty, "validator set must not be empty")
-  require(members.map(_.id).distinct.size == members.size, "validator ids must be unique")
-  require(members.map(_.publicKey).distinct.size == members.size, "validator public keys must be unique")
-
-  private val membersById: Map[ValidatorId, ValidatorMember] =
-    members.map(member => member.id -> member).toMap
+  def members: Vector[ValidatorMember] =
+    membersById.valuesIterator.toVector
 
   lazy val hash: ValidatorSetHash =
     ValidatorSetHash(HotStuffCanonicalEncoding.validatorSetHash(this))
@@ -49,7 +57,32 @@ final case class ValidatorSet(
     membersById.contains(validatorId)
 
   def quorumSize: Int =
-    HotStuffPolicy.quorumSize(members.size)
+    HotStuffPolicy.quorumSize(membersById.size)
+
+object ValidatorSet:
+  def apply(
+      members: Vector[ValidatorMember],
+  ): ValidatorSet =
+    require(members.nonEmpty, "validator set must not be empty")
+    require(
+      members.map(_.id).distinct.sizeCompare(members) match
+        case 0 => true
+        case _ => false
+      ,
+      "validator ids must be unique",
+    )
+    require(
+      members.map(_.publicKey).distinct.sizeCompare(members) match
+        case 0 => true
+        case _ => false
+      ,
+      "validator public keys must be unique",
+    )
+    new ValidatorSet(
+      VectorMap.from(
+        members.iterator.map(member => member.id -> member),
+      ),
+    )
 
 final case class Block(
     parent: Option[BlockId],
@@ -94,17 +127,17 @@ object Vote:
       unsigned: UnsignedVote,
       keyPair: KeyPair,
   ): Either[HotStuffValidationFailure, Vote] =
-    HotStuffCanonicalEncoding.sign(HotStuffCanonicalEncoding.voteSignBytes(unsigned), keyPair).map:
-      signature =>
+    HotStuffCanonicalEncoding
+      .sign(HotStuffCanonicalEncoding.voteSignBytes(unsigned), keyPair)
+      .map: signature =>
         val voteId =
-          VoteId(
+          VoteId:
             HotStuffCanonicalEncoding.voteId(
               window = unsigned.window,
               voter = unsigned.voter,
               targetProposalId = unsigned.targetProposalId,
               signature = signature,
             )
-          )
         Vote(
           voteId = voteId,
           window = unsigned.window,
@@ -121,14 +154,13 @@ object Vote:
   def recomputeId(
       vote: Vote,
   ): VoteId =
-    VoteId(
+    VoteId:
       HotStuffCanonicalEncoding.voteId(
         window = vote.window,
         voter = vote.voter,
         targetProposalId = vote.targetProposalId,
         signature = vote.signature,
       )
-    )
 
 final case class QuorumCertificate(
     subject: QuorumCertificateSubject,
@@ -158,10 +190,11 @@ object Proposal:
       unsigned: UnsignedProposal,
       keyPair: KeyPair,
   ): Either[HotStuffValidationFailure, Proposal] =
-    HotStuffCanonicalEncoding.sign(HotStuffCanonicalEncoding.proposalSignBytes(unsigned), keyPair).map:
-      signature =>
+    HotStuffCanonicalEncoding
+      .sign(HotStuffCanonicalEncoding.proposalSignBytes(unsigned), keyPair)
+      .map: signature =>
         val proposalId =
-          ProposalId(
+          ProposalId:
             HotStuffCanonicalEncoding.proposalId(
               window = unsigned.window,
               proposer = unsigned.proposer,
@@ -170,7 +203,6 @@ object Proposal:
               justify = unsigned.justify,
               signature = signature,
             )
-          )
         Proposal(
           proposalId = proposalId,
           window = unsigned.window,
@@ -189,7 +221,7 @@ object Proposal:
   def recomputeId(
       proposal: Proposal,
   ): ProposalId =
-    ProposalId(
+    ProposalId:
       HotStuffCanonicalEncoding.proposalId(
         window = proposal.window,
         proposer = proposal.proposer,
@@ -198,14 +230,16 @@ object Proposal:
         justify = proposal.justify,
         signature = proposal.signature,
       )
-    )
 
 object HotStuffCanonicalEncoding:
-  private val ProposalSignDomain: Utf8 = Utf8("sigilaris.hotstuff.proposal.sign.v1")
+  private val ProposalSignDomain: Utf8 = Utf8:
+    "sigilaris.hotstuff.proposal.sign.v1"
   private val VoteSignDomain: Utf8 = Utf8("sigilaris.hotstuff.vote.sign.v1")
-  private val ProposalIdentityDomain: Utf8 = Utf8("sigilaris.hotstuff.proposal.id.v1")
+  private val ProposalIdentityDomain: Utf8 = Utf8:
+    "sigilaris.hotstuff.proposal.id.v1"
   private val VoteIdentityDomain: Utf8 = Utf8("sigilaris.hotstuff.vote.id.v1")
-  private val ValidatorSetDomain: Utf8 = Utf8("sigilaris.hotstuff.validator-set.v1")
+  private val ValidatorSetDomain: Utf8 = Utf8:
+    "sigilaris.hotstuff.validator-set.v1"
 
   private final case class ValidatorSetHashInput(
       domain: Utf8,
@@ -260,17 +294,17 @@ object HotStuffCanonicalEncoding:
   def hashEncoded[A: ByteEncoder](
       value: A,
   ): UInt256 =
-    UInt256.unsafeFromBytesBE(ByteVector.view(CryptoOps.keccak256(value.toBytes.toArray)))
+    UInt256.unsafeFromBytesBE:
+      ByteVector.view(CryptoOps.keccak256(value.toBytes.toArray))
 
   def validatorSetHash(
       validatorSet: ValidatorSet,
   ): UInt256 =
-    hashEncoded(
+    hashEncoded:
       ValidatorSetHashInput(
         domain = ValidatorSetDomain,
         members = validatorSet.members.sortBy(_.id.value),
       )
-    )
 
   def proposalSignBytes(
       unsigned: UnsignedProposal,
@@ -307,7 +341,7 @@ object HotStuffCanonicalEncoding:
       justify: QuorumCertificate,
       signature: Signature,
   ): UInt256 =
-    hashEncoded(
+    hashEncoded:
       ProposalIdentityInput(
         domain = ProposalIdentityDomain,
         chainId = window.chainId,
@@ -320,7 +354,6 @@ object HotStuffCanonicalEncoding:
         justify = canonicalizeQuorumCertificate(justify),
         signature = signature,
       )
-    )
 
   def voteId(
       window: HotStuffWindow,
@@ -328,7 +361,7 @@ object HotStuffCanonicalEncoding:
       targetProposalId: ProposalId,
       signature: Signature,
   ): UInt256 =
-    hashEncoded(
+    hashEncoded:
       VoteIdentityInput(
         domain = VoteIdentityDomain,
         chainId = window.chainId,
@@ -339,39 +372,38 @@ object HotStuffCanonicalEncoding:
         targetProposalId = targetProposalId,
         signature = signature,
       )
-    )
 
   def sign(
       signBytes: ByteVector,
       keyPair: KeyPair,
   ): Either[HotStuffValidationFailure, Signature] =
-    val messageHash = UInt256.unsafeFromBytesBE(ByteVector.view(CryptoOps.keccak256(signBytes.toArray)))
+    val messageHash = UInt256.unsafeFromBytesBE:
+      ByteVector.view(CryptoOps.keccak256(signBytes.toArray))
     CryptoOps
       .sign(keyPair, messageHash.bytes.toArray)
       .leftMap(error =>
         HotStuffValidationFailure(
           reason = "signatureCreationFailed",
           detail = Some(error.toString),
-        )
+        ),
       )
 
   private def canonicalizeQuorumCertificate(
       quorumCertificate: QuorumCertificate,
   ): QuorumCertificate =
     quorumCertificate.copy(
-      votes =
-        quorumCertificate.votes
-          // QC canonicalization needs a deterministic vote ordering for hashing
-          // and encoding. If a caller hands us repeated votes for the same
-          // voter, we collapse them here only to stabilize the canonical byte
-          // form; admissibility still comes from assembler/validator checks,
-          // which reject duplicate-validator vote sets.
-          // Pre-sort so duplicate-voter collapse keeps a deterministic
-          // representative before we do the final canonical ordering pass.
-          .sortBy(vote => (vote.voter.value, vote.voteId.toHexLower))
-          .groupBy(_.voter)
-          .values
-          .map(_.head)
-          .toVector
-          .sortBy(vote => (vote.voter.value, vote.voteId.toHexLower)),
+      votes = quorumCertificate.votes
+        // QC canonicalization needs a deterministic vote ordering for hashing
+        // and encoding. If a caller hands us repeated votes for the same
+        // voter, we collapse them here only to stabilize the canonical byte
+        // form; admissibility still comes from assembler/validator checks,
+        // which reject duplicate-validator vote sets.
+        // Pre-sort so duplicate-voter collapse keeps a deterministic
+        // representative before we do the final canonical ordering pass.
+        .sortBy(vote => (vote.voter.value, vote.voteId.toHexLower))
+        .groupBy(_.voter)
+        .valuesIterator
+        .flatMap(_.headOption)
+        .toVector
+        .sortBy(vote => (vote.voter.value, vote.voteId.toHexLower)),
     )

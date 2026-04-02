@@ -2,19 +2,35 @@ package org.sigilaris.node.jvm.runtime.gossip
 
 import java.time.Instant
 
+import cats.Eq
+import cats.syntax.all.*
+
+import org.sigilaris.core.util.SafeStringInterp.*
 import org.sigilaris.node.jvm.runtime.gossip.CanonicalRejection.HandshakeRejected
 
 enum SessionDirection:
   case Outbound, Inbound
 
+object SessionDirection:
+  given Eq[SessionDirection] = Eq.fromUniversalEquals
+
 enum DirectionalSessionStatus:
   case Opening, Open, Closed, Dead
+
+object DirectionalSessionStatus:
+  given Eq[DirectionalSessionStatus] = Eq.fromUniversalEquals
 
 enum PeerRelationshipStatus:
   case Opening, Open, HalfOpen, Closed, Dead
 
+object PeerRelationshipStatus:
+  given Eq[PeerRelationshipStatus] = Eq.fromUniversalEquals
+
 enum PreOpenTrafficKind:
   case EventStream, ControlChannel
+
+object PreOpenTrafficKind:
+  given Eq[PreOpenTrafficKind] = Eq.fromUniversalEquals
 
 final case class DirectionalSession(
     sessionId: DirectionalSessionId,
@@ -29,7 +45,8 @@ final case class DirectionalSession(
     lastActivityAt: Instant,
 ):
   def isAlive: Boolean =
-    status == DirectionalSessionStatus.Open || status == DirectionalSessionStatus.Opening
+    status === DirectionalSessionStatus.Open ||
+      status === DirectionalSessionStatus.Opening
 
 final case class PeerRelationship(
     peer: PeerIdentity,
@@ -40,7 +57,7 @@ final case class PeerRelationship(
     wasBidirectionalOpen: Boolean,
 ):
   def session(sessionId: DirectionalSessionId): Option[DirectionalSession] =
-    List(outbound, inbound).flatten.find(_.sessionId == sessionId)
+    List(outbound, inbound).flatten.find(_.sessionId === sessionId)
 
 object PeerRelationship:
   def openingWithOutbound(session: DirectionalSession): PeerRelationship =
@@ -75,6 +92,11 @@ object InboundHandshakeResult:
       rejection: CanonicalRejection.HandshakeRejected,
   ) extends InboundHandshakeResult
 
+@SuppressWarnings(
+  Array(
+    "org.wartremover.warts.DefaultArguments",
+  ),
+)
 final case class GossipSessionEngine(
     localPeer: PeerIdentity,
     topology: StaticPeerTopology,
@@ -85,7 +107,9 @@ final case class GossipSessionEngine(
     relationships.get(peer)
 
   def sessionById(sessionId: DirectionalSessionId): Option[DirectionalSession] =
-    relationships.valuesIterator.flatMap(r => List(r.outbound, r.inbound).flatten).find(_.sessionId == sessionId)
+    relationships.valuesIterator
+      .flatMap(r => List(r.outbound, r.inbound).flatten)
+      .find(_.sessionId === sessionId)
 
   def startOutbound(
       peer: PeerIdentity,
@@ -100,63 +124,69 @@ final case class GossipSessionEngine(
       val existing = relationships.get(peer)
       val existingOutboundAlive =
         existing.flatMap(_.outbound).exists(_.isAlive)
-      Either.cond(
-        !existingOutboundAlive,
-        (),
-        HandshakeRejected(
-          reason = "duplicateOutboundDirection",
-          detail = Some(peer.value),
-        ),
-      ).flatMap: _ =>
-        val chosenCorrelationId =
-          peerCorrelationId
-            .orElse(
-              existing
-                .filter: relationship =>
-                  relationship.status == PeerRelationshipStatus.Opening ||
-                    relationship.status == PeerRelationshipStatus.Open ||
-                    relationship.status == PeerRelationshipStatus.HalfOpen
-                .map(_.peerCorrelationId)
-            )
-            .getOrElse(PeerCorrelationId.random())
-        val proposal = SessionOpenProposal(
-          sessionId = DirectionalSessionId.random(),
-          peerCorrelationId = chosenCorrelationId,
-          initiator = localPeer,
-          acceptor = peer,
-          subscriptions = subscriptions,
-          heartbeatInterval = heartbeatInterval,
-          livenessTimeout = livenessTimeout,
-          maxControlRetryInterval = maxControlRetryInterval,
+      Either
+        .cond(
+          !existingOutboundAlive,
+          (),
+          HandshakeRejected(
+            reason = "duplicateOutboundDirection",
+            detail = Some(peer.value),
+          ),
         )
-        SessionNegotiation.resolveProposal(proposal, policy).map: _ =>
-          val outbound = DirectionalSession(
-            sessionId = proposal.sessionId,
-            direction = SessionDirection.Outbound,
-            peer = peer,
+        .flatMap: _ =>
+          val chosenCorrelationId =
+            peerCorrelationId
+              .orElse(
+                existing
+                  .filter: relationship =>
+                    relationship.status === PeerRelationshipStatus.Opening ||
+                      relationship.status === PeerRelationshipStatus.Open ||
+                      relationship.status === PeerRelationshipStatus.HalfOpen
+                  .map(_.peerCorrelationId),
+              )
+              .getOrElse(PeerCorrelationId.random())
+          val proposal = SessionOpenProposal(
+            sessionId = DirectionalSessionId.random(),
             peerCorrelationId = chosenCorrelationId,
-            proposal = proposal,
-            negotiated = None,
-            status = DirectionalSessionStatus.Opening,
-            createdAt = now,
-            openedAt = None,
-            lastActivityAt = now,
+            initiator = localPeer,
+            acceptor = peer,
+            subscriptions = subscriptions,
+            heartbeatInterval = heartbeatInterval,
+            livenessTimeout = livenessTimeout,
+            maxControlRetryInterval = maxControlRetryInterval,
           )
-          val updatedRelationship =
-            recomputeRelationship(
-              existing match
-                case Some(relationship) =>
-                  relationship.copy(
-                    peerCorrelationId = chosenCorrelationId,
-                    outbound = Some(outbound),
-                  )
-                case None =>
-                  PeerRelationship.openingWithOutbound(outbound),
-            )
-          (
-            copy(relationships = relationships.updated(peer, updatedRelationship)),
-            proposal,
-          )
+          SessionNegotiation
+            .resolveProposal(proposal, policy)
+            .map: _ =>
+              val outbound = DirectionalSession(
+                sessionId = proposal.sessionId,
+                direction = SessionDirection.Outbound,
+                peer = peer,
+                peerCorrelationId = chosenCorrelationId,
+                proposal = proposal,
+                negotiated = None,
+                status = DirectionalSessionStatus.Opening,
+                createdAt = now,
+                openedAt = None,
+                lastActivityAt = now,
+              )
+              val updatedRelationship =
+                recomputeRelationship(
+                  existing match
+                    case Some(relationship) =>
+                      relationship.copy(
+                        peerCorrelationId = chosenCorrelationId,
+                        outbound = Some(outbound),
+                      )
+                    case None =>
+                      PeerRelationship.openingWithOutbound(outbound),
+                )
+              (
+                copy(relationships =
+                  relationships.updated(peer, updatedRelationship),
+                ),
+                proposal,
+              )
 
   def handleInboundProposal(
       proposal: SessionOpenProposal,
@@ -168,21 +198,25 @@ final case class GossipSessionEngine(
     val decision =
       for
         _ <- Either.cond(
-          proposal.acceptor == localPeer,
+          proposal.acceptor === localPeer,
           (),
           HandshakeRejected(
             reason = "wrongAcceptor",
-            detail = Some(s"expected=${localPeer.value} actual=${proposal.acceptor.value}"),
+            detail = Some(
+              ss"expected=${localPeer.value} actual=${proposal.acceptor.value}",
+            ),
           ),
         )
-        _ <- ensureDirectNeighbor(proposal.initiator)
+        _        <- ensureDirectNeighbor(proposal.initiator)
         proposed <- SessionNegotiation.resolveProposal(proposal, policy)
       yield
         val ack = SessionNegotiation.acknowledge(
           proposal = proposal,
-          heartbeatInterval = heartbeatInterval.getOrElse(proposed.heartbeatInterval),
+          heartbeatInterval =
+            heartbeatInterval.getOrElse(proposed.heartbeatInterval),
           livenessTimeout = livenessTimeout.getOrElse(proposed.livenessTimeout),
-          maxControlRetryInterval = maxControlRetryInterval.getOrElse(proposed.maxControlRetryInterval),
+          maxControlRetryInterval =
+            maxControlRetryInterval.getOrElse(proposed.maxControlRetryInterval),
           policy = policy,
         )
         (proposed, ack)
@@ -197,14 +231,17 @@ final case class GossipSessionEngine(
         val (updatedEngine, result) =
           existing match
             case Some(relationship)
-                if relationship.outbound.exists(
-                  session =>
-                    session.status == DirectionalSessionStatus.Opening &&
-                      !relationship.inbound.exists(_.isAlive) &&
-                      relationship.peerCorrelationId != proposal.peerCorrelationId,
+                if relationship.outbound.exists(session =>
+                  session.status === DirectionalSessionStatus.Opening &&
+                    !relationship.inbound.exists(_.isAlive) &&
+                    relationship.peerCorrelationId =!= proposal.peerCorrelationId,
                 ) =>
               val localCorrelation = relationship.peerCorrelationId
-              if PeerCorrelationId.lexicographicCompare(proposal.peerCorrelationId, localCorrelation) < 0 then
+              if PeerCorrelationId.lexicographicCompare(
+                  proposal.peerCorrelationId,
+                  localCorrelation,
+                ) < 0
+              then
                 val superseded = relationship.outbound.map(_.sessionId)
                 val closedOutbound = relationship.outbound.map:
                   _.copy(status = DirectionalSessionStatus.Closed)
@@ -214,33 +251,38 @@ final case class GossipSessionEngine(
                     peerCorrelationId = proposal.peerCorrelationId,
                     outbound = closedOutbound,
                     inbound = Some(inbound),
-                  )
+                  ),
                 )
-                copy(relationships = relationships.updated(proposal.initiator, updatedRelationship)) ->
+                copy(relationships =
+                  relationships.updated(proposal.initiator, updatedRelationship),
+                ) ->
                   InboundHandshakeResult.Accepted(ack, superseded)
               else
                 this -> InboundHandshakeResult.Rejected(
                   HandshakeRejected(
                     reason = "simultaneousOpenLost",
                     detail = Some(localCorrelation.value),
-                  )
+                  ),
                 )
             case Some(relationship) =>
-              if relationship.peerCorrelationId != proposal.peerCorrelationId && hasAliveDirection(relationship) then
+              if relationship.peerCorrelationId =!= proposal.peerCorrelationId && hasAliveDirection(
+                  relationship,
+                )
+              then
                 this -> InboundHandshakeResult.Rejected(
                   HandshakeRejected(
                     reason = "peerCorrelationMismatch",
                     detail = Some(
-                      s"expected=${relationship.peerCorrelationId.value} actual=${proposal.peerCorrelationId.value}"
+                      ss"expected=${relationship.peerCorrelationId.value} actual=${proposal.peerCorrelationId.value}",
                     ),
-                  )
+                  ),
                 )
               else if relationship.inbound.exists(_.isAlive) then
                 this -> InboundHandshakeResult.Rejected(
                   HandshakeRejected(
                     reason = "duplicateInboundDirection",
                     detail = Some(proposal.initiator.value),
-                  )
+                  ),
                 )
               else
                 val inbound = buildAcceptedInboundSession(proposal, ack, now)
@@ -248,14 +290,20 @@ final case class GossipSessionEngine(
                   relationship.copy(
                     peerCorrelationId = proposal.peerCorrelationId,
                     inbound = Some(inbound),
-                  )
+                  ),
                 )
-                copy(relationships = relationships.updated(proposal.initiator, updatedRelationship)) ->
+                copy(relationships =
+                  relationships.updated(proposal.initiator, updatedRelationship),
+                ) ->
                   InboundHandshakeResult.Accepted(ack, None)
             case None =>
               val inbound = buildAcceptedInboundSession(proposal, ack, now)
-              val relationship = recomputeRelationship(PeerRelationship.withInbound(inbound))
-              copy(relationships = relationships.updated(proposal.initiator, relationship)) ->
+              val relationship = recomputeRelationship(
+                PeerRelationship.withInbound(inbound),
+              )
+              copy(relationships =
+                relationships.updated(proposal.initiator, relationship),
+              ) ->
                 InboundHandshakeResult.Accepted(ack, None)
         updatedEngine -> result
 
@@ -270,41 +318,47 @@ final case class GossipSessionEngine(
         HandshakeRejected(
           reason = "unknownSession",
           detail = Some(ack.sessionId.value),
-        )
+        ),
       )
       .flatMap: relationship =>
         relationship.outbound
-          .filter(_.sessionId == ack.sessionId)
+          .filter(_.sessionId === ack.sessionId)
           .toRight(
             HandshakeRejected(
               reason = "unknownSession",
               detail = Some(ack.sessionId.value),
-            )
+            ),
           )
           .flatMap: outbound =>
-            Either.cond(
-              outbound.status == DirectionalSessionStatus.Opening,
-              (),
-              HandshakeRejected(
-                reason = "sessionNotOpening",
-                detail = Some(outbound.sessionId.value),
-              ),
-            ).flatMap: _ =>
-              SessionNegotiation.validateAck(outbound.proposal, ack, policy).map: negotiated =>
-                val updatedOutbound = outbound.copy(
-                  peerCorrelationId = ack.peerCorrelationId,
-                  negotiated = Some(negotiated),
-                  status = DirectionalSessionStatus.Open,
-                  openedAt = Some(now),
-                  lastActivityAt = now,
-                )
-                val updatedRelationship = recomputeRelationship(
-                  relationship.copy(
-                    peerCorrelationId = ack.peerCorrelationId,
-                    outbound = Some(updatedOutbound),
-                  )
-                )
-                copy(relationships = relationships.updated(peer, updatedRelationship))
+            Either
+              .cond(
+                outbound.status === DirectionalSessionStatus.Opening,
+                (),
+                HandshakeRejected(
+                  reason = "sessionNotOpening",
+                  detail = Some(outbound.sessionId.value),
+                ),
+              )
+              .flatMap: _ =>
+                SessionNegotiation
+                  .validateAck(outbound.proposal, ack, policy)
+                  .map: negotiated =>
+                    val updatedOutbound = outbound.copy(
+                      peerCorrelationId = ack.peerCorrelationId,
+                      negotiated = Some(negotiated),
+                      status = DirectionalSessionStatus.Open,
+                      openedAt = Some(now),
+                      lastActivityAt = now,
+                    )
+                    val updatedRelationship = recomputeRelationship(
+                      relationship.copy(
+                        peerCorrelationId = ack.peerCorrelationId,
+                        outbound = Some(updatedOutbound),
+                      ),
+                    )
+                    copy(relationships =
+                      relationships.updated(peer, updatedRelationship),
+                    )
 
   def rejectPreOpenTraffic(
       sessionId: DirectionalSessionId,
@@ -312,73 +366,88 @@ final case class GossipSessionEngine(
   ): Either[HandshakeRejected, (GossipSessionEngine, HandshakeRejected)] =
     relationships.find(_._2.session(sessionId).nonEmpty) match
       case None =>
-        Left(
-          HandshakeRejected(
-            reason = "unknownSession",
-            detail = Some(sessionId.value),
-          )
-        )
+        HandshakeRejected(
+          reason = "unknownSession",
+          detail = Some(sessionId.value),
+        ).asLeft[(GossipSessionEngine, HandshakeRejected)]
       case Some((peer, relationship)) =>
-        relationship.session(sessionId).toRight(
-          HandshakeRejected(
-            reason = "unknownSession",
-            detail = Some(sessionId.value),
-          )
-        ).flatMap:
-          case session if session.status == DirectionalSessionStatus.Opening =>
-            val updatedSession = session.copy(status = DirectionalSessionStatus.Closed)
-            val updatedRelationship =
-              updatedSession.direction match
-                case SessionDirection.Outbound =>
-                  recomputeRelationship(relationship.copy(outbound = Some(updatedSession)))
-                case SessionDirection.Inbound =>
-                  recomputeRelationship(relationship.copy(inbound = Some(updatedSession)))
-            val rejection = HandshakeRejected(
-              reason = kind match
-                case PreOpenTrafficKind.EventStream    => "preOpenEventTraffic"
-                case PreOpenTrafficKind.ControlChannel => "preOpenControlTraffic",
+        relationship
+          .session(sessionId)
+          .toRight(
+            HandshakeRejected(
+              reason = "unknownSession",
               detail = Some(sessionId.value),
-            )
-            Right(copy(relationships = relationships.updated(peer, updatedRelationship)) -> rejection)
-          case session =>
-            Left(
+            ),
+          )
+          .flatMap:
+            case session
+                if session.status === DirectionalSessionStatus.Opening =>
+              val updatedSession =
+                session.copy(status = DirectionalSessionStatus.Closed)
+              val updatedRelationship =
+                updatedSession.direction match
+                  case SessionDirection.Outbound =>
+                    recomputeRelationship(
+                      relationship.copy(outbound = Some(updatedSession)),
+                    )
+                  case SessionDirection.Inbound =>
+                    recomputeRelationship(
+                      relationship.copy(inbound = Some(updatedSession)),
+                    )
+              val rejection = HandshakeRejected(
+                reason = kind match
+                  case PreOpenTrafficKind.EventStream => "preOpenEventTraffic"
+                  case PreOpenTrafficKind.ControlChannel =>
+                    "preOpenControlTraffic"
+                ,
+                detail = Some(sessionId.value),
+              )
+              (
+                copy(relationships =
+                  relationships.updated(peer, updatedRelationship),
+                ) -> rejection
+              ).asRight[HandshakeRejected]
+            case session =>
               HandshakeRejected(
                 reason = "sessionNotOpening",
                 detail = Some(session.sessionId.value),
-              )
-            )
+              ).asLeft[(GossipSessionEngine, HandshakeRejected)]
 
-  def closeSession(sessionId: DirectionalSessionId): Either[HandshakeRejected, GossipSessionEngine] =
-    updateSession(sessionId):
-      session =>
-        session.status match
-          case DirectionalSessionStatus.Dead =>
-            Left(
-              HandshakeRejected(
-                reason = "sessionAlreadyDead",
-                detail = Some(session.sessionId.value),
-              )
-            )
-          case _ =>
-            Right(session.copy(status = DirectionalSessionStatus.Closed))
+  def closeSession(
+      sessionId: DirectionalSessionId,
+  ): Either[HandshakeRejected, GossipSessionEngine] =
+    updateSession(sessionId): session =>
+      session.status match
+        case DirectionalSessionStatus.Dead =>
+          HandshakeRejected(
+            reason = "sessionAlreadyDead",
+            detail = Some(session.sessionId.value),
+          ).asLeft[DirectionalSession]
+        case _ =>
+          session.copy(status = DirectionalSessionStatus.Closed)
+            .asRight[HandshakeRejected]
 
-  def markSessionDead(sessionId: DirectionalSessionId): Either[HandshakeRejected, GossipSessionEngine] =
-    updateSession(sessionId)(session => Right(session.copy(status = DirectionalSessionStatus.Dead)))
+  def markSessionDead(
+      sessionId: DirectionalSessionId,
+  ): Either[HandshakeRejected, GossipSessionEngine] =
+    updateSession(sessionId)(session =>
+      session.copy(status = DirectionalSessionStatus.Dead)
+        .asRight[HandshakeRejected],
+    )
 
   def touchSessionActivity(
       sessionId: DirectionalSessionId,
       now: Instant,
   ): Either[HandshakeRejected, GossipSessionEngine] =
-    updateSession(sessionId):
-      session =>
-        Either.cond(
-          session.status == DirectionalSessionStatus.Open,
-          session.copy(lastActivityAt = now),
-          HandshakeRejected(
-            reason = "sessionNotOpen",
-            detail = Some(session.sessionId.value),
-          ),
-        )
+    updateSession(sessionId): session =>
+      Either.cond(
+        session.status === DirectionalSessionStatus.Open,
+        session.copy(lastActivityAt = now),
+        HandshakeRejected(
+          reason = "sessionNotOpen",
+          detail = Some(session.sessionId.value),
+        ),
+      )
 
   def expireOpeningHandshakes(now: Instant): GossipSessionEngine =
     expireTimedOutSessions(now)
@@ -386,19 +455,24 @@ final case class GossipSessionEngine(
   def expireTimedOutSessions(now: Instant): GossipSessionEngine =
     relationships.values.foldLeft(this):
       case (engine, relationship) =>
-        List(relationship.outbound, relationship.inbound).flatten.foldLeft(engine):
-          case (acc, session) =>
-            session.status match
-              case DirectionalSessionStatus.Opening
-                  if !now.isBefore(session.createdAt.plus(policy.openingHandshakeTimeout)) =>
-                acc.markSessionDead(session.sessionId).getOrElse(acc)
-              case DirectionalSessionStatus.Open
-                  if session.negotiated.exists(params =>
-                    !now.isBefore(session.lastActivityAt.plus(params.livenessTimeout))
-                  ) =>
-                acc.markSessionDead(session.sessionId).getOrElse(acc)
-              case _ =>
-                acc
+        List(relationship.outbound, relationship.inbound).flatten
+          .foldLeft(engine):
+            case (acc, session) =>
+              session.status match
+                case DirectionalSessionStatus.Opening
+                    if !now.isBefore(
+                      session.createdAt.plus(policy.openingHandshakeTimeout),
+                    ) =>
+                  acc.markSessionDead(session.sessionId).getOrElse(acc)
+                case DirectionalSessionStatus.Open
+                    if session.negotiated.exists(params =>
+                      !now.isBefore(
+                        session.lastActivityAt.plus(params.livenessTimeout),
+                      ),
+                    ) =>
+                  acc.markSessionDead(session.sessionId).getOrElse(acc)
+                case _ =>
+                  acc
 
   private def buildAcceptedInboundSession(
       proposal: SessionOpenProposal,
@@ -419,23 +493,28 @@ final case class GossipSessionEngine(
     )
 
   private def hasAliveDirection(relationship: PeerRelationship): Boolean =
-    relationship.outbound.exists(_.isAlive) || relationship.inbound.exists(_.isAlive)
+    relationship.outbound.exists(_.isAlive) || relationship.inbound.exists(
+      _.isAlive,
+    )
 
   private def recomputeRelationship(
       relationship: PeerRelationship,
   ): PeerRelationship =
     val outboundAlive = relationship.outbound.exists(_.isAlive)
-    val inboundAlive = relationship.inbound.exists(_.isAlive)
-    val bothOpen = relationship.outbound.exists(_.status == DirectionalSessionStatus.Open) &&
-      relationship.inbound.exists(_.status == DirectionalSessionStatus.Open)
+    val inboundAlive  = relationship.inbound.exists(_.isAlive)
+    val bothOpen =
+      relationship.outbound.exists(_.status === DirectionalSessionStatus.Open) &&
+        relationship.inbound.exists(_.status === DirectionalSessionStatus.Open)
     val wasBidirectionalOpen = relationship.wasBidirectionalOpen || bothOpen
     val nextStatus =
       if bothOpen then PeerRelationshipStatus.Open
       else if outboundAlive || inboundAlive then
         if wasBidirectionalOpen then PeerRelationshipStatus.HalfOpen
         else PeerRelationshipStatus.Opening
-      else if relationship.outbound.exists(_.status == DirectionalSessionStatus.Dead) ||
-          relationship.inbound.exists(_.status == DirectionalSessionStatus.Dead)
+      else if relationship.outbound.exists(
+          _.status === DirectionalSessionStatus.Dead,
+        ) ||
+        relationship.inbound.exists(_.status === DirectionalSessionStatus.Dead)
       then PeerRelationshipStatus.Dead
       else PeerRelationshipStatus.Closed
 
@@ -447,33 +526,45 @@ final case class GossipSessionEngine(
   private def updateSession(
       sessionId: DirectionalSessionId,
   )(
-      transform: DirectionalSession => Either[HandshakeRejected, DirectionalSession],
+      transform: DirectionalSession => Either[
+        HandshakeRejected,
+        DirectionalSession,
+      ],
   ): Either[HandshakeRejected, GossipSessionEngine] =
     relationships.find(_._2.session(sessionId).nonEmpty) match
       case None =>
-        Left(
-          HandshakeRejected(
-            reason = "unknownSession",
-            detail = Some(sessionId.value),
-          )
-        )
+        HandshakeRejected(
+          reason = "unknownSession",
+          detail = Some(sessionId.value),
+        ).asLeft[GossipSessionEngine]
       case Some((peer, relationship)) =>
-        relationship.session(sessionId).toRight(
-          HandshakeRejected(
-            reason = "unknownSession",
-            detail = Some(sessionId.value),
+        relationship
+          .session(sessionId)
+          .toRight(
+            HandshakeRejected(
+              reason = "unknownSession",
+              detail = Some(sessionId.value),
+            ),
           )
-        ).flatMap(transform).map:
-          updatedSession =>
+          .flatMap(transform)
+          .map: updatedSession =>
             val updatedRelationship =
               updatedSession.direction match
                 case SessionDirection.Outbound =>
-                  recomputeRelationship(relationship.copy(outbound = Some(updatedSession)))
+                  recomputeRelationship(
+                    relationship.copy(outbound = Some(updatedSession)),
+                  )
                 case SessionDirection.Inbound =>
-                  recomputeRelationship(relationship.copy(inbound = Some(updatedSession)))
-            copy(relationships = relationships.updated(peer, updatedRelationship))
+                  recomputeRelationship(
+                    relationship.copy(inbound = Some(updatedSession)),
+                  )
+            copy(relationships =
+              relationships.updated(peer, updatedRelationship),
+            )
 
-  private def ensureDirectNeighbor(peer: PeerIdentity): Either[HandshakeRejected, Unit] =
+  private def ensureDirectNeighbor(
+      peer: PeerIdentity,
+  ): Either[HandshakeRejected, Unit] =
     Either.cond(
       topology.isDirectNeighbor(peer),
       (),

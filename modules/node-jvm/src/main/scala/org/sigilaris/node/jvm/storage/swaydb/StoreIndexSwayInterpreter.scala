@@ -30,6 +30,7 @@ final class StoreIndexSwayInterpreter[K, V: ByteEncoder: ByteDecoder](
   override def remove(key: K): IO[Unit] =
     keyValue.remove(key)
 
+  @SuppressWarnings(Array("org.wartremover.warts.MutableDataStructures"))
   override def from(
       key: K,
       offset: Int,
@@ -46,27 +47,43 @@ final class StoreIndexSwayInterpreter[K, V: ByteEncoder: ByteDecoder](
           case (decodedKey, valueArray) =>
             ByteDecoder[V]
               .decode(ByteVector.view(valueArray))
-              .flatMap(result => StoreIndexSwayInterpreter.ensureNoRemainder(result, "decoded value has remainder"))
+              .flatMap(result =>
+                StoreIndexSwayInterpreter
+                  .ensureNoRemainder(result, "decoded value has remainder"),
+              )
               .map(decodedValue => (decodedKey, decodedValue))
 
   def close(): IO[Unit] =
     keyValue.close()
 
+@SuppressWarnings(
+  Array(
+    "org.wartremover.warts.Any",
+    "org.wartremover.warts.MutableDataStructures",
+  ),
+)
 object StoreIndexSwayInterpreter:
   def apply[K: ByteEncoder: ByteDecoder, V: ByteEncoder: ByteDecoder](
       dir: Path,
   )(using Bag.Async[IO]): IO[StoreIndexSwayInterpreter[K, V]] =
-    KeyValueSwayStore.openMap[K](dir).map(new StoreIndexSwayInterpreter[K, V](_))
+    KeyValueSwayStore
+      .openMap[K](dir)
+      .map(new StoreIndexSwayInterpreter[K, V](_))
 
   def ensureNoRemainder[A](
       decoded: DecodeResult[A],
       message: String,
   ): Either[DecodeFailure, A] =
-    Either.cond(decoded.remainder.isEmpty, decoded.value, DecodeFailure(message))
+    Either.cond(
+      decoded.remainder.isEmpty,
+      decoded.value,
+      DecodeFailure(message),
+    )
 
   given scala.reflect.ClassTag[Nothing] = scala.reflect.Manifest.Nothing
   given swaydb.core.build.BuildValidator =
-    swaydb.core.build.BuildValidator.DisallowOlderVersions(swaydb.data.DataType.Map)
+    swaydb.core.build.BuildValidator
+      .DisallowOlderVersions(swaydb.data.DataType.Map)
 
   @SuppressWarnings(Array("org.wartremover.warts.Throw"))
   given serializerFromCodecs[A: ByteEncoder: ByteDecoder]: Serializer[A] =
@@ -80,6 +97,8 @@ object StoreIndexSwayInterpreter:
           case Right(DecodeResult(value, remainder)) if remainder.isEmpty =>
             value
           case other =>
-            throw new Exception(s"Failed to decode SwayDB key/value bytes: $other")
+            throw new Exception(
+              s"Failed to decode SwayDB key/value bytes: $other",
+            )
 
   given Serializer[Array[Byte]] = ByteArraySerializer

@@ -10,6 +10,7 @@ import scodec.bits.ByteVector
 import org.sigilaris.core.codec.byte.ByteEncoder
 import org.sigilaris.core.codec.byte.ByteEncoder.ops.*
 import org.sigilaris.core.crypto.KeyPair
+import org.sigilaris.core.util.SafeStringInterp.*
 import org.sigilaris.node.jvm.runtime.gossip.*
 
 enum HotStuffGossipArtifact:
@@ -21,17 +22,20 @@ object HotStuffGossipArtifact:
       artifact: HotStuffGossipArtifact,
   ): GossipTopic =
     artifact match
-      case HotStuffGossipArtifact.ProposalArtifact(_) => GossipTopic.consensusProposal
-      case HotStuffGossipArtifact.VoteArtifact(_)     => GossipTopic.consensusVote
+      case HotStuffGossipArtifact.ProposalArtifact(_) =>
+        GossipTopic.consensusProposal
+      case HotStuffGossipArtifact.VoteArtifact(_) => GossipTopic.consensusVote
 
   def stableIdOf(
       artifact: HotStuffGossipArtifact,
   ): StableArtifactId =
     artifact match
       case HotStuffGossipArtifact.ProposalArtifact(proposal) =>
-        StableArtifactId.unsafeFromBytes(proposal.proposalId.toUInt256.bytes)
+        StableArtifactId.unsafeFromBytes:
+          proposal.proposalId.toUInt256.bytes
       case HotStuffGossipArtifact.VoteArtifact(vote) =>
-        StableArtifactId.unsafeFromBytes(vote.voteId.toUInt256.bytes)
+        StableArtifactId.unsafeFromBytes:
+          vote.voteId.toUInt256.bytes
 
 final case class HotStuffTopicPolicy(
     exactKnownSetLimit: Int,
@@ -47,26 +51,38 @@ final case class HotStuffTopicPolicy(
   def producerQoS: GossipProducerQoS =
     new GossipProducerQoS:
       override def maxBatchItems: Int = HotStuffTopicPolicy.this.maxBatchItems
-      override def flushInterval: Duration = HotStuffTopicPolicy.this.flushInterval
+      override def flushInterval: Duration =
+        HotStuffTopicPolicy.this.flushInterval
 
 final case class HotStuffGossipPolicy(
-    proposal: HotStuffTopicPolicy =
-      HotStuffTopicPolicy(
-        exactKnownSetLimit = 256,
-        requestByIdLimit = HotStuffPolicy.requestPolicy.maxProposalRequestIds,
-        maxBatchItems = 32,
-        flushInterval = Duration.ZERO,
-        deliveryPriority = 2,
-      ),
-    vote: HotStuffTopicPolicy =
-      HotStuffTopicPolicy(
-        exactKnownSetLimit = 2048,
-        requestByIdLimit = HotStuffPolicy.requestPolicy.maxVoteRequestIds,
-        maxBatchItems = 256,
-        flushInterval = Duration.ZERO,
-        deliveryPriority = 1,
-      ),
+    proposal: HotStuffTopicPolicy,
+    vote: HotStuffTopicPolicy,
 )
+
+object HotStuffGossipPolicy:
+  private val defaultProposalPolicy: HotStuffTopicPolicy =
+    HotStuffTopicPolicy(
+      exactKnownSetLimit = 256,
+      requestByIdLimit = HotStuffPolicy.requestPolicy.maxProposalRequestIds,
+      maxBatchItems = 32,
+      flushInterval = Duration.ZERO,
+      deliveryPriority = 2,
+    )
+
+  private val defaultVotePolicy: HotStuffTopicPolicy =
+    HotStuffTopicPolicy(
+      exactKnownSetLimit = 2048,
+      requestByIdLimit = HotStuffPolicy.requestPolicy.maxVoteRequestIds,
+      maxBatchItems = 256,
+      flushInterval = Duration.ZERO,
+      deliveryPriority = 1,
+    )
+
+  val default: HotStuffGossipPolicy =
+    HotStuffGossipPolicy(
+      proposal = defaultProposalPolicy,
+      vote = defaultVotePolicy,
+    )
 
 object HotStuffWindowKey:
   private final case class WindowInput(
@@ -79,14 +95,13 @@ object HotStuffWindowKey:
   def fromWindow(
       window: HotStuffWindow,
   ): TopicWindowKey =
-    TopicWindowKey.unsafeFromBytes(
+    TopicWindowKey.unsafeFromBytes:
       WindowInput(
         chainId = window.chainId,
         height = window.height,
         view = window.view,
         validatorSetHash = window.validatorSetHash,
       ).toBytes
-    )
 
 object HotStuffTopic:
   def proposalContract(
@@ -94,9 +109,10 @@ object HotStuffTopic:
   ): GossipTopicContract[HotStuffGossipArtifact] =
     new GossipTopicContract[HotStuffGossipArtifact]:
       override val topic: GossipTopic = GossipTopic.consensusProposal
-      override val exactKnownSetLimit: Option[Int] = Some(policy.exactKnownSetLimit)
+      override val exactKnownSetLimit: Option[Int] = Some:
+        policy.exactKnownSetLimit
       override val requestByIdLimit: Option[Int] = Some(policy.requestByIdLimit)
-      override val deliveryPriority: Int = policy.deliveryPriority
+      override val deliveryPriority: Int         = policy.deliveryPriority
 
       override def producerQoS(
           default: GossipProducerQoS,
@@ -108,10 +124,12 @@ object HotStuffTopic:
       ): Either[CanonicalRejection.ArtifactContractRejected, Unit] =
         event.payload match
           case HotStuffGossipArtifact.ProposalArtifact(proposal) =>
+            val expectedId = StableArtifactId.unsafeFromBytes:
+              proposal.proposalId.toUInt256.bytes
             Either.cond(
-              event.topic == topic &&
-                event.chainId == proposal.window.chainId &&
-                event.id.bytes == proposal.proposalId.toUInt256.bytes,
+              event.topic === topic &&
+                event.chainId === proposal.window.chainId &&
+                event.id === expectedId,
               (),
               CanonicalRejection.ArtifactContractRejected(
                 reason = "invalidConsensusProposalEvent",
@@ -119,43 +137,44 @@ object HotStuffTopic:
               ),
             )
           case _ =>
-            Left(
-              CanonicalRejection.ArtifactContractRejected(
+            CanonicalRejection
+              .ArtifactContractRejected(
                 reason = "unexpectedTopicPayload",
                 detail = Some(topic.value),
               )
-            )
+              .asLeft[Unit]
 
       override def exactKnownScopeOf(
           event: GossipEvent[HotStuffGossipArtifact],
-      ): Either[CanonicalRejection.ArtifactContractRejected, Option[ExactKnownSetScope]] =
+      ): Either[CanonicalRejection.ArtifactContractRejected, Option[
+        ExactKnownSetScope,
+      ]] =
         event.payload match
           case HotStuffGossipArtifact.ProposalArtifact(proposal) =>
-            Right(
-              Some(
-                ExactKnownSetScope(
-                  chainId = proposal.window.chainId,
-                  topic = topic,
-                  windowKey = HotStuffWindowKey.fromWindow(proposal.window),
-                )
+            Some:
+              ExactKnownSetScope(
+                chainId = proposal.window.chainId,
+                topic = topic,
+                windowKey = HotStuffWindowKey.fromWindow(proposal.window),
               )
-            )
+            .asRight[CanonicalRejection.ArtifactContractRejected]
           case _ =>
-            Left(
-              CanonicalRejection.ArtifactContractRejected(
+            CanonicalRejection
+              .ArtifactContractRejected(
                 reason = "unexpectedTopicPayload",
                 detail = Some(topic.value),
               )
-            )
+              .asLeft[Option[ExactKnownSetScope]]
 
   def voteContract(
       policy: HotStuffTopicPolicy,
   ): GossipTopicContract[HotStuffGossipArtifact] =
     new GossipTopicContract[HotStuffGossipArtifact]:
       override val topic: GossipTopic = GossipTopic.consensusVote
-      override val exactKnownSetLimit: Option[Int] = Some(policy.exactKnownSetLimit)
+      override val exactKnownSetLimit: Option[Int] = Some:
+        policy.exactKnownSetLimit
       override val requestByIdLimit: Option[Int] = Some(policy.requestByIdLimit)
-      override val deliveryPriority: Int = policy.deliveryPriority
+      override val deliveryPriority: Int         = policy.deliveryPriority
 
       override def producerQoS(
           default: GossipProducerQoS,
@@ -167,10 +186,12 @@ object HotStuffTopic:
       ): Either[CanonicalRejection.ArtifactContractRejected, Unit] =
         event.payload match
           case HotStuffGossipArtifact.VoteArtifact(vote) =>
+            val expectedId = StableArtifactId.unsafeFromBytes:
+              vote.voteId.toUInt256.bytes
             Either.cond(
-              event.topic == topic &&
-                event.chainId == vote.window.chainId &&
-                event.id.bytes == vote.voteId.toUInt256.bytes,
+              event.topic === topic &&
+                event.chainId === vote.window.chainId &&
+                event.id === expectedId,
               (),
               CanonicalRejection.ArtifactContractRejected(
                 reason = "invalidConsensusVoteEvent",
@@ -178,37 +199,38 @@ object HotStuffTopic:
               ),
             )
           case _ =>
-            Left(
-              CanonicalRejection.ArtifactContractRejected(
+            CanonicalRejection
+              .ArtifactContractRejected(
                 reason = "unexpectedTopicPayload",
                 detail = Some(topic.value),
               )
-            )
+              .asLeft[Unit]
 
       override def exactKnownScopeOf(
           event: GossipEvent[HotStuffGossipArtifact],
-      ): Either[CanonicalRejection.ArtifactContractRejected, Option[ExactKnownSetScope]] =
+      ): Either[CanonicalRejection.ArtifactContractRejected, Option[
+        ExactKnownSetScope,
+      ]] =
         event.payload match
           case HotStuffGossipArtifact.VoteArtifact(vote) =>
-            Right(
-              Some(
-                ExactKnownSetScope(
-                  chainId = vote.window.chainId,
-                  topic = topic,
-                  windowKey = HotStuffWindowKey.fromWindow(vote.window),
-                )
+            Some:
+              ExactKnownSetScope(
+                chainId = vote.window.chainId,
+                topic = topic,
+                windowKey = HotStuffWindowKey.fromWindow(vote.window),
               )
-            )
+            .asRight[CanonicalRejection.ArtifactContractRejected]
           case _ =>
-            Left(
-              CanonicalRejection.ArtifactContractRejected(
+            CanonicalRejection
+              .ArtifactContractRejected(
                 reason = "unexpectedTopicPayload",
                 detail = Some(topic.value),
               )
-            )
+              .asLeft[Option[ExactKnownSetScope]]
 
+  @SuppressWarnings(Array("org.wartremover.warts.DefaultArguments"))
   def registry(
-      policy: HotStuffGossipPolicy = HotStuffGossipPolicy(),
+      policy: HotStuffGossipPolicy = HotStuffGossipPolicy.default,
   ): GossipTopicContractRegistry[HotStuffGossipArtifact] =
     GossipTopicContractRegistry.of(
       proposalContract(policy.proposal),
@@ -230,11 +252,11 @@ final case class InMemoryHotStuffSinkSnapshot(
 object InMemoryHotStuffSinkSnapshot:
   val empty: InMemoryHotStuffSinkSnapshot =
     InMemoryHotStuffSinkSnapshot(
-      proposals = Map.empty,
-      votes = Map.empty,
+      proposals = Map.empty[ProposalId, Proposal],
+      votes = Map.empty[VoteId, Vote],
       accumulator = VoteAccumulator.empty,
-      qcs = Map.empty,
-      duplicates = Vector.empty,
+      qcs = Map.empty[ProposalId, QuorumCertificate],
+      duplicates = Vector.empty[GossipEvent[HotStuffGossipArtifact]],
     )
 
 trait HotStuffArtifactPublisher[F[_]]:
@@ -245,7 +267,9 @@ trait HotStuffArtifactPublisher[F[_]]:
 
 final class InMemoryHotStuffArtifactSource[F[_]: Sync] private (
     clock: GossipClock[F],
-    ref: Ref[F, Map[ChainTopic, Vector[AvailableGossipEvent[HotStuffGossipArtifact]]]],
+    ref: Ref[F, Map[ChainTopic, Vector[
+      AvailableGossipEvent[HotStuffGossipArtifact],
+    ]]],
 ) extends GossipArtifactSource[F, HotStuffGossipArtifact]
     with HotStuffArtifactPublisher[F]:
   def append(
@@ -255,11 +279,15 @@ final class InMemoryHotStuffArtifactSource[F[_]: Sync] private (
     clock.now.flatMap: availableAt =>
       ref.modify: state =>
         val chainId = artifact match
-          case HotStuffGossipArtifact.ProposalArtifact(proposal) => proposal.window.chainId
-          case HotStuffGossipArtifact.VoteArtifact(vote)         => vote.window.chainId
-        val topic = HotStuffGossipArtifact.topicOf(artifact)
+          case HotStuffGossipArtifact.ProposalArtifact(proposal) =>
+            proposal.window.chainId
+          case HotStuffGossipArtifact.VoteArtifact(vote) => vote.window.chainId
+        val topic      = HotStuffGossipArtifact.topicOf(artifact)
         val chainTopic = ChainTopic(chainId, topic)
-        val topicEvents = state.getOrElse(chainTopic, Vector.empty)
+        val topicEvents = state.getOrElse(
+          chainTopic,
+          Vector.empty[AvailableGossipEvent[HotStuffGossipArtifact]],
+        )
         val nextSequence = topicEvents.size.toLong + 1L
         val event = GossipEvent(
           chainId = chainId,
@@ -269,20 +297,26 @@ final class InMemoryHotStuffArtifactSource[F[_]: Sync] private (
           ts = ts,
           payload = artifact,
         )
-        val available = AvailableGossipEvent(event = event, availableAt = availableAt)
+        val available =
+          AvailableGossipEvent(event = event, availableAt = availableAt)
         state.updated(chainTopic, topicEvents :+ available) -> event
 
   override def readAfter(
       chainId: ChainId,
       topic: GossipTopic,
       cursor: Option[CursorToken],
-  ): F[Either[CanonicalRejection, Vector[AvailableGossipEvent[HotStuffGossipArtifact]]]] =
+  ): F[Either[CanonicalRejection, Vector[
+    AvailableGossipEvent[HotStuffGossipArtifact],
+  ]]] =
     ref.get.map: state =>
       val chainTopic = ChainTopic(chainId, topic)
-      val topicEvents = state.getOrElse(chainTopic, Vector.empty)
+      val topicEvents = state.getOrElse(
+        chainTopic,
+        Vector.empty[AvailableGossipEvent[HotStuffGossipArtifact]],
+      )
       cursor match
         case None =>
-          Right(topicEvents)
+          topicEvents.asRight[CanonicalRejection]
         case Some(token) =>
           decodeSequence(token).flatMap: sequence =>
             val maxSequence = topicEvents.size.toLong
@@ -291,7 +325,8 @@ final class InMemoryHotStuffArtifactSource[F[_]: Sync] private (
               topicEvents.drop(sequence.toInt),
               CanonicalRejection.StaleCursor(
                 reason = "unknownCursor",
-                detail = Some(s"sequence=$sequence max=$maxSequence"),
+                detail = Some:
+                  ss"sequence=${sequence.toString} max=${maxSequence.toString}"
               ),
             )
 
@@ -303,35 +338,48 @@ final class InMemoryHotStuffArtifactSource[F[_]: Sync] private (
     ref.get.map: state =>
       val latestById =
         state
-          .getOrElse(ChainTopic(chainId, topic), Vector.empty)
-          .foldLeft(Map.empty[StableArtifactId, AvailableGossipEvent[HotStuffGossipArtifact]]): (acc, available) =>
+          .getOrElse(
+            ChainTopic(chainId, topic),
+            Vector.empty[AvailableGossipEvent[HotStuffGossipArtifact]],
+          )
+          .foldLeft(
+            Map.empty[StableArtifactId, AvailableGossipEvent[
+              HotStuffGossipArtifact,
+            ]],
+          ): (acc, available) =>
             acc.updated(available.event.id, available)
       ids.distinct.flatMap(latestById.get)
 
   private def cursorFor(
       sequence: Long,
   ): CursorToken =
-    CursorToken.issue(ByteVector.view(ByteBuffer.allocate(java.lang.Long.BYTES).putLong(sequence).array()))
+    CursorToken.issue:
+      ByteVector.view:
+        ByteBuffer.allocate(java.lang.Long.BYTES).putLong(sequence).array()
 
   private def decodeSequence(
       token: CursorToken,
   ): Either[CanonicalRejection.StaleCursor, Long] =
-    token.validateVersion().flatMap: validated =>
-      Either.cond(
-        validated.payload.size == java.lang.Long.BYTES.toLong,
-        ByteBuffer.wrap(validated.payload.toArray).getLong(),
-        CanonicalRejection.StaleCursor(
-          reason = "invalidCursorPayload",
-          detail = Some(s"size=${validated.payload.size}"),
-        ),
-      )
+    token
+      .validateVersion()
+      .flatMap: validated =>
+        Either.cond(
+          validated.payload.size == java.lang.Long.BYTES.toLong,
+          ByteBuffer.wrap(validated.payload.toArray).getLong(),
+          CanonicalRejection.StaleCursor(
+            reason = "invalidCursorPayload",
+            detail = Some(ss"size=${validated.payload.size.toString}"),
+          ),
+        )
 
 object InMemoryHotStuffArtifactSource:
   def create[F[_]: Sync](using
-      clock: GossipClock[F]
+      clock: GossipClock[F],
   ): F[InMemoryHotStuffArtifactSource[F]] =
     Ref
-      .of[F, Map[ChainTopic, Vector[AvailableGossipEvent[HotStuffGossipArtifact]]]](Map.empty)
+      .of[F, Map[ChainTopic, Vector[
+        AvailableGossipEvent[HotStuffGossipArtifact],
+      ]]](Map.empty)
       .map(new InMemoryHotStuffArtifactSource[F](clock, _))
 
 final class InMemoryHotStuffArtifactSink[F[_]: Sync] private (
@@ -340,33 +388,42 @@ final class InMemoryHotStuffArtifactSink[F[_]: Sync] private (
     relayPublisher: HotStuffArtifactPublisher[F],
     ref: Ref[F, InMemoryHotStuffSinkSnapshot],
 ) extends GossipArtifactSink[F, HotStuffGossipArtifact]:
+  private type RelayEnvelope = (HotStuffGossipArtifact, Instant)
+
   // This sink is intentionally optimized for deterministic in-memory tests.
   // It keeps QC assembly simple and atomic, but production-backed sinks should
   // replace the repeated full re-assembly path with an incremental cache/index.
   override def applyEvent(
       event: GossipEvent[HotStuffGossipArtifact],
-  ): F[Either[CanonicalRejection.ArtifactContractRejected, ArtifactApplyResult]] =
+  ): F[
+    Either[CanonicalRejection.ArtifactContractRejected, ArtifactApplyResult],
+  ] =
     ref
       .modify: snapshot =>
         event.payload match
           case HotStuffGossipArtifact.ProposalArtifact(proposal) =>
             if snapshot.proposals.contains(proposal.proposalId) then
-              snapshot.copy(duplicates = snapshot.duplicates :+ event) -> Right(
-                ArtifactApplyResult(applied = false, duplicate = true) -> None
-              )
+              snapshot.copy(duplicates = snapshot.duplicates :+ event) -> (
+                ArtifactApplyResult(applied = false, duplicate = true) -> Option
+                  .empty[RelayEnvelope]
+              ).asRight[CanonicalRejection.ArtifactContractRejected]
             else
               HotStuffValidator.validateProposal(proposal, validatorSet) match
                 case Left(error) =>
-                  snapshot -> Left(
-                    CanonicalRejection.ArtifactContractRejected(
+                  snapshot -> CanonicalRejection
+                    .ArtifactContractRejected(
                       reason = error.reason,
                       detail = error.detail,
                     )
-                  )
+                    .asLeft[(ArtifactApplyResult, Option[RelayEnvelope])]
                 case Right(_) =>
-                  val updatedProposals = snapshot.proposals.updated(proposal.proposalId, proposal)
+                  val updatedProposals =
+                    snapshot.proposals.updated(proposal.proposalId, proposal)
                   val updatedQcs =
-                    snapshot.qcs.updated(proposal.justify.subject.proposalId, proposal.justify)
+                    snapshot.qcs.updated(
+                      proposal.justify.subject.proposalId,
+                      proposal.justify,
+                    )
                   val assembled =
                     assembleQuorumCertificate(
                       QuorumCertificateSubject(
@@ -374,43 +431,56 @@ final class InMemoryHotStuffArtifactSink[F[_]: Sync] private (
                         proposalId = proposal.proposalId,
                         blockId = proposal.targetBlockId,
                       ),
-                      snapshot.accumulator.votesFor(proposal.window, proposal.proposalId),
+                      snapshot.accumulator
+                        .votesFor(proposal.window, proposal.proposalId),
                     )
                   val finalQcs =
-                    assembled.fold(updatedQcs)(qc => updatedQcs.updated(proposal.proposalId, qc))
+                    assembled.fold(updatedQcs)(qc =>
+                      updatedQcs.updated(proposal.proposalId, qc),
+                    )
                   val relayArtifact =
-                    if relayPolicy.relayValidatedArtifacts then Some(event.payload -> event.ts)
-                    else None
-                  snapshot.copy(proposals = updatedProposals, qcs = finalQcs) -> Right(
-                    ArtifactApplyResult(applied = true, duplicate = false) -> relayArtifact
-                  )
+                    if relayPolicy.relayValidatedArtifacts then
+                      Some(event.payload -> event.ts)
+                    else Option.empty[RelayEnvelope]
+                  snapshot.copy(
+                    proposals = updatedProposals,
+                    qcs = finalQcs,
+                  ) -> (
+                    ArtifactApplyResult(
+                      applied = true,
+                      duplicate = false,
+                    ) -> relayArtifact
+                  ).asRight[CanonicalRejection.ArtifactContractRejected]
 
           case HotStuffGossipArtifact.VoteArtifact(vote) =>
             if snapshot.votes.contains(vote.voteId) then
-              snapshot.copy(duplicates = snapshot.duplicates :+ event) -> Right(
-                ArtifactApplyResult(applied = false, duplicate = true) -> None
-              )
+              snapshot.copy(duplicates = snapshot.duplicates :+ event) -> (
+                ArtifactApplyResult(applied = false, duplicate = true) -> Option
+                  .empty[RelayEnvelope]
+              ).asRight[CanonicalRejection.ArtifactContractRejected]
             else
               HotStuffValidator.validateVote(vote, validatorSet) match
                 case Left(error) =>
-                  snapshot -> Left(
-                    CanonicalRejection.ArtifactContractRejected(
+                  snapshot -> CanonicalRejection
+                    .ArtifactContractRejected(
                       reason = error.reason,
                       detail = error.detail,
                     )
-                  )
+                    .asLeft[(ArtifactApplyResult, Option[RelayEnvelope])]
                 case Right(_) =>
                   snapshot.accumulator.record(vote) match
                     case Left(error) =>
-                      snapshot -> Left(
-                        CanonicalRejection.ArtifactContractRejected(
+                      snapshot -> CanonicalRejection
+                        .ArtifactContractRejected(
                           reason = error.reason,
                           detail = error.detail,
                         )
-                      )
+                        .asLeft[(ArtifactApplyResult, Option[RelayEnvelope])]
                     case Right((updatedAccumulator, _)) =>
-                      val updatedVotes = snapshot.votes.updated(vote.voteId, vote)
-                      val maybeProposal = snapshot.proposals.get(vote.targetProposalId)
+                      val updatedVotes =
+                        snapshot.votes.updated(vote.voteId, vote)
+                      val maybeProposal =
+                        snapshot.proposals.get(vote.targetProposalId)
                       val maybeQc =
                         maybeProposal.flatMap: proposal =>
                           assembleQuorumCertificate(
@@ -419,19 +489,28 @@ final class InMemoryHotStuffArtifactSink[F[_]: Sync] private (
                               proposalId = proposal.proposalId,
                               blockId = proposal.targetBlockId,
                             ),
-                            updatedAccumulator.votesFor(proposal.window, proposal.proposalId),
+                            updatedAccumulator
+                              .votesFor(proposal.window, proposal.proposalId),
                           )
                       val updatedQcs =
-                        maybeProposal.flatMap(_ => maybeQc).fold(snapshot.qcs): qc =>
-                          snapshot.qcs.updated(qc.subject.proposalId, qc)
+                        maybeProposal
+                          .flatMap(_ => maybeQc)
+                          .fold(snapshot.qcs): qc =>
+                            snapshot.qcs.updated(qc.subject.proposalId, qc)
                       val relayArtifact =
-                        if relayPolicy.relayValidatedArtifacts then Some(event.payload -> event.ts)
-                        else None
+                        if relayPolicy.relayValidatedArtifacts then
+                          Some(event.payload -> event.ts)
+                        else Option.empty[RelayEnvelope]
                       snapshot.copy(
                         votes = updatedVotes,
                         accumulator = updatedAccumulator,
                         qcs = updatedQcs,
-                      ) -> Right(ArtifactApplyResult(applied = true, duplicate = false) -> relayArtifact)
+                      ) -> (
+                        ArtifactApplyResult(
+                          applied = true,
+                          duplicate = false,
+                        ) -> relayArtifact
+                      ).asRight[CanonicalRejection.ArtifactContractRejected]
       .flatMap:
         case Left(rejection) =>
           rejection.asLeft[ArtifactApplyResult].pure[F]
@@ -461,21 +540,28 @@ object InMemoryHotStuffArtifactSink:
   ): F[InMemoryHotStuffArtifactSink[F]] =
     Ref
       .of[F, InMemoryHotStuffSinkSnapshot](InMemoryHotStuffSinkSnapshot.empty)
-      .map(new InMemoryHotStuffArtifactSink[F](validatorSet, relayPolicy, relayPublisher, _))
+      .map:
+        new InMemoryHotStuffArtifactSink[F](
+          validatorSet,
+          relayPolicy,
+          relayPublisher,
+          _,
+        )
 
+@SuppressWarnings(Array("org.wartremover.warts.DefaultArguments"))
 final case class HotStuffRuntimeBootstrapInput(
     localPeer: PeerIdentity,
     role: LocalNodeRole,
     holders: Vector[ValidatorKeyHolder],
     validatorSet: ValidatorSet,
     localKeys: Map[ValidatorId, KeyPair],
-    gossipPolicy: HotStuffGossipPolicy = HotStuffGossipPolicy(),
+    gossipPolicy: HotStuffGossipPolicy = HotStuffGossipPolicy.default,
 )
 
 /** Runtime-owned HotStuff service surface.
   *
-  * The bootstrap caller owns the coherence between `publisher` and `source`.
-  * If locally emitted artifacts must later be readable through `source`, both
+  * The bootstrap caller owns the coherence between `publisher` and `source`. If
+  * locally emitted artifacts must later be readable through `source`, both
   * endpoints need to target the same backing store or an equivalent replicated
   * feed.
   */
@@ -491,6 +577,7 @@ final case class HotStuffInMemoryRuntimeDiagnostics[F[_]](
     sink: InMemoryHotStuffArtifactSink[F],
 )
 
+@SuppressWarnings(Array("org.wartremover.warts.DefaultArguments"))
 final case class HotStuffNodeRuntime[F[_]: Sync](
     bootstrapInput: HotStuffRuntimeBootstrapInput,
     services: HotStuffRuntimeServices[F],
@@ -512,11 +599,14 @@ final case class HotStuffNodeRuntime[F[_]: Sync](
 
   def sink: GossipArtifactSink[F, HotStuffGossipArtifact] = services.sink
 
-  def topicContracts: GossipTopicContractRegistry[HotStuffGossipArtifact] = services.topicContracts
+  def topicContracts: GossipTopicContractRegistry[HotStuffGossipArtifact] =
+    services.topicContracts
 
-  def inMemorySource: Option[InMemoryHotStuffArtifactSource[F]] = diagnostics.map(_.source)
+  def inMemorySource: Option[InMemoryHotStuffArtifactSource[F]] =
+    diagnostics.map(_.source)
 
-  def inMemorySink: Option[InMemoryHotStuffArtifactSink[F]] = diagnostics.map(_.sink)
+  def inMemorySink: Option[InMemoryHotStuffArtifactSink[F]] =
+    diagnostics.map(_.sink)
 
   def emitProposal(
       proposer: ValidatorId,
@@ -538,10 +628,15 @@ final case class HotStuffNodeRuntime[F[_]: Sync](
       ) match
         case Left(error) =>
           Sync[F].raiseError[GossipEvent[HotStuffGossipArtifact]](
-            new IllegalStateException(s"${error.reason}:${error.detail.getOrElse("")}")
+            new IllegalStateException(
+              ss"${error.reason}:${error.detail.getOrElse("")}",
+            )
           )
         case Right(proposal) =>
-          services.publisher.append(HotStuffGossipArtifact.ProposalArtifact(proposal), ts)
+          services.publisher.append(
+            HotStuffGossipArtifact.ProposalArtifact(proposal),
+            ts,
+          )
 
   def emitVote(
       voter: ValidatorId,
@@ -559,15 +654,20 @@ final case class HotStuffNodeRuntime[F[_]: Sync](
       ) match
         case Left(error) =>
           Sync[F].raiseError[GossipEvent[HotStuffGossipArtifact]](
-            new IllegalStateException(s"${error.reason}:${error.detail.getOrElse("")}")
+            new IllegalStateException(
+              ss"${error.reason}:${error.detail.getOrElse("")}",
+            )
           )
         case Right(vote) =>
-          services.publisher.append(HotStuffGossipArtifact.VoteArtifact(vote), ts)
+          services.publisher.append(
+            HotStuffGossipArtifact.VoteArtifact(vote),
+            ts,
+          )
 
   private def emitSigned(
       validatorId: ValidatorId,
   )(
-      f: KeyPair => F[GossipEvent[HotStuffGossipArtifact]]
+      f: KeyPair => F[GossipEvent[HotStuffGossipArtifact]],
   ): F[Either[HotStuffPolicyViolation, GossipEvent[HotStuffGossipArtifact]]] =
     HotStuffPolicy.canEmitLocally(role, localPeer, validatorId, holders) match
       case Left(rejection) =>
@@ -577,7 +677,7 @@ final case class HotStuffNodeRuntime[F[_]: Sync](
           case None =>
             HotStuffPolicyViolation(
               reason = "localValidatorKeyUnavailable",
-              detail = Some(s"${validatorId.value}@${localPeer.value}"),
+              detail = Some(ss"${validatorId.value}@${localPeer.value}"),
             ).asLeft[GossipEvent[HotStuffGossipArtifact]].pure[F]
           case Some(keyPair) =>
             f(keyPair).map(_.asRight[HotStuffPolicyViolation])
@@ -601,6 +701,7 @@ object HotStuffNodeRuntime:
       diagnostics = diagnostics,
     )
 
+  @SuppressWarnings(Array("org.wartremover.warts.DefaultArguments"))
   def fromServices[F[_]: Sync](
       bootstrapInput: HotStuffRuntimeBootstrapInput,
       services: HotStuffRuntimeServices[F],
@@ -609,16 +710,22 @@ object HotStuffNodeRuntime:
     validateBootstrapInput(bootstrapInput)
       .map(fromValidatedServices(_, services, diagnostics))
 
+  @SuppressWarnings(Array("org.wartremover.warts.DefaultArguments"))
   def inMemoryServices[F[_]: Sync](
       validatorSet: ValidatorSet,
-      gossipPolicy: HotStuffGossipPolicy = HotStuffGossipPolicy(),
-      relayPolicy: HotStuffRelayPolicy = HotStuffRelayPolicy(relayValidatedArtifacts = false),
-  )(using clock: GossipClock[F]): F[(HotStuffRuntimeServices[F], HotStuffInMemoryRuntimeDiagnostics[F])] =
+      gossipPolicy: HotStuffGossipPolicy = HotStuffGossipPolicy.default,
+      relayPolicy: HotStuffRelayPolicy =
+        HotStuffRelayPolicy(relayValidatedArtifacts = false),
+  )(using
+      clock: GossipClock[F],
+  ): F[(HotStuffRuntimeServices[F], HotStuffInMemoryRuntimeDiagnostics[F])] =
     for
       source <- InMemoryHotStuffArtifactSource.create[F]
-      sink <- InMemoryHotStuffArtifactSink.create[F](validatorSet, relayPolicy, source)
+      sink <- InMemoryHotStuffArtifactSink
+        .create[F](validatorSet, relayPolicy, source)
     yield
-      val diagnostics = HotStuffInMemoryRuntimeDiagnostics(source = source, sink = sink)
+      val diagnostics =
+        HotStuffInMemoryRuntimeDiagnostics(source = source, sink = sink)
       val services =
         HotStuffRuntimeServices(
           publisher = source,
@@ -628,14 +735,17 @@ object HotStuffNodeRuntime:
         )
       services -> diagnostics
 
+  @SuppressWarnings(Array("org.wartremover.warts.DefaultArguments"))
   def create[F[_]: Sync](
       localPeer: PeerIdentity,
       role: LocalNodeRole,
       holders: Vector[ValidatorKeyHolder],
       validatorSet: ValidatorSet,
       localKeys: Map[ValidatorId, KeyPair],
-      gossipPolicy: HotStuffGossipPolicy = HotStuffGossipPolicy(),
-  )(using clock: GossipClock[F]): F[Either[HotStuffPolicyViolation, HotStuffNodeRuntime[F]]] =
+      gossipPolicy: HotStuffGossipPolicy = HotStuffGossipPolicy.default,
+  )(using
+      clock: GossipClock[F],
+  ): F[Either[HotStuffPolicyViolation, HotStuffNodeRuntime[F]]] =
     val bootstrapInput =
       HotStuffRuntimeBootstrapInput(
         localPeer = localPeer,
@@ -649,5 +759,10 @@ object HotStuffNodeRuntime:
       case Left(rejection) =>
         rejection.asLeft[HotStuffNodeRuntime[F]].pure[F]
       case Right(validatedInput) =>
-        inMemoryServices[F](validatorSet, gossipPolicy, HotStuffRelayPolicy.forRole(role)).map: (services, diagnostics) =>
-          Right(fromValidatedServices(validatedInput, services, Some(diagnostics)))
+        inMemoryServices[F](
+          validatorSet,
+          gossipPolicy,
+          HotStuffRelayPolicy.forRole(role),
+        ).map: (services, diagnostics) =>
+          fromValidatedServices(validatedInput, services, Some(diagnostics))
+            .asRight[HotStuffPolicyViolation]

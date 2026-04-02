@@ -781,7 +781,7 @@ final class HotStuffGossipLoopbackSuite extends CatsEffectSuite:
       mixedSource <- MixedSource.create(clock)
       mixedSink <- MixedSink.create
       stateStore <- TxGossipStateStore.inMemory[IO](GossipSessionEngine(registry.localPeer, topology))
-      runtime = TxGossipRuntime[IO, MixedArtifact](
+      runtime = TxGossipRuntime.withPolicy[IO, MixedArtifact](
         peerAuthenticator = authenticator,
         clock = clock,
         source = mixedSource,
@@ -1021,7 +1021,7 @@ final class HotStuffGossipLoopbackSuite extends CatsEffectSuite:
         stateStore <- TxGossipStateStore.inMemory[IO](GossipSessionEngine(registry.localPeer, topology))
       yield Harness(
         localNodeId = localNodeId,
-        gossip = TxGossipRuntime[IO, HotStuffGossipArtifact](
+        gossip = TxGossipRuntime.withPolicy[IO, HotStuffGossipArtifact](
           peerAuthenticator = authenticator,
           clock = clock,
           source = consensus.source,

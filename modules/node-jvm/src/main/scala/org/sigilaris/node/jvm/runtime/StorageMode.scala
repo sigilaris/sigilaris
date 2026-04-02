@@ -7,6 +7,7 @@ enum StorageMode[+Layout]:
 object StorageMode:
   val DefaultInMemoryFlag: String = "--in-memory"
 
+  @SuppressWarnings(Array("org.wartremover.warts.DefaultArguments"))
   def fromArgs[Layout](
       args: IterableOnce[String],
       persistentLayout: => Layout,

@@ -275,7 +275,7 @@ final class TxControlInterpreterSuite extends CatsEffectSuite:
       source = BlockingSource(delegate, started, release)
       sink <- InMemoryTxArtifactSink.create[IO, TestTx]
       stateStore <- TxGossipStateStore.inMemory[IO](GossipSessionEngine(registry.localPeer, topology))
-      runtime = TxGossipRuntime[IO, TestTx](
+      runtime = TxGossipRuntime.default[IO, TestTx](
         peerAuthenticator = authenticator,
         clock = clock,
         source = source,
@@ -332,7 +332,7 @@ final class TxControlInterpreterSuite extends CatsEffectSuite:
       source = BlockingSource(delegate, started, release)
       sink <- InMemoryTxArtifactSink.create[IO, TestTx]
       stateStore <- TxGossipStateStore.inMemory[IO](GossipSessionEngine(registry.localPeer, topology))
-      runtime = TxGossipRuntime[IO, TestTx](
+      runtime = TxGossipRuntime.default[IO, TestTx](
         peerAuthenticator = authenticator,
         clock = clock,
         source = source,
@@ -383,7 +383,7 @@ final class TxControlInterpreterSuite extends CatsEffectSuite:
       )
       sink <- InMemoryTxArtifactSink.create[IO, TestTx]
       stateStore <- TxGossipStateStore.inMemory[IO](GossipSessionEngine(registry.localPeer, topology))
-      runtime = TxGossipRuntime[IO, TestTx](
+      runtime = TxGossipRuntime.default[IO, TestTx](
         peerAuthenticator = authenticator,
         clock = clock,
         source = source,
@@ -485,7 +485,7 @@ final class TxControlInterpreterSuite extends CatsEffectSuite:
         sink <- InMemoryTxArtifactSink.create[IO, TestTx]
         stateStore <- TxGossipStateStore.inMemory[IO](GossipSessionEngine(registry.localPeer, topology))
       yield Harness(
-        runtime = TxGossipRuntime[IO, TestTx](
+        runtime = TxGossipRuntime.withPolicy[IO, TestTx](
           peerAuthenticator = authenticator,
           clock = clock,
           source = source,

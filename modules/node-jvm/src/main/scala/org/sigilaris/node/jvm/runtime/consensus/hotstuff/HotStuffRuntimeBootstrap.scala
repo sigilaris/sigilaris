@@ -1,6 +1,7 @@
 package org.sigilaris.node.jvm.runtime.consensus.hotstuff
 
 import java.time.Duration
+import java.util.Locale
 
 import scala.jdk.CollectionConverters.*
 
@@ -12,39 +13,57 @@ import com.typesafe.config.Config
 
 import org.sigilaris.core.crypto.{CryptoOps, KeyPair, PublicKey}
 import org.sigilaris.core.datatype.UInt256
+import org.sigilaris.core.util.SafeStringInterp.*
 import org.sigilaris.node.jvm.runtime.gossip.*
-import org.sigilaris.node.jvm.runtime.gossip.tx.{TxGossipRuntime, TxGossipRuntimeBootstrap, TxRuntimePolicy}
+import org.sigilaris.node.jvm.runtime.gossip.tx.{
+  TxGossipRuntime,
+  TxGossipRuntimeBootstrap,
+  TxRuntimePolicy,
+}
 
+@SuppressWarnings(Array("org.wartremover.warts.DefaultArguments"))
 final case class HotStuffBootstrapConfig(
     role: LocalNodeRole,
     validatorSet: ValidatorSet,
     holders: Vector[ValidatorKeyHolder],
     localKeys: Map[ValidatorId, KeyPair],
-    gossipPolicy: HotStuffGossipPolicy = HotStuffGossipPolicy(),
+    gossipPolicy: HotStuffGossipPolicy = HotStuffGossipPolicy.default,
 )
 
 object HotStuffBootstrapConfig:
   val DefaultPath: String = "sigilaris.node.consensus.hotstuff"
 
+  @SuppressWarnings(Array("org.wartremover.warts.DefaultArguments"))
   def load(
       config: Config,
       path: String = DefaultPath,
   ): Either[String, HotStuffBootstrapConfig] =
     Either
-      .cond(config.hasPath(path), config.getConfig(path), s"missing config path: $path")
+      .cond(
+        config.hasPath(path),
+        config.getConfig(path),
+        ss"missing config path: ${path}",
+      )
       .flatMap(loadSection)
 
   def loadSection(
       section: Config,
   ): Either[String, HotStuffBootstrapConfig] =
     for
-      role <- requiredString(section, "local-role", "localRole").flatMap(parseRole)
-      validators <- requiredConfigList(section, "validators", "validators").flatMap(parseValidators)
-      validatorSet <- Either.catchNonFatal(ValidatorSet(validators)).leftMap(_.getMessage)
-      holders <- requiredConfigList(section, "key-holders", "keyHolders").flatMap(parseHolders)
-      localKeys <- requiredConfigList(section, "local-signers", "localSigners").flatMap(parseLocalKeys(validatorSet))
+      role <- requiredString(section, "local-role", "localRole")
+        .flatMap(parseRole)
+      validators <- requiredConfigList(section, "validators", "validators")
+        .flatMap(parseValidators)
+      validatorSet <- Either
+        .catchNonFatal:
+          ValidatorSet(validators)
+        .leftMap(_.getMessage)
+      holders <- requiredConfigList(section, "key-holders", "keyHolders")
+        .flatMap(parseHolders)
+      localKeys <- requiredConfigList(section, "local-signers", "localSigners")
+        .flatMap(parseLocalKeys(validatorSet))
       gossipPolicy <- loadGossipPolicy(section)
-      _ <- validateHolders(holders, validatorSet)
+      _            <- validateHolders(holders, validatorSet)
     yield HotStuffBootstrapConfig(
       role = role,
       validatorSet = validatorSet,
@@ -66,24 +85,27 @@ object HotStuffBootstrapConfig:
   private def parseLocalKeys(
       validatorSet: ValidatorSet,
   )(
-      sections: List[Config]
+      sections: List[Config],
   ): Either[String, Map[ValidatorId, KeyPair]] =
     sections.foldM(Map.empty[ValidatorId, KeyPair]): (acc, signer) =>
       for
-        validatorId <- requiredString(signer, "validator-id", "validatorId").flatMap(ValidatorId.parse)
+        validatorId <- requiredString(signer, "validator-id", "validatorId")
+          .flatMap(ValidatorId.parse)
         privateKeyHex <- requiredString(signer, "private-key", "privateKey")
-        privateKey <- UInt256.fromHex(privateKeyHex).leftMap(_.toString)
+        privateKey    <- UInt256.fromHex(privateKeyHex).leftMap(_.toString)
         keyPair = CryptoOps.fromPrivate(privateKey.toBigIntUnsigned)
-        validator <- validatorSet.member(validatorId).toRight(s"unknown validator signer: ${validatorId.value}")
+        validator <- validatorSet
+          .member(validatorId)
+          .toRight(ss"unknown validator signer: ${validatorId.value}")
         _ <- Either.cond(
-          validator.publicKey == keyPair.publicKey,
+          validator.publicKey === keyPair.publicKey,
           (),
-          s"local signer public key mismatch: ${validatorId.value}",
+          ss"local signer public key mismatch: ${validatorId.value}",
         )
         _ <- Either.cond(
           !acc.contains(validatorId),
           (),
-          s"duplicate local signer entry: ${validatorId.value}",
+          ss"duplicate local signer entry: ${validatorId.value}",
         )
       yield acc.updated(validatorId, keyPair)
 
@@ -93,17 +115,19 @@ object HotStuffBootstrapConfig:
     for
       id <- requiredString(section, "id", "id").flatMap(ValidatorId.parse)
       publicKeyHex <- requiredString(section, "public-key", "publicKey")
-      publicKey <- parsePublicKey(publicKeyHex)
+      publicKey    <- parsePublicKey(publicKeyHex)
     yield ValidatorMember(id = id, publicKey = publicKey)
 
   private def parseHolder(
       section: Config,
   ): Either[String, ValidatorKeyHolder] =
     for
-      validatorId <- requiredString(section, "validator-id", "validatorId").flatMap(ValidatorId.parse)
-      peer <- requiredString(section, "holder", "holder").flatMap(PeerIdentity.parse)
+      validatorId <- requiredString(section, "validator-id", "validatorId")
+        .flatMap(ValidatorId.parse)
+      peer <- requiredString(section, "holder", "holder")
+        .flatMap(PeerIdentity.parse)
       statusValue <- requiredString(section, "status", "status")
-      status <- parseHolderStatus(statusValue)
+      status      <- parseHolderStatus(statusValue)
     yield ValidatorKeyHolder(
       validatorId = validatorId,
       holder = peer,
@@ -117,29 +141,32 @@ object HotStuffBootstrapConfig:
     holders
       .find(holder => !validatorSet.contains(holder.validatorId))
       .toLeft(())
-      .leftMap(holder => s"unknown key holder validator: ${holder.validatorId.value}")
+      .leftMap: holder =>
+        ss"unknown key holder validator: ${holder.validatorId.value}"
 
   private def parseRole(
       value: String,
   ): Either[String, LocalNodeRole] =
-    value.trim.toLowerCase match
-      case "validator" => Right(LocalNodeRole.Validator)
-      case "audit"     => Right(LocalNodeRole.Audit)
-      case other       => Left(s"unsupported local role: $other")
+    value.trim.toLowerCase(Locale.ROOT) match
+      case "validator" => LocalNodeRole.Validator.asRight[String]
+      case "audit"     => LocalNodeRole.Audit.asRight[String]
+      case other => ss"unsupported local role: ${other}".asLeft[LocalNodeRole]
 
   private def parseHolderStatus(
       value: String,
   ): Either[String, ValidatorKeyHolderStatus] =
-    value.trim.toLowerCase match
-      case "active" => Right(ValidatorKeyHolderStatus.Active)
-      case "fenced" => Right(ValidatorKeyHolderStatus.Fenced)
-      case other    => Left(s"unsupported key holder status: $other")
+    value.trim.toLowerCase(Locale.ROOT) match
+      case "active" => ValidatorKeyHolderStatus.Active.asRight[String]
+      case "fenced" => ValidatorKeyHolderStatus.Fenced.asRight[String]
+      case other =>
+        ss"unsupported key holder status: ${other}"
+          .asLeft[ValidatorKeyHolderStatus]
 
   private def parsePublicKey(
       value: String,
   ): Either[String, PublicKey] =
     for
-      bytes <- ByteVector.fromHexDescriptive(value).leftMap(identity)
+      bytes     <- ByteVector.fromHexDescriptive(value).leftMap(identity)
       publicKey <- PublicKey.fromByteArray(bytes.toArray).leftMap(_.toString)
     yield publicKey
 
@@ -148,18 +175,18 @@ object HotStuffBootstrapConfig:
   ): Either[String, HotStuffGossipPolicy] =
     optionalConfig(section, "gossip-policy", "gossipPolicy") match
       case Left(error) =>
-        Left(error)
+        error.asLeft[HotStuffGossipPolicy]
       case Right(None) =>
-        Right(HotStuffGossipPolicy())
+        HotStuffGossipPolicy.default.asRight[String]
       case Right(Some(policySection)) =>
         for
           proposal <- parseTopicPolicy(
             optionalConfig(policySection, "proposal", "proposal"),
-            HotStuffGossipPolicy().proposal,
+            HotStuffGossipPolicy.default.proposal,
           )
           vote <- parseTopicPolicy(
             optionalConfig(policySection, "vote", "vote"),
-            HotStuffGossipPolicy().vote,
+            HotStuffGossipPolicy.default.vote,
           )
         yield HotStuffGossipPolicy(
           proposal = proposal,
@@ -172,9 +199,9 @@ object HotStuffBootstrapConfig:
   ): Either[String, HotStuffTopicPolicy] =
     section match
       case Left(error) =>
-        Left(error)
+        error.asLeft[HotStuffTopicPolicy]
       case Right(None) =>
-        Right(default)
+        default.asRight[String]
       case Right(Some(config)) =>
         for
           exactKnownSetLimit <- optionalInt(
@@ -221,8 +248,9 @@ object HotStuffBootstrapConfig:
       alternate: String,
   ): Either[String, String] =
     findPath(config, primary, alternate)
-      .toRight(s"missing required config key: $primary")
-      .flatMap(path => Either.catchNonFatal(config.getString(path)).leftMap(_.getMessage))
+      .toRight(ss"missing required config key: ${primary}")
+      .flatMap: path =>
+        Either.catchNonFatal(config.getString(path)).leftMap(_.getMessage)
 
   private def requiredConfigList(
       config: Config,
@@ -230,12 +258,11 @@ object HotStuffBootstrapConfig:
       alternate: String,
   ): Either[String, List[Config]] =
     findPath(config, primary, alternate)
-      .toRight(s"missing required config key: $primary")
-      .flatMap(path =>
+      .toRight(ss"missing required config key: ${primary}")
+      .flatMap: path =>
         Either
           .catchNonFatal(config.getConfigList(path).asScala.toList)
           .leftMap(_.getMessage)
-      )
 
   private def optionalInt(
       config: Config,
@@ -245,7 +272,7 @@ object HotStuffBootstrapConfig:
   ): Either[String, Int] =
     findPath(config, primary, alternate) match
       case None =>
-        Right(default)
+        default.asRight[String]
       case Some(path) =>
         Either.catchNonFatal(config.getInt(path)).leftMap(_.getMessage)
 
@@ -257,7 +284,7 @@ object HotStuffBootstrapConfig:
   ): Either[String, Long] =
     findPath(config, primary, alternate) match
       case None =>
-        Right(default)
+        default.asRight[String]
       case Some(path) =>
         Either.catchNonFatal(config.getLong(path)).leftMap(_.getMessage)
 
@@ -268,7 +295,7 @@ object HotStuffBootstrapConfig:
   ): Either[String, Option[Config]] =
     findPath(config, primary, alternate) match
       case None =>
-        Right(None)
+        Option.empty[Config].asRight[String]
       case Some(path) =>
         Either
           .catchNonFatal(config.getConfig(path))
@@ -293,9 +320,11 @@ final case class HotStuffRuntimeBootstrap[F[_]](
 object HotStuffRuntimeBootstrap:
   val DefaultRuntimePolicy: TxRuntimePolicy =
     TxRuntimePolicy(
-      maxExactRequestRetriesPerScope = Some(HotStuffPolicy.requestPolicy.maxRetryAttemptsPerWindow)
+      maxExactRequestRetriesPerScope =
+        Some(HotStuffPolicy.requestPolicy.maxRetryAttemptsPerWindow),
     )
 
+  @SuppressWarnings(Array("org.wartremover.warts.DefaultArguments"))
   def fromConfig[F[_]: Sync](
       config: Config,
       clock: GossipClock[F],
@@ -308,21 +337,25 @@ object HotStuffRuntimeBootstrap:
       .delay:
         (
           Either
-            .catchNonFatal(StaticPeerTopologyConfig.load(config, peerConfigPath))
+            .catchNonFatal:
+              StaticPeerTopologyConfig.load(config, peerConfigPath)
             .leftMap(_.getMessage)
             .flatMap(identity),
           Either
-            .catchNonFatal(HotStuffBootstrapConfig.load(config, consensusConfigPath))
+            .catchNonFatal:
+              HotStuffBootstrapConfig.load(config, consensusConfigPath)
             .leftMap(_.getMessage)
             .flatMap(identity),
         )
       .flatMap:
         case (Left(peerError), Left(consensusError)) =>
-          Sync[F].pure(Left(s"$peerError; $consensusError"))
+          Sync[F].pure:
+            ss"${peerError}; ${consensusError}"
+              .asLeft[HotStuffRuntimeBootstrap[F]]
         case (Left(error), _) =>
-          Sync[F].pure(Left(error))
+          Sync[F].pure(error.asLeft[HotStuffRuntimeBootstrap[F]])
         case (_, Left(error)) =>
-          Sync[F].pure(Left(error))
+          Sync[F].pure(error.asLeft[HotStuffRuntimeBootstrap[F]])
         case (Right(topology), Right(consensusConfig)) =>
           fromTopology(
             topology = topology,
@@ -332,6 +365,7 @@ object HotStuffRuntimeBootstrap:
             handshakePolicy = handshakePolicy,
           )
 
+  @SuppressWarnings(Array("org.wartremover.warts.DefaultArguments"))
   def fromTopology[F[_]: Sync](
       topology: StaticPeerTopology,
       consensusConfig: HotStuffBootstrapConfig,
@@ -353,7 +387,7 @@ object HotStuffRuntimeBootstrap:
       .validateBootstrapInput(bootstrapInput)
       .leftMap(renderPolicyViolation) match
       case Left(rejection) =>
-        Sync[F].pure(Left(rejection))
+        Sync[F].pure(rejection.asLeft[HotStuffRuntimeBootstrap[F]])
       case Right(validatedInput) =>
         HotStuffNodeRuntime
           .inMemoryServices[F](
@@ -379,17 +413,17 @@ object HotStuffRuntimeBootstrap:
                 handshakePolicy = handshakePolicy,
               )
               .map: gossipBootstrap =>
-                Right(
-                  HotStuffRuntimeBootstrap(
-                    topology = gossipBootstrap.topology,
-                    registry = gossipBootstrap.registry,
-                    authenticator = gossipBootstrap.authenticator,
-                    consensus = consensus,
-                    runtime = gossipBootstrap.runtime,
-                  )
-                )
+                HotStuffRuntimeBootstrap(
+                  topology = gossipBootstrap.topology,
+                  registry = gossipBootstrap.registry,
+                  authenticator = gossipBootstrap.authenticator,
+                  consensus = consensus,
+                  runtime = gossipBootstrap.runtime,
+                ).asRight[String]
 
   private def renderPolicyViolation(
       rejection: HotStuffPolicyViolation,
   ): String =
-    rejection.detail.fold(rejection.reason)(detail => s"${rejection.reason}: $detail")
+    rejection.detail.fold(rejection.reason)(detail =>
+      ss"${rejection.reason}: ${detail}",
+    )

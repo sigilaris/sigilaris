@@ -1,5 +1,7 @@
 package org.sigilaris.node.jvm.runtime.gossip
 
+import cats.syntax.all.*
+
 final case class StaticPeerTopology(
     localNodeIdentity: PeerIdentity,
     knownPeers: Set[PeerIdentity],
@@ -19,18 +21,23 @@ object StaticPeerTopology:
   ): Either[String, StaticPeerTopology] =
     for
       local <- PeerIdentity.parse(localNodeIdentity)
-      parsedKnown <- knownPeers.foldLeft[Either[String, Set[PeerIdentity]]](Right(Set.empty)):
+      parsedKnown <- knownPeers.foldLeft[Either[String, Set[PeerIdentity]]](
+        Set.empty[PeerIdentity].asRight[String],
+      ):
         case (acc, value) =>
           for
             values <- acc
             parsed <- PeerIdentity.parse(value)
           yield values + parsed
-      parsedDirect <- directNeighbors.foldLeft[Either[String, Set[PeerIdentity]]](Right(Set.empty)):
-        case (acc, value) =>
-          for
-            values <- acc
-            parsed <- PeerIdentity.parse(value)
-          yield values + parsed
+      parsedDirect <- directNeighbors
+        .foldLeft[Either[String, Set[PeerIdentity]]](
+          Set.empty[PeerIdentity].asRight[String],
+        ):
+          case (acc, value) =>
+            for
+              values <- acc
+              parsed <- PeerIdentity.parse(value)
+            yield values + parsed
       _ <- Either.cond(
         parsedDirect.subsetOf(parsedKnown),
         (),

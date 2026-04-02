@@ -14,6 +14,7 @@ final case class TxGossipBootstrap[F[_], A](
     runtime: TxGossipRuntime[F, A],
 )
 
+@SuppressWarnings(Array("org.wartremover.warts.DefaultArguments"))
 object TxGossipRuntimeBootstrap:
   def fromConfig[F[_]: Sync, A](
       config: Config,
@@ -27,7 +28,7 @@ object TxGossipRuntimeBootstrap:
   ): F[Either[String, TxGossipBootstrap[F, A]]] =
     StaticPeerTopologyConfig.load(config, configPath) match
       case Left(error) =>
-        Sync[F].pure(Left(error))
+        Sync[F].pure(error.asLeft[TxGossipBootstrap[F, A]])
       case Right(topology) =>
         fromTopology(
           topology = topology,
@@ -37,7 +38,7 @@ object TxGossipRuntimeBootstrap:
           topicContracts = topicContracts,
           runtimePolicy = runtimePolicy,
           handshakePolicy = handshakePolicy,
-        ).map(Right(_))
+        ).map(_.asRight[String])
 
   def fromTopology[F[_]: Sync, A](
       topology: StaticPeerTopology,
@@ -48,16 +49,22 @@ object TxGossipRuntimeBootstrap:
       runtimePolicy: TxRuntimePolicy = TxRuntimePolicy(),
       handshakePolicy: HandshakePolicy = HandshakePolicy.default,
   ): F[TxGossipBootstrap[F, A]] =
-    val registry = StaticPeerRegistry(topology)
+    val registry      = StaticPeerRegistry(topology)
     val authenticator = StaticPeerAuthenticator[F](registry)
     TxGossipStateStore
-      .inMemory[F](GossipSessionEngine(registry.localPeer, topology, policy = handshakePolicy))
+      .inMemory[F](
+        GossipSessionEngine(
+          registry.localPeer,
+          topology,
+          policy = handshakePolicy,
+        ),
+      )
       .map: stateStore =>
         TxGossipBootstrap(
           topology = topology,
           registry = registry,
           authenticator = authenticator,
-          runtime = TxGossipRuntime[F, A](
+          runtime = TxGossipRuntime.withPolicy[F, A](
             peerAuthenticator = authenticator,
             clock = clock,
             source = source,

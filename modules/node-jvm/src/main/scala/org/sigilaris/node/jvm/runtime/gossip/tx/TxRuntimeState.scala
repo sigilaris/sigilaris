@@ -19,12 +19,14 @@ object TxBatchingConfig:
       flushInterval = Duration.ofSeconds(1),
     )
 
+@SuppressWarnings(Array("org.wartremover.warts.DefaultArguments"))
 final case class TxRuntimePolicy(
     maxTxSetKnownEntries: Int = 4096,
     maxTxRequestIds: Int = 1024,
     maxExactRequestRetriesPerScope: Option[Int] = None,
     controlRetryHorizonMultiplier: Int = 2,
-    supportedBloomHashFamilyId: String = TxBloomFilterSupport.SupportedHashFamilyId,
+    supportedBloomHashFamilyId: String =
+      TxBloomFilterSupport.SupportedHashFamilyId,
     defaultBatchingConfig: TxBatchingConfig = TxBatchingConfig.default,
 ):
   maxExactRequestRetriesPerScope.foreach: limit =>
@@ -37,8 +39,11 @@ final case class TxRuntimePolicy(
   def controlRetryHorizon(
       negotiated: NegotiatedSessionParameters,
   ): Duration =
-    negotiated.maxControlRetryInterval.multipliedBy(controlRetryHorizonMultiplier.toLong)
+    negotiated.maxControlRetryInterval.multipliedBy(
+      controlRetryHorizonMultiplier.toLong,
+    )
 
+@SuppressWarnings(Array("org.wartremover.warts.DefaultArguments"))
 final case class TxProducerSessionState(
     sessionId: DirectionalSessionId,
     peer: PeerIdentity,
@@ -49,10 +54,12 @@ final case class TxProducerSessionState(
     streamCursor: CompositeCursor = CompositeCursor.empty,
     filters: Map[ChainId, GossipFilter.TxBloomFilter] = Map.empty,
     exactKnownIds: Map[ChainId, Set[StableArtifactId]] = Map.empty,
-    exactKnownScopeIds: Map[ExactKnownSetScope, Set[StableArtifactId]] = Map.empty,
+    exactKnownScopeIds: Map[ExactKnownSetScope, Set[StableArtifactId]] =
+      Map.empty,
     pendingReplay: Map[ChainTopic, Option[CursorToken]] = Map.empty,
     pendingRequestByIds: Map[ChainId, Vector[StableArtifactId]] = Map.empty,
-    pendingRequestScopeIds: Map[ExactKnownSetScope, Vector[StableArtifactId]] = Map.empty,
+    pendingRequestScopeIds: Map[ExactKnownSetScope, Vector[StableArtifactId]] =
+      Map.empty,
     requestScopeRetryCounts: Map[ExactKnownSetScope, Int] = Map.empty,
     idempotencyKeys: Map[ControlIdempotencyKey, Instant] = Map.empty,
     batchingConfig: TxBatchingConfig = TxBatchingConfig.default,

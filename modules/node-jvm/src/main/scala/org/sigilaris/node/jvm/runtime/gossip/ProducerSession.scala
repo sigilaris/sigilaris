@@ -6,6 +6,7 @@ trait GossipProducerQoS:
   def maxBatchItems: Int
   def flushInterval: Duration
 
+@SuppressWarnings(Array("org.wartremover.warts.DefaultArguments"))
 final case class GossipProducerSessionState(
     sessionId: DirectionalSessionId,
     peer: PeerIdentity,
@@ -19,7 +20,9 @@ final case class GossipProducerSessionState(
   def startCursorFor(
       chainTopic: ChainTopic,
   ): Option[CursorToken] =
-    pendingReplay.get(chainTopic).flatten
+    pendingReplay
+      .get(chainTopic)
+      .flatten
       .orElse(streamCursor.tokenFor(chainTopic))
       .orElse(durableCursor.tokenFor(chainTopic))
 
@@ -27,7 +30,7 @@ final case class GossipProducerSessionState(
       cursor: CompositeCursor,
   ): GossipProducerSessionState =
     copy(
-      durableCursor = CompositeCursor(durableCursor.values ++ cursor.values)
+      durableCursor = CompositeCursor(durableCursor.values ++ cursor.values),
     )
 
   def withReplay(
@@ -35,7 +38,7 @@ final case class GossipProducerSessionState(
       cursor: Option[CursorToken],
   ): GossipProducerSessionState =
     copy(
-      pendingReplay = pendingReplay.updated(chainTopic, cursor)
+      pendingReplay = pendingReplay.updated(chainTopic, cursor),
     )
 
   def clearReplay(
@@ -49,9 +52,12 @@ final case class GossipProducerSessionState(
   ): GossipProducerSessionState =
     if emitted.isEmpty then this
     else
-      copy(
-        streamCursor = CompositeCursor(streamCursor.values.updated(chainTopic, emitted.last.cursor))
-      )
+      emitted.lastOption.fold(this): lastEmitted =>
+        copy(
+          streamCursor = CompositeCursor(
+            streamCursor.values.updated(chainTopic, lastEmitted.cursor),
+          ),
+        )
 
 object GossipProducerPolling:
   def batchAvailableEvents[A](
@@ -61,16 +67,15 @@ object GossipProducerPolling:
       forceFlush: Boolean,
       limit: Int,
   ): Vector[GossipEvent[A]] =
-    if candidates.isEmpty then
-      Vector.empty
+    if candidates.isEmpty then Vector.empty
     else
       val threshold = qos.maxBatchItems.min(limit)
-      val availableSince = candidates.head.availableAt
-      if threshold <= 0 then Vector.empty
-      else
-        val flushByCount = candidates.size >= threshold
-        val flushByInterval = !now.isBefore(availableSince.plus(qos.flushInterval))
-        if forceFlush || flushByCount || flushByInterval then
-          candidates.take(threshold).map(_.event)
+      candidates.headOption.fold(Vector.empty[GossipEvent[A]]): headCandidate =>
+        if threshold <= 0 then Vector.empty
         else
-          Vector.empty
+          val flushByCount = candidates.sizeCompare(threshold) >= 0
+          val flushByInterval =
+            !now.isBefore(headCandidate.availableAt.plus(qos.flushInterval))
+          if forceFlush || flushByCount || flushByInterval then
+            candidates.take(threshold).map(_.event)
+          else Vector.empty

@@ -9,9 +9,9 @@ trait TxIdentity[-A]:
 
 object TxIdentity:
   def fromHash[A: Hash]: TxIdentity[A] =
-    (value: A) =>
-      StableArtifactId.unsafeFromBytes(value.toHash.toUInt256.bytes)
+    (value: A) => StableArtifactId.unsafeFromBytes(value.toHash.toUInt256.bytes)
 
+@SuppressWarnings(Array("org.wartremover.warts.Equals"))
 object TxTopic:
   def contract[A]: GossipTopicContract[A] =
     new GossipTopicContract[A]:

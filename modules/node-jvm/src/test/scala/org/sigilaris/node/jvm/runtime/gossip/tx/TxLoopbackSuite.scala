@@ -450,7 +450,7 @@ final class TxLoopbackSuite extends CatsEffectSuite:
         stateStore <- TxGossipStateStore.inMemory[IO](GossipSessionEngine(registry.localPeer, topology))
       yield Harness(
         localNodeId = localNodeId,
-        runtime = TxGossipRuntime[IO, TestTx](
+        runtime = TxGossipRuntime.default[IO, TestTx](
           peerAuthenticator = authenticator,
           clock = clock,
           source = source,

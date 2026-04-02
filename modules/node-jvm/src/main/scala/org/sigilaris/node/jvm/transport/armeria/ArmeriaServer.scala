@@ -8,8 +8,12 @@ import cats.effect.std.Dispatcher
 
 import com.linecorp.armeria.server.Server
 import sttp.tapir.server.ServerEndpoint
-import sttp.tapir.server.armeria.cats.{ArmeriaCatsServerInterpreter, ArmeriaCatsServerOptions}
+import sttp.tapir.server.armeria.cats.{
+  ArmeriaCatsServerInterpreter,
+  ArmeriaCatsServerOptions,
+}
 
+@SuppressWarnings(Array("org.wartremover.warts.DefaultArguments"))
 final case class ArmeriaServerConfig(
     port: Int,
     maxRequestLength: Long = 128L * 1024L * 1024L,
@@ -25,7 +29,8 @@ object ArmeriaServer:
     Async[F].delay:
       val options =
         ArmeriaCatsServerOptions.customiseInterceptors[F](dispatcher).options
-      val service = ArmeriaCatsServerInterpreter[F](options).toService(endpoints)
+      val service =
+        ArmeriaCatsServerInterpreter[F](options).toService(endpoints)
       Server
         .builder()
         .maxRequestLength(config.maxRequestLength)
@@ -41,7 +46,7 @@ object ArmeriaServer:
   ): F[Server] =
     Async[F].flatMap(build(config, dispatcher, endpoints)): server =>
       Async[F].map(
-        Async[F].fromCompletableFuture(Async[F].delay(server.start()))
+        Async[F].fromCompletableFuture(Async[F].delay(server.start())),
       )(_ => server)
 
   def resource[F[_]: Async](

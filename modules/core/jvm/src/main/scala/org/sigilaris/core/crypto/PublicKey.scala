@@ -4,6 +4,7 @@ package crypto
 import java.math.BigInteger
 import java.util.concurrent.atomic.AtomicReference
 
+import cats.Eq
 import cats.syntax.either.*
 import org.bouncycastle.math.ec.ECPoint
 import scodec.bits.ByteVector
@@ -216,3 +217,6 @@ object PublicKey:
     }
 
   inline given Hash[PublicKey] = Hash.build
+
+  given Eq[PublicKey] =
+    Eq.by(publicKey => (publicKey.x, publicKey.y))

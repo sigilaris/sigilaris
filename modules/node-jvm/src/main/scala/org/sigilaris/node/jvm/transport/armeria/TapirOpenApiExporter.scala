@@ -21,6 +21,7 @@ final case class OpenApiExportConfig(
     version: String,
 )
 
+@SuppressWarnings(Array("org.wartremover.warts.DefaultArguments"))
 object TapirOpenApiExporter:
   def document(
       title: String,
@@ -42,6 +43,8 @@ object TapirOpenApiExporter:
 
     Sync[F]
       .blocking:
-        Option(config.output.getParent).foreach(dir => Files.createDirectories(dir))
+        Option(config.output.getParent).foreach(dir =>
+          Files.createDirectories(dir),
+        )
         Files.writeString(config.output, rendered)
         config.output.toAbsolutePath

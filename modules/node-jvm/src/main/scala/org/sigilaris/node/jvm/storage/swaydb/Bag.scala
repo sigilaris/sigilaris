@@ -6,6 +6,7 @@ import cats.effect.IO
 import cats.effect.unsafe.IORuntime
 import swaydb.{IO as SwayIO}
 
+@SuppressWarnings(Array("org.wartremover.warts.Nothing"))
 object Bag:
   type Async[F[_]] = swaydb.Bag.Async[F]
 
@@ -49,7 +50,9 @@ object Bag:
       override def complete[A](promise: Promise[A], a: IO[A]): Unit =
         promise.completeWith(a.unsafeToFuture())
 
-      override def fromIO[E: SwayIO.ExceptionHandler, A](a: SwayIO[E, A]): IO[A] =
+      override def fromIO[E: SwayIO.ExceptionHandler, A](
+          a: SwayIO[E, A],
+      ): IO[A] =
         IO.fromTry(a.toTry)
 
       override def fromFuture[A](a: Future[A]): IO[A] =

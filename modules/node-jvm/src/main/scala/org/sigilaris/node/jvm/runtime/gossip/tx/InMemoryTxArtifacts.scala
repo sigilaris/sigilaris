@@ -7,6 +7,7 @@ import cats.effect.kernel.{Ref, Sync}
 import cats.syntax.all.*
 import scodec.bits.ByteVector
 
+import org.sigilaris.core.util.SafeStringInterp.*
 import org.sigilaris.node.jvm.runtime.gossip.*
 
 final case class InMemoryTxSinkSnapshot[A](
@@ -18,9 +19,9 @@ final case class InMemoryTxSinkSnapshot[A](
 object InMemoryTxSinkSnapshot:
   def empty[A]: InMemoryTxSinkSnapshot[A] =
     InMemoryTxSinkSnapshot(
-      applied = Vector.empty,
-      duplicates = Vector.empty,
-      appliedIds = Map.empty,
+      applied = Vector.empty[GossipEvent[A]],
+      duplicates = Vector.empty[GossipEvent[A]],
+      appliedIds = Map.empty[ChainId, Set[StableArtifactId]],
     )
 
 final class InMemoryTxArtifactSource[F[_]: Sync, A] private (
@@ -36,7 +37,8 @@ final class InMemoryTxArtifactSource[F[_]: Sync, A] private (
   ): F[GossipEvent[A]] =
     clock.now.flatMap: availableAt =>
       ref.modify: state =>
-        val chainEvents = state.getOrElse(chainId, Vector.empty)
+        val chainEvents =
+          state.getOrElse(chainId, Vector.empty[AvailableGossipEvent[A]])
         val nextSequence = chainEvents.size.toLong + 1L
         val event = GossipEvent(
           chainId = chainId,
@@ -53,7 +55,9 @@ final class InMemoryTxArtifactSource[F[_]: Sync, A] private (
         state.updated(chainId, chainEvents :+ available) -> event
 
   def snapshot(chainId: ChainId): F[Vector[GossipEvent[A]]] =
-    ref.get.map(_.getOrElse(chainId, Vector.empty).map(_.event))
+    ref.get.map(
+      _.getOrElse(chainId, Vector.empty[AvailableGossipEvent[A]]).map(_.event),
+    )
 
   override def readAfter(
       chainId: ChainId,
@@ -61,18 +65,17 @@ final class InMemoryTxArtifactSource[F[_]: Sync, A] private (
       cursor: Option[CursorToken],
   ): F[Either[CanonicalRejection, Vector[AvailableGossipEvent[A]]]] =
     ref.get.map: state =>
-      if topic != GossipTopic.tx then
-        Left(
-          CanonicalRejection.ArtifactContractRejected(
-            reason = "unsupportedTopic",
-            detail = Some(topic.value),
-          )
-        )
+      if topic =!= GossipTopic.tx then
+        CanonicalRejection.ArtifactContractRejected(
+          reason = "unsupportedTopic",
+          detail = Some(topic.value),
+        ).asLeft[Vector[AvailableGossipEvent[A]]]
       else
-        val chainEvents = state.getOrElse(chainId, Vector.empty)
+        val chainEvents =
+          state.getOrElse(chainId, Vector.empty[AvailableGossipEvent[A]])
         cursor match
           case None =>
-            Right(chainEvents)
+            chainEvents.asRight[CanonicalRejection]
           case Some(token) =>
             decodeSequence(token).flatMap: sequence =>
               val maxSequence = chainEvents.size.toLong
@@ -81,9 +84,13 @@ final class InMemoryTxArtifactSource[F[_]: Sync, A] private (
                 chainEvents.drop(sequence.toInt),
                 CanonicalRejection.StaleCursor(
                   reason = "unknownCursor",
-                  detail = Some(s"sequence=$sequence max=$maxSequence"),
+                  detail =
+                    Some(
+                      ss"sequence=${sequence.toString} max=${maxSequence.toString}"
+                    ),
                 ),
               )
+            .leftWiden[CanonicalRejection]
 
   override def readByIds(
       chainId: ChainId,
@@ -91,34 +98,38 @@ final class InMemoryTxArtifactSource[F[_]: Sync, A] private (
       ids: Vector[StableArtifactId],
   ): F[Vector[AvailableGossipEvent[A]]] =
     ref.get.map: state =>
-      if topic != GossipTopic.tx then Vector.empty
+      if topic =!= GossipTopic.tx then Vector.empty
       else
         val latestById = state
-          .getOrElse(chainId, Vector.empty)
-          .foldLeft(Map.empty[StableArtifactId, AvailableGossipEvent[A]]): (acc, available) =>
-            acc.updated(available.event.id, available)
+          .getOrElse(chainId, Vector.empty[AvailableGossipEvent[A]])
+          .foldLeft(Map.empty[StableArtifactId, AvailableGossipEvent[A]]):
+            (acc, available) => acc.updated(available.event.id, available)
         ids.distinct.flatMap(latestById.get)
 
   private def cursorFor(sequence: Long): CursorToken =
-    CursorToken.issue(ByteVector.view(ByteBuffer.allocate(java.lang.Long.BYTES).putLong(sequence).array()))
+    CursorToken.issue:
+      ByteVector.view:
+        ByteBuffer.allocate(java.lang.Long.BYTES).putLong(sequence).array()
 
   private def decodeSequence(
       token: CursorToken,
   ): Either[CanonicalRejection.StaleCursor, Long] =
-    token.validateVersion().flatMap: validated =>
-      Either.cond(
-        validated.payload.size == java.lang.Long.BYTES.toLong,
-        ByteBuffer.wrap(validated.payload.toArray).getLong(),
-        CanonicalRejection.StaleCursor(
-          reason = "invalidCursorPayload",
-          detail = Some(s"size=${validated.payload.size}"),
-        ),
-      )
+    token
+      .validateVersion()
+      .flatMap: validated =>
+        Either.cond(
+          validated.payload.size === java.lang.Long.BYTES.toLong,
+          ByteBuffer.wrap(validated.payload.toArray).getLong(),
+          CanonicalRejection.StaleCursor(
+            reason = "invalidCursorPayload",
+            detail = Some(ss"size=${validated.payload.size.toString}"),
+          ),
+        )
 
 object InMemoryTxArtifactSource:
   def create[F[_]: Sync, A](using
       clock: GossipClock[F],
-      txIdentity: TxIdentity[A]
+      txIdentity: TxIdentity[A],
   ): F[InMemoryTxArtifactSource[F, A]] =
     Ref
       .of[F, Map[ChainId, Vector[AvailableGossipEvent[A]]]](Map.empty)
@@ -129,18 +140,24 @@ final class InMemoryTxArtifactSink[F[_], A] private (
 ) extends GossipArtifactSink[F, A]:
   override def applyEvent(
       event: GossipEvent[A],
-  ): F[Either[CanonicalRejection.ArtifactContractRejected, ArtifactApplyResult]] =
+  ): F[
+    Either[CanonicalRejection.ArtifactContractRejected, ArtifactApplyResult],
+  ] =
     ref.modify: snapshot =>
-      val knownForChain = snapshot.appliedIds.getOrElse(event.chainId, Set.empty)
+      val knownForChain =
+        snapshot.appliedIds.getOrElse(event.chainId, Set.empty[StableArtifactId])
       if knownForChain.contains(event.id) then
-        snapshot.copy(duplicates = snapshot.duplicates :+ event) -> Right(
+        snapshot.copy(duplicates = snapshot.duplicates :+ event) ->
           ArtifactApplyResult(applied = false, duplicate = true)
-        )
+            .asRight[CanonicalRejection.ArtifactContractRejected]
       else
         snapshot.copy(
           applied = snapshot.applied :+ event,
-          appliedIds = snapshot.appliedIds.updated(event.chainId, knownForChain + event.id),
-        ) -> Right(ArtifactApplyResult(applied = true, duplicate = false))
+          appliedIds =
+            snapshot.appliedIds.updated(event.chainId, knownForChain + event.id),
+        ) ->
+          ArtifactApplyResult(applied = true, duplicate = false)
+            .asRight[CanonicalRejection.ArtifactContractRejected]
 
   def snapshot: F[InMemoryTxSinkSnapshot[A]] =
     ref.get

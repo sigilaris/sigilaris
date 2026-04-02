@@ -238,6 +238,8 @@ lazy val nodeJvm = (project in file("modules/node-jvm"))
   .settings(Dependencies.tests)
   .settings(
     moduleName := "sigilaris-node-jvm",
+    Compile / compile / wartremoverErrors ++= Warts
+      .allBut(Wart.SeqApply, Wart.SeqUpdated),
   )
 
 // One-command aliases for Phase 6 (Scala-based orchestrations)

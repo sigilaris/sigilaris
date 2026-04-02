@@ -721,7 +721,7 @@ final class TxGossipArmeriaAdapterSuite extends CatsEffectSuite:
         source <- Resource.eval(InMemoryTxArtifactSource.create[IO, TestTx])
         sink <- Resource.eval(InMemoryTxArtifactSink.create[IO, TestTx])
         stateStore <- Resource.eval(TxGossipStateStore.inMemory[IO](GossipSessionEngine(registry.localPeer, topology)))
-        runtime = TxGossipRuntime[IO, TestTx](
+        runtime = TxGossipRuntime.default[IO, TestTx](
           peerAuthenticator = authenticator,
           clock = clock,
           source = source,

@@ -5,13 +5,18 @@ import java.util.{Base64, UUID}
 
 import scala.util.Try
 
+import cats.Eq
+import cats.syntax.all.*
 import scodec.bits.ByteVector
+
+import org.sigilaris.core.util.SafeStringInterp.*
 
 sealed trait CanonicalRejection:
   def rejectionClass: String
   def reason: String
   def detail: Option[String]
 
+@SuppressWarnings(Array("org.wartremover.warts.DefaultArguments"))
 object CanonicalRejection:
   final case class HandshakeRejected(
       reason: String,
@@ -54,7 +59,7 @@ object GossipFieldValidation:
     Either.cond(
       LowerAsciiToken.matches(value),
       value,
-      s"$kind must be a non-empty lowercase ASCII token",
+      ss"${kind} must be a non-empty lowercase ASCII token",
     )
 
   def validateTopic(value: String): Either[String, String] =
@@ -65,12 +70,13 @@ object GossipFieldValidation:
     )
 
   def validateUuidV4(kind: String, value: String): Either[String, UUID] =
-    Try(UUID.fromString(value)).toEither.left.map(_ => s"$kind must be a UUIDv4 string").flatMap:
-      uuid =>
+    Try(UUID.fromString(value)).toEither.left
+      .map(_ => ss"${kind} must be a UUIDv4 string")
+      .flatMap: uuid =>
         Either.cond(
-          uuid.version() == 4 && uuid.toString == value,
+          uuid.version() === 4 && uuid.toString === value,
           uuid,
-          s"$kind must be a lowercase canonical UUIDv4 string",
+          ss"${kind} must be a lowercase canonical UUIDv4 string",
         )
 
 opaque type DirectionalSessionId = String
@@ -80,10 +86,13 @@ object DirectionalSessionId:
     UUID.randomUUID().toString
 
   def parse(value: String): Either[String, DirectionalSessionId] =
-    GossipFieldValidation.validateUuidV4("directionalSessionId", value).map(_ => value)
+    GossipFieldValidation
+      .validateUuidV4("directionalSessionId", value)
+      .map(_ => value)
 
-  extension (id: DirectionalSessionId)
-    def value: String = id
+  extension (id: DirectionalSessionId) def value: String = id
+
+  given Eq[DirectionalSessionId] = Eq.by(_.value)
 
 opaque type PeerCorrelationId = String
 
@@ -92,7 +101,9 @@ object PeerCorrelationId:
     UUID.randomUUID().toString
 
   def parse(value: String): Either[String, PeerCorrelationId] =
-    GossipFieldValidation.validateUuidV4("peerCorrelationId", value).map(_ => value)
+    GossipFieldValidation
+      .validateUuidV4("peerCorrelationId", value)
+      .map(_ => value)
 
   def lexicographicCompare(
       left: PeerCorrelationId,
@@ -100,43 +111,53 @@ object PeerCorrelationId:
   ): Int =
     left.value.compareTo(right.value)
 
-  extension (id: PeerCorrelationId)
-    def value: String = id
+  extension (id: PeerCorrelationId) def value: String = id
+
+  given Eq[PeerCorrelationId] = Eq.by(_.value)
 
 opaque type PeerIdentity = String
 
+@SuppressWarnings(Array("org.wartremover.warts.Throw"))
 object PeerIdentity:
   def parse(value: String): Either[String, PeerIdentity] =
-    GossipFieldValidation.validateLowerAsciiToken("peerIdentity", value).map(_ => value)
+    GossipFieldValidation
+      .validateLowerAsciiToken("peerIdentity", value)
+      .map(_ => value)
 
   def unsafe(value: String): PeerIdentity =
     parse(value) match
       case Right(peer) => peer
       case Left(error) => throw new IllegalArgumentException(error)
 
-  extension (identity: PeerIdentity)
-    def value: String = identity
+  extension (identity: PeerIdentity) def value: String = identity
+
+  given Eq[PeerIdentity] = Eq.by(_.value)
 
 opaque type ChainId = String
 
+@SuppressWarnings(Array("org.wartremover.warts.Throw"))
 object ChainId:
   def parse(value: String): Either[String, ChainId] =
-    GossipFieldValidation.validateLowerAsciiToken("chainId", value).map(_ => value)
+    GossipFieldValidation
+      .validateLowerAsciiToken("chainId", value)
+      .map(_ => value)
 
   def unsafe(value: String): ChainId =
     parse(value) match
       case Right(chainId) => chainId
       case Left(error)    => throw new IllegalArgumentException(error)
 
-  extension (chainId: ChainId)
-    def value: String = chainId
+  extension (chainId: ChainId) def value: String = chainId
+
+  given Eq[ChainId] = Eq.by(_.value)
 
 opaque type GossipTopic = String
 
+@SuppressWarnings(Array("org.wartremover.warts.Throw"))
 object GossipTopic:
-  val tx: GossipTopic = "tx"
+  val tx: GossipTopic                = "tx"
   val consensusProposal: GossipTopic = "consensus.proposal"
-  val consensusVote: GossipTopic = "consensus.vote"
+  val consensusVote: GossipTopic     = "consensus.vote"
 
   def parse(value: String): Either[String, GossipTopic] =
     GossipFieldValidation.validateTopic(value).map(_ => value)
@@ -146,14 +167,19 @@ object GossipTopic:
       case Right(topic) => topic
       case Left(error)  => throw new IllegalArgumentException(error)
 
-  extension (topic: GossipTopic)
-    def value: String = topic
+  extension (topic: GossipTopic) def value: String = topic
+
+  given Eq[GossipTopic] = Eq.by(_.value)
 
 final case class ChainTopic(
     chainId: ChainId,
     topic: GossipTopic,
 )
 
+object ChainTopic:
+  given Eq[ChainTopic] = Eq.fromUniversalEquals
+
+@SuppressWarnings(Array("org.wartremover.warts.Overloading"))
 final case class SessionSubscription private (
     values: Set[ChainTopic],
 ):
@@ -163,12 +189,19 @@ final case class SessionSubscription private (
   def contains(chainId: ChainId, topic: GossipTopic): Boolean =
     contains(ChainTopic(chainId, topic))
 
+@SuppressWarnings(Array("org.wartremover.warts.Throw"))
 object SessionSubscription:
+  given Eq[SessionSubscription] = Eq.fromUniversalEquals
+
   def of(values: ChainTopic*): Either[String, SessionSubscription] =
     fromSet(values.toSet)
 
   def fromSet(values: Set[ChainTopic]): Either[String, SessionSubscription] =
-    Either.cond(values.nonEmpty, SessionSubscription(values), "subscription must not be empty")
+    Either.cond(
+      values.nonEmpty,
+      SessionSubscription(values),
+      "subscription must not be empty",
+    )
 
   def unsafe(values: ChainTopic*): SessionSubscription =
     of(values*) match
@@ -177,6 +210,9 @@ object SessionSubscription:
 
 opaque type StableArtifactId = ByteVector
 
+@SuppressWarnings(
+  Array("org.wartremover.warts.Throw", "org.wartremover.warts.Any"),
+)
 object StableArtifactId:
   def fromBytes(bytes: ByteVector): Either[String, StableArtifactId] =
     Either.cond(bytes.nonEmpty, bytes, "stable artifact id must not be empty")
@@ -190,20 +226,23 @@ object StableArtifactId:
 
   def unsafeFromHex(value: String): StableArtifactId =
     fromHex(value) match
-      case Right(id)    => id
-      case Left(error)  => throw new IllegalArgumentException(error)
+      case Right(id)   => id
+      case Left(error) => throw new IllegalArgumentException(error)
 
   def unsafeFromBytes(bytes: ByteVector): StableArtifactId =
     fromBytes(bytes) match
-      case Right(id)    => id
-      case Left(error)  => throw new IllegalArgumentException(error)
+      case Right(id)   => id
+      case Left(error) => throw new IllegalArgumentException(error)
 
   extension (id: StableArtifactId)
-    def bytes: ByteVector = id
+    def bytes: ByteVector  = id
     def toHexLower: String = id.toHex
+
+  given Eq[StableArtifactId] = Eq.by(_.toHexLower)
 
 opaque type TopicWindowKey = ByteVector
 
+@SuppressWarnings(Array("org.wartremover.warts.Throw"))
 object TopicWindowKey:
   def fromBytes(
       bytes: ByteVector,
@@ -216,7 +255,7 @@ object TopicWindowKey:
     ByteVector
       .fromHexDescriptive(value)
       .left
-      .map(error => s"invalid topic window key hex: $error")
+      .map(error => ss"invalid topic window key hex: ${error}")
       .flatMap(fromBytes)
 
   def unsafeFromHex(
@@ -234,8 +273,10 @@ object TopicWindowKey:
       case Left(error)      => throw new IllegalArgumentException(error)
 
   extension (windowKey: TopicWindowKey)
-    def bytes: ByteVector = windowKey
+    def bytes: ByteVector  = windowKey
     def toHexLower: String = windowKey.toHex
+
+  given Eq[TopicWindowKey] = Eq.by(_.toHexLower)
 
 final case class ExactKnownSetScope(
     chainId: ChainId,
@@ -243,41 +284,58 @@ final case class ExactKnownSetScope(
     windowKey: TopicWindowKey,
 )
 
+object ExactKnownSetScope:
+  given Eq[ExactKnownSetScope] = Eq.fromUniversalEquals
+
 opaque type CursorToken = ByteVector
 
+@SuppressWarnings(
+  Array(
+    "org.wartremover.warts.DefaultArguments",
+    "org.wartremover.warts.Throw",
+  ),
+)
 object CursorToken:
   val CurrentVersion: Int = 1
 
   def issue(payload: ByteVector, version: Int = CurrentVersion): CursorToken =
     if version < 0 || version > 0xff then
-      throw new IllegalArgumentException("cursor token version must fit in one unsigned byte")
+      throw new IllegalArgumentException(
+        "cursor token version must fit in one unsigned byte",
+      )
     ByteVector.fromByte(version.toByte) ++ payload
 
   def fromBytes(bytes: ByteVector): Either[String, CursorToken] =
     Either.cond(bytes.nonEmpty, bytes, "cursor token must not be empty")
 
   def decodeBase64Url(value: String): Either[String, CursorToken] =
-    Try(ByteVector.view(Base64.getUrlDecoder.decode(value))).toEither
-      .left
+    Try(ByteVector.view(Base64.getUrlDecoder.decode(value))).toEither.left
       .map(_ => "cursor token must be base64url without padding")
       .flatMap(fromBytes)
 
   extension (token: CursorToken)
-    def bytes: ByteVector = token
-    def version: Int = token.head.toInt & 0xff
+    def bytes: ByteVector   = token
+    def version: Int        = token.head.toInt & 0xff
     def payload: ByteVector = token.drop(1)
     def toBase64Url: String =
       Base64.getUrlEncoder.withoutPadding().encodeToString(token.toArray)
 
-    def validateVersion(expected: Int = CurrentVersion): Either[CanonicalRejection.StaleCursor, CursorToken] =
+    def validateVersion(
+        expected: Int = CurrentVersion,
+    ): Either[CanonicalRejection.StaleCursor, CursorToken] =
       Either.cond(
-        version == expected,
+        version === expected,
         token,
         CanonicalRejection.StaleCursor(
           reason = "cursorTokenVersionMismatch",
-          detail = Some(s"expected=$expected actual=$version"),
+          detail =
+            Some(
+              ss"expected=${expected.toString} actual=${version.toString}",
+            ),
         ),
       )
+
+  given Eq[CursorToken] = Eq.by(_.toBase64Url)
 
 final case class CompositeCursor(
     values: Map[ChainTopic, CursorToken],
@@ -285,7 +343,7 @@ final case class CompositeCursor(
   def tokenFor(chainTopic: ChainTopic): Option[CursorToken] =
     values.get(chainTopic)
 
-  def tokenFor(
+  def tokenForChainAndTopic(
       chainId: ChainId,
       topic: GossipTopic,
   ): Option[CursorToken] =
@@ -319,19 +377,21 @@ object GossipFilter:
   ) extends GossipFilter
 
 enum ControlOpKind(val wireName: String):
-  case SetFilter extends ControlOpKind("setFilter")
-  case SetKnownTx extends ControlOpKind("setKnown.tx")
-  case SetKnownExact extends ControlOpKind("setKnown.exact")
-  case SetCursor extends ControlOpKind("setCursor")
-  case Nack extends ControlOpKind("nack")
-  case RequestByIdTx extends ControlOpKind("requestById.tx")
+  case SetFilter        extends ControlOpKind("setFilter")
+  case SetKnownTx       extends ControlOpKind("setKnown.tx")
+  case SetKnownExact    extends ControlOpKind("setKnown.exact")
+  case SetCursor        extends ControlOpKind("setCursor")
+  case Nack             extends ControlOpKind("nack")
+  case RequestByIdTx    extends ControlOpKind("requestById.tx")
   case RequestByIdExact extends ControlOpKind("requestById.exact")
-  case Config extends ControlOpKind("config")
+  case Config           extends ControlOpKind("config")
 
 object ControlOpKind:
-  def parse(value: String): Either[CanonicalRejection.ControlBatchRejected, ControlOpKind] =
+  def parse(
+      value: String,
+  ): Either[CanonicalRejection.ControlBatchRejected, ControlOpKind] =
     ControlOpKind.values
-      .find(_.wireName == value)
+      .find(_.wireName === value)
       .toRight(
         CanonicalRejection.ControlBatchRejected(
           reason = "unknownControlOpKind",
@@ -340,7 +400,7 @@ object ControlOpKind:
       )
 
 enum SessionConfigKey(val wireName: String):
-  case TxMaxBatchItems extends SessionConfigKey("tx.maxBatchItems")
+  case TxMaxBatchItems   extends SessionConfigKey("tx.maxBatchItems")
   case TxFlushIntervalMs extends SessionConfigKey("tx.flushIntervalMs")
 
 object SessionConfigKey:
@@ -348,7 +408,7 @@ object SessionConfigKey:
       value: String,
   ): Either[CanonicalRejection.ControlBatchRejected, SessionConfigKey] =
     SessionConfigKey.values
-      .find(_.wireName == value)
+      .find(_.wireName === value)
       .toRight(
         CanonicalRejection.ControlBatchRejected(
           reason = "unsupportedConfigKey",
@@ -363,29 +423,35 @@ enum ControlOp:
   case SetCursor(cursor: CompositeCursor)
   case Nack(chainId: ChainId, topic: GossipTopic, cursor: Option[CursorToken])
   case RequestByIdTx(chainId: ChainId, ids: Vector[StableArtifactId])
-  case RequestByIdExact(scope: ExactKnownSetScope, ids: Vector[StableArtifactId])
+  case RequestByIdExact(
+      scope: ExactKnownSetScope,
+      ids: Vector[StableArtifactId],
+  )
   case Config(values: Map[SessionConfigKey, Long])
 
 opaque type ControlIdempotencyKey = String
 
+@SuppressWarnings(Array("org.wartremover.warts.Throw"))
 object ControlIdempotencyKey:
   def parse(
       value: String,
   ): Either[CanonicalRejection.ControlBatchRejected, ControlIdempotencyKey] =
-    GossipFieldValidation.validateUuidV4("control idempotency key", value).left.map: error =>
-      CanonicalRejection.ControlBatchRejected(
-        reason = "invalidIdempotencyKey",
-        detail = Some(error),
-      )
-    .map(_ => value)
+    GossipFieldValidation
+      .validateUuidV4("control idempotency key", value)
+      .left
+      .map: error =>
+        CanonicalRejection.ControlBatchRejected(
+          reason = "invalidIdempotencyKey",
+          detail = Some(error),
+        )
+      .map(_ => value)
 
   def unsafe(value: String): ControlIdempotencyKey =
     parse(value) match
-      case Right(key)   => key
-      case Left(error)  => throw new IllegalArgumentException(error.reason)
+      case Right(key)  => key
+      case Left(error) => throw new IllegalArgumentException(error.reason)
 
-  extension (key: ControlIdempotencyKey)
-    def value: String = key
+  extension (key: ControlIdempotencyKey) def value: String = key
 
 final case class ControlBatch(
     idempotencyKey: ControlIdempotencyKey,
@@ -406,6 +472,7 @@ final case class NegotiatedSessionParameters(
     maxControlRetryInterval: Duration,
 )
 
+@SuppressWarnings(Array("org.wartremover.warts.DefaultArguments"))
 final case class HandshakePolicy(
     openingHandshakeTimeout: Duration = Duration.ofSeconds(30),
     defaultHeartbeatInterval: Duration = Duration.ofSeconds(10),
@@ -423,11 +490,15 @@ final case class HandshakePolicy(
     val minimum = negotiated.maxControlRetryInterval.multipliedBy(2)
     val maximum = negotiated.maxControlRetryInterval.multipliedBy(10)
     Either.cond(
-      !retryHorizon.minus(minimum).isNegative && !maximum.minus(retryHorizon).isNegative,
+      !retryHorizon
+        .minus(minimum)
+        .isNegative && !maximum.minus(retryHorizon).isNegative,
       retryHorizon,
       CanonicalRejection.ControlBatchRejected(
         reason = "invalidControlRetryHorizon",
-        detail = Some(s"minimum=$minimum maximum=$maximum actual=$retryHorizon"),
+        detail = Some(
+          ss"minimum=${minimum.toString} maximum=${maximum.toString} actual=${retryHorizon.toString}"
+        ),
       ),
     )
 
@@ -454,6 +525,11 @@ final case class SessionOpenAck(
     negotiated: NegotiatedSessionParameters,
 )
 
+@SuppressWarnings(
+  Array(
+    "org.wartremover.warts.DefaultArguments",
+  ),
+)
 object SessionNegotiation:
   private def ensureAtLeast(
       name: String,
@@ -465,7 +541,9 @@ object SessionNegotiation:
       actual,
       CanonicalRejection.HandshakeRejected(
         reason = "invalidNegotiationValue",
-        detail = Some(s"$name must be >= $minimum but was $actual"),
+        detail = Some(
+          ss"${name} must be >= ${minimum.toString} but was ${actual.toString}",
+        ),
       ),
     )
 
@@ -479,7 +557,9 @@ object SessionNegotiation:
       actual,
       CanonicalRejection.HandshakeRejected(
         reason = "invalidNegotiationValue",
-        detail = Some(s"$name must be <= $maximum but was $actual"),
+        detail = Some(
+          ss"${name} must be <= ${maximum.toString} but was ${actual.toString}",
+        ),
       ),
     )
 
@@ -492,7 +572,9 @@ object SessionNegotiation:
         "heartbeatInterval",
         proposal.heartbeatInterval.getOrElse(policy.defaultHeartbeatInterval),
         policy.minHeartbeatInterval,
-      ).flatMap(ensureAtMost("heartbeatInterval", _, policy.maxHeartbeatInterval))
+      ).flatMap(
+        ensureAtMost("heartbeatInterval", _, policy.maxHeartbeatInterval),
+      )
       liveness <- ensureAtLeast(
         "livenessTimeout",
         proposal.livenessTimeout.getOrElse(policy.defaultLivenessTimeout),
@@ -500,9 +582,17 @@ object SessionNegotiation:
       )
       retry <- ensureAtLeast(
         "maxControlRetryInterval",
-        proposal.maxControlRetryInterval.getOrElse(policy.defaultMaxControlRetryInterval),
+        proposal.maxControlRetryInterval.getOrElse(
+          policy.defaultMaxControlRetryInterval,
+        ),
         policy.minMaxControlRetryInterval,
-      ).flatMap(ensureAtMost("maxControlRetryInterval", _, policy.maxMaxControlRetryInterval))
+      ).flatMap(
+        ensureAtMost(
+          "maxControlRetryInterval",
+          _,
+          policy.maxMaxControlRetryInterval,
+        ),
+      )
     yield NegotiatedSessionParameters(heartbeat, liveness, retry)
 
   def acknowledge(
@@ -514,8 +604,16 @@ object SessionNegotiation:
   ): Either[CanonicalRejection.HandshakeRejected, SessionOpenAck] =
     resolveProposal(proposal, policy).flatMap: resolved =>
       for
-        _ <- ensureAtLeast("heartbeatInterval", heartbeatInterval, policy.minHeartbeatInterval)
-        _ <- ensureAtMost("heartbeatInterval", heartbeatInterval, resolved.heartbeatInterval)
+        _ <- ensureAtLeast(
+          "heartbeatInterval",
+          heartbeatInterval,
+          policy.minHeartbeatInterval,
+        )
+        _ <- ensureAtMost(
+          "heartbeatInterval",
+          heartbeatInterval,
+          resolved.heartbeatInterval,
+        )
         // Liveness timeout has no absolute ceiling in the baseline contract.
         // The only enforced invariants are >= 3 * heartbeat and >= proposal floor.
         _ <- ensureAtLeast(
@@ -523,7 +621,11 @@ object SessionNegotiation:
           livenessTimeout,
           heartbeatInterval.multipliedBy(3),
         )
-        _ <- ensureAtLeast("livenessTimeout", livenessTimeout, resolved.livenessTimeout)
+        _ <- ensureAtLeast(
+          "livenessTimeout",
+          livenessTimeout,
+          resolved.livenessTimeout,
+        )
         _ <- ensureAtLeast(
           "maxControlRetryInterval",
           maxControlRetryInterval,
@@ -553,85 +655,91 @@ object SessionNegotiation:
       policy: HandshakePolicy = HandshakePolicy.default,
   ): Either[CanonicalRejection.HandshakeRejected, NegotiatedSessionParameters] =
     resolveProposal(proposal, policy).flatMap: resolved =>
-      Either.cond(
-        ack.sessionId == proposal.sessionId,
-        (),
-        CanonicalRejection.HandshakeRejected(
-          reason = "handshakeAckSessionMismatch",
-          detail = Some("session id mismatch"),
-        ),
-      ).flatMap: _ =>
-        Either.cond(
-          ack.peerCorrelationId == proposal.peerCorrelationId,
+      Either
+        .cond(
+          ack.sessionId === proposal.sessionId,
           (),
           CanonicalRejection.HandshakeRejected(
-            reason = "handshakeAckPeerCorrelationMismatch",
-            detail = Some("peer correlation id mismatch"),
+            reason = "handshakeAckSessionMismatch",
+            detail = Some("session id mismatch"),
           ),
         )
-      .flatMap: _ =>
-        Either.cond(
-          ack.initiator == proposal.initiator,
-          (),
-          CanonicalRejection.HandshakeRejected(
-            reason = "handshakeAckInitiatorMismatch",
-            detail = Some("initiator mismatch"),
-          ),
-        )
-      .flatMap: _ =>
-        Either.cond(
-          ack.acceptor == proposal.acceptor,
-          (),
-          CanonicalRejection.HandshakeRejected(
-            reason = "handshakeAckAcceptorMismatch",
-            detail = Some("acceptor mismatch"),
-          ),
-        )
-      .flatMap: _ =>
-        Either.cond(
-          ack.subscriptions == proposal.subscriptions,
-          (),
-          CanonicalRejection.HandshakeRejected(
-            reason = "handshakeAckSubscriptionMismatch",
-            detail = Some("session subscriptions are immutable"),
-          ),
-        )
-      .flatMap: _ =>
-        ensureAtLeast("heartbeatInterval", ack.negotiated.heartbeatInterval, policy.minHeartbeatInterval)
-      .flatMap: _ =>
-        ensureAtMost(
-          "heartbeatInterval",
-          ack.negotiated.heartbeatInterval,
-          resolved.heartbeatInterval,
-        )
-      .flatMap: _ =>
-        // Liveness timeout has no absolute ceiling in the baseline contract.
-        // The ack only needs to respect the negotiated heartbeat-derived floor
-        // and the proposal floor.
-        ensureAtLeast(
-          "livenessTimeout",
-          ack.negotiated.livenessTimeout,
-          ack.negotiated.heartbeatInterval.multipliedBy(3),
-        )
-      .flatMap: _ =>
-        ensureAtLeast(
-          "livenessTimeout",
-          ack.negotiated.livenessTimeout,
-          resolved.livenessTimeout,
-        )
-      .flatMap: _ =>
-        ensureAtLeast(
-          "maxControlRetryInterval",
-          ack.negotiated.maxControlRetryInterval,
-          policy.minMaxControlRetryInterval,
-        )
-      .flatMap: _ =>
-        ensureAtMost(
-          "maxControlRetryInterval",
-          ack.negotiated.maxControlRetryInterval,
-          resolved.maxControlRetryInterval,
-        )
-      .map(_ => ack.negotiated)
+        .flatMap: _ =>
+          Either.cond(
+            ack.peerCorrelationId === proposal.peerCorrelationId,
+            (),
+            CanonicalRejection.HandshakeRejected(
+              reason = "handshakeAckPeerCorrelationMismatch",
+              detail = Some("peer correlation id mismatch"),
+            ),
+          )
+        .flatMap: _ =>
+          Either.cond(
+            ack.initiator === proposal.initiator,
+            (),
+            CanonicalRejection.HandshakeRejected(
+              reason = "handshakeAckInitiatorMismatch",
+              detail = Some("initiator mismatch"),
+            ),
+          )
+        .flatMap: _ =>
+          Either.cond(
+            ack.acceptor === proposal.acceptor,
+            (),
+            CanonicalRejection.HandshakeRejected(
+              reason = "handshakeAckAcceptorMismatch",
+              detail = Some("acceptor mismatch"),
+            ),
+          )
+        .flatMap: _ =>
+          Either.cond(
+            ack.subscriptions === proposal.subscriptions,
+            (),
+            CanonicalRejection.HandshakeRejected(
+              reason = "handshakeAckSubscriptionMismatch",
+              detail = Some("session subscriptions are immutable"),
+            ),
+          )
+        .flatMap: _ =>
+          ensureAtLeast(
+            "heartbeatInterval",
+            ack.negotiated.heartbeatInterval,
+            policy.minHeartbeatInterval,
+          )
+        .flatMap: _ =>
+          ensureAtMost(
+            "heartbeatInterval",
+            ack.negotiated.heartbeatInterval,
+            resolved.heartbeatInterval,
+          )
+        .flatMap: _ =>
+          // Liveness timeout has no absolute ceiling in the baseline contract.
+          // The ack only needs to respect the negotiated heartbeat-derived floor
+          // and the proposal floor.
+          ensureAtLeast(
+            "livenessTimeout",
+            ack.negotiated.livenessTimeout,
+            ack.negotiated.heartbeatInterval.multipliedBy(3),
+          )
+        .flatMap: _ =>
+          ensureAtLeast(
+            "livenessTimeout",
+            ack.negotiated.livenessTimeout,
+            resolved.livenessTimeout,
+          )
+        .flatMap: _ =>
+          ensureAtLeast(
+            "maxControlRetryInterval",
+            ack.negotiated.maxControlRetryInterval,
+            policy.minMaxControlRetryInterval,
+          )
+        .flatMap: _ =>
+          ensureAtMost(
+            "maxControlRetryInterval",
+            ack.negotiated.maxControlRetryInterval,
+            resolved.maxControlRetryInterval,
+          )
+        .map(_ => ack.negotiated)
 
 enum EventStreamMessage[A]:
   case Event(event: GossipEvent[A])
@@ -646,14 +754,19 @@ enum ControlChannelMessage:
 
 trait GossipTopicContract[A]:
   def topic: GossipTopic
-  def validateArtifact(event: GossipEvent[A]): Either[CanonicalRejection.ArtifactContractRejected, Unit]
+  def validateArtifact(
+      event: GossipEvent[A],
+  ): Either[CanonicalRejection.ArtifactContractRejected, Unit]
   def exactKnownScopeOf(
       @annotation.unused event: GossipEvent[A],
-  ): Either[CanonicalRejection.ArtifactContractRejected, Option[ExactKnownSetScope]] =
-    Right(None)
+  ): Either[CanonicalRejection.ArtifactContractRejected, Option[
+    ExactKnownSetScope,
+  ]] =
+    none[ExactKnownSetScope]
+      .asRight[CanonicalRejection.ArtifactContractRejected]
   def exactKnownSetLimit: Option[Int] = None
-  def requestByIdLimit: Option[Int] = None
-  def deliveryPriority: Int = 0
+  def requestByIdLimit: Option[Int]   = None
+  def deliveryPriority: Int           = 0
   def producerQoS(
       default: GossipProducerQoS,
   ): GossipProducerQoS =

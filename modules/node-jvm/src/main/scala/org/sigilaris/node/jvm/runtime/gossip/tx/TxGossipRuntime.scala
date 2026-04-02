@@ -5,11 +5,26 @@ import java.time.{Duration, Instant}
 import cats.effect.kernel.Sync
 import cats.syntax.all.*
 
+import org.sigilaris.core.util.SafeStringInterp.*
 import org.sigilaris.node.jvm.runtime.gossip.*
 import org.sigilaris.node.jvm.runtime.gossip.CanonicalRejection.*
 
 enum ControlBatchOutcome:
   case Applied, Deduplicated
+
+final case class TxSessionNegotiationOverrides(
+    heartbeatInterval: Option[Duration],
+    livenessTimeout: Option[Duration],
+    maxControlRetryInterval: Option[Duration],
+)
+
+object TxSessionNegotiationOverrides:
+  val default: TxSessionNegotiationOverrides =
+    TxSessionNegotiationOverrides(
+      heartbeatInterval = None,
+      livenessTimeout = None,
+      maxControlRetryInterval = None,
+    )
 
 final case class TxReceiveEventsResult[A](
     applied: Vector[GossipEvent[A]],
@@ -31,10 +46,14 @@ object TxCascadeStrategy:
           filter: Option[GossipFilter.TxBloomFilter],
           exactKnownIds: Set[StableArtifactId],
           candidates: Vector[GossipEvent[A]],
-      ): Either[CanonicalRejection.BackfillUnavailable, Vector[GossipEvent[A]]] =
+      ): Either[CanonicalRejection.BackfillUnavailable, Vector[
+        GossipEvent[A],
+      ]] =
         filter match
           case None =>
-            Right(candidates.filterNot(event => exactKnownIds.contains(event.id)))
+            candidates
+              .filterNot(event => exactKnownIds.contains(event.id))
+              .asRight[CanonicalRejection.BackfillUnavailable]
           case Some(bloomFilter) =>
             val unresolved =
               candidates.filter: event =>
@@ -43,7 +62,8 @@ object TxCascadeStrategy:
             Either.cond(
               unresolved.isEmpty,
               candidates.filterNot: event =>
-                exactKnownIds.contains(event.id) || TxBloomFilterSupport.mightContain(bloomFilter, event.id),
+                exactKnownIds.contains(event.id) || TxBloomFilterSupport
+                  .mightContain(bloomFilter, event.id),
               CanonicalRejection.BackfillUnavailable(
                 reason = "txBackfillUnavailable",
                 detail = Some(unresolved.map(_.id.toHexLower).mkString(",")),
@@ -57,8 +77,8 @@ final class TxGossipRuntime[F[_]: Sync, A](
     sink: GossipArtifactSink[F, A],
     topicContracts: GossipTopicContractRegistry[A],
     stateStore: TxGossipStateStore[F],
-    policy: TxRuntimePolicy = TxRuntimePolicy(),
-    cascadeStrategy: TxCascadeStrategy[A] = TxCascadeStrategy.exactKnownOrBackfillUnavailable[A],
+    policy: TxRuntimePolicy,
+    cascadeStrategy: TxCascadeStrategy[A],
 ):
   private def expireState(
       state: TxGossipRuntimeState,
@@ -69,7 +89,7 @@ final class TxGossipRuntime[F[_]: Sync, A](
       case (sessionId, _) =>
         updatedEngine
           .sessionById(sessionId)
-          .exists(_.status == DirectionalSessionStatus.Open)
+          .exists(_.status === DirectionalSessionStatus.Open)
     state.copy(
       engine = updatedEngine,
       outboundSessions = liveOutboundSessions,
@@ -98,89 +118,113 @@ final class TxGossipRuntime[F[_]: Sync, A](
   ): F[Option[CanonicalRejection.HandshakeRejected]] =
     snapshot.engine.sessionById(sessionId) match
       case Some(session)
-          if session.direction == SessionDirection.Outbound &&
-            session.status == DirectionalSessionStatus.Opening =>
-        stateStore.modify: state =>
-          state.engine.rejectPreOpenTraffic(sessionId, kind).fold(
-            error => state -> Left(error),
-            {
-              case (updatedEngine, rejection) =>
-                state.copy(
-                  engine = updatedEngine,
-                  outboundSessions = state.outboundSessions - sessionId,
-                ) -> Right(rejection)
-            },
-          )
-        .map:
-          case Right(rejection) =>
-            Some(rejection)
-          case Left(error) if error.reason == "sessionNotOpening" =>
-            None
-          case Left(error) =>
-            Some(error)
+          if session.direction === SessionDirection.Outbound &&
+            session.status === DirectionalSessionStatus.Opening =>
+        stateStore
+          .modify: state =>
+            state.engine
+              .rejectPreOpenTraffic(sessionId, kind)
+              .fold(
+                error => state -> error.asLeft[HandshakeRejected],
+                { case (updatedEngine, rejection) =>
+                  state.copy(
+                    engine = updatedEngine,
+                    outboundSessions = state.outboundSessions - sessionId,
+                  ) -> rejection.asRight[HandshakeRejected]
+                },
+              )
+          .map:
+            case Right(rejection) =>
+              Some(rejection)
+            case Left(error) if error.reason === "sessionNotOpening" =>
+              None
+            case Left(error) =>
+              Some(error)
       case _ =>
         none[CanonicalRejection.HandshakeRejected].pure[F]
 
   def startOutbound(
       peer: PeerIdentity,
       subscriptions: SessionSubscription,
-      heartbeatInterval: Option[Duration] = None,
-      livenessTimeout: Option[Duration] = None,
-      maxControlRetryInterval: Option[Duration] = None,
   ): F[Either[HandshakeRejected, SessionOpenProposal]] =
-    peerAuthenticator.authenticate(peer).flatMap:
-      case Left(rejection) =>
-        rejection.asLeft[SessionOpenProposal].pure[F]
-      case Right(_) =>
-        clock.now.flatMap: now =>
-          stateStore.modify: state =>
-            val currentState = expireState(state, now)
-            currentState.engine
-              .startOutbound(
-                peer = peer,
-                subscriptions = subscriptions,
-                now = now,
-                heartbeatInterval = heartbeatInterval,
-                livenessTimeout = livenessTimeout,
-                maxControlRetryInterval = maxControlRetryInterval,
-              )
-              .fold(
-                error => currentState -> Left(error),
-                (updatedEngine, proposal) =>
-                  currentState.copy(engine = updatedEngine) -> Right(proposal),
-              )
+    startOutboundConfigured(
+      peer,
+      subscriptions,
+      TxSessionNegotiationOverrides.default,
+    )
+
+  def startOutboundConfigured(
+      peer: PeerIdentity,
+      subscriptions: SessionSubscription,
+      negotiationOverrides: TxSessionNegotiationOverrides,
+  ): F[Either[HandshakeRejected, SessionOpenProposal]] =
+    peerAuthenticator
+      .authenticate(peer)
+      .flatMap:
+        case Left(rejection) =>
+          rejection.asLeft[SessionOpenProposal].pure[F]
+        case Right(_) =>
+          clock.now.flatMap: now =>
+            stateStore.modify: state =>
+              val currentState = expireState(state, now)
+              currentState.engine
+                .startOutbound(
+                  peer = peer,
+                  subscriptions = subscriptions,
+                  now = now,
+                  heartbeatInterval = negotiationOverrides.heartbeatInterval,
+                  livenessTimeout = negotiationOverrides.livenessTimeout,
+                  maxControlRetryInterval =
+                    negotiationOverrides.maxControlRetryInterval,
+                )
+                .fold(
+                  error => currentState -> error.asLeft[SessionOpenProposal],
+                  (updatedEngine, proposal) =>
+                    currentState
+                      .copy(engine = updatedEngine) ->
+                      proposal.asRight[HandshakeRejected],
+                )
 
   def handleInboundProposal(
       proposal: SessionOpenProposal,
-      heartbeatInterval: Option[Duration] = None,
-      livenessTimeout: Option[Duration] = None,
-      maxControlRetryInterval: Option[Duration] = None,
   ): F[InboundHandshakeResult] =
-    peerAuthenticator.authenticate(proposal.initiator).flatMap:
-      case Left(rejection) =>
-        InboundHandshakeResult.Rejected(rejection).pure[F]
-      case Right(_) =>
-        clock.now.flatMap: now =>
-          stateStore.modify: state =>
-            val currentState = expireState(state, now)
-            val (updatedEngine, result) =
-              currentState.engine.handleInboundProposal(
-                proposal = proposal,
-                now = now,
-                heartbeatInterval = heartbeatInterval,
-                livenessTimeout = livenessTimeout,
-                maxControlRetryInterval = maxControlRetryInterval,
-              )
-            val updatedSessions = result match
-              case InboundHandshakeResult.Accepted(_, supersededSessionId) =>
-                supersededSessionId.foldLeft(currentState.outboundSessions):
-                  case (sessions, sessionId) => sessions - sessionId
-              case InboundHandshakeResult.Rejected(_) =>
-                currentState.outboundSessions
-            currentState.copy(
-              engine = updatedEngine,
-              outboundSessions = updatedSessions,
-            ) -> result
+    handleInboundProposalConfigured(
+      proposal,
+      TxSessionNegotiationOverrides.default,
+    )
+
+  def handleInboundProposalConfigured(
+      proposal: SessionOpenProposal,
+      negotiationOverrides: TxSessionNegotiationOverrides,
+  ): F[InboundHandshakeResult] =
+    peerAuthenticator
+      .authenticate(proposal.initiator)
+      .flatMap:
+        case Left(rejection) =>
+          InboundHandshakeResult.Rejected(rejection).pure[F]
+        case Right(_) =>
+          clock.now.flatMap: now =>
+            stateStore.modify: state =>
+              val currentState = expireState(state, now)
+              val (updatedEngine, result) =
+                currentState.engine.handleInboundProposal(
+                  proposal = proposal,
+                  now = now,
+                  heartbeatInterval = negotiationOverrides.heartbeatInterval,
+                  livenessTimeout = negotiationOverrides.livenessTimeout,
+                  maxControlRetryInterval =
+                    negotiationOverrides.maxControlRetryInterval,
+                )
+              val updatedSessions = result match
+                case InboundHandshakeResult.Accepted(_, supersededSessionId) =>
+                  supersededSessionId.foldLeft(currentState.outboundSessions):
+                    case (sessions, sessionId) => sessions - sessionId
+                case InboundHandshakeResult.Rejected(_) =>
+                  currentState.outboundSessions
+              currentState.copy(
+                engine = updatedEngine,
+                outboundSessions = updatedSessions,
+              ) -> result
 
   def applyHandshakeAck(
       ack: SessionOpenAck,
@@ -188,26 +232,31 @@ final class TxGossipRuntime[F[_]: Sync, A](
     clock.now.flatMap: now =>
       stateStore.modify: state =>
         val currentState = expireState(state, now)
-        currentState.engine.applyHandshakeAck(ack, now).fold(
-          error => currentState -> Left(error),
-          updatedEngine =>
-            updatedEngine.sessionById(ack.sessionId) match
-              case None =>
-                currentState -> Left(handshakeRejected("unknownSession", ack.sessionId.value))
-              case Some(session) =>
-                val runtimeSession = TxProducerSessionState(
-                  sessionId = session.sessionId,
-                  peer = session.peer,
-                  peerCorrelationId = session.peerCorrelationId,
-                  subscriptions = session.proposal.subscriptions,
-                  negotiated = ack.negotiated,
-                  batchingConfig = policy.defaultBatchingConfig,
-                )
-                currentState.copy(
-                  engine = updatedEngine,
-                  outboundSessions = currentState.outboundSessions.updated(session.sessionId, runtimeSession),
-                ) -> Right(())
-        )
+        currentState.engine
+          .applyHandshakeAck(ack, now)
+          .fold(
+            error => currentState -> error.asLeft[Unit],
+            updatedEngine =>
+              updatedEngine.sessionById(ack.sessionId) match
+                case None =>
+                  currentState ->
+                    handshakeRejected("unknownSession", ack.sessionId.value)
+                      .asLeft[Unit]
+                case Some(session) =>
+                  val runtimeSession = TxProducerSessionState(
+                    sessionId = session.sessionId,
+                    peer = session.peer,
+                    peerCorrelationId = session.peerCorrelationId,
+                    subscriptions = session.proposal.subscriptions,
+                    negotiated = ack.negotiated,
+                    batchingConfig = policy.defaultBatchingConfig,
+                  )
+                  currentState.copy(
+                    engine = updatedEngine,
+                    outboundSessions = currentState.outboundSessions
+                      .updated(session.sessionId, runtimeSession),
+                  ) -> ().asRight[HandshakeRejected],
+          )
 
   def closeSession(
       sessionId: DirectionalSessionId,
@@ -215,14 +264,16 @@ final class TxGossipRuntime[F[_]: Sync, A](
     clock.now.flatMap: now =>
       stateStore.modify: state =>
         val currentState = expireState(state, now)
-        currentState.engine.closeSession(sessionId).fold(
-          error => currentState -> Left(error),
-          updatedEngine =>
-            currentState.copy(
-              engine = updatedEngine,
-              outboundSessions = currentState.outboundSessions - sessionId,
-            ) -> Right(())
-        )
+        currentState.engine
+          .closeSession(sessionId)
+          .fold(
+            error => currentState -> error.asLeft[Unit],
+            updatedEngine =>
+              currentState.copy(
+                engine = updatedEngine,
+                outboundSessions = currentState.outboundSessions - sessionId,
+              ) -> ().asRight[HandshakeRejected],
+          )
 
   def markSessionDead(
       sessionId: DirectionalSessionId,
@@ -230,26 +281,35 @@ final class TxGossipRuntime[F[_]: Sync, A](
     clock.now.flatMap: now =>
       stateStore.modify: state =>
         val currentState = expireState(state, now)
-        currentState.engine.markSessionDead(sessionId).fold(
-          error => currentState -> Left(error),
-          updatedEngine =>
-            currentState.copy(
-              engine = updatedEngine,
-              outboundSessions = currentState.outboundSessions - sessionId,
-            ) -> Right(())
-        )
+        currentState.engine
+          .markSessionDead(sessionId)
+          .fold(
+            error => currentState -> error.asLeft[Unit],
+            updatedEngine =>
+              currentState.copy(
+                engine = updatedEngine,
+                outboundSessions = currentState.outboundSessions - sessionId,
+              ) -> ().asRight[HandshakeRejected],
+          )
 
   def receiveControlBatch(
       sessionId: DirectionalSessionId,
       batch: ControlBatch,
   ): F[Either[CanonicalRejection.ControlBatchRejected, ControlBatchOutcome]] =
     for
-      now <- clock.now
+      now      <- clock.now
       snapshot <- snapshotAt(now)
-      preOpenRejection <- rejectPreOpenTrafficIfNeeded(snapshot, sessionId, PreOpenTrafficKind.ControlChannel)
+      preOpenRejection <- rejectPreOpenTrafficIfNeeded(
+        snapshot,
+        sessionId,
+        PreOpenTrafficKind.ControlChannel,
+      )
       result <- preOpenRejection match
         case Some(rejection) =>
-          controlRejected(rejection.reason, rejection.detail.getOrElse(sessionId.value))
+          controlRejected(
+            rejection.reason,
+            rejection.detail.getOrElse(sessionId.value),
+          )
             .asLeft[ControlBatchOutcome]
             .pure[F]
         case None =>
@@ -261,20 +321,26 @@ final class TxGossipRuntime[F[_]: Sync, A](
                 // Defensive reaping: state may have changed since snapshotAt(now).
                 val currentState = expireState(state, now)
                 openOutboundProducerSession(currentState, sessionId).fold(
-                  rejection => currentState -> Left(rejection),
+                  rejection => currentState -> rejection.asLeft[ControlBatchOutcome],
                   (_, sessionState) =>
                     applyControlBatch(now, batch, sessionState).fold(
-                      rejection => currentState -> Left(rejection),
-                      {
-                        case (updatedSession, outcome) =>
-                          touchSessionActivity(currentState, sessionId, now).fold(
-                            rejection =>
-                              currentState -> Left(controlRejected(rejection.reason, rejection.detail.getOrElse(sessionId.value))),
-                            updatedState =>
-                              updatedState.copy(
-                                outboundSessions = updatedState.outboundSessions.updated(sessionId, updatedSession)
-                              ) -> Right(outcome),
-                          )
+                      rejection =>
+                        currentState -> rejection.asLeft[ControlBatchOutcome],
+                      { case (updatedSession, outcome) =>
+                        touchSessionActivity(currentState, sessionId, now).fold(
+                          rejection =>
+                            currentState ->
+                              controlRejected(
+                                rejection.reason,
+                                rejection.detail.getOrElse(sessionId.value),
+                              ).asLeft[ControlBatchOutcome],
+                          updatedState =>
+                            updatedState.copy(
+                              outboundSessions = updatedState.outboundSessions
+                                .updated(sessionId, updatedSession),
+                            ) -> outcome
+                              .asRight[CanonicalRejection.ControlBatchRejected],
+                        )
                       },
                     ),
                 )
@@ -284,15 +350,20 @@ final class TxGossipRuntime[F[_]: Sync, A](
       sessionId: DirectionalSessionId,
   ): F[Either[CanonicalRejection, Vector[EventStreamMessage[A]]]] =
     for
-      now <- clock.now
+      now      <- clock.now
       snapshot <- snapshotAt(now)
-      preOpenRejection <- rejectPreOpenTrafficIfNeeded(snapshot, sessionId, PreOpenTrafficKind.EventStream)
+      preOpenRejection <- rejectPreOpenTrafficIfNeeded(
+        snapshot,
+        sessionId,
+        PreOpenTrafficKind.EventStream,
+      )
       result <- preOpenRejection match
         case Some(rejection) =>
           rejection.asLeft[Vector[EventStreamMessage[A]]].pure[F]
         case None =>
           openOutboundEventSession(snapshot, sessionId).fold(
-            rejection => rejection.asLeft[Vector[EventStreamMessage[A]]].pure[F],
+            rejection =>
+              rejection.asLeft[Vector[EventStreamMessage[A]]].pure[F],
             (_, sessionState) =>
               pollOpenSession(now, sessionState).flatMap:
                 case Left(rejection) =>
@@ -303,19 +374,31 @@ final class TxGossipRuntime[F[_]: Sync, A](
                     val currentState = expireState(state, now)
                     currentState.outboundSessions.get(sessionId) match
                       case None =>
-                        currentState -> Left(handshakeRejected("unknownSession", sessionId.value))
+                        currentState ->
+                          handshakeRejected("unknownSession", sessionId.value)
+                            .asLeft[Vector[EventStreamMessage[A]]]
                       case Some(current) =>
                         touchSessionActivity(currentState, sessionId, now).fold(
-                          rejection => currentState -> Left(rejection),
+                          rejection =>
+                            currentState ->
+                              rejection.asLeft[Vector[EventStreamMessage[A]]],
                           updatedState =>
                             val mergedSessions =
                               updatedState.outboundSessions.updated(
                                 sessionId,
-                                mergePolledSessionState(current, sessionState, updatedSession)
+                                mergePolledSessionState(
+                                  current,
+                                  sessionState,
+                                  updatedSession,
+                                ),
                               )
-                            updatedState.copy(outboundSessions = mergedSessions) ->
-                              Right(emittedEvents.map(EventStreamMessage.Event(_))),
-                        )
+                            updatedState.copy(outboundSessions =
+                              mergedSessions,
+                            ) ->
+                              emittedEvents
+                                .map(EventStreamMessage.Event(_))
+                                .asRight[HandshakeRejected],
+                        ),
           )
     yield result
 
@@ -331,36 +414,36 @@ final class TxGossipRuntime[F[_]: Sync, A](
             messages
               .foldLeftM(
                 TxReceiveEventsResult[A](
-                  applied = Vector.empty,
-                  duplicates = Vector.empty,
+                  applied = Vector.empty[GossipEvent[A]],
+                  duplicates = Vector.empty[GossipEvent[A]],
                   lastCursor = None,
-                ).asRight[CanonicalRejection]
+                ).asRight[CanonicalRejection],
               ):
                 case (left @ Left(_), _) =>
                   left.pure[F]
                 case (Right(result), EventStreamMessage.KeepAlive(_, _)) =>
-                  Right(result).pure[F]
+                  result.asRight[CanonicalRejection].pure[F]
                 case (_, EventStreamMessage.Rejection(rejection)) =>
                   rejection.asLeft[TxReceiveEventsResult[A]].pure[F]
                 case (Right(result), EventStreamMessage.Event(event)) =>
                   validateAndApplyEvent(event).map:
                     case Left(rejection) =>
-                      Left(rejection)
+                      rejection.asLeft[TxReceiveEventsResult[A]]
                     case Right(applyResult) =>
                       if applyResult.duplicate then
-                        Right(
-                          result.copy(
+                        result
+                          .copy(
                             duplicates = result.duplicates :+ event,
                             lastCursor = Some(event.cursor),
                           )
-                        )
+                          .asRight[CanonicalRejection]
                       else
-                        Right(
-                          result.copy(
+                        result
+                          .copy(
                             applied = result.applied :+ event,
                             lastCursor = Some(event.cursor),
                           )
-                        )
+                          .asRight[CanonicalRejection]
               .flatMap:
                 case left @ Left(_) =>
                   left.pure[F]
@@ -371,18 +454,24 @@ final class TxGossipRuntime[F[_]: Sync, A](
                     // Defensive reaping: state may have changed since snapshotAt(now).
                     val currentState = expireState(current, now)
                     touchSessionActivity(currentState, sessionId, now).fold(
-                      rejection => currentState -> Left(rejection),
+                      rejection =>
+                        currentState ->
+                          rejection.asLeft[TxReceiveEventsResult[A]],
                       updatedState => updatedState -> right,
-                    )
-      )
+                    ),
+        )
 
   def eventKeepAlive(
       sessionId: DirectionalSessionId,
   ): F[Either[CanonicalRejection.HandshakeRejected, EventStreamMessage[A]]] =
     for
-      now <- clock.now
+      now   <- clock.now
       state <- snapshotAt(now)
-      preOpenRejection <- rejectPreOpenTrafficIfNeeded(state, sessionId, PreOpenTrafficKind.EventStream)
+      preOpenRejection <- rejectPreOpenTrafficIfNeeded(
+        state,
+        sessionId,
+        PreOpenTrafficKind.EventStream,
+      )
       result <- preOpenRejection match
         case Some(rejection) =>
           rejection.asLeft[EventStreamMessage[A]].pure[F]
@@ -394,9 +483,13 @@ final class TxGossipRuntime[F[_]: Sync, A](
                 // Defensive reaping: state may have changed since snapshotAt(now).
                 val currentState = expireState(current, now)
                 touchSessionActivity(currentState, sessionId, now).fold(
-                  rejection => currentState -> Left(rejection),
-                  updatedState => updatedState -> Right(EventStreamMessage.KeepAlive(sessionId, now)),
-                )
+                  rejection =>
+                    currentState -> rejection.asLeft[EventStreamMessage[A]],
+                  updatedState =>
+                    updatedState ->
+                      EventStreamMessage.KeepAlive(sessionId, now)
+                        .asRight[HandshakeRejected],
+                ),
           )
     yield result
 
@@ -404,12 +497,19 @@ final class TxGossipRuntime[F[_]: Sync, A](
       sessionId: DirectionalSessionId,
   ): F[Either[CanonicalRejection.ControlBatchRejected, ControlChannelMessage]] =
     for
-      now <- clock.now
+      now   <- clock.now
       state <- snapshotAt(now)
-      preOpenRejection <- rejectPreOpenTrafficIfNeeded(state, sessionId, PreOpenTrafficKind.ControlChannel)
+      preOpenRejection <- rejectPreOpenTrafficIfNeeded(
+        state,
+        sessionId,
+        PreOpenTrafficKind.ControlChannel,
+      )
       result <- preOpenRejection match
         case Some(rejection) =>
-          controlRejected(rejection.reason, rejection.detail.getOrElse(sessionId.value))
+          controlRejected(
+            rejection.reason,
+            rejection.detail.getOrElse(sessionId.value),
+          )
             .asLeft[ControlChannelMessage]
             .pure[F]
         case None =>
@@ -421,9 +521,16 @@ final class TxGossipRuntime[F[_]: Sync, A](
                 val currentState = expireState(current, now)
                 touchSessionActivity(currentState, sessionId, now).fold(
                   rejection =>
-                    currentState -> Left(controlRejected(rejection.reason, rejection.detail.getOrElse(sessionId.value))),
-                  updatedState => updatedState -> Right(ControlChannelMessage.Ack(sessionId, now)),
-                )
+                    currentState ->
+                      controlRejected(
+                        rejection.reason,
+                        rejection.detail.getOrElse(sessionId.value),
+                      ).asLeft[ControlChannelMessage],
+                  updatedState =>
+                    updatedState ->
+                      ControlChannelMessage.Ack(sessionId, now)
+                        .asRight[CanonicalRejection.ControlBatchRejected],
+                ),
           )
     yield result
 
@@ -454,28 +561,32 @@ final class TxGossipRuntime[F[_]: Sync, A](
     openOutboundProducerSession(state, sessionId).fold(
       rejection => rejection.asLeft[Unit].pure[F],
       (_, _) =>
-        batch.ops.foldLeftM(().asRight[CanonicalRejection.ControlBatchRejected]):
+        batch.ops.foldLeftM(
+          ().asRight[CanonicalRejection.ControlBatchRejected],
+        ):
           case (Left(rejection), _) =>
             rejection.asLeft[Unit].pure[F]
           case (Right(_), ControlOp.RequestByIdTx(chainId, ids)) =>
             val distinctIds = ids.distinct
-            if distinctIds.size > policy.maxTxRequestIds then
+            if distinctIds.sizeIs > policy.maxTxRequestIds then
               controlRejected(
                 "requestByIdTooLarge",
-                s"max=${policy.maxTxRequestIds} actual=${distinctIds.size}",
+                ss"max=${policy.maxTxRequestIds.toString} actual=${distinctIds.size.toString}",
               ).asLeft[Unit].pure[F]
             else
-              source.readByIds(chainId, GossipTopic.tx, distinctIds).map: events =>
-                val foundIds = events.map(_.event.id).toSet
-                val missing = distinctIds.filterNot(foundIds.contains)
-                Either.cond(
-                  missing.isEmpty,
-                  (),
-                  controlRejected(
-                    "unknownRequestedArtifact",
-                    missing.map(_.toHexLower).mkString(","),
-                  ),
-                )
+              source
+                .readByIds(chainId, GossipTopic.tx, distinctIds)
+                .map: events =>
+                  val foundIds = events.map(_.event.id).toSet
+                  val missing  = distinctIds.filterNot(foundIds.contains)
+                  Either.cond(
+                    missing.isEmpty,
+                    (),
+                    controlRejected(
+                      "unknownRequestedArtifact",
+                      missing.map(_.toHexLower).mkString(","),
+                    ),
+                  )
           case (Right(_), ControlOp.RequestByIdExact(scope, ids)) =>
             openExactKnownContract(scope.topic) match
               case Left(rejection) =>
@@ -483,61 +594,76 @@ final class TxGossipRuntime[F[_]: Sync, A](
               case Right(contract) =>
                 val distinctIds = ids.distinct
                 contract.requestByIdLimit match
-                  case Some(limit) if distinctIds.size > limit =>
+                  case Some(limit) if distinctIds.sizeIs > limit =>
                     controlRejected(
                       "requestByIdTooLarge",
-                      s"max=$limit actual=${distinctIds.size}",
+                      ss"max=${limit.toString} actual=${distinctIds.size.toString}",
                     ).asLeft[Unit].pure[F]
                   case Some(_) =>
-                    source.readByIds(scope.chainId, scope.topic, distinctIds).map: events =>
-                      val (wrongWindow, foundIds) =
-                        events.foldLeft((Vector.empty[StableArtifactId], Set.empty[StableArtifactId])):
-                          case ((wrongWindowAcc, foundAcc), available) =>
-                            contract.exactKnownScopeOf(available.event) match
-                              case Right(Some(eventScope)) if eventScope == scope =>
-                                wrongWindowAcc -> (foundAcc + available.event.id)
-                              case Right(Some(_)) =>
-                                (wrongWindowAcc :+ available.event.id) -> foundAcc
-                              case Right(None) =>
-                                (wrongWindowAcc :+ available.event.id) -> foundAcc
-                              case Left(_) =>
-                                (wrongWindowAcc :+ available.event.id) -> foundAcc
-                      val missing = distinctIds.filterNot(foundIds.contains)
-                      if wrongWindow.nonEmpty then
-                        Left(
+                    source
+                      .readByIds(scope.chainId, scope.topic, distinctIds)
+                      .map: events =>
+                        val (wrongWindow, foundIds) =
+                          events.foldLeft(
+                            (
+                              Vector.empty[StableArtifactId],
+                              Set.empty[StableArtifactId],
+                            ),
+                          ):
+                            case ((wrongWindowAcc, foundAcc), available) =>
+                              contract.exactKnownScopeOf(available.event) match
+                                case Right(Some(eventScope))
+                                    if eventScope === scope =>
+                                  wrongWindowAcc -> (foundAcc + available.event.id)
+                                case Right(Some(_)) =>
+                                  (wrongWindowAcc :+ available.event.id) -> foundAcc
+                                case Right(None) =>
+                                  (wrongWindowAcc :+ available.event.id) -> foundAcc
+                                case Left(_) =>
+                                  (wrongWindowAcc :+ available.event.id) -> foundAcc
+                        val missing = distinctIds.filterNot(foundIds.contains)
+                        if wrongWindow.nonEmpty then
                           controlRejected(
                             "wrongWindowKey",
                             wrongWindow.map(_.toHexLower).mkString(","),
+                          ).asLeft[Unit]
+                        else
+                          Either.cond(
+                            missing.isEmpty,
+                            (),
+                            controlRejected(
+                              "unknownRequestedArtifact",
+                              missing.map(_.toHexLower).mkString(","),
+                            ),
                           )
-                        )
-                      else
-                        Either.cond(
-                          missing.isEmpty,
-                          (),
-                          controlRejected(
-                            "unknownRequestedArtifact",
-                            missing.map(_.toHexLower).mkString(","),
-                          ),
-                        )
                   case None =>
-                    controlRejected("unsupportedTopic", scope.topic.value).asLeft[Unit].pure[F]
+                    controlRejected("unsupportedTopic", scope.topic.value)
+                      .asLeft[Unit]
+                      .pure[F]
           case (Right(_), _) =>
-            Right(()).pure[F]
+            ().asRight[CanonicalRejection.ControlBatchRejected].pure[F],
     )
 
   private def applyControlBatch(
       now: Instant,
       batch: ControlBatch,
       sessionState: TxProducerSessionState,
-  ): Either[CanonicalRejection.ControlBatchRejected, (TxProducerSessionState, ControlBatchOutcome)] =
-    val prunedKeys = pruneIdempotencyKeys(now, sessionState)
+  ): Either[
+    CanonicalRejection.ControlBatchRejected,
+    (TxProducerSessionState, ControlBatchOutcome),
+  ] =
+    val prunedKeys            = pruneIdempotencyKeys(now, sessionState)
     val sessionWithPrunedKeys = sessionState.copy(idempotencyKeys = prunedKeys)
     if prunedKeys.contains(batch.idempotencyKey) then
-      Right(sessionWithPrunedKeys -> ControlBatchOutcome.Deduplicated)
+      (sessionWithPrunedKeys -> ControlBatchOutcome.Deduplicated)
+        .asRight[CanonicalRejection.ControlBatchRejected]
     else
       batch.ops
-        .foldLeft[Either[CanonicalRejection.ControlBatchRejected, TxProducerSessionState]](
-          Right(sessionWithPrunedKeys)
+        .foldLeft[Either[
+          CanonicalRejection.ControlBatchRejected,
+          TxProducerSessionState,
+        ]](
+          sessionWithPrunedKeys.asRight[CanonicalRejection.ControlBatchRejected],
         ):
           case (Right(current), op) =>
             applyControlOp(current, op)
@@ -545,7 +671,8 @@ final class TxGossipRuntime[F[_]: Sync, A](
             left
         .map: updated =>
           updated.copy(
-            idempotencyKeys = updated.idempotencyKeys.updated(batch.idempotencyKey, now)
+            idempotencyKeys =
+              updated.idempotencyKeys.updated(batch.idempotencyKey, now),
           ) -> ControlBatchOutcome.Applied
 
   private def applyControlOp(
@@ -557,46 +684,61 @@ final class TxGossipRuntime[F[_]: Sync, A](
         validateTxSubscription(sessionState, chainId, topic).flatMap: _ =>
           filter match
             case bloomFilter: GossipFilter.TxBloomFilter =>
-              TxBloomFilterSupport.validate(bloomFilter, policy).map: validated =>
-                sessionState.copy(filters = sessionState.filters.updated(chainId, validated))
+              TxBloomFilterSupport
+                .validate(bloomFilter, policy)
+                .map: validated =>
+                  sessionState.copy(filters =
+                    sessionState.filters.updated(chainId, validated),
+                  )
 
       case ControlOp.SetKnownTx(chainId, ids) =>
-        validateTxSubscription(sessionState, chainId, GossipTopic.tx).flatMap: _ =>
-          val distinctNewIds = ids.toSet
-          val mergedIds = sessionState.exactKnownIds.getOrElse(chainId, Set.empty) ++ distinctNewIds
-          Either.cond(
-            distinctNewIds.size <= policy.maxTxSetKnownEntries && mergedIds.size <= policy.maxTxSetKnownEntries,
-            sessionState.copy(
-              exactKnownIds = sessionState.exactKnownIds.updated(
-                chainId,
-                mergedIds,
-              )
-            ),
-            controlRejected(
-              "setKnownTooLarge",
-              s"max=${policy.maxTxSetKnownEntries} actual=${mergedIds.size}",
-            ),
-          )
+        validateTxSubscription(sessionState, chainId, GossipTopic.tx).flatMap:
+          _ =>
+            val distinctNewIds = ids.toSet
+            val mergedIds = sessionState.exactKnownIds.getOrElse(
+              chainId,
+              Set.empty[StableArtifactId],
+            ) ++ distinctNewIds
+            Either.cond(
+              distinctNewIds.sizeIs <= policy.maxTxSetKnownEntries &&
+                mergedIds.sizeIs <= policy.maxTxSetKnownEntries,
+              sessionState.copy(
+                exactKnownIds = sessionState.exactKnownIds.updated(
+                  chainId,
+                  mergedIds,
+                ),
+              ),
+              controlRejected(
+                "setKnownTooLarge",
+                ss"max=${policy.maxTxSetKnownEntries.toString} actual=${mergedIds.size.toString}",
+              ),
+            )
 
       case ControlOp.SetKnownExact(scope, ids) =>
         validateExactKnownSubscription(sessionState, scope).flatMap: contract =>
           val distinctNewIds = ids.toSet
-          val existing = sessionState.exactKnownScopeIds.getOrElse(scope, Set.empty)
+          val existing =
+            sessionState.exactKnownScopeIds.getOrElse(
+              scope,
+              Set.empty[StableArtifactId],
+            )
           val mergedIds = existing ++ distinctNewIds
           contract.exactKnownSetLimit match
             case Some(limit) =>
               Either.cond(
-                distinctNewIds.size <= limit && mergedIds.size <= limit,
+                distinctNewIds.sizeIs <= limit && mergedIds.sizeIs <= limit,
                 sessionState.copy(
-                  exactKnownScopeIds = sessionState.exactKnownScopeIds.updated(scope, mergedIds)
+                  exactKnownScopeIds =
+                    sessionState.exactKnownScopeIds.updated(scope, mergedIds),
                 ),
                 controlRejected(
                   "setKnownTooLarge",
-                  s"max=$limit actual=${mergedIds.size}",
+                  ss"max=${limit.toString} actual=${mergedIds.size.toString}",
                 ),
               )
             case None =>
-              Left(controlRejected("unsupportedTopic", scope.topic.value))
+              controlRejected("unsupportedTopic", scope.topic.value)
+                .asLeft[TxProducerSessionState]
 
       case ControlOp.SetCursor(cursor) =>
         val unsupportedKeys =
@@ -604,36 +746,44 @@ final class TxGossipRuntime[F[_]: Sync, A](
         Either.cond(
           unsupportedKeys.isEmpty,
           sessionState.withProducerState(
-            sessionState.producerState.withDurableCursor(cursor)
+            sessionState.producerState.withDurableCursor(cursor),
           ),
           controlRejected(
             "cursorOutOfSubscription",
-            unsupportedKeys.map(key => s"${key.chainId.value}:${key.topic.value}").mkString(","),
+            unsupportedKeys
+              .map(key => ss"${key.chainId.value}:${key.topic.value}")
+              .mkString(","),
           ),
         )
 
       case ControlOp.Nack(chainId, topic, cursor) =>
         validateSubscription(sessionState, chainId, topic).map: _ =>
           sessionState.withProducerState(
-            sessionState.producerState.withReplay(ChainTopic(chainId, topic), cursor)
+            sessionState.producerState
+              .withReplay(ChainTopic(chainId, topic), cursor),
           )
 
       case ControlOp.RequestByIdTx(chainId, ids) =>
-        validateTxSubscription(sessionState, chainId, GossipTopic.tx).flatMap: _ =>
-          val distinctIds = ids.distinct
-          Either.cond(
-            distinctIds.size <= policy.maxTxRequestIds,
-            sessionState.copy(
-              pendingRequestByIds = sessionState.pendingRequestByIds.updated(
-                chainId,
-                appendUnique(sessionState.pendingRequestByIds.getOrElse(chainId, Vector.empty), distinctIds),
-              )
-            ),
-            controlRejected(
-              "requestByIdTooLarge",
-              s"max=${policy.maxTxRequestIds} actual=${distinctIds.size}",
-            ),
-          )
+        validateTxSubscription(sessionState, chainId, GossipTopic.tx).flatMap:
+          _ =>
+            val distinctIds = ids.distinct
+            Either.cond(
+              distinctIds.sizeIs <= policy.maxTxRequestIds,
+              sessionState.copy(
+                pendingRequestByIds = sessionState.pendingRequestByIds.updated(
+                  chainId,
+                  appendUnique(
+                    sessionState.pendingRequestByIds
+                      .getOrElse(chainId, Vector.empty[StableArtifactId]),
+                    distinctIds,
+                  ),
+                ),
+              ),
+              controlRejected(
+                "requestByIdTooLarge",
+                ss"max=${policy.maxTxRequestIds.toString} actual=${distinctIds.size.toString}",
+              ),
+            )
 
       case ControlOp.RequestByIdExact(scope, ids) =>
         validateExactKnownSubscription(sessionState, scope).flatMap: contract =>
@@ -642,58 +792,67 @@ final class TxGossipRuntime[F[_]: Sync, A](
             sessionState.requestScopeRetryCounts.getOrElse(scope, 0) + 1
           contract.requestByIdLimit match
             case Some(limit) =>
-              if distinctIds.size > limit then
-                Left(
-                  controlRejected(
-                    "requestByIdTooLarge",
-                    s"max=$limit actual=${distinctIds.size}",
-                  )
-                )
+              if distinctIds.sizeIs > limit then
+                controlRejected(
+                  "requestByIdTooLarge",
+                  ss"max=${limit.toString} actual=${distinctIds.size.toString}",
+                ).asLeft[TxProducerSessionState]
               else
                 policy.maxExactRequestRetriesPerScope match
                   case Some(retryLimit) if nextRetryCount > retryLimit =>
-                    Left(
-                      controlRejected(
-                        "requestByIdRetryBudgetExceeded",
-                        s"max=$retryLimit actual=$nextRetryCount scope=${scope.topic.value}",
-                      )
-                    )
+                    controlRejected(
+                      "requestByIdRetryBudgetExceeded",
+                      ss"max=${retryLimit.toString} actual=${nextRetryCount.toString} scope=${scope.topic.value}",
+                    ).asLeft[TxProducerSessionState]
                   case _ =>
-                    Right(
-                      sessionState.copy(
-                        pendingRequestScopeIds = sessionState.pendingRequestScopeIds.updated(
-                          scope,
-                          appendUnique(
-                            sessionState.pendingRequestScopeIds.getOrElse(scope, Vector.empty),
-                            distinctIds,
+                    sessionState
+                      .copy(
+                        pendingRequestScopeIds =
+                          sessionState.pendingRequestScopeIds.updated(
+                            scope,
+                            appendUnique(
+                              sessionState.pendingRequestScopeIds.getOrElse(
+                                scope,
+                                Vector.empty[StableArtifactId],
+                              ),
+                              distinctIds,
+                            ),
                           ),
-                        ),
-                        requestScopeRetryCounts = sessionState.requestScopeRetryCounts.updated(scope, nextRetryCount),
+                        requestScopeRetryCounts =
+                          sessionState.requestScopeRetryCounts
+                            .updated(scope, nextRetryCount),
                       )
-                    )
+                      .asRight[CanonicalRejection.ControlBatchRejected]
             case None =>
-              Left(controlRejected("unsupportedTopic", scope.topic.value))
+              controlRejected("unsupportedTopic", scope.topic.value)
+                .asLeft[TxProducerSessionState]
 
       case ControlOp.Config(values) =>
-        values.foldLeft[Either[CanonicalRejection.ControlBatchRejected, TxBatchingConfig]](
-          Right(sessionState.batchingConfig)
-        ):
-          case (Right(config), (SessionConfigKey.TxMaxBatchItems, value)) =>
-            positiveIntConfig("tx.maxBatchItems", value).map: parsed =>
-              config.copy(maxBatchItems = parsed)
-          case (Right(config), (SessionConfigKey.TxFlushIntervalMs, value)) =>
-            positiveIntConfig("tx.flushIntervalMs", value).map: parsed =>
-              config.copy(flushInterval = Duration.ofMillis(parsed.toLong))
-          // SessionConfigKey is a closed enum in the shipped baseline.
-          case (left @ Left(_), _) =>
-            left
-        .map: batchingConfig =>
-          sessionState.copy(batchingConfig = batchingConfig)
+        values
+          .foldLeft[
+            Either[CanonicalRejection.ControlBatchRejected, TxBatchingConfig],
+          ](
+            sessionState.batchingConfig
+              .asRight[CanonicalRejection.ControlBatchRejected],
+          ):
+            case (Right(config), (SessionConfigKey.TxMaxBatchItems, value)) =>
+              positiveIntConfig("tx.maxBatchItems", value).map: parsed =>
+                config.copy(maxBatchItems = parsed)
+            case (Right(config), (SessionConfigKey.TxFlushIntervalMs, value)) =>
+              positiveIntConfig("tx.flushIntervalMs", value).map: parsed =>
+                config.copy(flushInterval = Duration.ofMillis(parsed.toLong))
+            // SessionConfigKey is a closed enum in the shipped baseline.
+            case (left @ Left(_), _) =>
+              left
+          .map: batchingConfig =>
+            sessionState.copy(batchingConfig = batchingConfig)
 
   private def pollOpenSession(
       now: Instant,
       sessionState: TxProducerSessionState,
-  ): F[Either[CanonicalRejection, (TxProducerSessionState, Vector[GossipEvent[A]])]] =
+  ): F[
+    Either[CanonicalRejection, (TxProducerSessionState, Vector[GossipEvent[A]])],
+  ] =
     sessionState.subscriptions.values.toVector
       .sortBy: chainTopic =>
         val priority =
@@ -707,56 +866,87 @@ final class TxGossipRuntime[F[_]: Sync, A](
         (
           sessionState,
           Vector.empty[GossipEvent[A]],
-        ).asRight[CanonicalRejection]
+        ).asRight[CanonicalRejection],
       ):
         case (Left(rejection), _) =>
-          Left(rejection).pure[F]
+          rejection
+            .asLeft[(TxProducerSessionState, Vector[GossipEvent[A]])]
+            .pure[F]
         case (Right((currentState, emitted)), chainTopic) =>
-          if chainTopic.topic == GossipTopic.tx then
+          if chainTopic.topic === GossipTopic.tx then
             pollTxChain(now, currentState, chainTopic).map:
               case Left(rejection) =>
-                Left(rejection)
+                rejection
+                  .asLeft[(TxProducerSessionState, Vector[GossipEvent[A]])]
               case Right((updatedState, chainEvents)) =>
-                Right(updatedState -> (emitted ++ chainEvents))
+                (updatedState -> (emitted ++ chainEvents))
+                  .asRight[CanonicalRejection]
           else
             topicContracts.contractFor(chainTopic.topic) match
               case Left(rejection) =>
-                rejection.asLeft[(TxProducerSessionState, Vector[GossipEvent[A]])].pure[F]
+                rejection
+                  .asLeft[(TxProducerSessionState, Vector[GossipEvent[A]])]
+                  .pure[F]
               case Right(contract) =>
-                pollExactKnownChain(now, currentState, chainTopic, contract).map:
-                  case Left(rejection) =>
-                    Left(rejection)
-                  case Right((updatedState, chainEvents)) =>
-                    Right(updatedState -> (emitted ++ chainEvents))
+                pollExactKnownChain(now, currentState, chainTopic, contract)
+                  .map:
+                    case Left(rejection) =>
+                      rejection
+                        .asLeft[(TxProducerSessionState, Vector[GossipEvent[A]])]
+                    case Right((updatedState, chainEvents)) =>
+                      (updatedState -> (emitted ++ chainEvents))
+                        .asRight[CanonicalRejection]
 
   private def pollTxChain(
       now: Instant,
       sessionState: TxProducerSessionState,
       chainTopic: ChainTopic,
-  ): F[Either[CanonicalRejection, (TxProducerSessionState, Vector[GossipEvent[A]])]] =
-    val requestedIds = sessionState.pendingRequestByIds.getOrElse(chainTopic.chainId, Vector.empty)
-    val producerState = sessionState.producerState
+  ): F[
+    Either[CanonicalRejection, (TxProducerSessionState, Vector[GossipEvent[A]])],
+  ] =
+    val requestedIds = sessionState.pendingRequestByIds.getOrElse(
+      chainTopic.chainId,
+      Vector.empty[StableArtifactId],
+    )
+    val producerState  = sessionState.producerState
     val cursorOverride = producerState.pendingReplay.get(chainTopic)
-    val startCursor = cursorOverride.getOrElse(producerState.startCursorFor(chainTopic))
+    val startCursor =
+      cursorOverride.getOrElse(producerState.startCursorFor(chainTopic))
 
     for
       explicitArtifacts <-
-        if requestedIds.isEmpty then Vector.empty[AvailableGossipEvent[A]].pure[F]
-        else source.readByIds(chainTopic.chainId, chainTopic.topic, requestedIds)
-      afterCursor <- source.readAfter(chainTopic.chainId, chainTopic.topic, startCursor)
+        if requestedIds.isEmpty then
+          Vector.empty[AvailableGossipEvent[A]].pure[F]
+        else
+          source.readByIds(chainTopic.chainId, chainTopic.topic, requestedIds)
+      afterCursor <- source.readAfter(
+        chainTopic.chainId,
+        chainTopic.topic,
+        startCursor,
+      )
     yield afterCursor.flatMap: candidates =>
       val explicitEvents = explicitArtifacts.map(_.event)
-      val liveCandidates = candidates.filterNot(candidate => explicitEvents.exists(_.id == candidate.event.id))
+      val liveCandidates = candidates.filterNot(candidate =>
+        explicitEvents.exists(_.id === candidate.event.id),
+      )
       cascadeStrategy
         .selectLiveEvents(
           filter = sessionState.filters.get(chainTopic.chainId),
-          exactKnownIds = sessionState.exactKnownIds.getOrElse(chainTopic.chainId, Set.empty),
+          exactKnownIds =
+            sessionState.exactKnownIds.getOrElse(
+              chainTopic.chainId,
+              Set.empty[StableArtifactId],
+            ),
           candidates = liveCandidates.map(_.event),
         )
         .map: selectedLiveEvents =>
-          val selectedLiveArtifacts = selectArtifacts(liveCandidates, selectedLiveEvents)
-          val explicitBatch = explicitEvents.take(sessionState.batchingConfig.maxBatchItems)
-          val remainingCapacity = (sessionState.batchingConfig.maxBatchItems - explicitBatch.size).max(0)
+          val selectedLiveArtifacts =
+            selectArtifacts(liveCandidates, selectedLiveEvents)
+          val explicitBatch =
+            explicitEvents.take(sessionState.batchingConfig.maxBatchItems)
+          val remainingCapacity =
+            (sessionState.batchingConfig.maxBatchItems - explicitBatch.size)
+              .max(0)
           val forceFlush = cursorOverride.nonEmpty
           val liveBatch =
             GossipProducerPolling.batchAvailableEvents(
@@ -766,21 +956,27 @@ final class TxGossipRuntime[F[_]: Sync, A](
               forceFlush = forceFlush,
               limit = remainingCapacity,
             )
-          val emitted = explicitBatch ++ liveBatch
+          val emitted           = explicitBatch ++ liveBatch
           val servedExplicitIds = explicitBatch.map(_.id).toSet
           val updatedProducerState =
             producerState
               .advanceStreamCursor(chainTopic, liveBatch)
               .clearReplay(chainTopic)
-          val updatedState = sessionState.withProducerState(updatedProducerState).copy(
-            pendingRequestByIds =
-              if servedExplicitIds.isEmpty then sessionState.pendingRequestByIds
-              else sessionState.pendingRequestByIds.updatedWith(chainTopic.chainId):
-                case None => None
-                case Some(existing) =>
-                  val remaining = existing.filterNot(servedExplicitIds.contains)
-                  remaining.some.filter(_.nonEmpty)
-          )
+          val updatedState = sessionState
+            .withProducerState(updatedProducerState)
+            .copy(
+              pendingRequestByIds =
+                if servedExplicitIds.isEmpty then
+                  sessionState.pendingRequestByIds
+                else
+                  sessionState.pendingRequestByIds
+                    .updatedWith(chainTopic.chainId):
+                      case None => None
+                      case Some(existing) =>
+                        val remaining =
+                          existing.filterNot(servedExplicitIds.contains)
+                        remaining.some.filter(_.nonEmpty),
+            )
           updatedState -> emitted
 
   private def pollExactKnownChain(
@@ -788,47 +984,68 @@ final class TxGossipRuntime[F[_]: Sync, A](
       sessionState: TxProducerSessionState,
       chainTopic: ChainTopic,
       contract: GossipTopicContract[A],
-  ): F[Either[CanonicalRejection, (TxProducerSessionState, Vector[GossipEvent[A]])]] =
+  ): F[
+    Either[CanonicalRejection, (TxProducerSessionState, Vector[GossipEvent[A]])],
+  ] =
     val requestedScopes =
       sessionState.pendingRequestScopeIds.toVector.collect:
-        case (scope, ids) if scope.chainId == chainTopic.chainId && scope.topic == chainTopic.topic =>
+        case (scope, ids)
+            if scope.chainId === chainTopic.chainId &&
+              scope.topic === chainTopic.topic =>
           scope -> ids
 
-    val requestedIds = requestedScopes.flatMap(_._2).distinct
-    val producerState = sessionState.producerState
+    val requestedIds   = requestedScopes.flatMap(_._2).distinct
+    val producerState  = sessionState.producerState
     val cursorOverride = producerState.pendingReplay.get(chainTopic)
-    val startCursor = cursorOverride.getOrElse(producerState.startCursorFor(chainTopic))
+    val startCursor =
+      cursorOverride.getOrElse(producerState.startCursorFor(chainTopic))
     val qos = contract.producerQoS(sessionState.batchingConfig)
 
     for
       explicitArtifacts <-
-        if requestedIds.isEmpty then Vector.empty[AvailableGossipEvent[A]].pure[F]
-        else source.readByIds(chainTopic.chainId, chainTopic.topic, requestedIds)
-      afterCursor <- source.readAfter(chainTopic.chainId, chainTopic.topic, startCursor)
+        if requestedIds.isEmpty then
+          Vector.empty[AvailableGossipEvent[A]].pure[F]
+        else
+          source.readByIds(chainTopic.chainId, chainTopic.topic, requestedIds)
+      afterCursor <- source.readAfter(
+        chainTopic.chainId,
+        chainTopic.topic,
+        startCursor,
+      )
     yield
       val explicitResult = explicitArtifacts.traverse: available =>
-        contract.exactKnownScopeOf(available.event).map(scope => scope -> available)
+        contract
+          .exactKnownScopeOf(available.event)
+          .map(scope => scope -> available)
 
       afterCursor.flatMap: candidates =>
         explicitResult.flatMap: scopedExplicitArtifacts =>
           val requestedScopeSet = requestedScopes.map(_._1).toSet
           val explicitMatched =
             scopedExplicitArtifacts.collect:
-              case (Some(scope), available) if requestedScopeSet.contains(scope) =>
+              case (Some(scope), available)
+                  if requestedScopeSet.contains(scope) =>
                 scope -> available
           val explicitEvents = explicitMatched.map(_._2.event)
-          val liveCandidates = candidates.filterNot(candidate => explicitEvents.exists(_.id == candidate.event.id))
+          val liveCandidates = candidates.filterNot(candidate =>
+            explicitEvents.exists(_.id === candidate.event.id),
+          )
           liveCandidates
             .traverse: candidate =>
-              contract.exactKnownScopeOf(candidate.event).map(scope => scope -> candidate)
+              contract
+                .exactKnownScopeOf(candidate.event)
+                .map(scope => scope -> candidate)
             .map: scopedLiveCandidates =>
               val filteredLiveArtifacts =
                 scopedLiveCandidates.collect:
                   case (Some(scope), candidate)
-                      if !sessionState.exactKnownScopeIds.getOrElse(scope, Set.empty).contains(candidate.event.id) =>
+                      if !sessionState.exactKnownScopeIds
+                        .getOrElse(scope, Set.empty[StableArtifactId])
+                        .contains(candidate.event.id) =>
                     candidate
               val explicitBatch = explicitEvents.take(qos.maxBatchItems)
-              val remainingCapacity = (qos.maxBatchItems - explicitBatch.size).max(0)
+              val remainingCapacity =
+                (qos.maxBatchItems - explicitBatch.size).max(0)
               val forceFlush = cursorOverride.nonEmpty
               val liveBatch =
                 GossipProducerPolling.batchAvailableEvents(
@@ -840,25 +1057,37 @@ final class TxGossipRuntime[F[_]: Sync, A](
                 )
               val emitted = explicitBatch ++ liveBatch
               val servedByScope =
-                explicitMatched.foldLeft(Map.empty[ExactKnownSetScope, Set[StableArtifactId]]): (acc, entry) =>
+                explicitMatched.foldLeft(
+                  Map.empty[ExactKnownSetScope, Set[StableArtifactId]],
+                ): (acc, entry) =>
                   val (scope, available) = entry
-                  acc.updated(scope, acc.getOrElse(scope, Set.empty) + available.event.id)
+                  acc.updated(
+                    scope,
+                    acc.getOrElse(scope, Set.empty[StableArtifactId]) +
+                      available.event.id,
+                  )
               val updatedProducerState =
                 producerState
                   .advanceStreamCursor(chainTopic, liveBatch)
                   .clearReplay(chainTopic)
-              val updatedState = sessionState.withProducerState(updatedProducerState).copy(
-                pendingRequestScopeIds =
-                  if servedByScope.isEmpty then sessionState.pendingRequestScopeIds
-                  else
-                    servedByScope.foldLeft(sessionState.pendingRequestScopeIds): (acc, entry) =>
-                      val (scope, servedIds) = entry
-                      acc.updatedWith(scope):
-                        case None => None
-                        case Some(existing) =>
-                          val remaining = existing.filterNot(servedIds.contains)
-                          remaining.some.filter(_.nonEmpty)
-              )
+              val updatedState = sessionState
+                .withProducerState(updatedProducerState)
+                .copy(
+                  pendingRequestScopeIds =
+                    if servedByScope.isEmpty then
+                      sessionState.pendingRequestScopeIds
+                    else
+                      servedByScope.foldLeft(
+                        sessionState.pendingRequestScopeIds,
+                      ): (acc, entry) =>
+                        val (scope, servedIds) = entry
+                        acc.updatedWith(scope):
+                          case None => None
+                          case Some(existing) =>
+                            val remaining =
+                              existing.filterNot(servedIds.contains)
+                            remaining.some.filter(_.nonEmpty),
+                )
               updatedState -> emitted
 
   private def pruneIdempotencyKeys(
@@ -866,7 +1095,9 @@ final class TxGossipRuntime[F[_]: Sync, A](
       sessionState: TxProducerSessionState,
   ): Map[ControlIdempotencyKey, Instant] =
     val cutoff = now.minus(policy.controlRetryHorizon(sessionState.negotiated))
-    sessionState.idempotencyKeys.filterNot((_, appliedAt) => appliedAt.isBefore(cutoff))
+    sessionState.idempotencyKeys.filterNot((_, appliedAt) =>
+      appliedAt.isBefore(cutoff),
+    )
 
   private def validateTxSubscription(
       sessionState: TxProducerSessionState,
@@ -875,11 +1106,11 @@ final class TxGossipRuntime[F[_]: Sync, A](
   ): Either[CanonicalRejection.ControlBatchRejected, Unit] =
     validateSubscription(sessionState, chainId, topic).flatMap: _ =>
       Either.cond(
-        topic == GossipTopic.tx,
+        topic === GossipTopic.tx,
         (),
         controlRejected(
           "topicOutOfSubscription",
-          s"${chainId.value}:${topic.value}",
+          ss"${chainId.value}:${topic.value}",
         ),
       )
 
@@ -893,7 +1124,7 @@ final class TxGossipRuntime[F[_]: Sync, A](
       (),
       controlRejected(
         "topicOutOfSubscription",
-        s"${chainId.value}:${topic.value}",
+        ss"${chainId.value}:${topic.value}",
       ),
     )
 
@@ -901,21 +1132,28 @@ final class TxGossipRuntime[F[_]: Sync, A](
       sessionState: TxProducerSessionState,
       scope: ExactKnownSetScope,
   ): Either[CanonicalRejection.ControlBatchRejected, GossipTopicContract[A]] =
-    Either.cond(
-      sessionState.subscriptions.contains(scope.chainId, scope.topic),
-      (),
-      controlRejected(
-        "topicOutOfSubscription",
-        s"${scope.chainId.value}:${scope.topic.value}",
-      ),
-    ).flatMap(_ => openExactKnownContract(scope.topic))
+    Either
+      .cond(
+        sessionState.subscriptions.contains(scope.chainId, scope.topic),
+        (),
+        controlRejected(
+          "topicOutOfSubscription",
+          ss"${scope.chainId.value}:${scope.topic.value}",
+        ),
+      )
+      .flatMap(_ => openExactKnownContract(scope.topic))
 
   private def openExactKnownContract(
       topic: GossipTopic,
   ): Either[CanonicalRejection.ControlBatchRejected, GossipTopicContract[A]] =
     topicContracts
       .contractFor(topic)
-      .leftMap(rejection => controlRejected(rejection.reason, rejection.detail.getOrElse(topic.value)))
+      .leftMap(rejection =>
+        controlRejected(
+          rejection.reason,
+          rejection.detail.getOrElse(topic.value),
+        ),
+      )
       .flatMap: contract =>
         Either.cond(
           contract.exactKnownSetLimit.nonEmpty || contract.requestByIdLimit.nonEmpty,
@@ -926,28 +1164,38 @@ final class TxGossipRuntime[F[_]: Sync, A](
   private def openOutboundProducerSession(
       state: TxGossipRuntimeState,
       sessionId: DirectionalSessionId,
-  ): Either[CanonicalRejection.ControlBatchRejected, (DirectionalSession, TxProducerSessionState)] =
+  ): Either[
+    CanonicalRejection.ControlBatchRejected,
+    (DirectionalSession, TxProducerSessionState),
+  ] =
     for
-      session <- state.engine.sessionById(sessionId).toRight(controlRejected("unknownSession", sessionId.value))
+      session <- state.engine
+        .sessionById(sessionId)
+        .toRight(controlRejected("unknownSession", sessionId.value))
       _ <- Either.cond(
-        session.direction == SessionDirection.Outbound,
+        session.direction === SessionDirection.Outbound,
         (),
         controlRejected("sessionNotProducer", sessionId.value),
       )
       _ <- Either.cond(
-        session.status == DirectionalSessionStatus.Open,
+        session.status === DirectionalSessionStatus.Open,
         (),
         controlRejected("sessionNotOpen", sessionId.value),
       )
-      sessionState <- state.outboundSessions.get(sessionId).toRight(
-        controlRejected("unknownSessionState", sessionId.value)
-      )
+      sessionState <- state.outboundSessions
+        .get(sessionId)
+        .toRight(
+          controlRejected("unknownSessionState", sessionId.value),
+        )
     yield session -> sessionState
 
   private def openOutboundEventSession(
       state: TxGossipRuntimeState,
       sessionId: DirectionalSessionId,
-  ): Either[CanonicalRejection.HandshakeRejected, (DirectionalSession, TxProducerSessionState)] =
+  ): Either[
+    CanonicalRejection.HandshakeRejected,
+    (DirectionalSession, TxProducerSessionState),
+  ] =
     openOutboundProducerSession(state, sessionId).leftMap: rejection =>
       CanonicalRejection.HandshakeRejected(
         reason = rejection.reason,
@@ -959,14 +1207,16 @@ final class TxGossipRuntime[F[_]: Sync, A](
       sessionId: DirectionalSessionId,
   ): Either[CanonicalRejection.HandshakeRejected, DirectionalSession] =
     for
-      session <- state.engine.sessionById(sessionId).toRight(handshakeRejected("unknownSession", sessionId.value))
+      session <- state.engine
+        .sessionById(sessionId)
+        .toRight(handshakeRejected("unknownSession", sessionId.value))
       _ <- Either.cond(
-        session.direction == SessionDirection.Inbound,
+        session.direction === SessionDirection.Inbound,
         (),
         handshakeRejected("sessionNotConsumer", sessionId.value),
       )
       _ <- Either.cond(
-        session.status == DirectionalSessionStatus.Open,
+        session.status === DirectionalSessionStatus.Open,
         (),
         handshakeRejected("sessionNotOpen", sessionId.value),
       )
@@ -984,7 +1234,9 @@ final class TxGossipRuntime[F[_]: Sync, A](
       selectedEvents: Vector[GossipEvent[A]],
   ): Vector[AvailableGossipEvent[A]] =
     val byCursor =
-      candidates.iterator.map(candidate => candidate.event.cursor -> candidate).toMap
+      candidates.iterator
+        .map(candidate => candidate.event.cursor -> candidate)
+        .toMap
     selectedEvents.flatMap(event => byCursor.get(event.cursor))
 
   private def positiveIntConfig(
@@ -994,7 +1246,7 @@ final class TxGossipRuntime[F[_]: Sync, A](
     Either.cond(
       value > 0L && value <= Int.MaxValue.toLong,
       value.toInt,
-      controlRejected("invalidConfigValue", s"$key=$value"),
+      controlRejected("invalidConfigValue", ss"${key}=${value.toString}"),
     )
 
   private def controlRejected(
@@ -1021,23 +1273,35 @@ final class TxGossipRuntime[F[_]: Sync, A](
       updated: TxProducerSessionState,
   ): TxProducerSessionState =
     val mergedStreamCursor =
-      updated.streamCursor.values.foldLeft(current.streamCursor.values): (acc, entry) =>
-        val (chainTopic, token) = entry
-        val previousToken = polledFrom.streamCursor.tokenFor(chainTopic)
-        val currentToken = current.streamCursor.tokenFor(chainTopic)
-        if currentToken == previousToken then acc.updated(chainTopic, token)
-        else acc
+      updated.streamCursor.values.foldLeft(current.streamCursor.values):
+        (acc, entry) =>
+          val (chainTopic, token) = entry
+          val previousToken       = polledFrom.streamCursor.tokenFor(chainTopic)
+          val currentToken        = current.streamCursor.tokenFor(chainTopic)
+          if currentToken === previousToken then acc.updated(chainTopic, token)
+          else acc
 
-    val consumedReplayKeys = polledFrom.pendingReplay.keySet.diff(updated.pendingReplay.keySet)
+    val consumedReplayKeys =
+      polledFrom.pendingReplay.keySet.diff(updated.pendingReplay.keySet)
     val mergedPendingReplay =
       consumedReplayKeys.foldLeft(current.pendingReplay): (acc, key) =>
-        if current.pendingReplay.get(key) == polledFrom.pendingReplay.get(key) then acc - key
+        if current.pendingReplay.get(key) === polledFrom.pendingReplay.get(key)
+        then acc - key
         else acc
 
     val mergedPendingRequests =
-      polledFrom.pendingRequestByIds.keySet.foldLeft(current.pendingRequestByIds): (acc, chainId) =>
-        val before = polledFrom.pendingRequestByIds.getOrElse(chainId, Vector.empty)
-        val after = updated.pendingRequestByIds.getOrElse(chainId, Vector.empty)
+      polledFrom.pendingRequestByIds.keySet.foldLeft(
+        current.pendingRequestByIds,
+      ): (acc, chainId) =>
+        val before =
+          polledFrom.pendingRequestByIds.getOrElse(
+            chainId,
+            Vector.empty[StableArtifactId],
+          )
+        val after = updated.pendingRequestByIds.getOrElse(
+          chainId,
+          Vector.empty[StableArtifactId],
+        )
         val servedIds = before.filterNot(after.contains).toSet
         if servedIds.isEmpty then acc
         else
@@ -1048,9 +1312,19 @@ final class TxGossipRuntime[F[_]: Sync, A](
               remaining.some.filter(_.nonEmpty)
 
     val mergedPendingScopedRequests =
-      polledFrom.pendingRequestScopeIds.keySet.foldLeft(current.pendingRequestScopeIds): (acc, scope) =>
-        val before = polledFrom.pendingRequestScopeIds.getOrElse(scope, Vector.empty)
-        val after = updated.pendingRequestScopeIds.getOrElse(scope, Vector.empty)
+      polledFrom.pendingRequestScopeIds.keySet.foldLeft(
+        current.pendingRequestScopeIds,
+      ): (acc, scope) =>
+        val before =
+          polledFrom.pendingRequestScopeIds.getOrElse(
+            scope,
+            Vector.empty[StableArtifactId],
+          )
+        val after =
+          updated.pendingRequestScopeIds.getOrElse(
+            scope,
+            Vector.empty[StableArtifactId],
+          )
         val servedIds = before.filterNot(after.contains).toSet
         if servedIds.isEmpty then acc
         else
@@ -1065,4 +1339,64 @@ final class TxGossipRuntime[F[_]: Sync, A](
       pendingReplay = mergedPendingReplay,
       pendingRequestByIds = mergedPendingRequests,
       pendingRequestScopeIds = mergedPendingScopedRequests,
+    )
+
+object TxGossipRuntime:
+  def default[F[_]: Sync, A](
+      peerAuthenticator: PeerAuthenticator[F],
+      clock: GossipClock[F],
+      source: GossipArtifactSource[F, A],
+      sink: GossipArtifactSink[F, A],
+      topicContracts: GossipTopicContractRegistry[A],
+      stateStore: TxGossipStateStore[F],
+  ): TxGossipRuntime[F, A] =
+    withPolicy(
+      peerAuthenticator = peerAuthenticator,
+      clock = clock,
+      source = source,
+      sink = sink,
+      topicContracts = topicContracts,
+      stateStore = stateStore,
+      policy = TxRuntimePolicy(),
+    )
+
+  def withPolicy[F[_]: Sync, A](
+      peerAuthenticator: PeerAuthenticator[F],
+      clock: GossipClock[F],
+      source: GossipArtifactSource[F, A],
+      sink: GossipArtifactSink[F, A],
+      topicContracts: GossipTopicContractRegistry[A],
+      stateStore: TxGossipStateStore[F],
+      policy: TxRuntimePolicy,
+  ): TxGossipRuntime[F, A] =
+    configured(
+      peerAuthenticator = peerAuthenticator,
+      clock = clock,
+      source = source,
+      sink = sink,
+      topicContracts = topicContracts,
+      stateStore = stateStore,
+      policy = policy,
+      cascadeStrategy = TxCascadeStrategy.exactKnownOrBackfillUnavailable[A],
+    )
+
+  def configured[F[_]: Sync, A](
+      peerAuthenticator: PeerAuthenticator[F],
+      clock: GossipClock[F],
+      source: GossipArtifactSource[F, A],
+      sink: GossipArtifactSink[F, A],
+      topicContracts: GossipTopicContractRegistry[A],
+      stateStore: TxGossipStateStore[F],
+      policy: TxRuntimePolicy,
+      cascadeStrategy: TxCascadeStrategy[A],
+  ): TxGossipRuntime[F, A] =
+    new TxGossipRuntime(
+      peerAuthenticator = peerAuthenticator,
+      clock = clock,
+      source = source,
+      sink = sink,
+      topicContracts = topicContracts,
+      stateStore = stateStore,
+      policy = policy,
+      cascadeStrategy = cascadeStrategy,
     )
