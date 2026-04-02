@@ -19,6 +19,7 @@ final class HotStuffGossipLoopbackSuite extends CatsEffectSuite:
 
   private val chainId = ChainId.unsafe("chain-main")
   private val baseInstant = Instant.parse("2026-04-01T00:00:00Z")
+  private val hotStuffRuntimePolicy = HotStuffRuntimeBootstrap.DefaultRuntimePolicy
   private val validatorKeys = Vector.fill(4)(CryptoOps.generate())
   private val validatorSet = ValidatorSet(
     validatorKeys.zipWithIndex.map: (keyPair, index) =>
@@ -84,7 +85,7 @@ final class HotStuffGossipLoopbackSuite extends CatsEffectSuite:
       )
       firstPoll <- a.gossip.pollEvents(sessionId)
       firstReceive <- b.gossip.receiveEvents(sessionId, firstPoll.toOption.get)
-      firstSnapshot <- b.consensus.sink.snapshot
+      firstSnapshot <- sinkSnapshot(b.consensus)
       _ <- a.gossip.receiveControlBatch(
         sessionId,
         controlBatch(
@@ -99,7 +100,7 @@ final class HotStuffGossipLoopbackSuite extends CatsEffectSuite:
       )
       secondPoll <- a.gossip.pollEvents(sessionId)
       secondReceive <- b.gossip.receiveEvents(sessionId, secondPoll.toOption.get)
-      secondSnapshot <- b.consensus.sink.snapshot
+      secondSnapshot <- sinkSnapshot(b.consensus)
     yield
       assertEquals(
         firstReceive.toOption.get.applied.collect:
@@ -153,12 +154,181 @@ final class HotStuffGossipLoopbackSuite extends CatsEffectSuite:
         ts = baseInstant.plusMillis(10),
       )
       emitAuditVote <- b.consensus.emitVote(validatorSet.members.head.id, proposal, baseInstant.plusMillis(11))
-      snapshot <- b.consensus.sink.snapshot
+      snapshot <- sinkSnapshot(b.consensus)
     yield
       assertEquals(emitAuditProposal.left.map(_.reason), Left("auditNodeCannotEmit"))
       assertEquals(emitAuditVote.left.map(_.reason), Left("auditNodeCannotEmit"))
       assert(snapshot.proposals.contains(proposal.proposalId))
       assert(snapshot.votes.nonEmpty)
+
+  test("audit followers relay validated proposal and vote artifacts downstream without local signing"):
+    val holders = Vector(
+      ValidatorKeyHolder(validatorSet.members(0).id, PeerIdentity.unsafe("node-a"), ValidatorKeyHolderStatus.Active),
+      ValidatorKeyHolder(validatorSet.members(1).id, PeerIdentity.unsafe("node-a"), ValidatorKeyHolderStatus.Active),
+      ValidatorKeyHolder(validatorSet.members(2).id, PeerIdentity.unsafe("node-a"), ValidatorKeyHolderStatus.Active),
+      ValidatorKeyHolder(validatorSet.members(3).id, PeerIdentity.unsafe("node-d"), ValidatorKeyHolderStatus.Active),
+    )
+
+    for
+      a <- Harness.create("node-a", "node-b", LocalNodeRole.Validator, holders, Map(
+        validatorSet.members(0).id -> validatorKeys(0),
+        validatorSet.members(1).id -> validatorKeys(1),
+        validatorSet.members(2).id -> validatorKeys(2),
+      ))
+      b <- Harness.createWithPeers("node-b", List("node-a", "node-c"), LocalNodeRole.Audit, holders, Map.empty)
+      c <- Harness.create("node-c", "node-b", LocalNodeRole.Audit, holders, Map.empty)
+      openedAb <- openOutbound(a, b)
+      openedBc <- openOutbound(b, c)
+      sessionIdAb = openedAb.proposal.sessionId
+      sessionIdBc = openedBc.proposal.sessionId
+      justify = bootstrapQc()
+      proposalEvent <- a.consensus.emitProposal(
+        proposer = validatorSet.members.head.id,
+        block = Block(parent = Some(justify.subject.blockId), payloadHash = hex("89")),
+        window = HotStuffWindow(chainId, 2L, 1L, validatorSet.hash),
+        justify = justify,
+        ts = baseInstant,
+      ).flatMap(unwrapPolicy)
+      proposal = proposalPayload(proposalEvent)
+      voteEvent <- a.consensus.emitVote(
+        validatorSet.members.head.id,
+        proposal,
+        baseInstant.plusMillis(1),
+      ).flatMap(unwrapPolicy)
+      aPoll <- a.gossip.pollEvents(sessionIdAb)
+      _ <- b.gossip.receiveEvents(sessionIdAb, aPoll.toOption.get)
+      bPoll <- b.gossip.pollEvents(sessionIdBc)
+      bRelayProposalIds = bPoll.toOption.get.collect:
+        case EventStreamMessage.Event(event) if event.topic == GossipTopic.consensusProposal => proposalPayload(event).proposalId
+      bRelayVoteIds = bPoll.toOption.get.collect:
+        case EventStreamMessage.Event(event) if event.topic == GossipTopic.consensusVote => votePayload(event).voteId
+      cReceive <- c.gossip.receiveEvents(sessionIdBc, bPoll.toOption.get)
+      cSnapshot <- sinkSnapshot(c.consensus)
+    yield
+      assertEquals(b.consensus.localKeys, Map.empty)
+      assertEquals(bRelayProposalIds, Vector(proposal.proposalId))
+      assertEquals(bRelayVoteIds, Vector(votePayload(voteEvent).voteId))
+      assertEquals(
+        cReceive.toOption.get.applied.collect:
+          case event if event.topic == GossipTopic.consensusProposal => proposalPayload(event).proposalId,
+        Vector(proposal.proposalId),
+      )
+      assertEquals(
+        cReceive.toOption.get.applied.collect:
+          case event if event.topic == GossipTopic.consensusVote => votePayload(event).voteId,
+        Vector(votePayload(voteEvent).voteId),
+      )
+      assert(cSnapshot.proposals.contains(proposal.proposalId))
+      assert(cSnapshot.votes.contains(votePayload(voteEvent).voteId))
+
+  test("validator-role followers do not relay validated artifacts downstream"):
+    val holders = Vector(
+      ValidatorKeyHolder(validatorSet.members(0).id, PeerIdentity.unsafe("node-a"), ValidatorKeyHolderStatus.Active),
+      ValidatorKeyHolder(validatorSet.members(1).id, PeerIdentity.unsafe("node-a"), ValidatorKeyHolderStatus.Active),
+      ValidatorKeyHolder(validatorSet.members(2).id, PeerIdentity.unsafe("node-a"), ValidatorKeyHolderStatus.Active),
+      ValidatorKeyHolder(validatorSet.members(3).id, PeerIdentity.unsafe("node-d"), ValidatorKeyHolderStatus.Active),
+    )
+
+    for
+      a <- Harness.create("node-a", "node-b", LocalNodeRole.Validator, holders, Map(
+        validatorSet.members(0).id -> validatorKeys(0),
+        validatorSet.members(1).id -> validatorKeys(1),
+        validatorSet.members(2).id -> validatorKeys(2),
+      ))
+      b <- Harness.createWithPeers("node-b", List("node-a", "node-c"), LocalNodeRole.Validator, holders, Map.empty)
+      c <- Harness.create("node-c", "node-b", LocalNodeRole.Audit, holders, Map.empty)
+      openedAb <- openOutbound(a, b)
+      openedBc <- openOutbound(b, c)
+      sessionIdAb = openedAb.proposal.sessionId
+      sessionIdBc = openedBc.proposal.sessionId
+      justify = bootstrapQc()
+      proposalEvent <- a.consensus.emitProposal(
+        proposer = validatorSet.members.head.id,
+        block = Block(parent = Some(justify.subject.blockId), payloadHash = hex("8a")),
+        window = HotStuffWindow(chainId, 2L, 1L, validatorSet.hash),
+        justify = justify,
+        ts = baseInstant,
+      ).flatMap(unwrapPolicy)
+      proposal = proposalPayload(proposalEvent)
+      _ <- a.consensus.emitVote(
+        validatorSet.members.head.id,
+        proposal,
+        baseInstant.plusMillis(1),
+      ).flatMap(unwrapPolicy)
+      aPoll <- a.gossip.pollEvents(sessionIdAb)
+      _ <- b.gossip.receiveEvents(sessionIdAb, aPoll.toOption.get)
+      bPoll <- b.gossip.pollEvents(sessionIdBc)
+    yield
+      assertEquals(
+        bPoll.toOption.get.collect:
+          case EventStreamMessage.Event(event) => event.topic,
+        Vector.empty,
+      )
+
+  test("audit followers relay duplicate upstream artifacts only once"):
+    val holders = Vector(
+      ValidatorKeyHolder(validatorSet.members(0).id, PeerIdentity.unsafe("node-a"), ValidatorKeyHolderStatus.Active),
+      ValidatorKeyHolder(validatorSet.members(1).id, PeerIdentity.unsafe("node-a"), ValidatorKeyHolderStatus.Active),
+      ValidatorKeyHolder(validatorSet.members(2).id, PeerIdentity.unsafe("node-a"), ValidatorKeyHolderStatus.Active),
+      ValidatorKeyHolder(validatorSet.members(3).id, PeerIdentity.unsafe("node-d"), ValidatorKeyHolderStatus.Active),
+    )
+
+    for
+      a <- Harness.create("node-a", "node-b", LocalNodeRole.Validator, holders, Map(
+        validatorSet.members(0).id -> validatorKeys(0),
+        validatorSet.members(1).id -> validatorKeys(1),
+        validatorSet.members(2).id -> validatorKeys(2),
+      ))
+      b <- Harness.createWithPeers("node-b", List("node-a", "node-c"), LocalNodeRole.Audit, holders, Map.empty)
+      c <- Harness.create("node-c", "node-b", LocalNodeRole.Audit, holders, Map.empty)
+      openedAb <- openOutbound(a, b)
+      openedBc <- openOutbound(b, c)
+      sessionIdAb = openedAb.proposal.sessionId
+      sessionIdBc = openedBc.proposal.sessionId
+      justify = bootstrapQc()
+      proposalEvent <- a.consensus.emitProposal(
+        proposer = validatorSet.members.head.id,
+        block = Block(parent = Some(justify.subject.blockId), payloadHash = hex("8b")),
+        window = HotStuffWindow(chainId, 2L, 1L, validatorSet.hash),
+        justify = justify,
+        ts = baseInstant,
+      ).flatMap(unwrapPolicy)
+      proposal = proposalPayload(proposalEvent)
+      voteEvent <- a.consensus.emitVote(
+        validatorSet.members.head.id,
+        proposal,
+        baseInstant.plusMillis(1),
+      ).flatMap(unwrapPolicy)
+      aPoll <- a.gossip.pollEvents(sessionIdAb)
+      _ <- b.gossip.receiveEvents(sessionIdAb, aPoll.toOption.get)
+      _ <- b.gossip.receiveEvents(sessionIdAb, aPoll.toOption.get)
+      bPoll <- b.gossip.pollEvents(sessionIdBc)
+      cReceive <- c.gossip.receiveEvents(sessionIdBc, bPoll.toOption.get)
+      cSnapshot <- sinkSnapshot(c.consensus)
+    yield
+      assertEquals(
+        bPoll.toOption.get.collect:
+          case EventStreamMessage.Event(event) if event.topic == GossipTopic.consensusProposal => proposalPayload(event).proposalId,
+        Vector(proposal.proposalId),
+      )
+      assertEquals(
+        bPoll.toOption.get.collect:
+          case EventStreamMessage.Event(event) if event.topic == GossipTopic.consensusVote => votePayload(event).voteId,
+        Vector(votePayload(voteEvent).voteId),
+      )
+      assertEquals(
+        cReceive.toOption.get.applied.collect:
+          case event if event.topic == GossipTopic.consensusProposal => proposalPayload(event).proposalId,
+        Vector(proposal.proposalId),
+      )
+      assertEquals(
+        cReceive.toOption.get.applied.collect:
+          case event if event.topic == GossipTopic.consensusVote => votePayload(event).voteId,
+        Vector(votePayload(voteEvent).voteId),
+      )
+      assertEquals(cSnapshot.duplicates.map(_.topic), Vector.empty)
+      assertEquals(cSnapshot.proposals.keySet, Set(proposal.proposalId))
+      assertEquals(cSnapshot.votes.keySet, Set(votePayload(voteEvent).voteId))
 
   test("consensus proposal nack replays from the subscribed topic instead of rejecting as tx-only"):
     val holders = Vector(
@@ -326,6 +496,256 @@ final class HotStuffGossipLoopbackSuite extends CatsEffectSuite:
       assertEquals(wrongWindowResult.left.map(_.reason), Left("wrongWindowKey"))
       assertEquals(unknown.left.map(_.reason), Left("unknownRequestedArtifact"))
 
+  test("same-window requestById retry budget rejects proposal and vote retries after two attempts"):
+    val holders = Vector(
+      ValidatorKeyHolder(validatorSet.members(0).id, PeerIdentity.unsafe("node-a"), ValidatorKeyHolderStatus.Active),
+      ValidatorKeyHolder(validatorSet.members(1).id, PeerIdentity.unsafe("node-a"), ValidatorKeyHolderStatus.Active),
+      ValidatorKeyHolder(validatorSet.members(2).id, PeerIdentity.unsafe("node-a"), ValidatorKeyHolderStatus.Active),
+    )
+
+    for
+      a <- Harness.create("node-a", "node-b", LocalNodeRole.Validator, holders, Map(
+        validatorSet.members(0).id -> validatorKeys(0),
+        validatorSet.members(1).id -> validatorKeys(1),
+        validatorSet.members(2).id -> validatorKeys(2),
+      ))
+      b <- Harness.create("node-b", "node-a", LocalNodeRole.Audit, holders, Map.empty)
+      opened <- openOutbound(a, b)
+      sessionId = opened.proposal.sessionId
+      justify = bootstrapQc()
+      proposalEvent <- a.consensus.emitProposal(
+        proposer = validatorSet.members.head.id,
+        block = Block(parent = Some(justify.subject.blockId), payloadHash = hex("8c")),
+        window = HotStuffWindow(chainId, 2L, 1L, validatorSet.hash),
+        justify = justify,
+        ts = baseInstant,
+      ).flatMap(unwrapPolicy)
+      proposal = proposalPayload(proposalEvent)
+      voteEvent <- a.consensus.emitVote(
+        validatorSet.members.head.id,
+        proposal,
+        baseInstant.plusMillis(1),
+      ).flatMap(unwrapPolicy)
+      proposalRetry1 <- a.gossip.receiveControlBatch(
+        sessionId,
+        controlBatch(
+          "11111111-1111-4111-8111-111111111111",
+          Vector(ControlOp.RequestByIdExact(
+            proposalScope(proposal),
+            Vector(HotStuffGossipArtifact.stableIdOf(HotStuffGossipArtifact.ProposalArtifact(proposal))),
+          )),
+        ),
+      )
+      proposalRetry2 <- a.gossip.receiveControlBatch(
+        sessionId,
+        controlBatch(
+          "22222222-2222-4222-8222-222222222222",
+          Vector(ControlOp.RequestByIdExact(
+            proposalScope(proposal),
+            Vector(HotStuffGossipArtifact.stableIdOf(HotStuffGossipArtifact.ProposalArtifact(proposal))),
+          )),
+        ),
+      )
+      proposalRetry3 <- a.gossip.receiveControlBatch(
+        sessionId,
+        controlBatch(
+          "33333333-3333-4333-8333-333333333333",
+          Vector(ControlOp.RequestByIdExact(
+            proposalScope(proposal),
+            Vector(HotStuffGossipArtifact.stableIdOf(HotStuffGossipArtifact.ProposalArtifact(proposal))),
+          )),
+        ),
+      )
+      proposalRetry4 <- a.gossip.receiveControlBatch(
+        sessionId,
+        controlBatch(
+          "77777777-7777-4777-8777-777777777777",
+          Vector(ControlOp.RequestByIdExact(
+            proposalScope(proposal),
+            Vector(HotStuffGossipArtifact.stableIdOf(HotStuffGossipArtifact.ProposalArtifact(proposal))),
+          )),
+        ),
+      )
+      vote = votePayload(voteEvent)
+      voteRetry1 <- a.gossip.receiveControlBatch(
+        sessionId,
+        controlBatch(
+          "44444444-4444-4444-8444-444444444444",
+          Vector(ControlOp.RequestByIdExact(
+            voteScope(vote),
+            Vector(HotStuffGossipArtifact.stableIdOf(HotStuffGossipArtifact.VoteArtifact(vote))),
+          )),
+        ),
+      )
+      voteRetry2 <- a.gossip.receiveControlBatch(
+        sessionId,
+        controlBatch(
+          "55555555-5555-4555-8555-555555555555",
+          Vector(ControlOp.RequestByIdExact(
+            voteScope(vote),
+            Vector(HotStuffGossipArtifact.stableIdOf(HotStuffGossipArtifact.VoteArtifact(vote))),
+          )),
+        ),
+      )
+      voteRetry3 <- a.gossip.receiveControlBatch(
+        sessionId,
+        controlBatch(
+          "66666666-6666-4666-8666-666666666666",
+          Vector(ControlOp.RequestByIdExact(
+            voteScope(vote),
+            Vector(HotStuffGossipArtifact.stableIdOf(HotStuffGossipArtifact.VoteArtifact(vote))),
+          )),
+        ),
+      )
+      voteRetry4 <- a.gossip.receiveControlBatch(
+        sessionId,
+        controlBatch(
+          "88888888-8888-4888-8888-888888888888",
+          Vector(ControlOp.RequestByIdExact(
+            voteScope(vote),
+            Vector(HotStuffGossipArtifact.stableIdOf(HotStuffGossipArtifact.VoteArtifact(vote))),
+          )),
+        ),
+      )
+    yield
+      assertEquals(proposalRetry1, Right(ControlBatchOutcome.Applied))
+      assertEquals(proposalRetry2, Right(ControlBatchOutcome.Applied))
+      assertEquals(proposalRetry3.left.map(_.reason), Left("requestByIdRetryBudgetExceeded"))
+      assertEquals(proposalRetry4.left.map(_.reason), Left("requestByIdRetryBudgetExceeded"))
+      assertEquals(voteRetry1, Right(ControlBatchOutcome.Applied))
+      assertEquals(voteRetry2, Right(ControlBatchOutcome.Applied))
+      assertEquals(voteRetry3.left.map(_.reason), Left("requestByIdRetryBudgetExceeded"))
+      assertEquals(voteRetry4.left.map(_.reason), Left("requestByIdRetryBudgetExceeded"))
+
+  test("consensus vote exact-known request-by-id and duplicate replay semantics match proposal baseline"):
+    val holders = Vector(
+      ValidatorKeyHolder(validatorSet.members(0).id, PeerIdentity.unsafe("node-a"), ValidatorKeyHolderStatus.Active),
+      ValidatorKeyHolder(validatorSet.members(1).id, PeerIdentity.unsafe("node-a"), ValidatorKeyHolderStatus.Active),
+      ValidatorKeyHolder(validatorSet.members(2).id, PeerIdentity.unsafe("node-a"), ValidatorKeyHolderStatus.Active),
+    )
+
+    for
+      a <- Harness.create("node-a", "node-b", LocalNodeRole.Validator, holders, Map(
+        validatorSet.members(0).id -> validatorKeys(0),
+        validatorSet.members(1).id -> validatorKeys(1),
+        validatorSet.members(2).id -> validatorKeys(2),
+      ))
+      b <- Harness.create("node-b", "node-a", LocalNodeRole.Audit, holders, Map.empty)
+      opened <- openOutbound(a, b)
+      sessionId = opened.proposal.sessionId
+      justify = bootstrapQc()
+      proposalEvent <- a.consensus.emitProposal(
+        proposer = validatorSet.members.head.id,
+        block = Block(parent = Some(justify.subject.blockId), payloadHash = hex("8d")),
+        window = HotStuffWindow(chainId, 2L, 1L, validatorSet.hash),
+        justify = justify,
+        ts = baseInstant,
+      ).flatMap(unwrapPolicy)
+      proposal = proposalPayload(proposalEvent)
+      vote1Event <- a.consensus.emitVote(validatorSet.members(0).id, proposal, baseInstant.plusMillis(1)).flatMap(unwrapPolicy)
+      vote2Event <- a.consensus.emitVote(validatorSet.members(1).id, proposal, baseInstant.plusMillis(2)).flatMap(unwrapPolicy)
+      vote3Event <- a.consensus.emitVote(validatorSet.members(2).id, proposal, baseInstant.plusMillis(3)).flatMap(unwrapPolicy)
+      vote1 = votePayload(vote1Event)
+      vote2 = votePayload(vote2Event)
+      vote3 = votePayload(vote3Event)
+      _ <- a.gossip.receiveControlBatch(
+        sessionId,
+        controlBatch(
+          "99999999-9999-4999-8999-999999999999",
+          Vector(
+            ControlOp.SetKnownExact(
+              proposalScope(proposal),
+              Vector(HotStuffGossipArtifact.stableIdOf(HotStuffGossipArtifact.ProposalArtifact(proposal))),
+            ),
+            ControlOp.SetKnownExact(
+              voteScope(vote1),
+              Vector(HotStuffGossipArtifact.stableIdOf(HotStuffGossipArtifact.VoteArtifact(vote1))),
+            ),
+          ),
+        ),
+      )
+      firstPoll <- a.gossip.pollEvents(sessionId)
+      firstReceive <- b.gossip.receiveEvents(sessionId, firstPoll.toOption.get)
+      oversizeVoteRequest <- a.gossip.receiveControlBatch(
+        sessionId,
+        controlBatch(
+          "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaab",
+          Vector(
+            ControlOp.RequestByIdExact(
+              voteScope(vote1),
+              (0 until 513).toVector.map(index => StableArtifactId.unsafeFromHex(f"${index + 1L}%064x")),
+            )
+          ),
+        ),
+      )
+      wrongVoteWindow = voteScope(vote1).copy(windowKey = TopicWindowKey.unsafeFromHex("deadbeef"))
+      wrongWindowVoteRequest <- a.gossip.receiveControlBatch(
+        sessionId,
+        controlBatch(
+          "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbc",
+          Vector(
+            ControlOp.RequestByIdExact(
+              wrongVoteWindow,
+              Vector(HotStuffGossipArtifact.stableIdOf(HotStuffGossipArtifact.VoteArtifact(vote1))),
+            )
+          ),
+        ),
+      )
+      requestVote1 <- a.gossip.receiveControlBatch(
+        sessionId,
+        controlBatch(
+          "cccccccc-cccc-4ccc-8ccc-cccccccccccd",
+          Vector(
+            ControlOp.RequestByIdExact(
+              voteScope(vote1),
+              Vector(HotStuffGossipArtifact.stableIdOf(HotStuffGossipArtifact.VoteArtifact(vote1))),
+            )
+          ),
+        ),
+      )
+      secondPoll <- a.gossip.pollEvents(sessionId)
+      secondReceive <- b.gossip.receiveEvents(sessionId, secondPoll.toOption.get)
+      replayVote1 <- a.gossip.receiveControlBatch(
+        sessionId,
+        controlBatch(
+          "dddddddd-dddd-4ddd-8ddd-ddddddddddde",
+          Vector(
+            ControlOp.RequestByIdExact(
+              voteScope(vote1),
+              Vector(HotStuffGossipArtifact.stableIdOf(HotStuffGossipArtifact.VoteArtifact(vote1))),
+            )
+          ),
+        ),
+      )
+      thirdPoll <- a.gossip.pollEvents(sessionId)
+      thirdReceive <- b.gossip.receiveEvents(sessionId, thirdPoll.toOption.get)
+    yield
+      assertEquals(
+        firstPoll.toOption.get.collect:
+          case EventStreamMessage.Event(event) => event.topic,
+        Vector(GossipTopic.consensusVote, GossipTopic.consensusVote),
+      )
+      assertEquals(
+        firstReceive.toOption.get.applied.collect {
+          case event if event.topic == GossipTopic.consensusVote => votePayload(event).voteId
+        }.toSet,
+        Set(vote2.voteId, vote3.voteId),
+      )
+      assertEquals(oversizeVoteRequest.left.map(_.reason), Left("requestByIdTooLarge"))
+      assertEquals(wrongWindowVoteRequest.left.map(_.reason), Left("wrongWindowKey"))
+      assertEquals(requestVote1, Right(ControlBatchOutcome.Applied))
+      assertEquals(
+        secondReceive.toOption.get.applied.collect:
+          case event if event.topic == GossipTopic.consensusVote => votePayload(event).voteId,
+        Vector(vote1.voteId),
+      )
+      assertEquals(replayVote1, Right(ControlBatchOutcome.Applied))
+      assertEquals(
+        thirdReceive.toOption.get.duplicates.collect:
+          case event if event.topic == GossipTopic.consensusVote => votePayload(event).voteId,
+        Vector(vote1.voteId),
+      )
+
   test("consensus proposal and vote qos are not blocked by tx backlog"):
     val holders = Vector(
       ValidatorKeyHolder(validatorSet.members(0).id, PeerIdentity.unsafe("node-a"), ValidatorKeyHolderStatus.Active),
@@ -368,6 +788,7 @@ final class HotStuffGossipLoopbackSuite extends CatsEffectSuite:
         sink = mixedSink,
         topicContracts = MixedContracts.registry(consensus.gossipPolicy),
         stateStore = stateStore,
+        policy = hotStuffRuntimePolicy,
       )
       sessionProposalEither <- runtime.startOutbound(PeerIdentity.unsafe("node-b"), SessionSubscription.unsafe(
         ChainTopic(chainId, GossipTopic.tx),
@@ -501,6 +922,15 @@ final class HotStuffGossipLoopbackSuite extends CatsEffectSuite:
       windowKey = HotStuffWindowKey.fromWindow(proposal.window),
     )
 
+  private def voteScope(
+      vote: Vote,
+  ): ExactKnownSetScope =
+    ExactKnownSetScope(
+      chainId = vote.window.chainId,
+      topic = GossipTopic.consensusVote,
+      windowKey = HotStuffWindowKey.fromWindow(vote.window),
+    )
+
   private def proposalPayload(
       event: GossipEvent[HotStuffGossipArtifact],
   ): Proposal =
@@ -531,6 +961,13 @@ final class HotStuffGossipLoopbackSuite extends CatsEffectSuite:
   ): IO[A] =
     IO.fromEither(result.leftMap(rejection => new IllegalStateException(rejection.reason)))
 
+  private def sinkSnapshot(
+      runtime: HotStuffNodeRuntime[IO],
+  ): IO[InMemoryHotStuffSinkSnapshot] =
+    IO
+      .fromOption(runtime.inMemorySink)(new IllegalStateException("expected in-memory sink diagnostics"))
+      .flatMap(_.snapshot)
+
   private final case class OpenedSession(
       proposal: SessionOpenProposal,
       ack: SessionOpenAck,
@@ -551,12 +988,21 @@ final class HotStuffGossipLoopbackSuite extends CatsEffectSuite:
         holders: Vector[ValidatorKeyHolder],
         localKeys: Map[ValidatorId, org.sigilaris.core.crypto.KeyPair],
     ): IO[Harness] =
+      createWithPeers(localNodeId, List(remoteNodeId), role, holders, localKeys)
+
+    def createWithPeers(
+        localNodeId: String,
+        remoteNodeIds: List[String],
+        role: LocalNodeRole,
+        holders: Vector[ValidatorKeyHolder],
+        localKeys: Map[ValidatorId, org.sigilaris.core.crypto.KeyPair],
+    ): IO[Harness] =
       for
         topology <- IO.fromEither(
           StaticPeerTopology.parse(
             localNodeIdentity = localNodeId,
-            knownPeers = List(remoteNodeId),
-            directNeighbors = List(remoteNodeId),
+            knownPeers = remoteNodeIds,
+            directNeighbors = remoteNodeIds,
           ).leftMap(new IllegalArgumentException(_))
         )
         registry = StaticPeerRegistry(topology)
@@ -582,6 +1028,7 @@ final class HotStuffGossipLoopbackSuite extends CatsEffectSuite:
           sink = consensus.sink,
           topicContracts = consensus.topicContracts,
           stateStore = stateStore,
+          policy = hotStuffRuntimePolicy,
         ),
         consensus = consensus,
         clock = clock,
