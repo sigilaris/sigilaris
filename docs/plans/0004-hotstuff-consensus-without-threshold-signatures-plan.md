@@ -1,7 +1,7 @@
 # 0004 - HotStuff Consensus Without Threshold Signatures Plan
 
 ## Status
-Phase 3 Complete; Residual Integration And Bootstrap Closure Pending
+Phase 3A Complete; Pacemaker Follow-Up Pending
 
 ## Created
 2026-03-29
@@ -15,9 +15,9 @@ Phase 3 Complete; Residual Integration And Bootstrap Closure Pending
 - 선택한 baseline은 BLS threshold signature를 사용하지 않는 HotStuff 계열이다. 따라서 proposal, vote, QC는 individually signed vote set 기반 validation을 전제로 해야 한다.
 - 이전 문서 구조에서는 gossip substrate와 consensus semantics가 섞여 있었지만, 이제는 proposal/vote/QC identity, sign-bytes, QC assembly, validator-set window 검증을 consensus plan 아래에서 독립적으로 관리한다.
 - initial deployment baseline은 ADR-0018의 static peer topology, validator/audit node role 분리, same-DC validator placement, `100ms` block production target을 전제로 한다.
-- `2026-04-02` 문서-구현 대조 리뷰에서 artifact model, validation, topic contract, in-memory loopback baseline은 compile/test 기준으로 green 이지만, concrete JVM bootstrap wiring, audit follower re-broadcast path, same-window retry budget enforcement, vote exact-known regression locking, shipped-baseline 문서 정렬에 갭이 확인되었다.
+- `2026-04-02` 문서-구현 대조 리뷰 기준으로 artifact model, validation, topic contract, in-memory loopback baseline, concrete JVM bootstrap wiring, explicit bootstrap/service seam, audit follower relay, same-window retry budget enforcement, vote exact-known regression lock, dependency boundary test, shipped-baseline 문서 정렬이 compile/test 기준으로 landed 되었다.
 - 위 리뷰는 `docs/plans/0004-hotstuff-consensus-without-threshold-signatures-plan.md`, `docs/adr/0017-hotstuff-consensus-without-threshold-signatures.md`, `README.md`, `org.sigilaris.node.jvm.runtime.consensus.hotstuff` 구현, HotStuff test suite 를 대조하는 방식으로 수행했다.
-- 기존 Phase 0-3 checklist 는 landed HotStuff artifact/runtime slice 를 기록하고, 위 residual gap closure 는 이 문서의 Phase 3A 에서 별도로 추적한다.
+- 기존 Phase 0-3 checklist 는 landed HotStuff artifact/runtime slice 를 기록했고, Phase 3A 는 concrete bootstrap/service closure 와 dependency/doc alignment 를 마무리했다. 남은 residual work 는 pacemaker timeout/new-view 계열 follow-up 으로 한정한다.
 
 ## Goal
 - `sigilaris-node-jvm` 안에 HotStuff non-threshold-signature consensus runtime을 도입한다.
@@ -227,12 +227,12 @@ Phase 3 Complete; Residual Integration And Bootstrap Closure Pending
 - [x] pacemaker follow-up blocker 문서화
 
 ### Phase 3A: Residual Integration And Bootstrap Closure
-- [ ] `3A-1` HotStuff concrete JVM bootstrap wiring 추가
-- [ ] `3A-2` HotStuff runtime-owned service contract / bootstrap surface 분리
-- [ ] `3A-3` audit follower relay source/sink wiring 추가
-- [ ] `3A-4` same-window retry budget enforcement 추가
-- [ ] `3A-5` `consensus.vote` exact-known/request-by-id regression 확장
-- [ ] `3A-6` gossip/consensus dependency rule test 및 README / ADR / plan shipped-vs-pending 상태 정렬
+- [x] `3A-1` HotStuff concrete JVM bootstrap wiring 추가
+- [x] `3A-2` HotStuff runtime-owned service contract / bootstrap surface 분리
+- [x] `3A-3` audit follower relay source/sink wiring 추가
+- [x] `3A-4` same-window retry budget enforcement 추가
+- [x] `3A-5` `consensus.vote` exact-known/request-by-id regression 확장
+- [x] `3A-6` gossip/consensus dependency rule test 및 README / ADR / plan shipped-vs-pending 상태 정렬
 
 ## Follow-Ups
 - static peer topology, same-DC validator placement, emergency promotion baseline은 ADR-0018이 소유한다.

@@ -6,6 +6,7 @@ Accepted
 ## Context
 - `sigilaris`는 gossip/session substrate와 consensus artifact semantics를 별도 문서로 관리하기로 했다. transport-neutral gossip/session 규약은 ADR-0016이 소유한다.
 - `2026-04-01` 기준 ADR-0016 아래의 tx-topic gossip/session HTTP baseline은 이미 shipped 되었고, static peer topology bootstrap, topic-neutral producer polling/QoS seam, half-open recovery baseline까지 `sigilaris-node-jvm`에 landed 되었다.
+- `2026-04-02` 기준 HotStuff non-threshold baseline도 `sigilaris-node-jvm`에 landed 되었고, static-topology-compatible bootstrap, explicit bootstrap/service seam, audit follower relay, same-window `requestById` retry budget, vote-topic regression lock, dependency boundary test가 shipped baseline에 포함된다.
 - 현재 합의 알고리즘 후보는 BLS threshold signature를 적용하지 않은 HotStuff 계열이다.
 - threshold signature가 없으면 quorum certificate는 단일 aggregated signature가 아니라 개별 validator vote 집합 또는 그와 동등한 검증 가능 구조로 표현되어야 한다.
 - 이 경우 proposal, vote, quorum certificate의 identity, sign-bytes, validation rule을 gossip envelope와 별도로 고정해야 한다.
@@ -87,6 +88,7 @@ Accepted
 
 ## Consequences
 - gossip/session substrate는 ADR-0016 아래에서 안정적으로 유지하면서, HotStuff artifact semantics만 별도로 진화시킬 수 있다.
+- `runtime.gossip` 와 `runtime.consensus.hotstuff` 사이의 ownership boundary를 import-rule test로 고정해, topic-neutral substrate와 topic-specific consensus semantics가 다시 섞이는 회귀를 줄인다.
 - threshold signature를 도입하지 않아도 proposal/vote/QC validation contract를 명시적으로 유지할 수 있다.
 - proposal id, vote id, block id를 분리하므로 dedup, exact known-set sync, QC assembly, replay semantics가 더 명확해진다.
 - validator와 audit node의 local behavior를 구분하므로 read-only follower나 disaster-recovery observer를 같은 artifact contract 위에서 운용할 수 있다.
@@ -112,7 +114,7 @@ Accepted
    - pacemaker wire contract는 follow-up 문서로 분리하는 것이 구현 순서상도 더 현실적이다.
 
 ## Follow-Up
-- HotStuff proposal/vote/QC runtime과 gossip integration은 `docs/plans/0004-hotstuff-consensus-without-threshold-signatures-plan.md`에서 구현 계획을 관리한다.
+- HotStuff proposal/vote/QC runtime, concrete bootstrap/service seam, audit relay, dependency boundary test는 landed baseline이고, 후속 구현 계획은 `docs/plans/0004-hotstuff-consensus-without-threshold-signatures-plan.md`에서 pacemaker/timeouts/new-view 잔여 작업 위주로 관리한다.
 - timeout vote, timeout certificate, new-view wire contract, pacemaker policy는 별도 ADR 또는 follow-up section에서 구체화한다.
 - canonical deterministic encoding의 exact byte layout과 signer identity canonicalization rule은 implementation 전에 protocol spec 또는 추가 ADR로 고정한다.
 - validator set commitment의 exact derivation contract는 follow-up spec에서 고정한다.
