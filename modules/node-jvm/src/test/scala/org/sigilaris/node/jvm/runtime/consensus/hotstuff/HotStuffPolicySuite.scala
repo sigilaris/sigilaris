@@ -72,11 +72,11 @@ final class HotStuffPolicySuite extends FunSuite:
       view = 11L,
     )
 
-    assertEquals(window.height, 7L)
-    assertEquals(window.view, 11L)
+    assertEquals(window.height, height(7L))
+    assertEquals(window.view, view(11L))
     assertEquals(window.validatorSetHash, validatorSetHash)
-    assertEquals(equivocationKey.height, 7L)
-    assertEquals(equivocationKey.view, 11L)
+    assertEquals(equivocationKey.height, height(7L))
+    assertEquals(equivocationKey.view, view(11L))
     assertEquals(HotStuffPolicy.quorumSize(1), 1)
     assertEquals(HotStuffPolicy.quorumSize(2), 2)
     assertEquals(HotStuffPolicy.quorumSize(3), 3)
@@ -224,3 +224,13 @@ final class HotStuffPolicySuite extends FunSuite:
     val negativeInterval = intercept[IllegalArgumentException]:
       HotStuffDeploymentTarget(blockProductionInterval = java.time.Duration.ofMillis(-1))
     assert(negativeInterval.getMessage.nonEmpty)
+
+  private def height(
+      value: Long,
+  ): HotStuffHeight =
+    HotStuffHeight.unsafeFromLong(value)
+
+  private def view(
+      value: Long,
+  ): HotStuffView =
+    HotStuffView.unsafeFromLong(value)

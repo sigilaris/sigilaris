@@ -377,7 +377,7 @@ final class HotStuffValidationSuite extends FunSuite:
       Vote
         .sign(
           UnsignedVote(
-            window = subjectWindow.copy(view = 1L),
+            window = subjectWindow.copy(view = view(1L)),
             voter = validatorSet.members.head.id,
             targetProposalId = subject.proposalId,
           ),
@@ -836,3 +836,8 @@ final class HotStuffValidationSuite extends FunSuite:
       value: String,
   ): UInt256 =
     UInt256.fromHex(value).toOption.get
+
+  private def view(
+      value: Long,
+  ): HotStuffView =
+    HotStuffView.unsafeFromLong(value)
