@@ -148,13 +148,13 @@ object HotStuffValidator:
       _ <- HotStuffValidationSupport.ensure(
         // Genesis uses an explicit bootstrap QC baseline, so height 1 accepts
         // only a height-1 justification while later heights must strictly advance.
-        if proposal.window.height == 1L then proposal.justify.subject.window.height == 1L
+        if proposal.window.height == HotStuffHeight.Genesis then proposal.justify.subject.window.height == HotStuffHeight.Genesis
         else proposal.justify.subject.window.height < proposal.window.height,
         "justifyHeightNotProgressing",
-        Some(s"proposal=${proposal.window.height} justify=${proposal.justify.subject.window.height}"),
+        Some(s"proposal=${proposal.window.height.render} justify=${proposal.justify.subject.window.height.render}"),
       )
       _ <- HotStuffValidationSupport.ensure(
-        if proposal.window.height == 1L then proposal.block.parent.isEmpty
+        if proposal.window.height == HotStuffHeight.Genesis then proposal.block.parent.isEmpty
         else proposal.block.parent.contains(proposal.justify.subject.blockId),
         "justifyBlockMismatch",
         Some(proposal.justify.subject.blockId.toHexLower),
@@ -191,7 +191,7 @@ object HotStuffValidator:
         HotStuffValidationSupport.ensure(
           vote.window == window,
           "voteWindowMismatch",
-          Some(s"${vote.window.height}:${vote.window.view}"),
+          Some(s"${vote.window.height.render}:${vote.window.view.render}"),
         )
       )
       _ <- expectedProposalId.traverse(proposalId =>

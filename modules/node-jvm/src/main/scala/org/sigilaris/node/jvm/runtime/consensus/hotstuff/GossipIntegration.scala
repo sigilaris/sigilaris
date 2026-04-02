@@ -71,8 +71,8 @@ final case class HotStuffGossipPolicy(
 object HotStuffWindowKey:
   private final case class WindowInput(
       chainId: ChainId,
-      height: Long,
-      view: Long,
+      height: HotStuffHeight,
+      view: HotStuffView,
       validatorSetHash: ValidatorSetHash,
   ) derives ByteEncoder
 

@@ -215,8 +215,8 @@ object HotStuffCanonicalEncoding:
   private final case class ProposalSignInput(
       domain: Utf8,
       chainId: ChainId,
-      height: Long,
-      view: Long,
+      height: HotStuffHeight,
+      view: HotStuffView,
       proposer: ValidatorId,
       validatorSetHash: ValidatorSetHash,
       targetBlockId: BlockId,
@@ -226,8 +226,8 @@ object HotStuffCanonicalEncoding:
   private final case class VoteSignInput(
       domain: Utf8,
       chainId: ChainId,
-      height: Long,
-      view: Long,
+      height: HotStuffHeight,
+      view: HotStuffView,
       voter: ValidatorId,
       validatorSetHash: ValidatorSetHash,
       targetProposalId: ProposalId,
@@ -236,8 +236,8 @@ object HotStuffCanonicalEncoding:
   private final case class ProposalIdentityInput(
       domain: Utf8,
       chainId: ChainId,
-      height: Long,
-      view: Long,
+      height: HotStuffHeight,
+      view: HotStuffView,
       proposer: ValidatorId,
       validatorSetHash: ValidatorSetHash,
       targetBlockId: BlockId,
@@ -249,8 +249,8 @@ object HotStuffCanonicalEncoding:
   private final case class VoteIdentityInput(
       domain: Utf8,
       chainId: ChainId,
-      height: Long,
-      view: Long,
+      height: HotStuffHeight,
+      view: HotStuffView,
       voter: ValidatorId,
       validatorSetHash: ValidatorSetHash,
       targetProposalId: ProposalId,
