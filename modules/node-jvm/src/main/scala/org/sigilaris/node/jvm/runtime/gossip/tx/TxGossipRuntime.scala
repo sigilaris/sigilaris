@@ -638,24 +638,39 @@ final class TxGossipRuntime[F[_]: Sync, A](
       case ControlOp.RequestByIdExact(scope, ids) =>
         validateExactKnownSubscription(sessionState, scope).flatMap: contract =>
           val distinctIds = ids.distinct
+          val nextRetryCount =
+            sessionState.requestScopeRetryCounts.getOrElse(scope, 0) + 1
           contract.requestByIdLimit match
             case Some(limit) =>
-              Either.cond(
-                distinctIds.size <= limit,
-                sessionState.copy(
-                  pendingRequestScopeIds = sessionState.pendingRequestScopeIds.updated(
-                    scope,
-                    appendUnique(
-                      sessionState.pendingRequestScopeIds.getOrElse(scope, Vector.empty),
-                      distinctIds,
-                    ),
+              if distinctIds.size > limit then
+                Left(
+                  controlRejected(
+                    "requestByIdTooLarge",
+                    s"max=$limit actual=${distinctIds.size}",
                   )
-                ),
-                controlRejected(
-                  "requestByIdTooLarge",
-                  s"max=$limit actual=${distinctIds.size}",
-                ),
-              )
+                )
+              else
+                policy.maxExactRequestRetriesPerScope match
+                  case Some(retryLimit) if nextRetryCount > retryLimit =>
+                    Left(
+                      controlRejected(
+                        "requestByIdRetryBudgetExceeded",
+                        s"max=$retryLimit actual=$nextRetryCount scope=${scope.topic.value}",
+                      )
+                    )
+                  case _ =>
+                    Right(
+                      sessionState.copy(
+                        pendingRequestScopeIds = sessionState.pendingRequestScopeIds.updated(
+                          scope,
+                          appendUnique(
+                            sessionState.pendingRequestScopeIds.getOrElse(scope, Vector.empty),
+                            distinctIds,
+                          ),
+                        ),
+                        requestScopeRetryCounts = sessionState.requestScopeRetryCounts.updated(scope, nextRetryCount),
+                      )
+                    )
             case None =>
               Left(controlRejected("unsupportedTopic", scope.topic.value))
 

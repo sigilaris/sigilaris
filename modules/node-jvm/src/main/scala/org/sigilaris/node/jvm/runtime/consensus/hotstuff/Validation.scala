@@ -49,6 +49,9 @@ final case class VoteAccumulator(
       window: HotStuffWindow,
       proposalId: ProposalId,
   ): Vector[Vote] =
+    // The in-memory baseline keeps only per-vote maps, so this remains a full
+    // scan. Production-backed sinks should index by `(window, proposalId)`
+    // instead of depending on repeated linear reads here.
     votesById.values.toVector
       .filter(vote =>
         vote.window == window &&

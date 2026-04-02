@@ -361,6 +361,11 @@ object HotStuffCanonicalEncoding:
     quorumCertificate.copy(
       votes =
         quorumCertificate.votes
+          // QC canonicalization needs a deterministic vote ordering for hashing
+          // and encoding. If a caller hands us repeated votes for the same
+          // voter, we collapse them here only to stabilize the canonical byte
+          // form; admissibility still comes from assembler/validator checks,
+          // which reject duplicate-validator vote sets.
           // Pre-sort so duplicate-voter collapse keeps a deterministic
           // representative before we do the final canonical ordering pass.
           .sortBy(vote => (vote.voter.value, vote.voteId.toHexLower))

@@ -237,10 +237,17 @@ object InMemoryHotStuffSinkSnapshot:
       duplicates = Vector.empty,
     )
 
+trait HotStuffArtifactPublisher[F[_]]:
+  def append(
+      artifact: HotStuffGossipArtifact,
+      ts: Instant,
+  ): F[GossipEvent[HotStuffGossipArtifact]]
+
 final class InMemoryHotStuffArtifactSource[F[_]: Sync] private (
     clock: GossipClock[F],
     ref: Ref[F, Map[ChainTopic, Vector[AvailableGossipEvent[HotStuffGossipArtifact]]]],
-) extends GossipArtifactSource[F, HotStuffGossipArtifact]:
+) extends GossipArtifactSource[F, HotStuffGossipArtifact]
+    with HotStuffArtifactPublisher[F]:
   def append(
       artifact: HotStuffGossipArtifact,
       ts: Instant,
@@ -327,102 +334,121 @@ object InMemoryHotStuffArtifactSource:
       .of[F, Map[ChainTopic, Vector[AvailableGossipEvent[HotStuffGossipArtifact]]]](Map.empty)
       .map(new InMemoryHotStuffArtifactSource[F](clock, _))
 
-final class InMemoryHotStuffArtifactSink[F[_]] private (
+final class InMemoryHotStuffArtifactSink[F[_]: Sync] private (
     validatorSet: ValidatorSet,
+    relayPolicy: HotStuffRelayPolicy,
+    relayPublisher: HotStuffArtifactPublisher[F],
     ref: Ref[F, InMemoryHotStuffSinkSnapshot],
 ) extends GossipArtifactSink[F, HotStuffGossipArtifact]:
+  // This sink is intentionally optimized for deterministic in-memory tests.
+  // It keeps QC assembly simple and atomic, but production-backed sinks should
+  // replace the repeated full re-assembly path with an incremental cache/index.
   override def applyEvent(
       event: GossipEvent[HotStuffGossipArtifact],
   ): F[Either[CanonicalRejection.ArtifactContractRejected, ArtifactApplyResult]] =
-    ref.modify: snapshot =>
-      event.payload match
-        case HotStuffGossipArtifact.ProposalArtifact(proposal) =>
-          if snapshot.proposals.contains(proposal.proposalId) then
-            snapshot.copy(duplicates = snapshot.duplicates :+ event) -> Right(
-              ArtifactApplyResult(applied = false, duplicate = true)
-            )
-          else
-            HotStuffValidator.validateProposal(proposal, validatorSet) match
-              case Left(error) =>
-                snapshot -> Left(
-                  CanonicalRejection.ArtifactContractRejected(
-                    reason = error.reason,
-                    detail = error.detail,
+    ref
+      .modify: snapshot =>
+        event.payload match
+          case HotStuffGossipArtifact.ProposalArtifact(proposal) =>
+            if snapshot.proposals.contains(proposal.proposalId) then
+              snapshot.copy(duplicates = snapshot.duplicates :+ event) -> Right(
+                ArtifactApplyResult(applied = false, duplicate = true) -> None
+              )
+            else
+              HotStuffValidator.validateProposal(proposal, validatorSet) match
+                case Left(error) =>
+                  snapshot -> Left(
+                    CanonicalRejection.ArtifactContractRejected(
+                      reason = error.reason,
+                      detail = error.detail,
+                    )
                   )
-                )
-              case Right(_) =>
-                val updatedProposals = snapshot.proposals.updated(proposal.proposalId, proposal)
-                val updatedQcs =
-                  snapshot.qcs.updated(proposal.justify.subject.proposalId, proposal.justify)
-                // This in-memory test sink favors atomic behavior over
-                // incremental cost. If validator sets grow, QC assembly should
-                // move to an incremental cache instead of re-verifying on every
-                // proposal/vote application.
-                val assembled =
-                  QuorumCertificateAssembler
-                    .assemble(
+                case Right(_) =>
+                  val updatedProposals = snapshot.proposals.updated(proposal.proposalId, proposal)
+                  val updatedQcs =
+                    snapshot.qcs.updated(proposal.justify.subject.proposalId, proposal.justify)
+                  val assembled =
+                    assembleQuorumCertificate(
                       QuorumCertificateSubject(
                         window = proposal.window,
                         proposalId = proposal.proposalId,
                         blockId = proposal.targetBlockId,
                       ),
                       snapshot.accumulator.votesFor(proposal.window, proposal.proposalId),
-                      validatorSet,
                     )
-                    .toOption
-                val finalQcs =
-                  assembled.fold(updatedQcs)(qc => updatedQcs.updated(proposal.proposalId, qc))
-                snapshot.copy(proposals = updatedProposals, qcs = finalQcs) -> Right(
-                  ArtifactApplyResult(applied = true, duplicate = false)
-                )
-
-        case HotStuffGossipArtifact.VoteArtifact(vote) =>
-          if snapshot.votes.contains(vote.voteId) then
-            snapshot.copy(duplicates = snapshot.duplicates :+ event) -> Right(
-              ArtifactApplyResult(applied = false, duplicate = true)
-            )
-          else
-            HotStuffValidator.validateVote(vote, validatorSet) match
-              case Left(error) =>
-                snapshot -> Left(
-                  CanonicalRejection.ArtifactContractRejected(
-                    reason = error.reason,
-                    detail = error.detail,
+                  val finalQcs =
+                    assembled.fold(updatedQcs)(qc => updatedQcs.updated(proposal.proposalId, qc))
+                  val relayArtifact =
+                    if relayPolicy.relayValidatedArtifacts then Some(event.payload -> event.ts)
+                    else None
+                  snapshot.copy(proposals = updatedProposals, qcs = finalQcs) -> Right(
+                    ArtifactApplyResult(applied = true, duplicate = false) -> relayArtifact
                   )
-                )
-              case Right(_) =>
-                snapshot.accumulator.record(vote) match
-                  case Left(error) =>
-                    snapshot -> Left(
-                      CanonicalRejection.ArtifactContractRejected(
-                        reason = error.reason,
-                        detail = error.detail,
-                      )
+
+          case HotStuffGossipArtifact.VoteArtifact(vote) =>
+            if snapshot.votes.contains(vote.voteId) then
+              snapshot.copy(duplicates = snapshot.duplicates :+ event) -> Right(
+                ArtifactApplyResult(applied = false, duplicate = true) -> None
+              )
+            else
+              HotStuffValidator.validateVote(vote, validatorSet) match
+                case Left(error) =>
+                  snapshot -> Left(
+                    CanonicalRejection.ArtifactContractRejected(
+                      reason = error.reason,
+                      detail = error.detail,
                     )
-                  case Right((updatedAccumulator, _)) =>
-                    val updatedVotes = snapshot.votes.updated(vote.voteId, vote)
-                    val maybeProposal = snapshot.proposals.get(vote.targetProposalId)
-                    val maybeQc =
-                      maybeProposal.flatMap: proposal =>
-                        QuorumCertificateAssembler
-                          .assemble(
+                  )
+                case Right(_) =>
+                  snapshot.accumulator.record(vote) match
+                    case Left(error) =>
+                      snapshot -> Left(
+                        CanonicalRejection.ArtifactContractRejected(
+                          reason = error.reason,
+                          detail = error.detail,
+                        )
+                      )
+                    case Right((updatedAccumulator, _)) =>
+                      val updatedVotes = snapshot.votes.updated(vote.voteId, vote)
+                      val maybeProposal = snapshot.proposals.get(vote.targetProposalId)
+                      val maybeQc =
+                        maybeProposal.flatMap: proposal =>
+                          assembleQuorumCertificate(
                             QuorumCertificateSubject(
                               window = proposal.window,
                               proposalId = proposal.proposalId,
                               blockId = proposal.targetBlockId,
                             ),
                             updatedAccumulator.votesFor(proposal.window, proposal.proposalId),
-                            validatorSet,
                           )
-                          .toOption
-                    val updatedQcs =
-                      maybeProposal.flatMap(_ => maybeQc).fold(snapshot.qcs): qc =>
-                        snapshot.qcs.updated(qc.subject.proposalId, qc)
-                    snapshot.copy(
-                      votes = updatedVotes,
-                      accumulator = updatedAccumulator,
-                      qcs = updatedQcs,
-                    ) -> Right(ArtifactApplyResult(applied = true, duplicate = false))
+                      val updatedQcs =
+                        maybeProposal.flatMap(_ => maybeQc).fold(snapshot.qcs): qc =>
+                          snapshot.qcs.updated(qc.subject.proposalId, qc)
+                      val relayArtifact =
+                        if relayPolicy.relayValidatedArtifacts then Some(event.payload -> event.ts)
+                        else None
+                      snapshot.copy(
+                        votes = updatedVotes,
+                        accumulator = updatedAccumulator,
+                        qcs = updatedQcs,
+                      ) -> Right(ArtifactApplyResult(applied = true, duplicate = false) -> relayArtifact)
+      .flatMap:
+        case Left(rejection) =>
+          rejection.asLeft[ArtifactApplyResult].pure[F]
+        case Right((result, maybeRelay)) =>
+          maybeRelay
+            .traverse_ { case (artifact, ts) =>
+              relayPublisher.append(artifact, ts).void
+            }
+            .as(result.asRight)
+
+  private def assembleQuorumCertificate(
+      subject: QuorumCertificateSubject,
+      votes: Vector[Vote],
+  ): Option[QuorumCertificate] =
+    QuorumCertificateAssembler
+      .assemble(subject, votes, validatorSet)
+      .toOption
 
   def snapshot: F[InMemoryHotStuffSinkSnapshot] =
     ref.get
@@ -430,23 +456,67 @@ final class InMemoryHotStuffArtifactSink[F[_]] private (
 object InMemoryHotStuffArtifactSink:
   def create[F[_]: Sync](
       validatorSet: ValidatorSet,
+      relayPolicy: HotStuffRelayPolicy,
+      relayPublisher: HotStuffArtifactPublisher[F],
   ): F[InMemoryHotStuffArtifactSink[F]] =
     Ref
       .of[F, InMemoryHotStuffSinkSnapshot](InMemoryHotStuffSinkSnapshot.empty)
-      .map(new InMemoryHotStuffArtifactSink[F](validatorSet, _))
+      .map(new InMemoryHotStuffArtifactSink[F](validatorSet, relayPolicy, relayPublisher, _))
 
-final case class HotStuffNodeRuntime[F[_]: Sync](
+final case class HotStuffRuntimeBootstrapInput(
     localPeer: PeerIdentity,
     role: LocalNodeRole,
     holders: Vector[ValidatorKeyHolder],
     validatorSet: ValidatorSet,
     localKeys: Map[ValidatorId, KeyPair],
+    gossipPolicy: HotStuffGossipPolicy = HotStuffGossipPolicy(),
+)
+
+/** Runtime-owned HotStuff service surface.
+  *
+  * The bootstrap caller owns the coherence between `publisher` and `source`.
+  * If locally emitted artifacts must later be readable through `source`, both
+  * endpoints need to target the same backing store or an equivalent replicated
+  * feed.
+  */
+final case class HotStuffRuntimeServices[F[_]](
+    publisher: HotStuffArtifactPublisher[F],
+    source: GossipArtifactSource[F, HotStuffGossipArtifact],
+    sink: GossipArtifactSink[F, HotStuffGossipArtifact],
+    topicContracts: GossipTopicContractRegistry[HotStuffGossipArtifact],
+)
+
+final case class HotStuffInMemoryRuntimeDiagnostics[F[_]](
     source: InMemoryHotStuffArtifactSource[F],
     sink: InMemoryHotStuffArtifactSink[F],
-    gossipPolicy: HotStuffGossipPolicy,
+)
+
+final case class HotStuffNodeRuntime[F[_]: Sync](
+    bootstrapInput: HotStuffRuntimeBootstrapInput,
+    services: HotStuffRuntimeServices[F],
+    diagnostics: Option[HotStuffInMemoryRuntimeDiagnostics[F]] = None,
 ):
-  def topicContracts: GossipTopicContractRegistry[HotStuffGossipArtifact] =
-    HotStuffTopic.registry(gossipPolicy)
+  def localPeer: PeerIdentity = bootstrapInput.localPeer
+
+  def role: LocalNodeRole = bootstrapInput.role
+
+  def holders: Vector[ValidatorKeyHolder] = bootstrapInput.holders
+
+  def validatorSet: ValidatorSet = bootstrapInput.validatorSet
+
+  def localKeys: Map[ValidatorId, KeyPair] = bootstrapInput.localKeys
+
+  def gossipPolicy: HotStuffGossipPolicy = bootstrapInput.gossipPolicy
+
+  def source: GossipArtifactSource[F, HotStuffGossipArtifact] = services.source
+
+  def sink: GossipArtifactSink[F, HotStuffGossipArtifact] = services.sink
+
+  def topicContracts: GossipTopicContractRegistry[HotStuffGossipArtifact] = services.topicContracts
+
+  def inMemorySource: Option[InMemoryHotStuffArtifactSource[F]] = diagnostics.map(_.source)
+
+  def inMemorySink: Option[InMemoryHotStuffArtifactSink[F]] = diagnostics.map(_.sink)
 
   def emitProposal(
       proposer: ValidatorId,
@@ -471,7 +541,7 @@ final case class HotStuffNodeRuntime[F[_]: Sync](
             new IllegalStateException(s"${error.reason}:${error.detail.getOrElse("")}")
           )
         case Right(proposal) =>
-          source.append(HotStuffGossipArtifact.ProposalArtifact(proposal), ts)
+          services.publisher.append(HotStuffGossipArtifact.ProposalArtifact(proposal), ts)
 
   def emitVote(
       voter: ValidatorId,
@@ -492,7 +562,7 @@ final case class HotStuffNodeRuntime[F[_]: Sync](
             new IllegalStateException(s"${error.reason}:${error.detail.getOrElse("")}")
           )
         case Right(vote) =>
-          source.append(HotStuffGossipArtifact.VoteArtifact(vote), ts)
+          services.publisher.append(HotStuffGossipArtifact.VoteArtifact(vote), ts)
 
   private def emitSigned(
       validatorId: ValidatorId,
@@ -513,6 +583,51 @@ final case class HotStuffNodeRuntime[F[_]: Sync](
             f(keyPair).map(_.asRight[HotStuffPolicyViolation])
 
 object HotStuffNodeRuntime:
+  def validateBootstrapInput(
+      bootstrapInput: HotStuffRuntimeBootstrapInput,
+  ): Either[HotStuffPolicyViolation, HotStuffRuntimeBootstrapInput] =
+    HotStuffPolicy
+      .ensureDistinctActiveKeyHolders(bootstrapInput.holders)
+      .map(_ => bootstrapInput)
+
+  private[hotstuff] def fromValidatedServices[F[_]: Sync](
+      bootstrapInput: HotStuffRuntimeBootstrapInput,
+      services: HotStuffRuntimeServices[F],
+      diagnostics: Option[HotStuffInMemoryRuntimeDiagnostics[F]],
+  ): HotStuffNodeRuntime[F] =
+    HotStuffNodeRuntime(
+      bootstrapInput = bootstrapInput,
+      services = services,
+      diagnostics = diagnostics,
+    )
+
+  def fromServices[F[_]: Sync](
+      bootstrapInput: HotStuffRuntimeBootstrapInput,
+      services: HotStuffRuntimeServices[F],
+      diagnostics: Option[HotStuffInMemoryRuntimeDiagnostics[F]] = None,
+  ): Either[HotStuffPolicyViolation, HotStuffNodeRuntime[F]] =
+    validateBootstrapInput(bootstrapInput)
+      .map(fromValidatedServices(_, services, diagnostics))
+
+  def inMemoryServices[F[_]: Sync](
+      validatorSet: ValidatorSet,
+      gossipPolicy: HotStuffGossipPolicy = HotStuffGossipPolicy(),
+      relayPolicy: HotStuffRelayPolicy = HotStuffRelayPolicy(relayValidatedArtifacts = false),
+  )(using clock: GossipClock[F]): F[(HotStuffRuntimeServices[F], HotStuffInMemoryRuntimeDiagnostics[F])] =
+    for
+      source <- InMemoryHotStuffArtifactSource.create[F]
+      sink <- InMemoryHotStuffArtifactSink.create[F](validatorSet, relayPolicy, source)
+    yield
+      val diagnostics = HotStuffInMemoryRuntimeDiagnostics(source = source, sink = sink)
+      val services =
+        HotStuffRuntimeServices(
+          publisher = source,
+          source = source,
+          sink = sink,
+          topicContracts = HotStuffTopic.registry(gossipPolicy),
+        )
+      services -> diagnostics
+
   def create[F[_]: Sync](
       localPeer: PeerIdentity,
       role: LocalNodeRole,
@@ -521,22 +636,18 @@ object HotStuffNodeRuntime:
       localKeys: Map[ValidatorId, KeyPair],
       gossipPolicy: HotStuffGossipPolicy = HotStuffGossipPolicy(),
   )(using clock: GossipClock[F]): F[Either[HotStuffPolicyViolation, HotStuffNodeRuntime[F]]] =
-    HotStuffPolicy.ensureDistinctActiveKeyHolders(holders) match
+    val bootstrapInput =
+      HotStuffRuntimeBootstrapInput(
+        localPeer = localPeer,
+        role = role,
+        holders = holders,
+        validatorSet = validatorSet,
+        localKeys = localKeys,
+        gossipPolicy = gossipPolicy,
+      )
+    validateBootstrapInput(bootstrapInput) match
       case Left(rejection) =>
         rejection.asLeft[HotStuffNodeRuntime[F]].pure[F]
-      case Right(_) =>
-        for
-          source <- InMemoryHotStuffArtifactSource.create[F]
-          sink <- InMemoryHotStuffArtifactSink.create[F](validatorSet)
-        yield Right(
-          HotStuffNodeRuntime(
-            localPeer = localPeer,
-            role = role,
-            holders = holders,
-            validatorSet = validatorSet,
-            localKeys = localKeys,
-            source = source,
-            sink = sink,
-            gossipPolicy = gossipPolicy,
-          )
-        )
+      case Right(validatedInput) =>
+        inMemoryServices[F](validatorSet, gossipPolicy, HotStuffRelayPolicy.forRole(role)).map: (services, diagnostics) =>
+          Right(fromValidatedServices(validatedInput, services, Some(diagnostics)))

@@ -22,10 +22,13 @@ object TxBatchingConfig:
 final case class TxRuntimePolicy(
     maxTxSetKnownEntries: Int = 4096,
     maxTxRequestIds: Int = 1024,
+    maxExactRequestRetriesPerScope: Option[Int] = None,
     controlRetryHorizonMultiplier: Int = 2,
     supportedBloomHashFamilyId: String = TxBloomFilterSupport.SupportedHashFamilyId,
     defaultBatchingConfig: TxBatchingConfig = TxBatchingConfig.default,
 ):
+  maxExactRequestRetriesPerScope.foreach: limit =>
+    require(limit >= 0, "maxExactRequestRetriesPerScope must be non-negative")
   require(
     controlRetryHorizonMultiplier >= 2 && controlRetryHorizonMultiplier <= 10,
     "controlRetryHorizonMultiplier must be within [2, 10]",
@@ -50,6 +53,7 @@ final case class TxProducerSessionState(
     pendingReplay: Map[ChainTopic, Option[CursorToken]] = Map.empty,
     pendingRequestByIds: Map[ChainId, Vector[StableArtifactId]] = Map.empty,
     pendingRequestScopeIds: Map[ExactKnownSetScope, Vector[StableArtifactId]] = Map.empty,
+    requestScopeRetryCounts: Map[ExactKnownSetScope, Int] = Map.empty,
     idempotencyKeys: Map[ControlIdempotencyKey, Instant] = Map.empty,
     batchingConfig: TxBatchingConfig = TxBatchingConfig.default,
 ):

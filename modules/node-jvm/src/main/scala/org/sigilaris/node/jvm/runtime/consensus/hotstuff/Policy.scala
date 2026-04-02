@@ -156,6 +156,18 @@ final case class HotStuffDeploymentTarget(
   require(!blockProductionInterval.isNegative, "blockProductionInterval must be non-negative")
   require(!blockProductionInterval.isZero, "blockProductionInterval must be positive")
 
+final case class HotStuffRelayPolicy(
+    relayValidatedArtifacts: Boolean,
+)
+
+object HotStuffRelayPolicy:
+  def forRole(
+      role: LocalNodeRole,
+  ): HotStuffRelayPolicy =
+    HotStuffRelayPolicy(
+      relayValidatedArtifacts = role == LocalNodeRole.Audit,
+    )
+
 final case class HotStuffPolicyViolation(
     reason: String,
     detail: Option[String] = None,
