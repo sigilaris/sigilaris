@@ -199,6 +199,16 @@ object BigNat:
     */
   given bignatEq: Eq[BigNat] = Eq.fromUniversalEquals
 
+  /** Scala Ordering instance for BigNat.
+    *
+    * Delegates to the underlying BigInt ordering while preserving the
+    * non-negative invariant enforced by BigNat.
+    *
+    * @return Ordering instance
+    */
+  given bignatOrdering: Ordering[BigNat] =
+    Ordering.by(_.toBigInt)
+
   /** OrderedCodec instance for BigNat.
     *
     * BigNat's variable-length encoding preserves ordering: smaller natural numbers
@@ -211,6 +221,7 @@ object BigNat:
     * @see [[org.sigilaris.core.codec.OrderedCodec]] for law details
     */
   given bignatOrderedCodec: codec.OrderedCodec[BigNat] =
-    val ord = new Ordering[BigNat]:
-      def compare(x: BigNat, y: BigNat): Int = x.compare(y)
-    codec.OrderedCodec.fromCodecAndOrdering(codec.byte.ByteCodec[BigNat], ord)
+    codec.OrderedCodec.fromCodecAndOrdering(
+      codec.byte.ByteCodec[BigNat],
+      bignatOrdering,
+    )
