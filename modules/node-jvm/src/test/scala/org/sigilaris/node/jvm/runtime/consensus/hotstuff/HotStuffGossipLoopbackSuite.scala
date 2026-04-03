@@ -881,7 +881,7 @@ final class HotStuffGossipLoopbackSuite extends CatsEffectSuite:
     yield OpenedSession(proposal, accepted.ack)
 
   private def bootstrapQc(): QuorumCertificate =
-    val window = HotStuffWindow(chainId, 1L, 0L, validatorSet.hash)
+    val window = HotStuffWindow(chainId, 0L, 0L, validatorSet.hash)
     val subject = QuorumCertificateSubject(
       window = window,
       proposalId = ProposalId(hex("70")),

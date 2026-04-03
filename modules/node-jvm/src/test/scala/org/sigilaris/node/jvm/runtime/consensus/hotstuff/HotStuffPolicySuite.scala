@@ -157,11 +157,20 @@ final class HotStuffPolicySuite extends FunSuite:
         .flatMap(_.detail)
     assert(dualActiveDetail.exists(_.contains("validator-a:node-a,node-b")))
 
-  test("window and equivocation key reject invalid progress values"):
-    val _ = intercept[IllegalArgumentException]:
+  test("window and equivocation key allow genesis height zero but reject negative progress values"):
+    val genesisWindow =
       HotStuffWindow(
         chainId = ChainId.unsafe("chain-main"),
         height = 0L,
+        view = 0L,
+        validatorSetHash = ValidatorSetHash(UInt256.fromHex("01").toOption.get),
+      )
+    assertEquals(genesisWindow.height, height(0L))
+
+    val _ = intercept[IllegalArgumentException]:
+      HotStuffWindow(
+        chainId = ChainId.unsafe("chain-main"),
+        height = -1L,
         view = 0L,
         validatorSetHash = ValidatorSetHash(UInt256.fromHex("01").toOption.get),
       )

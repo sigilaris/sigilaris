@@ -186,7 +186,7 @@ final class HotStuffRuntimeServiceSuite extends CatsEffectSuite:
       assertEquals(bootstrap.registry.localPeer, bootstrap.consensus.bootstrapInput.localPeer)
 
   private def bootstrapQc(): QuorumCertificate =
-    val window = HotStuffWindow(chainId, 1L, 0L, validatorSet.hash)
+    val window = HotStuffWindow(chainId, 0L, 0L, validatorSet.hash)
     val subject = QuorumCertificateSubject(
       window = window,
       proposalId = ProposalId(hex("70")),

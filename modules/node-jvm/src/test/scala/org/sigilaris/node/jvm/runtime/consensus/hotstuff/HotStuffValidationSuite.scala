@@ -593,7 +593,7 @@ final class HotStuffValidationSuite extends FunSuite:
     assertEquals(validatorSet.hash, reversed.hash)
 
   test("genesis-height proposal can validate with an empty parent pointer"):
-    val bootstrapWindow = HotStuffWindow(chainId, 1L, 0L, validatorSet.hash)
+    val bootstrapWindow = HotStuffWindow(chainId, 0L, 0L, validatorSet.hash)
     val bootstrapSubject = QuorumCertificateSubject(
       window = bootstrapWindow,
       proposalId = ProposalId(hex("61")),
@@ -627,8 +627,8 @@ final class HotStuffValidationSuite extends FunSuite:
 
     assertEquals(HotStuffValidator.validateProposal(proposal, validatorSet), Right(()))
 
-  test("genesis-height proposal accepts a justify QC at height one boundary"):
-    val bootstrapWindow = HotStuffWindow(chainId, 1L, 0L, validatorSet.hash)
+  test("genesis-height proposal accepts a justify QC at height zero boundary"):
+    val bootstrapWindow = HotStuffWindow(chainId, 0L, 0L, validatorSet.hash)
     val boundarySubject = QuorumCertificateSubject(
       window = bootstrapWindow,
       proposalId = ProposalId(hex("74")),
@@ -663,7 +663,7 @@ final class HotStuffValidationSuite extends FunSuite:
     assertEquals(HotStuffValidator.validateProposal(proposal, validatorSet), Right(()))
 
   test("genesis-height proposal rejects a non-empty parent pointer"):
-    val bootstrapWindow = HotStuffWindow(chainId, 1L, 0L, validatorSet.hash)
+    val bootstrapWindow = HotStuffWindow(chainId, 0L, 0L, validatorSet.hash)
     val boundarySubject = QuorumCertificateSubject(
       window = bootstrapWindow,
       proposalId = ProposalId(hex("77")),
@@ -701,9 +701,9 @@ final class HotStuffValidationSuite extends FunSuite:
     )
 
   test("genesis-height proposal rejects a justify QC from a higher height"):
-    val bootstrapWindow = HotStuffWindow(chainId, 1L, 0L, validatorSet.hash)
+    val bootstrapWindow = HotStuffWindow(chainId, 0L, 0L, validatorSet.hash)
     val highSubject = QuorumCertificateSubject(
-      window = HotStuffWindow(chainId, 2L, 0L, validatorSet.hash),
+      window = HotStuffWindow(chainId, 1L, 0L, validatorSet.hash),
       proposalId = ProposalId(hex("71")),
       blockId = BlockId(hex("72")),
     )
@@ -740,7 +740,7 @@ final class HotStuffValidationSuite extends FunSuite:
 
   private def signedProposal(): Proposal =
     val parentBlock = Block(parent = None, payloadHash = hex("01"))
-    val parentWindow = HotStuffWindow(chainId, 1L, 0L, validatorSet.hash)
+    val parentWindow = HotStuffWindow(chainId, 0L, 0L, validatorSet.hash)
     val parentProposalId = ProposalId(hex("10"))
     val subject = QuorumCertificateSubject(
       window = parentWindow,
@@ -763,7 +763,7 @@ final class HotStuffValidationSuite extends FunSuite:
     Proposal
       .sign(
         UnsignedProposal(
-          window = HotStuffWindow(chainId, 2L, 1L, validatorSet.hash),
+          window = HotStuffWindow(chainId, 1L, 1L, validatorSet.hash),
           proposer = validatorSet.members.head.id,
           targetBlockId = Block.computeId(block),
           block = block,
