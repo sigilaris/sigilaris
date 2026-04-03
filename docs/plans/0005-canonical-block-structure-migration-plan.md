@@ -1,7 +1,7 @@
 # 0005 - Canonical Block Structure Migration Plan
 
 ## Status
-Phase 2 Complete; Phase 3-4 Pending
+Phase 3 Complete; Phase 4 Pending
 
 ## Created
 2026-04-03
@@ -203,10 +203,10 @@ Phase 2 Complete; Phase 3-4 Pending
 - [x] gossip/request-by-id/replay regression 보정
 
 ### Phase 3: Body/View Surface And Storage/Query Seam
-- [ ] generic `BlockView` query surface 추가
-- [ ] header/body 분리 저장 또는 동등 seam 추가
-- [ ] application-owned concrete generic fixture 추가
-- [ ] local `bodyRoot` re-verification path 추가
+- [x] generic `BlockView` query surface 추가
+- [x] header/body 분리 저장 또는 동등 seam 추가
+- [x] application-owned concrete generic fixture 추가
+- [x] local `bodyRoot` re-verification path 추가
 
 ### Phase 4: Verification And Docs
 - [ ] unit/integration/regression test green
