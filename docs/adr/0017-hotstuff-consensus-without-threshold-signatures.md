@@ -115,6 +115,7 @@ Accepted
 
 ## Follow-Up
 - HotStuff proposal/vote/QC runtime, concrete bootstrap/service seam, audit relay, dependency boundary test는 landed baseline이고, 후속 구현 계획은 `docs/plans/0004-hotstuff-consensus-without-threshold-signatures-plan.md`에서 pacemaker/timeouts/new-view 잔여 작업 위주로 관리한다.
+- canonical block header/body contract와 application-neutral block view follow-up은 ADR-0019와 `docs/plans/0005-canonical-block-structure-migration-plan.md`가 소유한다.
 - timeout vote, timeout certificate, new-view wire contract, pacemaker policy는 별도 ADR 또는 follow-up section에서 구체화한다.
 - canonical deterministic encoding의 exact byte layout과 signer identity canonicalization rule은 implementation 전에 protocol spec 또는 추가 ADR로 고정한다.
 - validator set commitment의 exact derivation contract는 follow-up spec에서 고정한다.
@@ -124,5 +125,7 @@ Accepted
 - [ADR-0012: Signed Transaction Requirement](0012-signed-transaction-requirement.md)
 - [ADR-0016: Multiplexed Gossip Session Sync Substrate](0016-multiplexed-gossip-session-sync.md)
 - [ADR-0018: Static Peer Topology And Initial HotStuff Deployment Baseline](0018-static-peer-topology-and-initial-hotstuff-deployment-baseline.md)
+- [ADR-0019: Canonical Block Header And Application-Neutral Block View](0019-canonical-block-header-and-application-neutral-block-view.md)
 - [0003 - Multiplexed Gossip Session Sync Plan](../plans/0003-multiplexed-gossip-session-sync-plan.md)
 - [0004 - HotStuff Consensus Without Threshold Signatures Plan](../plans/0004-hotstuff-consensus-without-threshold-signatures-plan.md)
+- [0005 - Canonical Block Structure Migration Plan](../plans/0005-canonical-block-structure-migration-plan.md)

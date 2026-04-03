@@ -46,7 +46,9 @@ Phase 3A Complete; Pacemaker Follow-Up Pending
 - ADR-0016: Multiplexed Gossip Session Sync Substrate
 - ADR-0017: HotStuff Consensus Without Threshold Signatures
 - ADR-0018: Static Peer Topology And Initial HotStuff Deployment Baseline
+- ADR-0019: Canonical Block Header And Application-Neutral Block View
 - `docs/plans/0003-multiplexed-gossip-session-sync-plan.md`
+- `docs/plans/0005-canonical-block-structure-migration-plan.md`
 - `docs/plans/plan-template.md`
 - `README.md`
 
@@ -236,6 +238,7 @@ Phase 3A Complete; Pacemaker Follow-Up Pending
 
 ## Follow-Ups
 - static peer topology, same-DC validator placement, emergency promotion baseline은 ADR-0018이 소유한다.
+- canonical block header/body contract와 application-neutral block view migration은 ADR-0019와 `docs/plans/0005-canonical-block-structure-migration-plan.md`에서 추적한다.
 - operator-managed raw key custody를 대체할 KMS/HSM/remote signer baseline은 별도 ADR로 분리한다.
 - timeout vote, timeout certificate, new-view wire contract, leader rotation policy는 별도 ADR 또는 follow-up plan으로 분리한다.
 - validator-set commitment derivation의 exact byte contract는 follow-up spec으로 고정한다.
