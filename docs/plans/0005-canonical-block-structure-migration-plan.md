@@ -1,7 +1,7 @@
 # 0005 - Canonical Block Structure Migration Plan
 
 ## Status
-Phase 0 Complete; Phase 1-4 Pending
+Phase 1 Complete; Phase 2-4 Pending
 
 ## Created
 2026-04-03
@@ -116,7 +116,7 @@ Phase 0 Complete; Phase 1-4 Pending
 - `bodyRoot` verification helper를 추가한다.
 - `recordHash` duplicate 검사를 runtime collection semantics 와 독립적으로 수행하는 validation helper 를 추가한다.
 - canonical encoding helper와 fixture를 갱신한다.
-- 기존 `Block` 이름을 유지할지, `BlockHeader`로 explicit rename 할지 구현 surface를 정리한다.
+- 기존 HotStuff minimal `Block`은 Phase 2 migration bridge 로 일시 유지하고, 새 canonical public surface는 `runtime.block.BlockHeader`로 고정한다.
 - 이 Phase의 landed state는 compile/test green 이어야 한다. 필요하면 temporary bridge type, alias, adapter를 둬서 HotStuff code path를 단계적으로 옮긴다.
 
 ### Phase 2: HotStuff Integration Migration
@@ -187,13 +187,13 @@ Phase 0 Complete; Phase 1-4 Pending
 - [x] persisted `BlockId` migration/reset policy gate 확정
 
 ### Phase 1: Core Block Model And Encoding
-- [ ] `BlockHeader` / `BlockBody` / `BlockRecord` / `BlockView` 추가
-- [ ] header-only `BlockId` 계산 추가
-- [ ] `BlockRecordHash` helper 추가
-- [ ] `bodyRoot` verification helper 추가
-- [ ] canonical encoding / fixture 갱신
-- [ ] minimal `Block` naming migration 정리
-- [ ] compile/test green bridge 상태 유지
+- [x] `BlockHeader` / `BlockBody` / `BlockRecord` / `BlockView` 추가
+- [x] header-only `BlockId` 계산 추가
+- [x] `BlockRecordHash` helper 추가
+- [x] `bodyRoot` verification helper 추가
+- [x] canonical encoding / fixture 갱신
+- [x] minimal `Block` naming migration 정리
+- [x] compile/test green bridge 상태 유지
 
 ### Phase 2: HotStuff Integration Migration
 - [ ] proposal/unsigned proposal block field migration
