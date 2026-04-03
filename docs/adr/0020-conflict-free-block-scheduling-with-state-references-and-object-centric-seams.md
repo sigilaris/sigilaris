@@ -133,6 +133,7 @@ Draft
 - Add execution-time conformance checks that compare actual `AccessLog` against the transaction's declared or derived footprint.
 - Define how application packages expose explicit state/object references in transaction bodies.
 - Migrate application flows that still rely on dynamic state discovery so they can participate in conflict-free scheduling.
+- Concrete rollout order and migration gates are tracked in `docs/plans/0006-conflict-free-block-scheduling-plan.md`.
 - If a first-class object runtime becomes necessary later, write a follow-up ADR that supersedes or extends the `StateRef` representation while preserving the same high-level conflict rules.
 
 ## References
@@ -140,3 +141,4 @@ Draft
 - [ADR-0017: HotStuff Consensus Without Threshold Signatures](0017-hotstuff-consensus-without-threshold-signatures.md)
 - [ADR-0019: Canonical Block Header And Application-Neutral Block View](0019-canonical-block-header-and-application-neutral-block-view.md)
 - [blockchain-application-post-adr-improvements.md](../dev/blockchain-application-post-adr-improvements.md)
+- [0006 - Conflict-Free Block Scheduling Plan](../plans/0006-conflict-free-block-scheduling-plan.md)
