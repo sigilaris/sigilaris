@@ -138,12 +138,6 @@ object HotStuffHeight:
       value: BigNat,
   ): HotStuffHeight = value
 
-  private def compareValues(
-      left: HotStuffHeight,
-      right: HotStuffHeight,
-  ): Int =
-    left.toBigNat.toBigInt.compare(right.toBigNat.toBigInt)
-
   def fromLong(
       value: Long,
   ): Either[String, HotStuffHeight] =
@@ -161,10 +155,14 @@ object HotStuffHeight:
   extension (height: HotStuffHeight)
     def toBigNat: BigNat                   = height
     def render: String                     = height.toBigNat.toBigInt.toString
-    def <(other: HotStuffHeight): Boolean  = compareValues(height, other) < 0
-    def <=(other: HotStuffHeight): Boolean = compareValues(height, other) <= 0
-    def >(other: HotStuffHeight): Boolean  = compareValues(height, other) > 0
-    def >=(other: HotStuffHeight): Boolean = compareValues(height, other) >= 0
+    def <(other: HotStuffHeight): Boolean =
+      BigNat.bignatOrdering.lt(height.toBigNat, other.toBigNat)
+    def <=(other: HotStuffHeight): Boolean =
+      BigNat.bignatOrdering.lteq(height.toBigNat, other.toBigNat)
+    def >(other: HotStuffHeight): Boolean =
+      BigNat.bignatOrdering.gt(height.toBigNat, other.toBigNat)
+    def >=(other: HotStuffHeight): Boolean =
+      BigNat.bignatOrdering.gteq(height.toBigNat, other.toBigNat)
     def next: HotStuffHeight = apply:
       BigNat.add(height.toBigNat, BigNat.One)
     def +(delta: Long): HotStuffHeight =
@@ -176,9 +174,8 @@ object HotStuffHeight:
 
   given ByteEncoder[HotStuffHeight] = ByteEncoder[BigNat].contramap(_.toBigNat)
   given Eq[HotStuffHeight]          = Eq.by(_.toBigNat)
-  given Ordering[HotStuffHeight] with
-    override def compare(x: HotStuffHeight, y: HotStuffHeight): Int =
-      compareValues(x, y)
+  given Ordering[HotStuffHeight] =
+    Ordering.by[HotStuffHeight, BigNat](_.toBigNat)(using BigNat.bignatOrdering)
 
 opaque type HotStuffView = BigNat
 
@@ -190,12 +187,6 @@ object HotStuffView:
   def apply(
       value: BigNat,
   ): HotStuffView = value
-
-  private def compareValues(
-      left: HotStuffView,
-      right: HotStuffView,
-  ): Int =
-    left.toBigNat.toBigInt.compare(right.toBigNat.toBigInt)
 
   def fromLong(
       value: Long,
@@ -214,10 +205,14 @@ object HotStuffView:
   extension (view: HotStuffView)
     def toBigNat: BigNat                 = view
     def render: String                   = view.toBigNat.toBigInt.toString
-    def <(other: HotStuffView): Boolean  = compareValues(view, other) < 0
-    def <=(other: HotStuffView): Boolean = compareValues(view, other) <= 0
-    def >(other: HotStuffView): Boolean  = compareValues(view, other) > 0
-    def >=(other: HotStuffView): Boolean = compareValues(view, other) >= 0
+    def <(other: HotStuffView): Boolean =
+      BigNat.bignatOrdering.lt(view.toBigNat, other.toBigNat)
+    def <=(other: HotStuffView): Boolean =
+      BigNat.bignatOrdering.lteq(view.toBigNat, other.toBigNat)
+    def >(other: HotStuffView): Boolean =
+      BigNat.bignatOrdering.gt(view.toBigNat, other.toBigNat)
+    def >=(other: HotStuffView): Boolean =
+      BigNat.bignatOrdering.gteq(view.toBigNat, other.toBigNat)
     def next: HotStuffView = apply:
       BigNat.add(view.toBigNat, BigNat.One)
     def +(delta: Long): HotStuffView =
@@ -229,9 +224,8 @@ object HotStuffView:
 
   given ByteEncoder[HotStuffView] = ByteEncoder[BigNat].contramap(_.toBigNat)
   given Eq[HotStuffView]          = Eq.by(_.toBigNat)
-  given Ordering[HotStuffView] with
-    override def compare(x: HotStuffView, y: HotStuffView): Int =
-      compareValues(x, y)
+  given Ordering[HotStuffView] =
+    Ordering.by[HotStuffView, BigNat](_.toBigNat)(using BigNat.bignatOrdering)
 
 final case class HotStuffWindow(
     chainId: ChainId,
