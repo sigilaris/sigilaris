@@ -15,12 +15,13 @@ Draft
 - 현재 shipped HotStuff baseline은 proposal/vote/QC identity, validator-set window, audit relay, bounded `requestById`, exact known-set sync를 이미 갖고 있다.
 - 따라서 block 구조 변경은 단순 타입 치환이 아니라 canonical encoding, proposal validation, fixture, gossip payload, query/storage seam을 함께 건드리는 migration 작업이다.
 - ADR-0017은 consensus artifact family와 identity/sign-bytes ownership을 고정했고, ADR-0019는 그 위에서 canonical block header와 application-neutral block view contract를 추가로 고정한다.
+- ADR-0020은 same-block conflict-free selection을 ordering-independent membership 규칙으로 고정했으므로, ADR-0019 body contract도 proposer-local insertion order와 독립적인 unordered member-set semantics 위에서 deterministic commitment를 만들어야 한다.
 - migration 중에도 `ProposalId`, `VoteId`, `BlockId` 분리 baseline, validator/audit role contract, HotStuff gossip ownership boundary는 유지되어야 한다.
 
 ## Goal
 - `sigilaris-node-jvm` 안에 canonical `BlockHeader` contract를 도입한다.
 - `BlockId`를 header-only identity로 재정의하고, `stateRoot`/`bodyRoot`/`timestamp`/`height`를 first-class block field로 승격한다.
-- application-neutral `BlockView` surface를 추가해 다양한 application이 consensus 타입에 직접 묶이지 않고 block body를 표현할 수 있게 한다.
+- application-neutral `BlockView` surface를 추가해 다양한 application이 consensus 타입에 직접 묶이지 않고 unordered block body membership를 표현할 수 있게 한다.
 - HotStuff proposal/validation/runtime이 새 block contract 위에서 계속 동작하도록 마이그레이션한다.
 
 ## Scope
@@ -36,20 +37,29 @@ Draft
 - pacemaker timeout/new-view, validator-set reconfiguration, aggregate signature 같은 HotStuff follow-up은 이번 plan의 직접 범위가 아니다.
 - application별 concrete transaction/result/event schema를 공용 runtime contract로 고정하지 않는다.
 - bodyRoot를 receiptRoot/eventRoot 등 여러 sub-root로 세분화하는 최종 형식은 이번 plan에서 mandatory baseline으로 고정하지 않는다.
+- body membership conflict rule 자체는 이번 plan의 직접 범위가 아니다. ADR-0020 기반 body-level schedulability enforcement는 별도 plan(0006)의 follow-up integration이 소유한다.
 
 ## Related ADRs And Docs
 - ADR-0009: Blockchain Application Architecture
 - ADR-0017: HotStuff Consensus Without Threshold Signatures
 - ADR-0018: Static Peer Topology And Initial HotStuff Deployment Baseline
 - ADR-0019: Canonical Block Header And Application-Neutral Block View
+- ADR-0020: Conflict-Free Block Scheduling With State References And Object-Centric Seams
 - `docs/plans/0004-hotstuff-consensus-without-threshold-signatures-plan.md`
+- `docs/plans/0006-conflict-free-block-scheduling-plan.md`
 - `docs/plans/plan-template.md`
 - `README.md`
 
 ## Decisions To Lock Before Implementation
 - canonical block identity artifact는 `BlockHeader`로 고정하고, `BlockId`는 header canonical encoding hash로 계산한다.
 - `BlockHeader` baseline field는 `parent`, `height`, `stateRoot`, `bodyRoot`, `timestamp`로 고정한다.
-- `bodyRoot`는 single ordered body commitment baseline으로 두고, 추가 sub-root는 follow-up 으로 분리한다.
+- `bodyRoot`는 unordered block-body member set의 canonical sorted serialization commitment baseline으로 두고, 추가 sub-root는 follow-up 으로 분리한다.
+- `BlockBody.records` baseline membership는 unordered `Set` 또는 그와 동등한 set semantics 로 둔다.
+- `BlockRecordHash` baseline은 whole `BlockRecord` (`tx`, `result`, `events`)의 canonical encoding 에 대한 `hash(canonical-encoded BlockRecord)` 또는 그와 동등한 deterministic per-record commitment 로 둔다.
+- `BlockBody` canonical serialization order는 `recordHash.bytes` lexicographic ASC 로 고정한다.
+- 동일 `recordHash`를 가진 두 member가 같은 `BlockBody` 안에 동시에 존재하는 경우는 invalid 로 reject 한다. 이 rule 은 semantic content equality 가 아니라 per-record commitment identity 기준이며, hash collision 도 같은 방식으로 reject 한다.
+- runtime collection 의 `equals`/`hashCode` 기반 dedup 은 canonical uniqueness contract 가 아니다. Phase 1 validation helper 는 `recordHash` 를 별도로 계산해 duplicate 를 검사해야 한다.
+- "같은 tx 가 한 block 에 두 번 들어가면 안 된다" 같은 rule 이 필요하면 그것은 `recordHash` 가 아니라 application-owned tx identity 또는 ADR-0020 conflict-free scheduling rule 이 소유한다.
 - `BlockView`/`BlockBody` public surface는 `TxRef`, `ResultRef`, `Event` generic parameter를 사용한다. consensus runtime은 이 concrete 타입을 알 필요가 없다.
 - HotStuff proposal path는 header-first contract를 따른다. proposal identity/sign-bytes는 `BlockId`를 commit 하고, full `BlockView` mandatory carriage는 baseline requirement로 두지 않는다.
 - initial migration 동안 `proposal.window.height`와 `BlockHeader.height`는 둘 다 유지할 수 있지만, validation은 equality를 mandatory 로 강제해야 한다.
@@ -73,7 +83,8 @@ Draft
 
 ### Tests
 - header-only `BlockId` identity test
-- `bodyRoot` verification test
+- permutation-invariant `bodyRoot` verification test
+- duplicate `recordHash` reject test
 - genesis / parent linkage / height equality validation test
 - `ProposalId != BlockId` regression test
 - gossip/request-by-id/replay regression test
@@ -92,13 +103,16 @@ Draft
 - ADR-0019를 기준으로 field inventory, identity contract, generic body surface를 확정한다.
 - `BlockHeader`/`BlockView` public package root를 결정한다.
 - `BlockHeight`, `StateRoot`, `BodyRoot`, `BlockTimestamp`의 value type / encoding contract를 확정한다.
+- `BlockRecordHash` 표현, canonical serialization rule, duplicate `recordHash` reject rule, runtime collection dedup 과 canonical uniqueness 검사의 분리 contract를 확정한다.
 - 기존 minimal `Block`에서 새 contract로 가는 compatibility bridge(`payloadHash -> bodyRoot`)의 허용 범위를 문서화한다.
 - proposal header-only baseline과 body-lazy-fetch baseline을 명시한다.
 
 ### Phase 1: Core Block Model And Encoding
 - `BlockHeader`, `BlockBody`, `BlockRecord`, `BlockView` 또는 동등 model을 추가한다.
 - `BlockId` 계산을 header-only deterministic hash로 옮긴다.
+- `BlockRecordHash` helper 를 추가한다.
 - `bodyRoot` verification helper를 추가한다.
+- `recordHash` duplicate 검사를 runtime collection semantics 와 독립적으로 수행하는 validation helper 를 추가한다.
 - canonical encoding helper와 fixture를 갱신한다.
 - 기존 `Block` 이름을 유지할지, `BlockHeader`로 explicit rename 할지 구현 surface를 정리한다.
 - 이 Phase의 landed state는 compile/test green 이어야 한다. 필요하면 temporary bridge type, alias, adapter를 둬서 HotStuff code path를 단계적으로 옮긴다.
@@ -124,7 +138,11 @@ Draft
 
 ## Test Plan
 - Phase 1 Success: pure unit test로 `BlockId`가 `BlockHeader`만으로 안정적으로 계산되고 `BlockView` body 변화가 `BlockId`를 바꾸지 않는지를 검증한다.
-- Phase 1 Success: pure unit test로 `bodyRoot`가 canonical ordered body encoding 기준으로 계산되고 record/event ordering이 commitment에 반영되는지를 검증한다.
+- Phase 1 Success: pure unit test로 `bodyRoot`가 unordered `BlockBody.records` membership 에 대해 stable 하고, input construction order 나 equivalent `Set` iteration order 변화가 commitment 를 바꾸지 않는지를 검증한다.
+- Phase 1 Success: golden fixture 기반 unit test로 canonical serialization 이 `recordHash.bytes` lexicographic ASC 규칙을 따르는지를 검증한다.
+- Phase 1 Success: permutation regression 또는 property-style unit test 로 input construction order 변화가 canonical serialization order 와 `bodyRoot` 를 바꾸지 않는지를 검증한다.
+- Phase 1 Failure: pure unit test로 duplicate `recordHash` body 를 reject 하는지를 검증한다.
+- Phase 1 Failure: pure unit test로 runtime collection 이 distinct member 로 보더라도 `recordHash` 가 같으면 reject 하는지를 검증한다.
 - Phase 1 Regression: bridge 상태에서도 compile/test green 이 유지되고, landed commit 이 intentionally broken intermediate 에 의존하지 않는지를 검증한다.
 - Phase 1 Failure: pure unit test로 malformed timestamp, missing mandatory header field, invalid parent representation을 reject 하는지를 검증한다.
 - Phase 2 Success: HotStuff validation test로 `proposal.targetBlockId == computeId(header)`, `proposal.window.height == header.height`, non-genesis `header.parent == justify.subject.blockId`를 검증한다.
@@ -139,17 +157,19 @@ Draft
 - `proposal.window.height`와 `header.height`가 drift 하면 consensus validation bug가 생길 수 있다. equality validation과 dedicated regression test로 막는다.
 - block body generic surface가 application ADT를 consensus package로 다시 끌고 들어올 수 있다. `TxRef`/`ResultRef`/`Event` generic boundary와 import rule review로 경계를 고정한다.
 - `BlockId` 재정의는 fixture, persisted data, gossip expectations를 깨뜨릴 수 있다. explicit migration note, fixture refresh, header-only identity regression test, persisted surface 존재 시 migration/reset/dual-read policy gate로 대응한다.
+- unordered member-set baseline 위의 canonical serialization rule이 불명확하면 bodyRoot mismatch bug가 생길 수 있다. `recordHash` contract, lexicographic sort rule, duplicate `recordHash` reject test로 잠근다.
 - `bodyRoot`를 너무 이르게 고정하면 future receipt/event sub-root 요구와 충돌할 수 있다. initial baseline은 single body commitment로 두고, follow-up ADR에서 additive extension 여부를 평가한다.
 - header/body 분리 저장이 조기에 storage coupling을 키울 수 있다. query/storage seam은 최소 surface만 먼저 두고, transport/proof protocol은 후속 plan으로 분리한다.
 
 ## Acceptance Criteria
 1. canonical `BlockHeader` contract가 문서와 코드에서 존재하고, `parent`, `height`, `stateRoot`, `bodyRoot`, `timestamp` baseline이 고정된다.
 2. `BlockId`는 header-only deterministic hash로 계산되고, `BlockView` body projection 변화와 분리된다.
-3. application-neutral `BlockView` surface가 concrete application transaction/result/event ADT에 대한 consensus package 의존 없이 표현된다.
-4. HotStuff proposal/validation/runtime은 새 block contract 위에서 계속 동작하고, `ProposalId`, `VoteId`, `BlockId` 분리 baseline이 유지된다.
-5. height equality, genesis empty-parent, parent/justify linkage, `bodyRoot` verification에 대한 테스트가 회귀 잠금된다.
-6. ADR-0017, ADR-0019, plan 0004, plan 0005, 필요 시 README가 새 block contract를 일관된 용어로 설명한다.
-7. old `BlockId` contract를 전제로 한 persisted surface가 존재하면 explicit migration/reset/dual-read policy가 문서와 구현 gate에 반영되고, 그런 surface가 없으면 비호환성 비요구 baseline이 명시된다.
+3. `BlockBody.records` 는 unordered membership semantics 를 가지며, `bodyRoot` 는 `recordHash.bytes` lexicographic ASC canonical serialization 기준으로 계산된다.
+4. application-neutral `BlockView` surface가 concrete application transaction/result/event ADT에 대한 consensus package 의존 없이 표현된다.
+5. HotStuff proposal/validation/runtime은 새 block contract 위에서 계속 동작하고, `ProposalId`, `VoteId`, `BlockId` 분리 baseline이 유지된다.
+6. height equality, genesis empty-parent, parent/justify linkage, permutation-invariant `bodyRoot`, duplicate `recordHash` reject 에 대한 테스트가 회귀 잠금된다.
+7. ADR-0017, ADR-0019, plan 0004, plan 0005, 필요 시 README가 새 block contract를 일관된 용어로 설명한다.
+8. old `BlockId` contract를 전제로 한 persisted surface가 존재하면 explicit migration/reset/dual-read policy가 문서와 구현 gate에 반영되고, 그런 surface가 없으면 비호환성 비요구 baseline이 명시된다.
 
 ## Checklist
 
@@ -157,6 +177,7 @@ Draft
 - [ ] ADR-0019 기준 field inventory 및 identity contract 확정
 - [ ] block public package root 확정
 - [ ] `BlockHeight` / `StateRoot` / `BodyRoot` / `BlockTimestamp` 표현 확정
+- [ ] `BlockRecordHash` / canonical serialization / duplicate reject rule 확정
 - [ ] `payloadHash -> bodyRoot` migration bridge 범위 문서화
 - [ ] header-only proposal baseline 확정
 - [ ] Phase 1 compile-green bridge policy 확정
@@ -166,6 +187,7 @@ Draft
 ### Phase 1: Core Block Model And Encoding
 - [ ] `BlockHeader` / `BlockBody` / `BlockRecord` / `BlockView` 추가
 - [ ] header-only `BlockId` 계산 추가
+- [ ] `BlockRecordHash` helper 추가
 - [ ] `bodyRoot` verification helper 추가
 - [ ] canonical encoding / fixture 갱신
 - [ ] minimal `Block` naming migration 정리
