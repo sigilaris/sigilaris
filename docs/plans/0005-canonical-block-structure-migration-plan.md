@@ -1,7 +1,7 @@
 # 0005 - Canonical Block Structure Migration Plan
 
 ## Status
-Phase 3 Complete; Phase 4 Pending
+Phase 4 Complete
 
 ## Created
 2026-04-03
@@ -209,12 +209,12 @@ Phase 3 Complete; Phase 4 Pending
 - [x] local `bodyRoot` re-verification path 추가
 
 ### Phase 4: Verification And Docs
-- [ ] unit/integration/regression test green
-- [ ] ADR / plan / README 용어 정렬
-- [ ] residual follow-up 문서화
+- [x] unit/integration/regression test green
+- [x] ADR / plan / README 용어 정렬
+- [x] residual follow-up 문서화
 
 ## Follow-Ups
-- state snapshot transport, block body sync, proof-serving protocol은 별도 ADR 또는 plan으로 분리한다.
+- state snapshot transport, remote body fetch, proof-serving protocol은 별도 ADR 또는 plan으로 분리한다.
 - receiptRoot/eventRoot 같은 auxiliary sub-root가 필요해지면 후속 ADR에서 추가한다.
 - block public model이 HotStuff package 바깥 shared surface로 완전히 추출되어야 하는지는 migration 결과를 보고 follow-up 으로 확정한다.
 - persisted data migration policy가 필요해지면 storage-specific follow-up 문서로 분리한다.

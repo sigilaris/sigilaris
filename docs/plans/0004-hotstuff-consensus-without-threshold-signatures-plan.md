@@ -7,7 +7,7 @@ Phase 3A Complete; Pacemaker Follow-Up Pending
 2026-03-29
 
 ## Last Updated
-2026-04-02
+2026-04-04
 
 ## Background
 - 이 문서는 ADR-0017의 implementation plan 이다.
@@ -16,6 +16,7 @@ Phase 3A Complete; Pacemaker Follow-Up Pending
 - 이전 문서 구조에서는 gossip substrate와 consensus semantics가 섞여 있었지만, 이제는 proposal/vote/QC identity, sign-bytes, QC assembly, validator-set window 검증을 consensus plan 아래에서 독립적으로 관리한다.
 - initial deployment baseline은 ADR-0018의 static peer topology, validator/audit node role 분리, same-DC validator placement, `100ms` block production target을 전제로 한다.
 - `2026-04-02` 문서-구현 대조 리뷰 기준으로 artifact model, validation, topic contract, in-memory loopback baseline, concrete JVM bootstrap wiring, explicit bootstrap/service seam, audit follower relay, same-window retry budget enforcement, vote exact-known regression lock, dependency boundary test, shipped-baseline 문서 정렬이 compile/test 기준으로 landed 되었다.
+- `2026-04-04` 기준 HotStuff proposal path는 ADR-0019 canonical `BlockHeader`와 header-only `BlockId` contract를 소비하지만, `ProposalId` / `VoteId` / validator-set window ownership baseline은 그대로 유지한다.
 - 위 리뷰는 `docs/plans/0004-hotstuff-consensus-without-threshold-signatures-plan.md`, `docs/adr/0017-hotstuff-consensus-without-threshold-signatures.md`, `README.md`, `org.sigilaris.node.jvm.runtime.consensus.hotstuff` 구현, HotStuff test suite 를 대조하는 방식으로 수행했다.
 - 기존 Phase 0-3 checklist 는 landed HotStuff artifact/runtime slice 를 기록했고, Phase 3A 는 concrete bootstrap/service closure 와 dependency/doc alignment 를 마무리했다. 남은 residual work 는 pacemaker timeout/new-view 계열 follow-up 으로 한정한다.
 
@@ -238,7 +239,7 @@ Phase 3A Complete; Pacemaker Follow-Up Pending
 
 ## Follow-Ups
 - static peer topology, same-DC validator placement, emergency promotion baseline은 ADR-0018이 소유한다.
-- canonical block header/body contract와 application-neutral block view migration은 ADR-0019와 `docs/plans/0005-canonical-block-structure-migration-plan.md`에서 추적한다.
+- canonical block header/body contract, application-neutral `BlockView`, `BlockStore` query/storage seam, residual body sync follow-up 은 ADR-0019와 `docs/plans/0005-canonical-block-structure-migration-plan.md`에서 추적한다.
 - operator-managed raw key custody를 대체할 KMS/HSM/remote signer baseline은 별도 ADR로 분리한다.
 - timeout vote, timeout certificate, new-view wire contract, leader rotation policy는 별도 ADR 또는 follow-up plan으로 분리한다.
 - validator-set commitment derivation의 exact byte contract는 follow-up spec으로 고정한다.

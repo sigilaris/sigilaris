@@ -32,7 +32,7 @@ Accepted
    - `QC`는 validator set window 안에서 quorum을 만족하는 vote 집합 또는 그와 동등한 검증 가능 certificate다.
 
 4. **block identity, proposal identity, vote identity는 서로 다른 contract로 취급한다.**
-   - `BlockId`는 canonical block bytes의 deterministic hash다.
+   - `BlockId`는 ADR-0019 canonical `BlockHeader` bytes의 deterministic hash다.
    - `ProposalId`는 canonical proposal bytes의 deterministic hash다.
    - `VoteId`는 canonical vote bytes의 deterministic hash다.
    - 구현은 `ProposalId == BlockId`라고 암묵적으로 가정해서는 안 된다. proposal이 block 외에 justify QC, proposer binding, view metadata를 서명으로 commit 하면 둘은 다른 값일 수 있다.

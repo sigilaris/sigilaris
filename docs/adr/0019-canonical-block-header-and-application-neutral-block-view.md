@@ -1,7 +1,7 @@
 # ADR-0019: Canonical Block Header And Application-Neutral Block View
 
 ## Status
-Draft
+Accepted
 
 ## Context
 - `2026-04-03` 기준 `sigilaris-node-jvm` 의 HotStuff 도메인 `Block`은 `parent + payloadHash`만 담는 최소형 artifact다.
@@ -150,10 +150,10 @@ final case class BlockView[TxRef, ResultRef, Event](
 
 ## Follow-Up
 - concrete migration 단계와 test gate는 `docs/plans/0005-canonical-block-structure-migration-plan.md`가 소유한다.
-- HotStuff proposal/validation/gossip path에서 `BlockHeader`를 어떻게 연결할지는 ADR-0017 follow-up implementation에서 구체화한다.
+- `2026-04-04` 기준 canonical `BlockHeader` / `BlockBody` / `BlockView` model, HotStuff header-first integration, `runtime.block.BlockStore` query/storage seam, local `bodyRoot` re-verification baseline은 landed 상태다.
 - `bodyRoot`를 여러 sub-root로 세분화할 필요가 생기면 후속 ADR에서 supersede 또는 extend 한다.
 - unordered member-set baseline이 insufficient 하거나 multiset semantics가 필요해지면 후속 ADR에서 supersede 또는 extend 한다.
-- state snapshot transport, block body sync, execution/result persistence format은 별도 ADR 또는 plan으로 분리한다.
+- remote body fetch, state snapshot transport, proof-serving, execution/result persistence format은 별도 ADR 또는 plan으로 분리한다.
 - shipped baseline에는 old `BlockId` contract를 전제로 한 persisted block store가 없다. 따라서 initial migration은 on-disk dual-read compatibility를 mandatory 로 요구하지 않고, persisted block surface가 도입되는 시점에 explicit reset/migration policy를 별도 문서화한다.
 
 ## References
