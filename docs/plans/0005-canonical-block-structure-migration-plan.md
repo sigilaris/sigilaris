@@ -1,13 +1,13 @@
 # 0005 - Canonical Block Structure Migration Plan
 
 ## Status
-Draft
+Phase 0 Complete; Phase 1-4 Pending
 
 ## Created
 2026-04-03
 
 ## Last Updated
-2026-04-03
+2026-04-04
 
 ## Background
 - 이 문서는 ADR-0019의 implementation plan 이다.
@@ -67,10 +67,11 @@ Draft
 - proposer는 proposal 시점에 final `stateRoot`를 이미 알고 있어야 한다. placeholder `stateRoot`를 넣고 같은 header를 later rewrite 하는 flow는 허용하지 않는다.
 - `BlockTimestamp` baseline은 proposer-declared UTC unix epoch milliseconds다. stricter monotonicity/skew policy는 validation follow-up 으로 둔다.
 - genesis baseline은 `parent.isEmpty`를 유지한다. sentinel parent hash는 도입하지 않는다.
-- block public model이 HotStuff 전용 package에 영구 고정되지 않도록 package ownership을 Phase 0에서 확정한다. initial landing은 `runtime.consensus.hotstuff` 아래일 수 있지만, 장기 surface는 consensus-neutral package가 더 적합한지 명시적으로 결정한다.
+- block public model이 HotStuff 전용 package에 영구 고정되지 않도록 package ownership을 Phase 0에서 확정한다. initial public package root는 `org.sigilaris.node.jvm.runtime.block`으로 고정한다.
 - landed migration phase는 모두 compile/test green을 유지해야 한다. Phase 1은 intentionally broken intermediate를 허용하지 않고, 필요하면 기존 minimal `Block`과 새 `BlockHeader`를 bridge/adapter 상태로 일시 공존시킨다.
 - Phase 2까지는 HotStuff runtime이 full in-memory `BlockView` 또는 동등한 body-bearing proposal payload를 계속 들고 다녀도 된다. persistent header/body split lookup과 remote body fetch는 Phase 3 requirement로 미룬다.
 - shipped persisted block store가 old `BlockId` contract에 이미 의존하지 않는 한 backward-compatible on-disk `BlockId` continuity는 mandatory 가 아니다. 반대로 그런 surface가 implementation 시점에 존재하면 Phase 1 landing 전에 explicit migration/reset/dual-read policy를 문서화해야 한다.
+- `2026-04-04` 기준 shipped runtime/storage surface에는 old `BlockId` whole-block contract를 실제 persisted compatibility surface로 노출한 구현이 없다. `StorageLayout`의 block path reservation 만 존재하므로 initial migration baseline은 explicit reset/no-compat 정책으로 충분하다.
 - 기존 `payloadHash` 명칭은 migration bridge에서만 허용하고, 새 public 문서/코드는 `bodyRoot` 또는 동등한 explicit name을 사용한다.
 
 ## Change Areas
@@ -101,11 +102,12 @@ Draft
 
 ### Phase 0: Contract Lock And Package Ownership
 - ADR-0019를 기준으로 field inventory, identity contract, generic body surface를 확정한다.
-- `BlockHeader`/`BlockView` public package root를 결정한다.
+- `BlockHeader`/`BlockView` public package root는 `org.sigilaris.node.jvm.runtime.block`으로 고정한다.
 - `BlockHeight`, `StateRoot`, `BodyRoot`, `BlockTimestamp`의 value type / encoding contract를 확정한다.
 - `BlockRecordHash` 표현, canonical serialization rule, duplicate `recordHash` reject rule, runtime collection dedup 과 canonical uniqueness 검사의 분리 contract를 확정한다.
 - 기존 minimal `Block`에서 새 contract로 가는 compatibility bridge(`payloadHash -> bodyRoot`)의 허용 범위를 문서화한다.
 - proposal header-only baseline과 body-lazy-fetch baseline을 명시한다.
+- persisted `BlockId` migration gate는 "no shipped persisted compatibility surface, so explicit reset/no-compat allowed" baseline으로 잠근다.
 
 ### Phase 1: Core Block Model And Encoding
 - `BlockHeader`, `BlockBody`, `BlockRecord`, `BlockView` 또는 동등 model을 추가한다.
@@ -174,15 +176,15 @@ Draft
 ## Checklist
 
 ### Phase 0: Contract Lock And Package Ownership
-- [ ] ADR-0019 기준 field inventory 및 identity contract 확정
-- [ ] block public package root 확정
-- [ ] `BlockHeight` / `StateRoot` / `BodyRoot` / `BlockTimestamp` 표현 확정
-- [ ] `BlockRecordHash` / canonical serialization / duplicate reject rule 확정
-- [ ] `payloadHash -> bodyRoot` migration bridge 범위 문서화
-- [ ] header-only proposal baseline 확정
-- [ ] Phase 1 compile-green bridge policy 확정
-- [ ] Phase 2까지 body carriage / lookup baseline 확정
-- [ ] persisted `BlockId` migration/reset policy gate 확정
+- [x] ADR-0019 기준 field inventory 및 identity contract 확정
+- [x] block public package root 확정
+- [x] `BlockHeight` / `StateRoot` / `BodyRoot` / `BlockTimestamp` 표현 확정
+- [x] `BlockRecordHash` / canonical serialization / duplicate reject rule 확정
+- [x] `payloadHash -> bodyRoot` migration bridge 범위 문서화
+- [x] header-only proposal baseline 확정
+- [x] Phase 1 compile-green bridge policy 확정
+- [x] Phase 2까지 body carriage / lookup baseline 확정
+- [x] persisted `BlockId` migration/reset policy gate 확정
 
 ### Phase 1: Core Block Model And Encoding
 - [ ] `BlockHeader` / `BlockBody` / `BlockRecord` / `BlockView` 추가

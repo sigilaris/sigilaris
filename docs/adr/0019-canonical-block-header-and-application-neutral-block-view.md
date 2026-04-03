@@ -19,6 +19,8 @@ Draft
    - application-facing body membership는 `BlockBody`가 소유한다.
    - query/inspection surface는 `BlockView(header, body)`다.
    - body 안의 record schema는 application-neutral generic type parameter로 모델링한다.
+   - initial public package root는 `org.sigilaris.node.jvm.runtime.block`으로 고정한다.
+   - HotStuff runtime은 이 package를 import 하는 consumer이고, block public model owner가 아니다.
 
 2. **`BlockHeader` baseline은 최소한 아래 semantic field를 포함해야 한다.**
    - `parent: Option[BlockId]`
@@ -30,6 +32,7 @@ Draft
    - `bodyRoot`는 unordered block-body member set의 canonical sorted serialization commitment이며, auxiliary receipt/event sub-root는 baseline mandatory field로 두지 않는다.
    - `timestamp`는 proposer가 header에 commit 하는 UTC unix epoch milliseconds baseline으로 고정한다.
    - `timestamp`는 consensus가 별도로 합성한 monotonic clock value가 아니다. clock skew 상한이나 stricter monotonicity policy는 validation follow-up이 소유한다.
+   - implementation baseline value type은 `BlockHeight`, `StateRoot`, `BodyRoot`, `BlockTimestamp`로 분리하고, 각각 `BigNat`, `UInt256`, `UInt256`, signed `Long` epoch milliseconds 기반 deterministic encoding을 사용한다.
 
 3. **`BlockId`는 `BlockHeader` canonical deterministic encoding의 hash다.**
    - `BlockId`는 `BlockView` whole-value hash가 아니다.
@@ -98,6 +101,7 @@ final case class BlockView[TxRef, ResultRef, Event](
 9. **body verification은 `bodyRoot`와 `BlockBody` 사이의 deterministic commitment contract로 수행한다.**
    - body membership는 unordered지만, canonical serialization order는 mandatory다.
    - `recordHash` baseline은 whole `BlockRecord` (`tx`, `result`, `events`)의 canonical encoding에 대한 `hash(canonical-encoded BlockRecord)` 또는 그와 동등한 deterministic per-record commitment다.
+   - implementation baseline value type은 `BlockRecordHash`이며 `UInt256`-backed commitment로 모델링한다.
    - `BlockBody` canonical serialization은 `recordHash.bytes` lexicographic ascending order로 정렬한 뒤 수행한다.
    - implementation-local `Set` iteration order에 body commitment가 의존해서는 안 되며, runtime collection의 자체 dedup으로 uniqueness를 충족했다고 간주해서도 안 된다.
    - 동일 `recordHash`를 가진 두 member가 한 `BlockBody` 안에 동시에 존재해서는 안 된다. 이 rule은 semantic content equality가 아니라 per-record commitment identity 기준이며, 극히 드문 hash collision이어도 같은 `recordHash`면 body는 invalid다.
@@ -108,6 +112,7 @@ final case class BlockView[TxRef, ResultRef, Event](
 10. **현재 minimal `payloadHash` 모델은 장기 public contract가 아니라 transitional baseline으로 본다.**
     - migration 동안 기존 `payloadHash`는 `bodyRoot`로 재해석할 수 있다.
     - 그러나 public 문서와 후속 구현은 `payloadHash`라는 모호한 명칭 대신 `BlockHeader`와 explicit commitment field를 사용해야 한다.
+    - bridge 허용 범위는 Phase 1-2의 HotStuff migration adapter로 제한한다. 새 public package와 문서는 `payloadHash` 명칭을 직접 노출하지 않는다.
 
 ## Consequences
 - block identity와 application-facing body/query surface를 분리하므로, consensus artifact contract와 block explorer/storage contract가 덜 섞인다.
@@ -149,6 +154,7 @@ final case class BlockView[TxRef, ResultRef, Event](
 - `bodyRoot`를 여러 sub-root로 세분화할 필요가 생기면 후속 ADR에서 supersede 또는 extend 한다.
 - unordered member-set baseline이 insufficient 하거나 multiset semantics가 필요해지면 후속 ADR에서 supersede 또는 extend 한다.
 - state snapshot transport, block body sync, execution/result persistence format은 별도 ADR 또는 plan으로 분리한다.
+- shipped baseline에는 old `BlockId` contract를 전제로 한 persisted block store가 없다. 따라서 initial migration은 on-disk dual-read compatibility를 mandatory 로 요구하지 않고, persisted block surface가 도입되는 시점에 explicit reset/migration policy를 별도 문서화한다.
 
 ## References
 - [ADR-0009: Blockchain Application Architecture](0009-blockchain-application-architecture.md)
