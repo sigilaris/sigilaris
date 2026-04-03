@@ -75,9 +75,7 @@ object QuorumCertificateAssembler:
         ._2
     for
       byValidator <- deduplicated
-        .foldLeft[Either[HotStuffValidationFailure, Map[ValidatorId, Vote]]](
-          Map.empty[ValidatorId, Vote].asRight[HotStuffValidationFailure],
-        ):
+        .foldLeft(Map.empty[ValidatorId, Vote].asRight[HotStuffValidationFailure]):
           case (Right(acc), vote) =>
             acc.get(vote.voter) match
               case Some(existing) if existing.voteId === vote.voteId =>
@@ -123,12 +121,11 @@ object HotStuffValidator:
       )
       proposer <- validatorSet
         .member(proposal.proposer)
-        .toRight(
+        .toRight:
           HotStuffValidationFailure(
             reason = "unknownProposer",
             detail = Some(proposal.proposer.value),
-          ),
-        )
+          )
       _ <- HotStuffValidationSupport.ensure(
         proposal.targetBlockId === Block.computeId(proposal.block),
         "targetBlockIdMismatch",
@@ -192,41 +189,37 @@ object HotStuffValidator:
         "validatorSetHashMismatch",
         Some(vote.window.validatorSetHash.toHexLower),
       )
-      _ <- expectedWindow.traverse(window =>
+      _ <- expectedWindow.traverse: window =>
         HotStuffValidationSupport.ensure(
           vote.window === window,
           "voteWindowMismatch",
           Some(ss"${vote.window.height.render}:${vote.window.view.render}"),
-        ),
-      )
-      _ <- expectedProposalId.traverse(proposalId =>
+        )
+      _ <- expectedProposalId.traverse: proposalId =>
         HotStuffValidationSupport.ensure(
           vote.targetProposalId === proposalId,
           "wrongTargetProposalId",
           Some(vote.targetProposalId.toHexLower),
-        ),
-      )
+        )
       voter <- validatorSet
         .member(vote.voter)
-        .toRight(
+        .toRight:
           HotStuffValidationFailure(
             reason = "unknownVoter",
             detail = Some(vote.voter.value),
-          ),
-        )
+          )
       _ <- HotStuffValidationSupport.ensure(
         vote.voteId === Vote.recomputeId(vote),
         "voteIdMismatch",
         Some(vote.voteId.toHexLower),
       )
       _ <- verifySignature(
-        Vote.signBytes(
+        Vote.signBytes:
           UnsignedVote(
             window = vote.window,
             voter = vote.voter,
             targetProposalId = vote.targetProposalId,
           ),
-        ),
         vote.signature,
         voter.publicKey,
         "voteSignatureMismatch",
@@ -258,19 +251,17 @@ object HotStuffValidator:
       ByteVector.view(CryptoOps.keccak256(signBytes.toArray))
     CryptoOps
       .recover(signature, messageHash.bytes.toArray)
-      .leftMap(error =>
+      .leftMap: error =>
         HotStuffValidationFailure(
           reason = mismatchReason,
           detail = Some(error.toString),
-        ),
-      )
-      .flatMap(recovered =>
+        )
+      .flatMap: recovered =>
         HotStuffValidationSupport.ensure(
           recovered === expectedPublicKey,
           mismatchReason,
           Some(expectedPublicKey.toString),
-        ),
-      )
+        )
 
 @SuppressWarnings(Array("org.wartremover.warts.DefaultArguments"))
 private object HotStuffValidationSupport:
