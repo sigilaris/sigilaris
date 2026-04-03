@@ -17,7 +17,7 @@ final class HotStuffRuntimeServiceSuite extends CatsEffectSuite:
   private val chainId = ChainId.unsafe("chain-main")
   private val startedAt = Instant.parse("2026-04-02T02:00:00Z")
   private val validatorKeys = Vector.fill(4)(CryptoOps.generate())
-  private val validatorSet = ValidatorSet(
+  private val validatorSet = ValidatorSet.unsafe(
     validatorKeys.zipWithIndex.map: (keyPair, index) =>
       ValidatorMember(ValidatorId.unsafe(s"validator-${index + 1}"), keyPair.publicKey)
   )

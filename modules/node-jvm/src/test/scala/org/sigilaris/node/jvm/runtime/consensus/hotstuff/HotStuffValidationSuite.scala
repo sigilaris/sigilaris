@@ -13,7 +13,7 @@ final class HotStuffValidationSuite extends FunSuite:
 
   private val chainId = ChainId.unsafe("chain-main")
   private val validatorKeys = Vector.fill(4)(CryptoOps.generate())
-  private val validatorSet = ValidatorSet(
+  private val validatorSet = ValidatorSet.unsafe(
     validatorKeys.zipWithIndex.map: (keyPair, index) =>
       ValidatorMember(
         id = ValidatorId.unsafe(s"validator-${index + 1}"),
@@ -567,29 +567,33 @@ final class HotStuffValidationSuite extends FunSuite:
     assertEquals(HotStuffValidator.validateProposal(shuffledProposal, validatorSet), Right(()))
 
   test("validator set rejects duplicate public keys"):
-    val _ = intercept[IllegalArgumentException]:
+    assertEquals(
       ValidatorSet(
         Vector(
           ValidatorMember(ValidatorId.unsafe("validator-a"), validatorKeys.head.publicKey),
           ValidatorMember(ValidatorId.unsafe("validator-b"), validatorKeys.head.publicKey),
         )
-      )
+      ),
+      Left(ValidatorSetError.DuplicatePublicKeys),
+    )
 
   test("validator set rejects empty members and duplicate validator ids"):
-    val _ = intercept[IllegalArgumentException]:
-      ValidatorSet(Vector.empty)
-
-    val duplicateId = intercept[IllegalArgumentException]:
+    assertEquals(
+      ValidatorSet(Vector.empty),
+      Left(ValidatorSetError.Empty),
+    )
+    assertEquals(
       ValidatorSet(
         Vector(
           ValidatorMember(ValidatorId.unsafe("validator-a"), validatorKeys.head.publicKey),
           ValidatorMember(ValidatorId.unsafe("validator-a"), validatorKeys(1).publicKey),
         )
-      )
-    assert(duplicateId.getMessage.nonEmpty)
+      ),
+      Left(ValidatorSetError.DuplicateIds),
+    )
 
   test("validator set hash is independent from insertion order"):
-    val reversed = ValidatorSet(validatorSet.members.reverse)
+    val reversed = ValidatorSet.unsafe(validatorSet.members.reverse)
     assertEquals(validatorSet.hash, reversed.hash)
 
   test("genesis-height proposal can validate with an empty parent pointer"):

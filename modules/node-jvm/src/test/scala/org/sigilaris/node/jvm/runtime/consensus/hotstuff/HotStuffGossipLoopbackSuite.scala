@@ -21,7 +21,7 @@ final class HotStuffGossipLoopbackSuite extends CatsEffectSuite:
   private val baseInstant = Instant.parse("2026-04-01T00:00:00Z")
   private val hotStuffRuntimePolicy = HotStuffRuntimeBootstrap.DefaultRuntimePolicy
   private val validatorKeys = Vector.fill(4)(CryptoOps.generate())
-  private val validatorSet = ValidatorSet(
+  private val validatorSet = ValidatorSet.unsafe(
     validatorKeys.zipWithIndex.map: (keyPair, index) =>
       ValidatorMember(ValidatorId.unsafe(s"validator-${index + 1}"), keyPair.publicKey)
   )
