@@ -54,10 +54,7 @@ object HotStuffBootstrapConfig:
         .flatMap(parseRole)
       validators <- requiredConfigList(section, "validators", "validators")
         .flatMap(parseValidators)
-      validatorSet <- Either
-        .catchNonFatal:
-          ValidatorSet(validators)
-        .leftMap(_.getMessage)
+      validatorSet <- ValidatorSet(validators).leftMap(_.message)
       holders <- requiredConfigList(section, "key-holders", "keyHolders")
         .flatMap(parseHolders)
       localKeys <- requiredConfigList(section, "local-signers", "localSigners")
