@@ -37,6 +37,22 @@ final case class ValidatorMember(
     publicKey: PublicKey,
 ) derives ByteEncoder
 
+enum ValidatorSetError:
+  case Empty
+  case DuplicateIds
+  case DuplicatePublicKeys
+
+object ValidatorSetError:
+  extension (error: ValidatorSetError)
+    def message: String =
+      error match
+        case ValidatorSetError.Empty =>
+          "validator set must not be empty"
+        case ValidatorSetError.DuplicateIds =>
+          "validator ids must be unique"
+        case ValidatorSetError.DuplicatePublicKeys =>
+          "validator public keys must be unique"
+
 final class ValidatorSet private (
     private val membersById: VectorMap[ValidatorId, ValidatorMember],
 ):
@@ -59,30 +75,45 @@ final class ValidatorSet private (
   def quorumSize: Int =
     HotStuffPolicy.quorumSize(membersById.size)
 
+@SuppressWarnings(Array("org.wartremover.warts.Throw"))
 object ValidatorSet:
   def apply(
       members: Vector[ValidatorMember],
-  ): ValidatorSet =
-    require(members.nonEmpty, "validator set must not be empty")
-    require(
-      members.map(_.id).distinct.sizeCompare(members) match
-        case 0 => true
-        case _ => false
-      ,
-      "validator ids must be unique",
-    )
-    require(
-      members.map(_.publicKey).distinct.sizeCompare(members) match
-        case 0 => true
-        case _ => false
-      ,
-      "validator public keys must be unique",
-    )
-    new ValidatorSet(
+  ): Either[ValidatorSetError, ValidatorSet] =
+    for
+      _ <- Either.cond(
+        members.nonEmpty,
+        (),
+        ValidatorSetError.Empty,
+      )
+      _ <- Either.cond(
+        members.map(_.id).distinct.sizeCompare(members) match
+          case 0 => true
+          case _ => false
+        ,
+        (),
+        ValidatorSetError.DuplicateIds,
+      )
+      _ <- Either.cond(
+        members.map(_.publicKey).distinct.sizeCompare(members) match
+          case 0 => true
+          case _ => false
+        ,
+        (),
+        ValidatorSetError.DuplicatePublicKeys,
+      )
+    yield new ValidatorSet(
       VectorMap.from(
         members.iterator.map(member => member.id -> member),
       ),
     )
+
+  def unsafe(
+      members: Vector[ValidatorMember],
+  ): ValidatorSet =
+    apply(members) match
+      case Right(validatorSet) => validatorSet
+      case Left(error)         => throw new IllegalArgumentException(error.message)
 
 final case class Block(
     parent: Option[BlockId],
