@@ -5,8 +5,8 @@ Draft
 
 ## Context
 - ADR-0009 already introduced `StoreState` and `AccessLog` as the execution-time carrier for precise key-level read/write tracking, and the current implementation records concrete accesses at `StateTable` boundary.
-- As of `2026-04-03`, the current Sigilaris/BBGO baseline execution path still reduces transactions sequentially from a single base state, and the recorded `AccessLog` is not yet elevated into a canonical block-admission or proposal-validation rule.
-- The current BBGO batch path therefore permits same-batch causality structurally: a later transaction in the submitted list may observe state mutations produced by an earlier transaction in the same sequential reduction pass.
+- As of `2026-04-03`, the current Sigilaris baseline execution path still reduces transactions sequentially from a single base state, and the recorded `AccessLog` is not yet elevated into a canonical block-admission or proposal-validation rule.
+- The current local batch path therefore permits same-batch causality structurally: a later transaction in the submitted list may observe state mutations produced by an earlier transaction in the same sequential reduction pass.
 - The compile-time `Reads` / `Writes` declarations used by reducers describe table/schema capability, not concrete state-cell or object identity. They are therefore too coarse to decide whether two transactions can safely coexist in the same block.
 - Long-term execution goals now include:
   - making future parallel execution straightforward,

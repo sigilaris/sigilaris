@@ -7,7 +7,7 @@ Draft
 2026-04-03
 
 ## Last Updated
-2026-04-03
+2026-04-04
 
 ## Background
 - This document is the implementation plan for ADR-0020.
@@ -19,32 +19,32 @@ Draft
 - However, the current execution and admission path still has important gaps:
   - compile-time `Reads` / `Writes` are table-level capability declarations, not concrete pre-execution footprints,
   - `AccessLog` is only known after execution,
-  - `TxReducer` currently executes transactions sequentially and carries `StoreState` forward across the batch, so access logs accumulate unless the execution seam is changed,
-  - `PostTxCoordinator` and the BBGO single-node batch path still accept same-batch causality structurally because later transactions run on top of earlier transactions' writes in sequence.
-- In the current BBGO single-node path, one accepted batch is reduced and committed as one block. The initial rollout in this plan therefore applies the future block-level conflict rule at the batch boundary as a local stand-in for future conflict-free block bodies.
+  - the current local reducer path still executes transactions sequentially and carries `StoreState` forward across the batch, so access logs accumulate unless the execution seam is changed,
+  - the current local batch admission/commit path still accepts same-batch causality structurally because later transactions run on top of earlier transactions' writes in sequence.
+- In the current local execution path, one accepted batch is reduced and committed as one block-shaped unit. The initial rollout in this plan therefore applies the future block-level conflict rule at the batch boundary as a local stand-in for future conflict-free block bodies.
 - The current HotStuff baseline in `sigilaris-node-jvm` still uses the minimal `Block(parent, payloadHash)` artifact. Full consensus-level enforcement of ADR-0020 depends on ADR-0019 / Plan 0005 exposing a canonical block body or equivalent deterministic body projection that validators can inspect.
-- BBGO currently contains a mix of transaction families:
+- The current application layer contains a mix of transaction families:
   - some can be made schedulable from explicit references already present in the transaction,
-  - some still rely on dynamic discovery such as prefix scan, automatic UTXO selection, or open-ended balance search and therefore cannot participate in the schedulable path yet.
+  - some still rely on dynamic discovery such as prefix scan, automatic input selection, or open-ended balance search and therefore cannot participate in the schedulable path yet.
 
 ## Goal
 - Introduce core runtime abstractions for `StateRef`, `ConflictFootprint`, deterministic footprint derivation, and post-execution conformance checking.
 - Change execution so actual per-transaction footprints are observable and can be checked against declared or derived footprints.
-- Introduce a conflict-free schedulable batch path in BBGO's current single-node execution flow as the first landing zone for ADR-0020.
+- Introduce a conflict-free schedulable batch path in the current local application execution flow as the first landing zone for ADR-0020.
 - Provide an explicit compatibility path for non-schedulable transactions during migration.
 - Prepare proposer-side selection and validator-side block-body verification for HotStuff once ADR-0019 / Plan 0005 provides the required body contract.
 
 ## Scope
 - Core/shared scheduling abstractions and verification helpers.
 - Per-transaction actual footprint capture in the current execution path.
-- BBGO admission and batch-planning logic for schedulable vs compatibility transactions.
+- Application-owned admission and batch-planning logic for schedulable vs compatibility transactions.
 - Initial deterministic `FootprintDeriver` rollout for pilot transaction families.
 - HotStuff integration hooks and follow-through once canonical block body support is available.
 - Tests, docs, and migration notes related to the new scheduling contract.
 
 ## Non-Goals
 - Rewriting Sigilaris into a full Sui-style object runtime in this plan.
-- Migrating every existing BBGO transaction family to schedulable status in the first rollout.
+- Migrating every existing application transaction family to schedulable status in the first rollout.
 - Eliminating the compatibility path immediately.
 - Designing final distributed mempool policy, fee market policy, or proposer fairness strategy.
 - Solving pacemaker, timeout, or leader-rotation policy in HotStuff.
@@ -58,8 +58,6 @@ Draft
 - `docs/plans/0004-hotstuff-consensus-without-threshold-signatures-plan.md`
 - `docs/plans/0005-canonical-block-structure-migration-plan.md`
 - `docs/plans/plan-template.md`
-- `bbgo3/modules/node/src/main/scala/com/buchigo/bbgo/node/service/TxReducer.scala`
-- `bbgo3/modules/node/src/main/scala/com/buchigo/bbgo/node/service/PostTxCoordinator.scala`
 
 ## Decisions To Lock Before Implementation
 - `StateRef` baseline representation follows ADR-0020: canonical bytes, with table-key baseline equal to `tablePrefix ++ encodedKey`.
@@ -73,7 +71,7 @@ Draft
 - Full HotStuff proposal/validator enforcement depends on ADR-0019 / Plan 0005 exposing a canonical block body or equivalent deterministic transaction projection.
 - Initial schedulable pilot families should prioritize transactions whose touched state can be derived exactly from explicit ids already present in the transaction, and defer dynamic scan / auto-selection families to compatibility mode.
 - Plan completion is split into two landing levels:
-  - local rollout completion: Phases 1-4 landed in BBGO/local execution,
+  - local rollout completion: Phases 1-4 landed in application/local execution,
   - full consensus rollout completion: Phase 5 landed after Plan 0005 body-contract readiness.
 
 ## Change Areas
@@ -82,15 +80,14 @@ Draft
 - `sigilaris/modules/core/shared/src/main/scala/org/sigilaris/core/application/state`
 - `sigilaris/modules/core/shared/src/main/scala/org/sigilaris/core/application/execution`
 - possibly a new package for scheduling helpers, for example `org.sigilaris.core.application.scheduling` or equivalent
-- `bbgo3/modules/node/src/main/scala/com/buchigo/bbgo/node/service`
-- `bbgo3/modules/node/src/main/scala/com/buchigo/bbgo/node/api`
-- transaction-family-specific footprint derivation code in BBGO application modules
+- application-owned reducer / coordinator / admission modules that currently own local batch execution
+- transaction-family-specific footprint derivation code in application-owned modules
 - `sigilaris/modules/node-jvm/src/main/scala/org/sigilaris/node/jvm/runtime/consensus/hotstuff` after Plan 0005 reaches the required block-body baseline
 
 ### Tests
 - unit tests for `StateRef`, `ConflictFootprint`, merge/intersection, and one-pass verification
 - execution tests for per-transaction access-log reset and actual-footprint capture
-- BBGO batch-planning tests for schedulable success, schedulable conflict rejection, and compatibility fallback
+- application batch-planning tests for schedulable success, schedulable conflict rejection, and compatibility fallback
 - conformance tests for `actual ⊆ declared`
 - HotStuff proposal/block validation tests once canonical body support lands
 
@@ -98,7 +95,7 @@ Draft
 - `docs/adr/0020-conflict-free-block-scheduling-with-state-references-and-object-centric-seams.md`
 - `docs/plans/0006-conflict-free-block-scheduling-plan.md`
 - `docs/plans/0005-canonical-block-structure-migration-plan.md` if dependency wording needs tightening
-- BBGO developer/runtime docs if batch semantics or compatibility behavior become externally relevant
+- application developer/runtime docs if batch semantics or compatibility behavior become externally relevant
 
 ## Implementation Phases
 
@@ -109,7 +106,7 @@ Draft
   - if a batch mixes schedulable and non-schedulable transactions, the initial rollout should route the whole batch to compatibility mode rather than partially schedule it.
 - Lock the initial developer-visible classification model, for example `Schedulable(footprint)` vs `Compatibility(reason)`.
 - Lock the first pilot transaction families that must produce exact or conservative deterministic footprints.
-- Explicitly gate HotStuff proposer/validator enforcement on Plan 0005 body-contract readiness so the local BBGO rollout can land first without pretending consensus-level enforcement already exists.
+- Explicitly gate HotStuff proposer/validator enforcement on Plan 0005 body-contract readiness so the local application rollout can land first without pretending consensus-level enforcement already exists.
 
 ### Phase 1: Core Scheduling And Conformance Primitives
 - Add the core data types for `StateRef` and `ConflictFootprint`.
@@ -131,11 +128,11 @@ Draft
   - capture the resulting per-transaction `AccessLog` or derived footprint into `TxExecution`,
   - do not carry the old transaction's `AccessLog` into the next transaction run.
 - Do not keep batch-accumulated access logs as the only observable output.
-- Extend `TxReducer.TxExecution` or an equivalent runtime record to carry actual per-transaction footprint or enough information to reconstruct it deterministically.
+- Extend `TxExecution` or an equivalent runtime record to carry actual per-transaction footprint or enough information to reconstruct it deterministically.
 - Ensure the refactor does not change current reducer semantics except for the new footprint observability and conformance-check capability.
 
-### Phase 3: BBGO Single-Node Admission And Batch Planning
-- Introduce a batch-planning stage ahead of reduction in the BBGO single-node path.
+### Phase 3: Local Application Admission And Batch Planning
+- Introduce a batch-planning stage ahead of reduction in the current local application path.
 - The planner should:
   - classify each transaction as schedulable or compatibility,
   - derive deterministic footprints for schedulable transactions,
@@ -144,16 +141,15 @@ Draft
 - Integrate conformance checking after execution:
   - schedulable transactions must prove `actual ⊆ declared`,
   - any violation must fail execution for the schedulable path.
-- Preserve current duplicate detection, batch idempotency, and receipt flow in `PostTxCoordinator`.
+- Preserve current duplicate detection, batch idempotency, and receipt flow in the application-owned commit/receipt path.
 - Keep the initial executor sequential even for schedulable batches; the first landing is about validity and observability, not parallel execution yet.
 
 ### Phase 4: Pilot FootprintDeriver Rollout And Compatibility Classification
 - Implement exact or conservative deterministic derivation for pilot families whose touched state is already explicit.
 - Likely early candidates include:
-  - Accounts: `CreateNamedAccount`, `UpdateAccount`, `AddKeyIds`, `RemoveKeyIds`, `RemoveAccount`,
-  - Groups: `CreateGroup`, `DisbandGroup`, `AddAccounts`, `RemoveAccounts`, `ReplaceCoordinator`,
-  - payment/governance-style txs with explicit ids and no dynamic discovery: `DefinePaymentToken`, `RegisterDepositSource`, `UpdateDepositSourceStatus`,
-  - payment/escrow txs that already carry explicit referenced input or escrow ids and can be derived without open-ended search, such as `BurnTokenWithSource`, `TransferToken`, `RefundFromBalance`, `CreatePaymentEscrow`, `ReleasePaymentEscrow`, `RefundPaymentEscrow`, subject to Phase 0 lock.
+  - account or registry transactions whose touched state is fully named by explicit ids in the transaction,
+  - membership or governance transactions whose mutable objects are all explicitly referenced,
+  - payment or escrow transactions that already carry explicit input ids, balance ids, or escrow ids and can be derived without open-ended search, subject to Phase 0 lock.
 - Keep dynamic discovery families on the compatibility path initially, especially flows that currently perform prefix scans or automatic UTXO/input selection.
 - Document each non-schedulable family and the reason it remains on compatibility mode.
 - For dynamic families that must eventually become schedulable, identify whether the right migration is:
@@ -182,8 +178,8 @@ Draft
 - Phase 1 Failure: unit tests reject `W∩W` and `R∩W` conflicts and allow `R∩R`.
 - Phase 2 Success: execution tests show each transaction gets a fresh `AccessLog`, actual footprint is captured per transaction, and no hidden batch accumulation is required to observe it.
 - Phase 2 Failure: execution-seam regression tests fail if a prior transaction's `AccessLog` is still visible during the next transaction run.
-- Phase 3 Success: schedulable BBGO batches with non-conflicting footprints are accepted and still execute correctly under the current sequential executor.
-- Phase 3 Failure: schedulable BBGO batches with internal conflict are rejected before reduction.
+- Phase 3 Success: schedulable application batches with non-conflicting footprints are accepted and still execute correctly under the current sequential executor.
+- Phase 3 Failure: schedulable application batches with internal conflict are rejected before reduction.
 - Phase 3 Success: mixed or non-schedulable batches are routed to explicit compatibility mode rather than silently entering the schedulable path.
 - Phase 3 Failure: conformance tests fail when actual execution touches a `StateRef` outside the declared or derived footprint.
 - Phase 4 Success: pilot transaction families derive deterministic footprints without dry-run.
@@ -198,21 +194,21 @@ Draft
   - Mitigation: allow conservative supersets initially, but track which derivation paths are conservative and prioritize exact derivation for high-volume flows.
 - Mixed-mode batches may confuse operators or hide which semantics applied.
   - Mitigation: add explicit classification and compatibility-path reason reporting in internal logs or diagnostics.
-- Dynamic BBGO transaction families may take longer to migrate than the core/shared seam.
+- Dynamic application transaction families may take longer to migrate than the core/shared seam.
   - Mitigation: keep compatibility mode explicit and list non-schedulable families in docs instead of forcing premature partial derivation.
 - HotStuff integration may stall if Plan 0005 does not expose a usable canonical body contract quickly enough.
-  - Mitigation: land Phase 1-4 in BBGO/local execution first and make the dependency explicit instead of blocking the whole effort.
+  - Mitigation: land Phase 1-4 in local application execution first and make the dependency explicit instead of blocking the whole effort.
 - Application-specific derivation logic may diverge from actual reducer behavior.
   - Mitigation: subset-based conformance checking is mandatory, and derivation bugs should fail fast in schedulable mode.
 
 ## Acceptance Criteria
 1. Core/shared code contains first-class `StateRef`, `ConflictFootprint`, deterministic derivation seam, and conformance helpers matching ADR-0020.
 2. The execution path can produce actual per-transaction footprints instead of only a batch-accumulated `AccessLog`.
-3. BBGO single-node admission can distinguish schedulable vs compatibility transactions and reject schedulable batches with internal conflict before execution.
+3. Local application admission can distinguish schedulable vs compatibility transactions and reject schedulable batches with internal conflict before execution.
 4. Schedulable execution validates `actualReads ⊆ declaredReads` and `actualWrites ⊆ declaredWrites`.
 5. At least one pilot transaction family derives deterministic footprints without dry-run, and dynamic discovery families are explicitly classified as compatibility-only.
 6. Ordering-independence, conformance failure, compatibility fallback, and schedulable conflict rejection are all locked by tests.
-7. Local rollout completion is achieved when Phases 1-4 are landed and the BBGO single-node path enforces ADR-0020 semantics at the current batch-to-block boundary.
+7. Local rollout completion is achieved when Phases 1-4 are landed and the current local application path enforces ADR-0020 semantics at the current batch-to-block boundary.
 8. Once Plan 0005 exposes canonical block-body support, HotStuff proposer/validator integration can enforce ADR-0020 conflict rules without changing the ADR-0019 header contract.
 
 ## Checklist
@@ -239,7 +235,7 @@ Draft
 - [ ] `TxExecution` or equivalent runtime record extended with actual footprint
 - [ ] regression tests prove no hidden batch-level log dependency remains
 
-### Phase 3: BBGO Single-Node Admission And Batch Planning
+### Phase 3: Local Application Admission And Batch Planning
 - [ ] schedulable vs compatibility batch planner added
 - [ ] schedulable conflict rejection integrated before reduction
 - [ ] compatibility-path routing integrated
