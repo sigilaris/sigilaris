@@ -627,11 +627,10 @@ final case class HotStuffNodeRuntime[F[_]: Sync](
         keyPair,
       ) match
         case Left(error) =>
-          Sync[F].raiseError[GossipEvent[HotStuffGossipArtifact]](
+          Sync[F].raiseError[GossipEvent[HotStuffGossipArtifact]]:
             new IllegalStateException(
               ss"${error.reason}:${error.detail.getOrElse("")}",
             )
-          )
         case Right(proposal) =>
           services.publisher.append(
             HotStuffGossipArtifact.ProposalArtifact(proposal),
@@ -653,11 +652,10 @@ final case class HotStuffNodeRuntime[F[_]: Sync](
         keyPair,
       ) match
         case Left(error) =>
-          Sync[F].raiseError[GossipEvent[HotStuffGossipArtifact]](
+          Sync[F].raiseError[GossipEvent[HotStuffGossipArtifact]]:
             new IllegalStateException(
               ss"${error.reason}:${error.detail.getOrElse("")}",
             )
-          )
         case Right(vote) =>
           services.publisher.append(
             HotStuffGossipArtifact.VoteArtifact(vote),
