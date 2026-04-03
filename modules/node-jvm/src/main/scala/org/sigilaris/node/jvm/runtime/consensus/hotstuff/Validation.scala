@@ -149,8 +149,8 @@ object HotStuffValidator:
         Some(proposal.window.chainId.value),
       )
       _ <- HotStuffValidationSupport.ensure(
-        // Genesis uses an explicit bootstrap QC baseline, so height 1 accepts
-        // only a height-1 justification while later heights must strictly advance.
+        // Genesis uses an explicit bootstrap QC baseline, so height 0 accepts
+        // only a height-0 justification while later heights must strictly advance.
         if proposal.window.height === HotStuffHeight.Genesis then
           proposal.justify.subject.window.height === HotStuffHeight.Genesis
         else proposal.justify.subject.window.height < proposal.window.height,

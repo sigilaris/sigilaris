@@ -132,7 +132,11 @@ opaque type HotStuffHeight = BigNat
 
 @SuppressWarnings(Array("org.wartremover.warts.Throw"))
 object HotStuffHeight:
-  val Genesis: HotStuffHeight = BigNat.One
+  val Genesis: HotStuffHeight = BigNat.Zero
+
+  def apply(
+      value: BigNat,
+  ): HotStuffHeight = value
 
   private def compareValues(
       left: HotStuffHeight,
@@ -140,26 +144,12 @@ object HotStuffHeight:
   ): Int =
     left.toBigNat.toBigInt.compare(right.toBigNat.toBigInt)
 
-  private def unsafeFromBigNat(
-      value: BigNat,
-  ): HotStuffHeight =
-    fromBigNat(value) match
-      case Right(height) => height
-      case Left(error)   => throw new IllegalArgumentException(error)
-
-  def fromBigNat(
-      value: BigNat,
-  ): Either[String, HotStuffHeight] =
-    value.toBigInt.signum match
-      case 0 => "height must be positive".asLeft[HotStuffHeight]
-      case _ => value.asRight[String]
-
   def fromLong(
       value: Long,
   ): Either[String, HotStuffHeight] =
     BigNat.fromBigInt(BigInt(value)) match
       case Left(error)   => error.asLeft[HotStuffHeight]
-      case Right(bignat) => fromBigNat(bignat)
+      case Right(bignat) => apply(bignat).asRight[String]
 
   def unsafeFromLong(
       value: Long,
@@ -175,13 +165,13 @@ object HotStuffHeight:
     def <=(other: HotStuffHeight): Boolean = compareValues(height, other) <= 0
     def >(other: HotStuffHeight): Boolean  = compareValues(height, other) > 0
     def >=(other: HotStuffHeight): Boolean = compareValues(height, other) >= 0
-    def next: HotStuffHeight = unsafeFromBigNat:
+    def next: HotStuffHeight = apply:
       BigNat.add(height.toBigNat, BigNat.One)
     def +(delta: Long): HotStuffHeight =
       if delta < 0L then
         throw new IllegalArgumentException("height delta must be non-negative")
       else
-        unsafeFromBigNat:
+        apply:
           BigNat.add(height.toBigNat, BigNat.unsafeFromLong(delta))
 
   given ByteEncoder[HotStuffHeight] = ByteEncoder[BigNat].contramap(_.toBigNat)
@@ -197,30 +187,22 @@ object HotStuffView:
   val Zero: HotStuffView = BigNat.Zero
   val One: HotStuffView  = BigNat.One
 
+  def apply(
+      value: BigNat,
+  ): HotStuffView = value
+
   private def compareValues(
       left: HotStuffView,
       right: HotStuffView,
   ): Int =
     left.toBigNat.toBigInt.compare(right.toBigNat.toBigInt)
 
-  private def unsafeFromBigNat(
-      value: BigNat,
-  ): HotStuffView =
-    fromBigNat(value) match
-      case Right(view) => view
-      case Left(error) => throw new IllegalArgumentException(error)
-
-  def fromBigNat(
-      value: BigNat,
-  ): Either[String, HotStuffView] =
-    value.asRight[String]
-
   def fromLong(
       value: Long,
   ): Either[String, HotStuffView] =
     BigNat.fromBigInt(BigInt(value)) match
       case Left(error)   => error.asLeft[HotStuffView]
-      case Right(bignat) => fromBigNat(bignat)
+      case Right(bignat) => apply(bignat).asRight[String]
 
   def unsafeFromLong(
       value: Long,
@@ -236,13 +218,13 @@ object HotStuffView:
     def <=(other: HotStuffView): Boolean = compareValues(view, other) <= 0
     def >(other: HotStuffView): Boolean  = compareValues(view, other) > 0
     def >=(other: HotStuffView): Boolean = compareValues(view, other) >= 0
-    def next: HotStuffView = unsafeFromBigNat:
+    def next: HotStuffView = apply:
       BigNat.add(view.toBigNat, BigNat.One)
     def +(delta: Long): HotStuffView =
       if delta < 0L then
         throw new IllegalArgumentException("view delta must be non-negative")
       else
-        unsafeFromBigNat:
+        apply:
           BigNat.add(view.toBigNat, BigNat.unsafeFromLong(delta))
 
   given ByteEncoder[HotStuffView] = ByteEncoder[BigNat].contramap(_.toBigNat)
