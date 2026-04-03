@@ -127,6 +127,12 @@ object HotStuffValidator:
             detail = Some(proposal.proposer.value),
           )
       _ <- HotStuffValidationSupport.ensure(
+        proposal.block.height.toBigNat === proposal.window.height.toBigNat,
+        "proposalBlockHeightMismatch",
+        Some:
+          ss"window=${proposal.window.height.render} block=${proposal.block.height.render}"
+      )
+      _ <- HotStuffValidationSupport.ensure(
         proposal.targetBlockId === Block.computeId(proposal.block),
         "targetBlockIdMismatch",
         Some(proposal.targetBlockId.toHexLower),

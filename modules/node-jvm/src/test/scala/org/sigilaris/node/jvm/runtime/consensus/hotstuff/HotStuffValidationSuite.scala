@@ -7,6 +7,7 @@ import scodec.bits.ByteVector
 
 import org.sigilaris.core.crypto.CryptoOps
 import org.sigilaris.core.datatype.UInt256
+import org.sigilaris.node.jvm.runtime.block.{BlockHeight, BlockTimestamp, BodyRoot, StateRoot}
 import org.sigilaris.node.jvm.runtime.gossip.{ChainId, CursorToken, GossipEvent, GossipTopic, StableArtifactId}
 
 final class HotStuffValidationSuite extends FunSuite:
@@ -273,7 +274,7 @@ final class HotStuffValidationSuite extends FunSuite:
     )
 
   test("quorum certificate validation rejects insufficient quorum and wrong target proposal id"):
-    val parentBlock = Block(parent = None, payloadHash = hex("11"))
+    val parentBlock = block(parent = None, height = 1L, rootHex = "11")
     val parentWindow = HotStuffWindow(chainId, 1L, 0L, validatorSet.hash)
     val parentProposalId = ProposalId(hex("99"))
     val subject = QuorumCertificateSubject(
@@ -298,7 +299,7 @@ final class HotStuffValidationSuite extends FunSuite:
     )
 
   test("quorum certificate validation rejects duplicate validator entries and unknown voters"):
-    val parentBlock = Block(parent = None, payloadHash = hex("41"))
+    val parentBlock = block(parent = None, height = 1L, rootHex = "41")
     val parentWindow = HotStuffWindow(chainId, 1L, 0L, validatorSet.hash)
     val parentProposalId = ProposalId(hex("42"))
     val subject = QuorumCertificateSubject(
@@ -336,7 +337,7 @@ final class HotStuffValidationSuite extends FunSuite:
     )
 
   test("qc assembly rejects votes signed by the wrong validator key"):
-    val parentBlock = Block(parent = None, payloadHash = hex("45"))
+    val parentBlock = block(parent = None, height = 1L, rootHex = "45")
     val parentWindow = HotStuffWindow(chainId, 1L, 0L, validatorSet.hash)
     val parentProposalId = ProposalId(hex("46"))
     val subject = QuorumCertificateSubject(
@@ -366,7 +367,7 @@ final class HotStuffValidationSuite extends FunSuite:
     )
 
   test("qc assembly rejects votes from a mismatched window"):
-    val parentBlock = Block(parent = None, payloadHash = hex("47"))
+    val parentBlock = block(parent = None, height = 1L, rootHex = "47")
     val subjectWindow = HotStuffWindow(chainId, 1L, 0L, validatorSet.hash)
     val subject = QuorumCertificateSubject(
       window = subjectWindow,
@@ -463,6 +464,22 @@ final class HotStuffValidationSuite extends FunSuite:
         )
         .toOption
         .get
+    val wrongHeightBlock =
+      proposal.block.copy(height = BlockHeight.unsafeFromLong(99L))
+    val wrongHeightProposal =
+      Proposal
+        .sign(
+          UnsignedProposal(
+            window = proposal.window,
+            proposer = proposal.proposer,
+            targetBlockId = Block.computeId(wrongHeightBlock),
+            block = wrongHeightBlock,
+            justify = proposal.justify,
+          ),
+          validatorKeys.head,
+        )
+        .toOption
+        .get
     val malformedBlock = proposal.block.copy(parent = None)
     val malformedJustification =
       Proposal
@@ -496,12 +513,16 @@ final class HotStuffValidationSuite extends FunSuite:
       Left("justifyHeightNotProgressing"),
     )
     assertEquals(
+      HotStuffValidator.validateProposal(wrongHeightProposal, validatorSet).left.map(_.reason),
+      Left("proposalBlockHeightMismatch"),
+    )
+    assertEquals(
       HotStuffValidator.validateProposal(malformedJustification, validatorSet).left.map(_.reason),
       Left("justifyBlockMismatch"),
     )
 
   test("qc assembly deduplicates repeated vote ids and produces a quorum certificate"):
-    val parentBlock = Block(parent = None, payloadHash = hex("21"))
+    val parentBlock = block(parent = None, height = 1L, rootHex = "21")
     val parentWindow = HotStuffWindow(chainId, 1L, 0L, validatorSet.hash)
     val parentProposalId = ProposalId(hex("77"))
     val subject = QuorumCertificateSubject(
@@ -518,7 +539,7 @@ final class HotStuffValidationSuite extends FunSuite:
     assertEquals(qc.map(_.votes.map(_.voter.value)), Right(Vector("validator-1", "validator-2", "validator-3")))
 
   test("proposal id is stable across QC vote ordering and exact duplicate votes"):
-    val parentBlock = Block(parent = None, payloadHash = hex("31"))
+    val parentBlock = block(parent = None, height = 1L, rootHex = "31")
     val parentWindow = HotStuffWindow(chainId, 1L, 0L, validatorSet.hash)
     val parentProposalId = ProposalId(hex("55"))
     val subject = QuorumCertificateSubject(
@@ -533,15 +554,15 @@ final class HotStuffValidationSuite extends FunSuite:
       QuorumCertificateAssembler.assemble(subject, Vector(voteA, voteB, voteC), validatorSet).toOption.get
     val shuffledQc =
       canonicalQc.copy(votes = Vector(voteC, voteA, voteB, voteA))
-    val block = Block(parent = Some(subject.blockId), payloadHash = hex("32"))
+    val proposalBlock = block(parent = Some(subject.blockId), height = 2L, rootHex = "32")
     val canonicalProposal =
       Proposal
         .sign(
           UnsignedProposal(
             window = HotStuffWindow(chainId, 2L, 1L, validatorSet.hash),
             proposer = validatorSet.members.head.id,
-            targetBlockId = Block.computeId(block),
-            block = block,
+            targetBlockId = Block.computeId(proposalBlock),
+            block = proposalBlock,
             justify = canonicalQc,
           ),
           validatorKeys.head,
@@ -613,7 +634,7 @@ final class HotStuffValidationSuite extends FunSuite:
         ),
         validatorSet,
       ).toOption.get
-    val genesisBlock = Block(parent = None, payloadHash = hex("63"))
+    val genesisBlock = block(parent = None, height = 0L, rootHex = "63")
     val proposal =
       Proposal
         .sign(
@@ -648,7 +669,7 @@ final class HotStuffValidationSuite extends FunSuite:
         ),
         validatorSet,
       ).toOption.get
-    val genesisBlock = Block(parent = None, payloadHash = hex("76"))
+    val genesisBlock = block(parent = None, height = 0L, rootHex = "76")
     val proposal =
       Proposal
         .sign(
@@ -683,7 +704,8 @@ final class HotStuffValidationSuite extends FunSuite:
         ),
         validatorSet,
       ).toOption.get
-    val invalidGenesisBlock = Block(parent = Some(boundarySubject.blockId), payloadHash = hex("79"))
+    val invalidGenesisBlock =
+      block(parent = Some(boundarySubject.blockId), height = 0L, rootHex = "79")
     val proposal =
       Proposal
         .sign(
@@ -721,7 +743,7 @@ final class HotStuffValidationSuite extends FunSuite:
         ),
         validatorSet,
       ).toOption.get
-    val genesisBlock = Block(parent = None, payloadHash = hex("73"))
+    val genesisBlock = block(parent = None, height = 0L, rootHex = "73")
     val proposal =
       Proposal
         .sign(
@@ -743,7 +765,7 @@ final class HotStuffValidationSuite extends FunSuite:
     )
 
   private def signedProposal(): Proposal =
-    val parentBlock = Block(parent = None, payloadHash = hex("01"))
+    val parentBlock = block(parent = None, height = 0L, rootHex = "01")
     val parentWindow = HotStuffWindow(chainId, 0L, 0L, validatorSet.hash)
     val parentProposalId = ProposalId(hex("10"))
     val subject = QuorumCertificateSubject(
@@ -763,14 +785,14 @@ final class HotStuffValidationSuite extends FunSuite:
       )
       .toOption
       .get
-    val block = Block(parent = Some(subject.blockId), payloadHash = hex("02"))
+    val proposalBlock = block(parent = Some(subject.blockId), height = 1L, rootHex = "02")
     Proposal
       .sign(
         UnsignedProposal(
           window = HotStuffWindow(chainId, 1L, 1L, validatorSet.hash),
           proposer = validatorSet.members.head.id,
-          targetBlockId = Block.computeId(block),
-          block = block,
+          targetBlockId = Block.computeId(proposalBlock),
+          block = proposalBlock,
           justify = justify,
         ),
         validatorKeys.head,
@@ -840,6 +862,32 @@ final class HotStuffValidationSuite extends FunSuite:
       value: String,
   ): UInt256 =
     UInt256.fromHex(value).toOption.get
+
+  private def block(
+      parent: Option[BlockId],
+      height: Long,
+      rootHex: String,
+  ): Block =
+    blockAt(
+      parent = parent,
+      height = height,
+      rootHex = rootHex,
+      timestampMillis = 1_712_345_678_000L,
+    )
+
+  private def blockAt(
+      parent: Option[BlockId],
+      height: Long,
+      rootHex: String,
+      timestampMillis: Long,
+  ): Block =
+    Block(
+      parent = parent,
+      height = BlockHeight.unsafeFromLong(height),
+      stateRoot = StateRoot(hex(rootHex)),
+      bodyRoot = BodyRoot(hex(rootHex)),
+      timestamp = BlockTimestamp.unsafeFromEpochMillis(timestampMillis),
+    )
 
   private def view(
       value: Long,

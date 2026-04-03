@@ -10,6 +10,7 @@ import scodec.bits.ByteVector
 
 import org.sigilaris.core.crypto.CryptoOps
 import org.sigilaris.core.datatype.UInt256
+import org.sigilaris.node.jvm.runtime.block.{BlockHeight, BlockTimestamp, BodyRoot, StateRoot}
 import org.sigilaris.node.jvm.runtime.gossip.*
 
 final class HotStuffRuntimeServiceSuite extends CatsEffectSuite:
@@ -79,7 +80,7 @@ final class HotStuffRuntimeServiceSuite extends CatsEffectSuite:
       runtime <- IO.fromEither(runtimeEither.leftMap(rejection => new IllegalArgumentException(rejection.reason)))
       emitted <- runtime.emitProposal(
         proposer = validatorSet.members(0).id,
-        block = Block(parent = Some(bootstrapQc().subject.blockId), payloadHash = hex("91")),
+        block = block(parent = Some(bootstrapQc().subject.blockId), height = 2L, rootHex = "91"),
         window = HotStuffWindow(chainId, 2L, 1L, validatorSet.hash),
         justify = bootstrapQc(),
         ts = startedAt,
@@ -222,6 +223,19 @@ final class HotStuffRuntimeServiceSuite extends CatsEffectSuite:
       value: String,
   ): UInt256 =
     UInt256.fromHex(value).toOption.get
+
+  private def block(
+      parent: Option[BlockId],
+      height: Long,
+      rootHex: String,
+  ): Block =
+    Block(
+      parent = parent,
+      height = BlockHeight.unsafeFromLong(height),
+      stateRoot = StateRoot(hex(rootHex)),
+      bodyRoot = BodyRoot(hex(rootHex)),
+      timestamp = BlockTimestamp.unsafeFromEpochMillis(startedAt.toEpochMilli),
+    )
 
   private final class RecordingPublisher private (ref: Ref[IO, Vector[GossipEvent[HotStuffGossipArtifact]]])
       extends HotStuffArtifactPublisher[IO]:

@@ -115,17 +115,6 @@ object ValidatorSet:
       case Right(validatorSet) => validatorSet
       case Left(error)         => throw new IllegalArgumentException(error.message)
 
-final case class Block(
-    parent: Option[BlockId],
-    payloadHash: UInt256,
-) derives ByteEncoder
-
-object Block:
-  def computeId(
-      block: Block,
-  ): BlockId =
-    BlockId(HotStuffCanonicalEncoding.hashEncoded(block))
-
 final case class QuorumCertificateSubject(
     window: HotStuffWindow,
     proposalId: ProposalId,

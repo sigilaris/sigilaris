@@ -12,6 +12,7 @@ import scodec.bits.ByteVector
 
 import org.sigilaris.core.crypto.CryptoOps
 import org.sigilaris.core.datatype.UInt256
+import org.sigilaris.node.jvm.runtime.block.{BlockHeight, BlockTimestamp, BodyRoot, StateRoot}
 import org.sigilaris.node.jvm.runtime.gossip.*
 import org.sigilaris.node.jvm.runtime.gossip.tx.{ControlBatchOutcome, TxGossipRuntime, TxGossipStateStore}
 
@@ -62,7 +63,7 @@ final class HotStuffGossipLoopbackSuite extends CatsEffectSuite:
       justify = bootstrapQc()
       proposalEvent <- a.consensus.emitProposal(
         proposer = validatorSet.members.head.id,
-        block = Block(parent = Some(justify.subject.blockId), payloadHash = hex("81")),
+        block = block(parent = Some(justify.subject.blockId), height = 2L, rootHex = "81"),
         window = HotStuffWindow(chainId, 2L, 1L, validatorSet.hash),
         justify = justify,
         ts = baseInstant,
@@ -137,7 +138,7 @@ final class HotStuffGossipLoopbackSuite extends CatsEffectSuite:
       justify = bootstrapQc()
       proposalEvent <- a.consensus.emitProposal(
         proposer = validatorSet.members.head.id,
-        block = Block(parent = Some(justify.subject.blockId), payloadHash = hex("82")),
+        block = block(parent = Some(justify.subject.blockId), height = 2L, rootHex = "82"),
         window = HotStuffWindow(chainId, 2L, 1L, validatorSet.hash),
         justify = justify,
         ts = baseInstant,
@@ -148,7 +149,7 @@ final class HotStuffGossipLoopbackSuite extends CatsEffectSuite:
       _ <- b.gossip.receiveEvents(sessionId, polled.toOption.get)
       emitAuditProposal <- b.consensus.emitProposal(
         proposer = validatorSet.members.head.id,
-        block = Block(parent = Some(justify.subject.blockId), payloadHash = hex("83")),
+        block = block(parent = Some(justify.subject.blockId), height = 3L, rootHex = "83"),
         window = HotStuffWindow(chainId, 3L, 2L, validatorSet.hash),
         justify = justify,
         ts = baseInstant.plusMillis(10),
@@ -184,7 +185,7 @@ final class HotStuffGossipLoopbackSuite extends CatsEffectSuite:
       justify = bootstrapQc()
       proposalEvent <- a.consensus.emitProposal(
         proposer = validatorSet.members.head.id,
-        block = Block(parent = Some(justify.subject.blockId), payloadHash = hex("89")),
+        block = block(parent = Some(justify.subject.blockId), height = 2L, rootHex = "89"),
         window = HotStuffWindow(chainId, 2L, 1L, validatorSet.hash),
         justify = justify,
         ts = baseInstant,
@@ -244,7 +245,7 @@ final class HotStuffGossipLoopbackSuite extends CatsEffectSuite:
       justify = bootstrapQc()
       proposalEvent <- a.consensus.emitProposal(
         proposer = validatorSet.members.head.id,
-        block = Block(parent = Some(justify.subject.blockId), payloadHash = hex("8a")),
+        block = block(parent = Some(justify.subject.blockId), height = 2L, rootHex = "8a"),
         window = HotStuffWindow(chainId, 2L, 1L, validatorSet.hash),
         justify = justify,
         ts = baseInstant,
@@ -288,7 +289,7 @@ final class HotStuffGossipLoopbackSuite extends CatsEffectSuite:
       justify = bootstrapQc()
       proposalEvent <- a.consensus.emitProposal(
         proposer = validatorSet.members.head.id,
-        block = Block(parent = Some(justify.subject.blockId), payloadHash = hex("8b")),
+        block = block(parent = Some(justify.subject.blockId), height = 2L, rootHex = "8b"),
         window = HotStuffWindow(chainId, 2L, 1L, validatorSet.hash),
         justify = justify,
         ts = baseInstant,
@@ -349,7 +350,7 @@ final class HotStuffGossipLoopbackSuite extends CatsEffectSuite:
       justify = bootstrapQc()
       proposalEvent <- a.consensus.emitProposal(
         proposer = validatorSet.members.head.id,
-        block = Block(parent = Some(justify.subject.blockId), payloadHash = hex("88")),
+        block = block(parent = Some(justify.subject.blockId), height = 2L, rootHex = "88"),
         window = HotStuffWindow(chainId, 2L, 1L, validatorSet.hash),
         justify = justify,
         ts = baseInstant,
@@ -415,7 +416,7 @@ final class HotStuffGossipLoopbackSuite extends CatsEffectSuite:
       oldEmit <- unwrapPolicy(oldRuntime)
         .flatMap(_.emitProposal(
           proposer = validatorId,
-          block = Block(parent = Some(justify.subject.blockId), payloadHash = hex("84")),
+          block = block(parent = Some(justify.subject.blockId), height = 2L, rootHex = "84"),
           window = HotStuffWindow(chainId, 2L, 1L, validatorSet.hash),
           justify = justify,
           ts = baseInstant,
@@ -423,7 +424,7 @@ final class HotStuffGossipLoopbackSuite extends CatsEffectSuite:
       newEmit <- unwrapPolicy(newRuntime)
         .flatMap(_.emitProposal(
           proposer = validatorId,
-          block = Block(parent = Some(justify.subject.blockId), payloadHash = hex("85")),
+          block = block(parent = Some(justify.subject.blockId), height = 2L, rootHex = "85"),
           window = HotStuffWindow(chainId, 2L, 1L, validatorSet.hash),
           justify = justify,
           ts = baseInstant.plusMillis(1),
@@ -452,7 +453,7 @@ final class HotStuffGossipLoopbackSuite extends CatsEffectSuite:
       justify = bootstrapQc()
       proposalEvent <- a.consensus.emitProposal(
         proposer = validatorSet.members.head.id,
-        block = Block(parent = Some(justify.subject.blockId), payloadHash = hex("86")),
+        block = block(parent = Some(justify.subject.blockId), height = 2L, rootHex = "86"),
         window = HotStuffWindow(chainId, 2L, 1L, validatorSet.hash),
         justify = justify,
         ts = baseInstant,
@@ -515,7 +516,7 @@ final class HotStuffGossipLoopbackSuite extends CatsEffectSuite:
       justify = bootstrapQc()
       proposalEvent <- a.consensus.emitProposal(
         proposer = validatorSet.members.head.id,
-        block = Block(parent = Some(justify.subject.blockId), payloadHash = hex("8c")),
+        block = block(parent = Some(justify.subject.blockId), height = 2L, rootHex = "8c"),
         window = HotStuffWindow(chainId, 2L, 1L, validatorSet.hash),
         justify = justify,
         ts = baseInstant,
@@ -636,7 +637,7 @@ final class HotStuffGossipLoopbackSuite extends CatsEffectSuite:
       justify = bootstrapQc()
       proposalEvent <- a.consensus.emitProposal(
         proposer = validatorSet.members.head.id,
-        block = Block(parent = Some(justify.subject.blockId), payloadHash = hex("8d")),
+        block = block(parent = Some(justify.subject.blockId), height = 2L, rootHex = "8d"),
         window = HotStuffWindow(chainId, 2L, 1L, validatorSet.hash),
         justify = justify,
         ts = baseInstant,
@@ -830,8 +831,8 @@ final class HotStuffGossipLoopbackSuite extends CatsEffectSuite:
             UnsignedProposal(
               window = HotStuffWindow(chainId, 2L, 1L, validatorSet.hash),
               proposer = validatorSet.members.head.id,
-              targetBlockId = Block.computeId(Block(parent = Some(justify.subject.blockId), payloadHash = hex("87"))),
-              block = Block(parent = Some(justify.subject.blockId), payloadHash = hex("87")),
+              targetBlockId = Block.computeId(block(parent = Some(justify.subject.blockId), height = 2L, rootHex = "87")),
+              block = block(parent = Some(justify.subject.blockId), height = 2L, rootHex = "87"),
               justify = justify,
             ),
             validatorKeys.head,
@@ -955,6 +956,19 @@ final class HotStuffGossipLoopbackSuite extends CatsEffectSuite:
       value: String,
   ): UInt256 =
     UInt256.fromHex(value).toOption.get
+
+  private def block(
+      parent: Option[BlockId],
+      height: Long,
+      rootHex: String,
+  ): Block =
+    Block(
+      parent = parent,
+      height = BlockHeight.unsafeFromLong(height),
+      stateRoot = StateRoot(hex(rootHex)),
+      bodyRoot = BodyRoot(hex(rootHex)),
+      timestamp = BlockTimestamp.unsafeFromEpochMillis(baseInstant.toEpochMilli),
+    )
 
   private def unwrapPolicy[A](
       result: Either[HotStuffPolicyViolation, A],

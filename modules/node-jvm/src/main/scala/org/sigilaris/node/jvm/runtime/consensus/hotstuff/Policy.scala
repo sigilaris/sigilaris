@@ -15,28 +15,6 @@ import org.sigilaris.node.jvm.runtime.gossip.{
   PeerIdentity,
 }
 
-opaque type BlockId = UInt256
-
-object BlockId:
-  private def renderHex(
-      value: UInt256,
-  ): String =
-    value.bytes.toHex
-
-  def apply(value: UInt256): BlockId = value
-
-  def fromHex(
-      value: String,
-  ): Either[String, BlockId] =
-    UInt256.fromHex(value).left.map(_.toString).map(apply)
-
-  extension (blockId: BlockId)
-    def toUInt256: UInt256 = blockId
-    def toHexLower: String = renderHex(blockId)
-
-  given ByteEncoder[BlockId] = ByteEncoder[UInt256].contramap(_.toUInt256)
-  given Eq[BlockId]          = Eq.by(_.toUInt256)
-
 opaque type ProposalId = UInt256
 
 object ProposalId:

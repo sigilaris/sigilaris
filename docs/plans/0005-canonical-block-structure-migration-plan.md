@@ -1,7 +1,7 @@
 # 0005 - Canonical Block Structure Migration Plan
 
 ## Status
-Phase 1 Complete; Phase 2-4 Pending
+Phase 2 Complete; Phase 3-4 Pending
 
 ## Created
 2026-04-03
@@ -196,11 +196,11 @@ Phase 1 Complete; Phase 2-4 Pending
 - [x] compile/test green bridge 상태 유지
 
 ### Phase 2: HotStuff Integration Migration
-- [ ] proposal/unsigned proposal block field migration
-- [ ] `targetBlockId == computeId(header)` contract 갱신
-- [ ] `window.height == header.height` validation 추가
-- [ ] genesis / justify-parent rule migration
-- [ ] gossip/request-by-id/replay regression 보정
+- [x] proposal/unsigned proposal block field migration
+- [x] `targetBlockId == computeId(header)` contract 갱신
+- [x] `window.height == header.height` validation 추가
+- [x] genesis / justify-parent rule migration
+- [x] gossip/request-by-id/replay regression 보정
 
 ### Phase 3: Body/View Surface And Storage/Query Seam
 - [ ] generic `BlockView` query surface 추가
