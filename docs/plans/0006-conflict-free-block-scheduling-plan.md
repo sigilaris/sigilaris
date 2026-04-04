@@ -235,9 +235,9 @@ Draft
 - [x] unit tests for verifier/conformance green
 
 ### Phase 2: Execution Seam Refactor For Per-Tx Actual Footprints
-- [ ] per-tx fresh-log execution seam implemented
-- [ ] `TxExecution` or equivalent runtime record extended with actual footprint
-- [ ] regression tests prove no hidden batch-level log dependency remains
+- [x] per-tx fresh-log execution seam implemented
+- [x] `TxExecution` or equivalent runtime record extended with actual footprint
+- [x] regression tests prove no hidden batch-level log dependency remains
 
 ### Phase 3: Local Application Admission And Batch Planning
 - [ ] schedulable vs compatibility batch planner added
