@@ -28,7 +28,9 @@ final case class HotStuffBootstrapConfig(
     holders: Vector[ValidatorKeyHolder],
     localKeys: Map[ValidatorId, KeyPair],
     gossipPolicy: HotStuffGossipPolicy = HotStuffGossipPolicy.default,
-)
+):
+  def bootstrapTrustRoot: BootstrapTrustRoot =
+    BootstrapTrustRoot.staticValidatorSet(validatorSet)
 
 object HotStuffBootstrapConfig:
   val DefaultPath: String = "sigilaris.node.consensus.hotstuff"

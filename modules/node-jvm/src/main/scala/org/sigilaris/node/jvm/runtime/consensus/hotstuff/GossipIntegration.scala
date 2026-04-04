@@ -606,7 +606,9 @@ final case class HotStuffRuntimeBootstrapInput(
     validatorSet: ValidatorSet,
     localKeys: Map[ValidatorId, KeyPair],
     gossipPolicy: HotStuffGossipPolicy = HotStuffGossipPolicy.default,
-)
+):
+  def bootstrapTrustRoot: BootstrapTrustRoot =
+    BootstrapTrustRoot.staticValidatorSet(validatorSet)
 
 /** Runtime-owned HotStuff service surface.
   *
@@ -620,6 +622,7 @@ final case class HotStuffRuntimeServices[F[_]](
     source: GossipArtifactSource[F, HotStuffGossipArtifact],
     sink: GossipArtifactSink[F, HotStuffGossipArtifact],
     topicContracts: GossipTopicContractRegistry[HotStuffGossipArtifact],
+    bootstrap: HotStuffBootstrapServices[F],
 )
 
 final case class HotStuffInMemoryRuntimeDiagnostics[F[_]](
@@ -644,6 +647,12 @@ final case class HotStuffNodeRuntime[F[_]: Sync](
   def localKeys: Map[ValidatorId, KeyPair] = bootstrapInput.localKeys
 
   def gossipPolicy: HotStuffGossipPolicy = bootstrapInput.gossipPolicy
+
+  def bootstrapTrustRoot: BootstrapTrustRoot =
+    bootstrapInput.bootstrapTrustRoot
+
+  def bootstrapServices: HotStuffBootstrapServices[F] =
+    services.bootstrap
 
   def source: GossipArtifactSource[F, HotStuffGossipArtifact] = services.source
 
@@ -879,6 +888,7 @@ object HotStuffNodeRuntime:
           source = source,
           sink = sink,
           topicContracts = HotStuffTopic.registry(gossipPolicy),
+          bootstrap = HotStuffBootstrapServices.static[F](validatorSet),
         )
       services -> diagnostics
 

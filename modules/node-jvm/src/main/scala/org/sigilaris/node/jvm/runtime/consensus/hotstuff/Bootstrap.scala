@@ -1,0 +1,246 @@
+package org.sigilaris.node.jvm.runtime.consensus.hotstuff
+
+import java.time.Instant
+
+import cats.Applicative
+import cats.syntax.all.*
+
+import org.sigilaris.core.merkle.MerkleTrieNode
+import org.sigilaris.node.jvm.runtime.block.{BlockHeight, BlockId, StateRoot}
+import org.sigilaris.node.jvm.runtime.gossip.{CanonicalRejection, ChainId, DirectionalSessionId, PeerIdentity}
+
+sealed trait BootstrapTrustRoot:
+  def validatorSet: ValidatorSet
+
+  final def validatorSetHash: ValidatorSetHash =
+    validatorSet.hash
+
+object BootstrapTrustRoot:
+  final case class StaticValidatorSet(
+      validatorSet: ValidatorSet,
+  ) extends BootstrapTrustRoot
+
+  def staticValidatorSet(
+      validatorSet: ValidatorSet,
+  ): BootstrapTrustRoot =
+    StaticValidatorSet(validatorSet)
+
+trait ValidatorSetLookup[F[_]]:
+  def trustRoot: BootstrapTrustRoot
+
+  def validatorSetFor(
+      window: HotStuffWindow,
+  ): F[Either[HotStuffValidationFailure, ValidatorSet]]
+
+object ValidatorSetLookup:
+  def static[F[_]: Applicative](
+      root: BootstrapTrustRoot,
+  ): ValidatorSetLookup[F] =
+    new ValidatorSetLookup[F]:
+      override val trustRoot: BootstrapTrustRoot = root
+
+      override def validatorSetFor(
+          window: HotStuffWindow,
+      ): F[Either[HotStuffValidationFailure, ValidatorSet]] =
+        Either
+          .cond(
+            window.validatorSetHash === trustRoot.validatorSetHash,
+            trustRoot.validatorSet,
+            HotStuffValidationFailure(
+              reason = "validatorSetUnavailable",
+              detail = Some(window.validatorSetHash.toHexLower),
+            ),
+          )
+          .pure[F]
+
+final case class FinalizedProof(
+    child: Proposal,
+    grandchild: Proposal,
+)
+
+final case class FinalizedAnchorSuggestion(
+    proposal: Proposal,
+    finalizedProof: FinalizedProof,
+):
+  def anchorBlockId: BlockId =
+    proposal.targetBlockId
+
+  def anchorHeight: BlockHeight =
+    proposal.block.height
+
+  def stateRoot: StateRoot =
+    proposal.block.stateRoot
+
+  def snapshotAnchor: SnapshotAnchor =
+    SnapshotAnchor(
+      proposalId = proposal.proposalId,
+      blockId = proposal.targetBlockId,
+      height = proposal.block.height,
+      stateRoot = proposal.block.stateRoot,
+    )
+
+final case class SnapshotAnchor(
+    proposalId: ProposalId,
+    blockId: BlockId,
+    height: BlockHeight,
+    stateRoot: StateRoot,
+)
+
+enum SnapshotStatus:
+  case Pending, Syncing, Complete, Failed
+
+final case class SnapshotMetadata(
+    anchor: SnapshotAnchor,
+    status: SnapshotStatus,
+    verifiedNodeCount: Long,
+    pendingNodeCount: Long,
+    lastUpdatedAt: Instant,
+)
+
+final case class SnapshotTrieNode(
+    hash: MerkleTrieNode.MerkleHash,
+    node: MerkleTrieNode,
+)
+
+final case class BootstrapSessionBinding(
+    peer: PeerIdentity,
+    sessionId: DirectionalSessionId,
+)
+
+trait FinalizedAnchorSuggestionService[F[_]]:
+  def bestFinalized(
+      session: BootstrapSessionBinding,
+      chainId: ChainId,
+  ): F[Either[CanonicalRejection, Option[FinalizedAnchorSuggestion]]]
+
+trait SnapshotNodeFetchService[F[_]]:
+  def fetchNodes(
+      session: BootstrapSessionBinding,
+      chainId: ChainId,
+      stateRoot: StateRoot,
+      hashes: Vector[MerkleTrieNode.MerkleHash],
+  ): F[Either[CanonicalRejection, Vector[SnapshotTrieNode]]]
+
+trait ProposalReplayService[F[_]]:
+  def readNext(
+      session: BootstrapSessionBinding,
+      chainId: ChainId,
+      anchorBlockId: BlockId,
+      nextHeight: BlockHeight,
+      limit: Int,
+  ): F[Either[CanonicalRejection, Vector[Proposal]]]
+
+trait HistoricalBackfillService[F[_]]:
+  def readPrevious(
+      session: BootstrapSessionBinding,
+      chainId: ChainId,
+      beforeBlockId: BlockId,
+      beforeHeight: BlockHeight,
+      limit: Int,
+  ): F[Either[CanonicalRejection, Vector[Proposal]]]
+
+enum BootstrapPhase:
+  case Discovery, SnapshotSync, ForwardCatchUp, Ready
+
+enum BootstrapVoteReadiness:
+  case Held(reason: String)
+  case Ready
+
+enum HistoricalBackfillStatus:
+  case Idle, Running, Paused, Completed
+  case Failed(reason: String)
+
+final case class BootstrapDiagnostics(
+    phase: BootstrapPhase,
+    selectedAnchor: Option[SnapshotAnchor],
+    pinnedAnchor: Option[SnapshotAnchor],
+    retryAttempts: Int,
+    nextRetryAt: Option[Instant],
+    lastFailure: Option[String],
+    voteReadiness: BootstrapVoteReadiness,
+    historicalBackfill: HistoricalBackfillStatus,
+)
+
+object BootstrapDiagnostics:
+  val empty: BootstrapDiagnostics =
+    BootstrapDiagnostics(
+      phase = BootstrapPhase.Discovery,
+      selectedAnchor = None,
+      pinnedAnchor = None,
+      retryAttempts = 0,
+      nextRetryAt = None,
+      lastFailure = None,
+      voteReadiness = BootstrapVoteReadiness.Held("bootstrapPending"),
+      historicalBackfill = HistoricalBackfillStatus.Idle,
+    )
+
+trait BootstrapDiagnosticsSource[F[_]]:
+  def current: F[BootstrapDiagnostics]
+
+object BootstrapDiagnosticsSource:
+  def const[F[_]: Applicative](
+      diagnostics: BootstrapDiagnostics,
+  ): BootstrapDiagnosticsSource[F] =
+    new BootstrapDiagnosticsSource[F]:
+      override def current: F[BootstrapDiagnostics] =
+        diagnostics.pure[F]
+
+final case class HotStuffBootstrapServices[F[_]](
+    trustRoot: BootstrapTrustRoot,
+    validatorSetLookup: ValidatorSetLookup[F],
+    finalizedAnchorSuggestions: FinalizedAnchorSuggestionService[F],
+    snapshotNodeFetch: SnapshotNodeFetchService[F],
+    proposalReplay: ProposalReplayService[F],
+    historicalBackfill: HistoricalBackfillService[F],
+    diagnostics: BootstrapDiagnosticsSource[F],
+)
+
+object HotStuffBootstrapServices:
+  def static[F[_]: Applicative](
+      validatorSet: ValidatorSet,
+  ): HotStuffBootstrapServices[F] =
+    val trustRoot = BootstrapTrustRoot.staticValidatorSet(validatorSet)
+    val lookup    = ValidatorSetLookup.static[F](trustRoot)
+    HotStuffBootstrapServices(
+      trustRoot = trustRoot,
+      validatorSetLookup = lookup,
+      finalizedAnchorSuggestions = new FinalizedAnchorSuggestionService[F]:
+        override def bestFinalized(
+            session: BootstrapSessionBinding,
+            chainId: ChainId,
+        ): F[Either[CanonicalRejection, Option[FinalizedAnchorSuggestion]]] =
+          Option.empty[FinalizedAnchorSuggestion]
+            .asRight[CanonicalRejection]
+            .pure[F]
+      ,
+      snapshotNodeFetch = new SnapshotNodeFetchService[F]:
+        override def fetchNodes(
+            session: BootstrapSessionBinding,
+            chainId: ChainId,
+            stateRoot: StateRoot,
+            hashes: Vector[MerkleTrieNode.MerkleHash],
+        ): F[Either[CanonicalRejection, Vector[SnapshotTrieNode]]] =
+          Vector.empty[SnapshotTrieNode].asRight[CanonicalRejection].pure[F]
+      ,
+      proposalReplay = new ProposalReplayService[F]:
+        override def readNext(
+            session: BootstrapSessionBinding,
+            chainId: ChainId,
+            anchorBlockId: BlockId,
+            nextHeight: BlockHeight,
+            limit: Int,
+        ): F[Either[CanonicalRejection, Vector[Proposal]]] =
+          Vector.empty[Proposal].asRight[CanonicalRejection].pure[F]
+      ,
+      historicalBackfill = new HistoricalBackfillService[F]:
+        override def readPrevious(
+            session: BootstrapSessionBinding,
+            chainId: ChainId,
+            beforeBlockId: BlockId,
+            beforeHeight: BlockHeight,
+            limit: Int,
+        ): F[Either[CanonicalRejection, Vector[Proposal]]] =
+          Vector.empty[Proposal].asRight[CanonicalRejection].pure[F]
+      ,
+      diagnostics = BootstrapDiagnosticsSource.const[F](BootstrapDiagnostics.empty),
+    )

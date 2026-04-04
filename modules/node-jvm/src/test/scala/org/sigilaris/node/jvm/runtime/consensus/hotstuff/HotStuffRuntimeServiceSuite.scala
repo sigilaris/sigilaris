@@ -59,6 +59,7 @@ final class HotStuffRuntimeServiceSuite extends CatsEffectSuite:
         source = source,
         sink = sink,
         topicContracts = HotStuffTopic.registry(),
+        bootstrap = HotStuffBootstrapServices.static[IO](validatorSet),
       )
 
     val input =
@@ -89,16 +90,23 @@ final class HotStuffRuntimeServiceSuite extends CatsEffectSuite:
       event <- IO.fromEither(emitted.leftMap(rejection => new IllegalStateException(rejection.reason)))
       published <- publisher.snapshot
       visibleFromSource <- runtime.source.readAfter(chainId, GossipTopic.consensusProposal, None)
+      lookup <- runtime.bootstrapServices.validatorSetLookup
+        .validatorSetFor(HotStuffWindow(chainId, 2L, 1L, validatorSet.hash))
+      diagnostics <- runtime.bootstrapServices.diagnostics.current
     yield
       assertEquals(runtime.bootstrapInput, input)
       assert(runtime.inMemorySink.isEmpty)
       assert(runtime.inMemorySource.isEmpty)
       assert(runtime.source eq source)
       assert(runtime.sink eq sink)
+      assertEquals(runtime.bootstrapTrustRoot.validatorSetHash, validatorSet.hash)
+      assertEquals(runtime.bootstrapServices.trustRoot.validatorSetHash, validatorSet.hash)
       assert(runtime.topicContracts.contractFor(GossipTopic.consensusProposal).isRight)
       assertEquals(event.topic, GossipTopic.consensusProposal)
       assertEquals(published.map(_.topic), Vector(GossipTopic.consensusProposal))
       assertEquals(visibleFromSource, Right(Vector.empty))
+      assertEquals(lookup.map(_.hash), Right(validatorSet.hash))
+      assertEquals(diagnostics.phase, BootstrapPhase.Discovery)
 
   test("fromServices rejects dual-active holders before constructing the runtime"):
     val dualActive = Vector(
@@ -129,6 +137,7 @@ final class HotStuffRuntimeServiceSuite extends CatsEffectSuite:
           ): IO[Either[CanonicalRejection.ArtifactContractRejected, ArtifactApplyResult]] =
             IO.pure(Right(ArtifactApplyResult(applied = true, duplicate = false))),
         topicContracts = HotStuffTopic.registry(),
+        bootstrap = HotStuffBootstrapServices.static[IO](validatorSet),
       )
 
     val runtime =
@@ -181,6 +190,8 @@ final class HotStuffRuntimeServiceSuite extends CatsEffectSuite:
       assertEquals(bootstrap.consensus.bootstrapInput.validatorSet.hash, validatorSet.hash)
       assertEquals(bootstrap.consensus.bootstrapInput.holders, holders)
       assertEquals(bootstrap.consensus.bootstrapInput.localKeys.keySet, config.localKeys.keySet)
+      assertEquals(bootstrap.consensus.bootstrapTrustRoot.validatorSetHash, validatorSet.hash)
+      assertEquals(bootstrap.consensus.bootstrapServices.trustRoot.validatorSetHash, validatorSet.hash)
       assert(bootstrap.consensus.topicContracts.contractFor(GossipTopic.consensusProposal).isRight)
       assert(bootstrap.consensus.topicContracts.contractFor(GossipTopic.consensusVote).isRight)
       assert(bootstrap.consensus.inMemorySource.nonEmpty)

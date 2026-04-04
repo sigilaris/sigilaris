@@ -176,12 +176,12 @@ Draft
 ## Checklist
 
 ### Phase 0: Contract Lock And Bootstrap Baseline
-- [ ] static-validator-set bootstrap trust root baseline 과 doc lock 확정
-- [ ] `ValidatorSetLookup` trait skeleton 추가
-- [ ] `BootstrapTrustRoot` / `FinalizedProof` / `FinalizedAnchorSuggestion` runtime model 추가
-- [ ] `SnapshotMetadata` / `BootstrapDiagnostics` runtime model 추가
-- [ ] bootstrap service trait skeleton 과 session binding contract 추가
-- [ ] readiness / vote-hold / background backfill baseline 과 Phase 1-2 병렬 경계 문서화
+- [x] static-validator-set bootstrap trust root baseline 과 doc lock 확정
+- [x] `ValidatorSetLookup` trait skeleton 추가
+- [x] `BootstrapTrustRoot` / `FinalizedProof` / `FinalizedAnchorSuggestion` runtime model 추가
+- [x] `SnapshotMetadata` / `BootstrapDiagnostics` runtime model 추가
+- [x] bootstrap service trait skeleton 과 session binding contract 추가
+- [x] readiness / vote-hold / background backfill baseline 과 Phase 1-2 병렬 경계 문서화
 
 ### Phase 1: Local Finalization Tracker And Anchor Suggestion
 - [ ] justify-chain finalization tracker 추가
