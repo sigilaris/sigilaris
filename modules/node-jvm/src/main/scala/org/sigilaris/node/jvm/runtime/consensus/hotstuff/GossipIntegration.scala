@@ -11,7 +11,7 @@ import org.sigilaris.core.codec.byte.ByteEncoder
 import org.sigilaris.core.codec.byte.ByteEncoder.ops.*
 import org.sigilaris.core.crypto.KeyPair
 import org.sigilaris.core.util.SafeStringInterp.*
-import org.sigilaris.node.jvm.runtime.block.BlockHeader
+import org.sigilaris.node.jvm.runtime.block.{BlockBody, BlockHeader, BlockHeight, BlockQuery, BlockRecord, BlockStore, BlockTimestamp, BlockView, StateRoot}
 import org.sigilaris.node.jvm.runtime.gossip.*
 
 enum HotStuffGossipArtifact:
@@ -387,6 +387,7 @@ final class InMemoryHotStuffArtifactSink[F[_]: Sync] private (
     validatorSet: ValidatorSet,
     relayPolicy: HotStuffRelayPolicy,
     relayPublisher: HotStuffArtifactPublisher[F],
+    proposalValidation: Proposal => F[Either[HotStuffValidationFailure, Unit]],
     ref: Ref[F, InMemoryHotStuffSinkSnapshot],
 ) extends GossipArtifactSink[F, HotStuffGossipArtifact]:
   private type RelayEnvelope = (HotStuffGossipArtifact, Instant)
@@ -399,25 +400,34 @@ final class InMemoryHotStuffArtifactSink[F[_]: Sync] private (
   ): F[
     Either[CanonicalRejection.ArtifactContractRejected, ArtifactApplyResult],
   ] =
-    ref
-      .modify: snapshot =>
-        event.payload match
-          case HotStuffGossipArtifact.ProposalArtifact(proposal) =>
-            if snapshot.proposals.contains(proposal.proposalId) then
-              snapshot.copy(duplicates = snapshot.duplicates :+ event) -> (
-                ArtifactApplyResult(applied = false, duplicate = true) -> Option
-                  .empty[RelayEnvelope]
-              ).asRight[CanonicalRejection.ArtifactContractRejected]
-            else
-              HotStuffValidator.validateProposal(proposal, validatorSet) match
-                case Left(error) =>
-                  snapshot -> CanonicalRejection
-                    .ArtifactContractRejected(
-                      reason = error.reason,
-                      detail = error.detail,
-                    )
-                    .asLeft[(ArtifactApplyResult, Option[RelayEnvelope])]
-                case Right(_) =>
+    event.payload match
+      case HotStuffGossipArtifact.ProposalArtifact(proposal) =>
+        applyProposalEvent(event, proposal)
+      case HotStuffGossipArtifact.VoteArtifact(vote) =>
+        applyVoteEvent(event, vote)
+
+  private def applyProposalEvent(
+      event: GossipEvent[HotStuffGossipArtifact],
+      proposal: Proposal,
+  ): F[
+    Either[CanonicalRejection.ArtifactContractRejected, ArtifactApplyResult],
+  ] =
+    HotStuffValidator.validateProposal(proposal, validatorSet) match
+      case Left(error) =>
+        artifactRejected(error).asLeft[ArtifactApplyResult].pure[F]
+      case Right(_) =>
+        proposalValidation(proposal).flatMap:
+          case Left(error) =>
+            artifactRejected(error).asLeft[ArtifactApplyResult].pure[F]
+          case Right(_) =>
+            ref
+              .modify: snapshot =>
+                if snapshot.proposals.contains(proposal.proposalId) then
+                  snapshot.copy(duplicates = snapshot.duplicates :+ event) -> (
+                    ArtifactApplyResult(applied = false, duplicate = true) -> Option
+                      .empty[RelayEnvelope]
+                  ).asRight[CanonicalRejection.ArtifactContractRejected]
+                else
                   val updatedProposals =
                     snapshot.proposals.updated(proposal.proposalId, proposal)
                   val updatedQcs =
@@ -452,75 +462,91 @@ final class InMemoryHotStuffArtifactSink[F[_]: Sync] private (
                       duplicate = false,
                     ) -> relayArtifact
                   ).asRight[CanonicalRejection.ArtifactContractRejected]
+              .flatMap(finalizeApply)
 
-          case HotStuffGossipArtifact.VoteArtifact(vote) =>
-            if snapshot.votes.contains(vote.voteId) then
-              snapshot.copy(duplicates = snapshot.duplicates :+ event) -> (
-                ArtifactApplyResult(applied = false, duplicate = true) -> Option
-                  .empty[RelayEnvelope]
-              ).asRight[CanonicalRejection.ArtifactContractRejected]
-            else
-              HotStuffValidator.validateVote(vote, validatorSet) match
+  private def applyVoteEvent(
+      event: GossipEvent[HotStuffGossipArtifact],
+      vote: Vote,
+  ): F[
+    Either[CanonicalRejection.ArtifactContractRejected, ArtifactApplyResult],
+  ] =
+    ref
+      .modify: snapshot =>
+        if snapshot.votes.contains(vote.voteId) then
+          snapshot.copy(duplicates = snapshot.duplicates :+ event) -> (
+            ArtifactApplyResult(applied = false, duplicate = true) -> Option
+              .empty[RelayEnvelope]
+          ).asRight[CanonicalRejection.ArtifactContractRejected]
+        else
+          HotStuffValidator.validateVote(vote, validatorSet) match
+            case Left(error) =>
+              snapshot -> artifactRejected(error)
+                .asLeft[(ArtifactApplyResult, Option[RelayEnvelope])]
+            case Right(_) =>
+              snapshot.accumulator.record(vote) match
                 case Left(error) =>
-                  snapshot -> CanonicalRejection
-                    .ArtifactContractRejected(
-                      reason = error.reason,
-                      detail = error.detail,
-                    )
+                  snapshot -> artifactRejected(error)
                     .asLeft[(ArtifactApplyResult, Option[RelayEnvelope])]
-                case Right(_) =>
-                  snapshot.accumulator.record(vote) match
-                    case Left(error) =>
-                      snapshot -> CanonicalRejection
-                        .ArtifactContractRejected(
-                          reason = error.reason,
-                          detail = error.detail,
-                        )
-                        .asLeft[(ArtifactApplyResult, Option[RelayEnvelope])]
-                    case Right((updatedAccumulator, _)) =>
-                      val updatedVotes =
-                        snapshot.votes.updated(vote.voteId, vote)
-                      val maybeProposal =
-                        snapshot.proposals.get(vote.targetProposalId)
-                      val maybeQc =
-                        maybeProposal.flatMap: proposal =>
-                          assembleQuorumCertificate(
-                            QuorumCertificateSubject(
-                              window = proposal.window,
-                              proposalId = proposal.proposalId,
-                              blockId = proposal.targetBlockId,
-                            ),
-                            updatedAccumulator
-                              .votesFor(proposal.window, proposal.proposalId),
-                          )
-                      val updatedQcs =
-                        maybeProposal
-                          .flatMap(_ => maybeQc)
-                          .fold(snapshot.qcs): qc =>
-                            snapshot.qcs.updated(qc.subject.proposalId, qc)
-                      val relayArtifact =
-                        if relayPolicy.relayValidatedArtifacts then
-                          Some(event.payload -> event.ts)
-                        else Option.empty[RelayEnvelope]
-                      snapshot.copy(
-                        votes = updatedVotes,
-                        accumulator = updatedAccumulator,
-                        qcs = updatedQcs,
-                      ) -> (
-                        ArtifactApplyResult(
-                          applied = true,
-                          duplicate = false,
-                        ) -> relayArtifact
-                      ).asRight[CanonicalRejection.ArtifactContractRejected]
-      .flatMap:
-        case Left(rejection) =>
-          rejection.asLeft[ArtifactApplyResult].pure[F]
-        case Right((result, maybeRelay)) =>
-          maybeRelay
-            .traverse_ { case (artifact, ts) =>
-              relayPublisher.append(artifact, ts).void
-            }
-            .as(result.asRight)
+                case Right((updatedAccumulator, _)) =>
+                  val updatedVotes =
+                    snapshot.votes.updated(vote.voteId, vote)
+                  val maybeProposal =
+                    snapshot.proposals.get(vote.targetProposalId)
+                  val maybeQc =
+                    maybeProposal.flatMap: proposal =>
+                      assembleQuorumCertificate(
+                        QuorumCertificateSubject(
+                          window = proposal.window,
+                          proposalId = proposal.proposalId,
+                          blockId = proposal.targetBlockId,
+                        ),
+                        updatedAccumulator
+                          .votesFor(proposal.window, proposal.proposalId),
+                      )
+                  val updatedQcs =
+                    maybeProposal
+                      .flatMap(_ => maybeQc)
+                      .fold(snapshot.qcs): qc =>
+                        snapshot.qcs.updated(qc.subject.proposalId, qc)
+                  val relayArtifact =
+                    if relayPolicy.relayValidatedArtifacts then
+                      Some(event.payload -> event.ts)
+                    else Option.empty[RelayEnvelope]
+                  snapshot.copy(
+                    votes = updatedVotes,
+                    accumulator = updatedAccumulator,
+                    qcs = updatedQcs,
+                  ) -> (
+                    ArtifactApplyResult(
+                      applied = true,
+                      duplicate = false,
+                    ) -> relayArtifact
+                  ).asRight[CanonicalRejection.ArtifactContractRejected]
+      .flatMap(finalizeApply)
+
+  private def finalizeApply(
+      stored: Either[
+        CanonicalRejection.ArtifactContractRejected,
+        (ArtifactApplyResult, Option[RelayEnvelope]),
+      ],
+  ): F[Either[CanonicalRejection.ArtifactContractRejected, ArtifactApplyResult]] =
+    stored match
+      case Left(rejection) =>
+        rejection.asLeft[ArtifactApplyResult].pure[F]
+      case Right((result, maybeRelay)) =>
+        maybeRelay
+          .traverse_ { case (artifact, ts) =>
+            relayPublisher.append(artifact, ts).void
+          }
+          .as(result.asRight)
+
+  private def artifactRejected(
+      error: HotStuffValidationFailure,
+  ): CanonicalRejection.ArtifactContractRejected =
+    CanonicalRejection.ArtifactContractRejected(
+      reason = error.reason,
+      detail = error.detail,
+    )
 
   private def assembleQuorumCertificate(
       subject: QuorumCertificateSubject,
@@ -546,6 +572,29 @@ object InMemoryHotStuffArtifactSink:
           validatorSet,
           relayPolicy,
           relayPublisher,
+          HotStuffRuntimeScheduling.allowAll[F],
+          _,
+        )
+
+  def createWithProposalValidation[F[_]: Sync, TxRef: ByteEncoder, ResultRef: ByteEncoder, Event: ByteEncoder](
+      validatorSet: ValidatorSet,
+      relayPolicy: HotStuffRelayPolicy,
+      relayPublisher: HotStuffArtifactPublisher[F],
+      blockQuery: BlockQuery[F, TxRef, ResultRef, Event],
+  )(
+      classifyTx: TxRef => org.sigilaris.core.application.scheduling.SchedulingClassification,
+  ): F[InMemoryHotStuffArtifactSink[F]] =
+    Ref
+      .of[F, InMemoryHotStuffSinkSnapshot](InMemoryHotStuffSinkSnapshot.empty)
+      .map:
+        new InMemoryHotStuffArtifactSink[F](
+          validatorSet,
+          relayPolicy,
+          relayPublisher,
+          HotStuffRuntimeScheduling.proposalValidationFromBlockQuery(
+            validatorSet = validatorSet,
+            blockQuery = blockQuery,
+          )(classifyTx),
           _,
         )
 
@@ -638,6 +687,75 @@ final case class HotStuffNodeRuntime[F[_]: Sync](
             ts,
           )
 
+  def emitProposalFromCandidates[TxRef: ByteEncoder, ResultRef: ByteEncoder, Event: ByteEncoder](
+      proposer: ValidatorId,
+      candidates: Iterable[BlockRecord[TxRef, ResultRef, Event]],
+      parent: Option[BlockId],
+      height: BlockHeight,
+      stateRoot: StateRoot,
+      timestamp: BlockTimestamp,
+      window: HotStuffWindow,
+      justify: QuorumCertificate,
+      ts: Instant,
+      blockStore: BlockStore[F, TxRef, ResultRef, Event],
+  )(
+      classifyTx: TxRef => org.sigilaris.core.application.scheduling.SchedulingClassification,
+  ): F[Either[
+    HotStuffRuntimeRejection,
+    HotStuffProposalEmission[TxRef, ResultRef, Event],
+  ]] =
+    val selection =
+      ConflictFreeBlockBodySelector.select(candidates)(classifyTx)
+    selection.toBody match
+      case Left(failure) =>
+        HotStuffRuntimeRejection.Validation(failure)
+          .asLeft[HotStuffProposalEmission[TxRef, ResultRef, Event]]
+          .pure[F]
+      case Right(body) =>
+        BlockBody.computeBodyRoot(body)
+          .leftMap(HotStuffRuntimeScheduling.fromBlockValidationFailure) match
+          case Left(failure) =>
+            HotStuffRuntimeRejection.Validation(failure)
+              .asLeft[HotStuffProposalEmission[TxRef, ResultRef, Event]]
+              .pure[F]
+          case Right(bodyRoot) =>
+            val view =
+              BlockView(
+                header = BlockHeader(
+                  parent = parent,
+                  height = height,
+                  stateRoot = stateRoot,
+                  bodyRoot = bodyRoot,
+                  timestamp = timestamp,
+                ),
+                body = body,
+              )
+            blockStore
+              .putView(view)
+              .leftMap(HotStuffRuntimeScheduling.fromBlockValidationFailure)
+              .value
+              .flatMap:
+                case Left(failure) =>
+                  HotStuffRuntimeRejection.Validation(failure)
+                    .asLeft[HotStuffProposalEmission[TxRef, ResultRef, Event]]
+                    .pure[F]
+                case Right(_) =>
+                  emitProposal(
+                    proposer = proposer,
+                    block = view.header,
+                    window = window,
+                    justify = justify,
+                    ts = ts,
+                  ).map(
+                    _.leftMap(HotStuffRuntimeRejection.Policy.apply).map:
+                      event =>
+                        HotStuffProposalEmission(
+                          selection = selection,
+                          view = view,
+                          event = event,
+                        )
+                  )
+
   def emitVote(
       voter: ValidatorId,
       proposal: Proposal,
@@ -662,6 +780,29 @@ final case class HotStuffNodeRuntime[F[_]: Sync](
             HotStuffGossipArtifact.VoteArtifact(vote),
             ts,
           )
+
+  def emitVoteForProposalView[TxRef: ByteEncoder, ResultRef: ByteEncoder, Event: ByteEncoder](
+      voter: ValidatorId,
+      proposal: Proposal,
+      ts: Instant,
+      blockQuery: BlockQuery[F, TxRef, ResultRef, Event],
+  )(
+      classifyTx: TxRef => org.sigilaris.core.application.scheduling.SchedulingClassification,
+  ): F[Either[HotStuffRuntimeRejection, GossipEvent[HotStuffGossipArtifact]]] =
+    HotStuffRuntimeScheduling
+      .validateProposalViewFromBlockQuery(
+        proposal = proposal,
+        validatorSet = validatorSet,
+        blockQuery = blockQuery,
+      )(classifyTx)
+      .flatMap:
+        case Left(failure) =>
+          HotStuffRuntimeRejection.Validation(failure)
+            .asLeft[GossipEvent[HotStuffGossipArtifact]]
+            .pure[F]
+        case Right(_) =>
+          emitVote(voter, proposal, ts)
+            .map(_.leftMap(HotStuffRuntimeRejection.Policy.apply))
 
   private def emitSigned(
       validatorId: ValidatorId,

@@ -1,7 +1,7 @@
 # 0006 - Conflict-Free Block Scheduling Plan
 
 ## Status
-Phase 6 Complete, Phase 7 Planned
+Phase 7 Complete
 
 ## Created
 2026-04-03
@@ -23,9 +23,9 @@ Phase 6 Complete, Phase 7 Planned
   - the current local batch admission/commit path still accepts same-batch causality structurally because later transactions run on top of earlier transactions' writes in sequence.
 - In the current local execution path, one accepted batch is reduced and committed as one block-shaped unit. The initial rollout in this plan therefore applies the future block-level conflict rule at the batch boundary as a local stand-in for future conflict-free block bodies.
 - The shipped HotStuff baseline in `sigilaris-node-jvm` now consumes the ADR-0019 canonical `BlockHeader` / `BlockBody` / `BlockView` contract. Full consensus-level enforcement of ADR-0020 therefore no longer waits on block-model readiness itself; it depends on integrating deterministic footprint derivation and validation against that landed body/query surface.
-- As of `2026-04-04`, the shared scheduling primitives, application-facing derivation helpers, and HotStuff body-level verification helpers are landed and regression-tested, but two concrete runtime wiring gaps remain:
-  - the current local application batch/commit path does not yet call `BatchPlanner` / `SchedulableBatchExecutor` end-to-end,
-  - the current HotStuff proposer/acceptance runtime still emits and validates header-only proposal artifacts through the existing header path; `ConflictFreeBlockBodySelector` / `HotStuffProposalViewValidator` exist as helper seams but are not yet wired into one concrete proposer/validator runtime flow.
+- As of `2026-04-04`, Phase 7 is now landed:
+  - the current local application batch runtime owns schedulable-vs-compatibility execution, duplicate/idempotency handling, and runtime-visible diagnostics through one concrete batch boundary,
+  - the current HotStuff runtime owns one concrete body-visible seam via runtime-side `BlockStore` / `BlockQuery` hydration keyed by `proposal.targetBlockId`, so proposer selection, proposal acceptance, and vote gating can consume `ConflictFreeBlockBodySelector` / `HotStuffProposalViewValidator` without widening the ADR-0019 header artifact.
 - The current application layer contains a mix of transaction families:
   - some can be made schedulable from explicit references already present in the transaction,
   - some still rely on dynamic discovery such as prefix scan, automatic input selection, or open-ended balance search and therefore cannot participate in the schedulable path yet.
@@ -309,15 +309,18 @@ Phase 6 Complete, Phase 7 Planned
 - [x] follow-up items for remaining compatibility families documented
 
 ### Phase 7: End-To-End Runtime Wiring
-- [ ] local batch-path owner for schedulable vs compatibility execution identified and wired
-- [ ] `BatchPlanner` integrated into the concrete local batch admission path
-- [ ] `SchedulableBatchExecutor` integrated into the concrete schedulable execution path
-- [ ] explicit compatibility-mode runtime path integrated with existing duplicate/idempotency/receipt behavior preserved
-- [ ] runtime-visible diagnostics for `Schedulable` vs `Compatibility(reason)` added
-- [ ] concrete HotStuff body carriage/fetch/lookup seam decided and documented
-- [ ] proposer-side `classifyTx` injection wired into concrete block-body assembly
-- [ ] body-visible validator acceptance / vote-gating wired to `HotStuffProposalViewValidator` or equivalent
-- [ ] end-to-end local-runtime and HotStuff-runtime regression suite green
+- Landed runtime seam:
+  - local application batches now flow through `CurrentApplicationBatchRuntime`,
+  - HotStuff body visibility now hydrates a `BlockView` from runtime-owned `BlockStore` / `BlockQuery` by `proposal.targetBlockId`, preserving the header-only `Proposal` contract.
+- [x] local batch-path owner for schedulable vs compatibility execution identified and wired
+- [x] `BatchPlanner` integrated into the concrete local batch admission path
+- [x] `SchedulableBatchExecutor` integrated into the concrete schedulable execution path
+- [x] explicit compatibility-mode runtime path integrated with existing duplicate/idempotency/receipt behavior preserved
+- [x] runtime-visible diagnostics for `Schedulable` vs `Compatibility(reason)` added
+- [x] concrete HotStuff body carriage/fetch/lookup seam decided and documented
+- [x] proposer-side `classifyTx` injection wired into concrete block-body assembly
+- [x] body-visible validator acceptance / vote-gating wired to `HotStuffProposalViewValidator` or equivalent
+- [x] end-to-end local-runtime and HotStuff-runtime regression suite green
 
 ## Follow-Ups
 - Introduce explicit object-centric transaction shapes for families that cannot become schedulable with the current table-key model.
