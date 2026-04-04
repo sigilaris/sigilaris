@@ -9,7 +9,7 @@ import scodec.bits.ByteVector
 
 import org.sigilaris.core.codec.byte.ByteEncoder
 import org.sigilaris.core.codec.byte.ByteEncoder.ops.*
-import org.sigilaris.core.crypto.KeyPair
+import org.sigilaris.core.crypto.{Hash, KeyPair}
 import org.sigilaris.core.util.SafeStringInterp.*
 import org.sigilaris.node.jvm.runtime.block.{BlockBody, BlockHeader, BlockHeight, BlockQuery, BlockRecord, BlockStore, BlockTimestamp, BlockView, StateRoot}
 import org.sigilaris.node.jvm.runtime.gossip.*
@@ -576,7 +576,7 @@ object InMemoryHotStuffArtifactSink:
           _,
         )
 
-  def createWithProposalValidation[F[_]: Sync, TxRef: ByteEncoder, ResultRef: ByteEncoder, Event: ByteEncoder](
+  def createWithProposalValidation[F[_]: Sync, TxRef: ByteEncoder: Hash, ResultRef: ByteEncoder, Event: ByteEncoder](
       validatorSet: ValidatorSet,
       relayPolicy: HotStuffRelayPolicy,
       relayPublisher: HotStuffArtifactPublisher[F],
@@ -661,6 +661,7 @@ final case class HotStuffNodeRuntime[F[_]: Sync](
   def emitProposal(
       proposer: ValidatorId,
       block: BlockHeader,
+      txSet: ProposalTxSet,
       window: HotStuffWindow,
       justify: QuorumCertificate,
       ts: Instant,
@@ -672,6 +673,7 @@ final case class HotStuffNodeRuntime[F[_]: Sync](
           proposer = proposer,
           targetBlockId = BlockHeader.computeId(block),
           block = block,
+          txSet = txSet,
           justify = justify,
         ),
         keyPair,
@@ -687,7 +689,7 @@ final case class HotStuffNodeRuntime[F[_]: Sync](
             ts,
           )
 
-  def emitProposalFromCandidates[TxRef: ByteEncoder, ResultRef: ByteEncoder, Event: ByteEncoder](
+  def emitProposalFromCandidates[TxRef: ByteEncoder: Hash, ResultRef: ByteEncoder, Event: ByteEncoder](
       proposer: ValidatorId,
       candidates: Iterable[BlockRecord[TxRef, ResultRef, Event]],
       parent: Option[BlockId],
@@ -740,9 +742,14 @@ final case class HotStuffNodeRuntime[F[_]: Sync](
                     .asLeft[HotStuffProposalEmission[TxRef, ResultRef, Event]]
                     .pure[F]
                 case Right(_) =>
+                  val proposalTxSet =
+                    ProposalTxSet.fromTxs(
+                      view.body.records.toVector.map(_.tx),
+                    )
                   emitProposal(
                     proposer = proposer,
                     block = view.header,
+                    txSet = proposalTxSet,
                     window = window,
                     justify = justify,
                     ts = ts,
@@ -781,7 +788,7 @@ final case class HotStuffNodeRuntime[F[_]: Sync](
             ts,
           )
 
-  def emitVoteForProposalView[TxRef: ByteEncoder, ResultRef: ByteEncoder, Event: ByteEncoder](
+  def emitVoteForProposalView[TxRef: ByteEncoder: Hash, ResultRef: ByteEncoder, Event: ByteEncoder](
       voter: ValidatorId,
       proposal: Proposal,
       ts: Instant,
