@@ -15,7 +15,7 @@ Accepted
 - Current and likely future applications may contain flows that discover touched state dynamically during execution, for example prefix scans, automatic input selection, or open-ended balance search. Those flows make pre-execution conflict checks difficult because the exact touched-key set is not known from transaction bytes alone.
 - A full Sui-style object runtime could make same-block conflict detection easier, but rewriting the entire Sigilaris storage and execution stack around first-class objects immediately would be a large migration. The near-term need is a scheduling and validation contract that works with the current trie/KV execution core while creating a clean seam for more object-centric applications.
 - As of `2026-04-04`, the local rollout has landed per-tx footprint witnesses, batch-level schedulable vs compatibility planning, and deterministic footprint derivation for the currently shipped account/group transaction surface.
-- As of `2026-04-04`, the HotStuff baseline still keeps proposals header-only, but the canonical `BlockBody` / `BlockView` contract from ADR-0019 is now paired with proposer-side conflict-free body selection and body-visible validator helpers that re-check schedulability from block-body transactions without widening the header contract.
+- As of `2026-04-04`, the HotStuff baseline keeps proposals header-first and tx-hash-set-carrying, but still does not require full block-body carriage in the proposal artifact. The canonical `BlockBody` / `BlockView` contract from ADR-0019 is now paired with proposer-side conflict-free body selection and body-visible validator helpers that re-check schedulability from block-body transactions without widening the header contract.
 
 ## Decision
 1. **Sigilaris introduces `StateRef` and `ConflictFootprint` as the canonical scheduling contract for transaction conflict analysis.**
@@ -80,7 +80,7 @@ Accepted
    - Proposal/block acceptance must reject a block whose transaction footprints overlap under the baseline conflict rule.
    - Pairwise `O(N^2)` comparison is not required. A validator may verify the block body in one pass by maintaining aggregate read/write sets and checking each transaction against the current aggregates before unioning its footprint into them.
    - Execution validation must also reject a transaction whose actual `AccessLog` exceeds its declared/derived footprint.
-   - In the current HotStuff baseline, proposal artifacts remain header-only. Body-aware validation therefore attaches at call sites that also hold canonical `BlockView` access, using helpers equivalent to proposer-side body selection plus `HotStuffProposalViewValidator`.
+   - In the current HotStuff baseline, proposal artifacts remain header-first and do not carry full block bodies. Body-aware validation therefore attaches at call sites that also hold canonical `BlockView` access, using helpers equivalent to proposer-side body selection plus `HotStuffProposalViewValidator`.
 
 9. **Current compile-time `Reads` / `Writes` remain in place as schema capability declarations and are not replaced by `ConflictFootprint`.**
    - `Reads` / `Writes` still describe which tables a reducer may legally access.

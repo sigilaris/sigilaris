@@ -62,6 +62,7 @@ Phase 4 Complete
 - "같은 tx 가 한 block 에 두 번 들어가면 안 된다" 같은 rule 이 필요하면 그것은 `recordHash` 가 아니라 application-owned tx identity 또는 ADR-0020 conflict-free scheduling rule 이 소유한다.
 - `BlockView`/`BlockBody` public surface는 `TxRef`, `ResultRef`, `Event` generic parameter를 사용한다. consensus runtime은 이 concrete 타입을 알 필요가 없다.
 - HotStuff proposal path는 header-first contract를 따른다. proposal identity/sign-bytes는 `BlockId`를 commit 하고, full `BlockView` mandatory carriage는 baseline requirement로 두지 않는다.
+- proposal은 full body 대신 canonical tx hash set을 함께 운반할 수 있다. 이는 body 전체를 wire에 싣지 않고도 validator가 missing tx payload를 `tx` topic anti-entropy로 요청할 수 있게 하는 minimum availability seam 이다.
 - initial migration 동안 `proposal.window.height`와 `BlockHeader.height`는 둘 다 유지할 수 있지만, validation은 equality를 mandatory 로 강제해야 한다.
 - `proposal.window.height == header.height`의 canonical enforcement point는 proposal validation path다. relay/vote/QC assembly는 이 validation을 통과한 proposal만 대상으로 한다.
 - proposer는 proposal 시점에 final `stateRoot`를 이미 알고 있어야 한다. placeholder `stateRoot`를 넣고 같은 header를 later rewrite 하는 flow는 허용하지 않는다.
@@ -106,7 +107,7 @@ Phase 4 Complete
 - `BlockHeight`, `StateRoot`, `BodyRoot`, `BlockTimestamp`의 value type / encoding contract를 확정한다.
 - `BlockRecordHash` 표현, canonical serialization rule, duplicate `recordHash` reject rule, runtime collection dedup 과 canonical uniqueness 검사의 분리 contract를 확정한다.
 - 기존 minimal `Block`에서 새 contract로 가는 compatibility bridge(`payloadHash -> bodyRoot`)의 허용 범위를 문서화한다.
-- proposal header-only baseline과 body-lazy-fetch baseline을 명시한다.
+- proposal header-first + tx-hash-set baseline과 body-lazy-fetch baseline을 명시한다.
 - persisted `BlockId` migration gate는 "no shipped persisted compatibility surface, so explicit reset/no-compat allowed" baseline으로 잠근다.
 
 ### Phase 1: Core Block Model And Encoding

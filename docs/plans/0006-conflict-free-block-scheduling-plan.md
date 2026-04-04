@@ -184,7 +184,7 @@ Phase 7 Complete
 - Make block acceptance or vote emission reject bodies that violate the ADR-0020 conflict rule.
 - Keep footprint metadata out of the canonical block header in line with ADR-0019; derive from body transactions instead.
 - Ensure proposal/validation code paths stay application-neutral except for application-owned derivation seams intentionally plugged into block-body verification.
-- The landed helper seam for the current header-only proposal artifact is:
+- The landed helper seam for the current header-first, tx-hash-set-carrying proposal artifact is:
   - `ConflictFreeBlockBodySelector` for proposer-side candidate filtering,
   - `HotStuffBlockBodyVerifier` for canonical body/view verification,
   - `HotStuffProposalViewValidator` for body-visible proposal acceptance or vote-gating call sites.
@@ -206,7 +206,7 @@ Phase 7 Complete
 - Route `BatchPlan.Compatibility` through an explicit compatibility-mode sequential execution path while preserving the existing duplicate detection, batch idempotency, and receipt/diagnostic behavior at the concrete runtime boundary.
 - If the current node/runtime still lacks one concrete owner for local application batch execution, establish that ownership boundary explicitly in this phase instead of leaving the scheduling helpers library-only.
 - Surface runtime-visible diagnostics for `Schedulable` vs `Compatibility(reason)` so mixed and non-schedulable fallbacks are observable in the concrete batch path.
-- Decide the concrete body carriage, fetch, or local lookup seam required for body-visible HotStuff proposal acceptance and vote gating while keeping the canonical `Proposal` artifact header-only unless a minimal runtime-side extension is unavoidable.
+- Decide the concrete body carriage, fetch, or local lookup seam required for body-visible HotStuff proposal acceptance and vote gating while keeping the canonical `Proposal` artifact header-first and lighter than full body carriage unless a minimal runtime-side extension is unavoidable.
 - Wire application-owned `classifyTx` injection into the real proposer assembly path so conflict-free block-body selection is exercised by the runtime rather than only by helper tests.
 - Wire body-visible proposal acceptance / vote-gating call sites to `HotStuffProposalViewValidator` or an equivalent wrapper so proposals with conflicting or compatibility-only bodies are rejected before acceptance or vote emission in the real runtime path.
 - Keep the ADR-0019 header contract unchanged unless Phase 7 proves that a minimal documented side-channel or lookup seam is required for body availability.
@@ -229,7 +229,7 @@ Phase 7 Complete
 - Phase 7 Success: the concrete local batch runtime reports whether a batch executed in schedulable or compatibility mode and surfaces `Compatibility(reason)` for fallback cases.
 - Phase 7 Success: the concrete HotStuff proposer runtime emits only body selections that pass application-owned schedulability classification and one-pass conflict checks.
 - Phase 7 Failure: the concrete HotStuff proposal acceptance/vote path rejects a body-visible proposal whose body contains a compatibility transaction or scheduling conflict, not only the helper-level validator.
-- Phase 7 Regression: existing HotStuff proposal/vote/QC identity, request-by-id, exact known-set, and header-only artifact assumptions remain green after body-visible runtime wiring.
+- Phase 7 Regression: existing HotStuff proposal/vote/QC identity, request-by-id, exact known-set, and header-first artifact assumptions remain green after body-visible runtime wiring.
 
 ## Risks And Mitigations
 - The execution seam may accidentally continue accumulating access logs across transactions and make per-tx witness data unusable.

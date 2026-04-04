@@ -40,6 +40,7 @@ Accepted
 
 5. **proposal과 vote는 gossip envelope가 아니라 canonical whole-value deterministic encoding에 서명한다.**
    - proposal sign-bytes는 최소한 `chainId`, `height`, `view`, proposer identity, `validatorSetHash`, target `BlockId`, justify QC subject를 semantic input으로 포함해야 한다.
+   - proposal이 full body를 직접 운반하지 않는 baseline에서도, proposal이 해당 block의 transaction membership를 canonical tx hash set으로 commit 한다면 그 tx hash set 역시 proposal sign-bytes와 identity input에 포함되어야 한다.
    - vote sign-bytes는 최소한 `chainId`, `height`, `view`, voter identity, `validatorSetHash`, target `ProposalId`를 semantic input으로 포함해야 한다.
    - chained HotStuff baseline에서는 steady-state vote type을 하나로 둔다. 따라서 baseline vote identity는 별도 `phase` field 없이도 canonical하게 정의할 수 있다.
    - 후속 variant가 proposal당 여러 vote phase를 도입하면, 그때는 `phase` discriminator가 vote identity와 sign-bytes에 mandatory input으로 추가되어야 한다.
@@ -63,6 +64,7 @@ Accepted
    - proposal exact known-set sync는 `(chainId, height, view, validatorSetHash)` window 안의 `ProposalId` 집합 기준으로 수행한다.
    - vote exact known-set sync는 같은 window 안의 `VoteId` 집합 기준으로 수행한다.
    - bounded explicit fetch가 필요하면 ADR-0016의 `requestById` control op를 사용해 missing `ProposalId` 또는 `VoteId`를 요청할 수 있다.
+   - proposal이 canonical tx hash set만 운반하고 full tx payload를 직접 싣지 않는 경우, receiver는 그 tx id set을 기준으로 별도 `tx` topic의 `requestById.tx` control op를 사용해 missing tx payload를 요청할 수 있다.
    - initial baseline request cap 은 proposal `128`, vote `512`, same window retry budget `2`회다.
 
 9. **QC dissemination baseline은 self-contained justification을 선호한다.**
@@ -115,6 +117,7 @@ Accepted
 
 ## Follow-Up
 - HotStuff proposal/vote/QC runtime, concrete bootstrap/service seam, audit relay, dependency boundary test는 landed baseline이고, 후속 구현 계획은 `docs/plans/0004-hotstuff-consensus-without-threshold-signatures-plan.md`에서 pacemaker/timeouts/new-view 잔여 작업 위주로 관리한다.
+- `2026-04-04` 기준 shipped baseline proposal artifact는 ADR-0019 header-first contract를 유지하면서 canonical tx hash set을 함께 운반한다.
 - canonical block header/body contract와 application-neutral block view follow-up은 ADR-0019와 `docs/plans/0005-canonical-block-structure-migration-plan.md`가 소유한다.
 - timeout vote, timeout certificate, new-view wire contract, pacemaker policy는 별도 ADR 또는 follow-up section에서 구체화한다.
 - canonical deterministic encoding의 exact byte layout과 signer identity canonicalization rule은 implementation 전에 protocol spec 또는 추가 ADR로 고정한다.

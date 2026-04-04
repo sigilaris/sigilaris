@@ -5,7 +5,7 @@ Accepted
 
 ## Context
 - `2026-04-03` 기준 `sigilaris-node-jvm` 의 HotStuff 도메인 `Block`은 `parent + payloadHash`만 담는 최소형 artifact다.
-- 현재 baseline에서 consensus metadata(`chainId`, `height`, `view`, `validatorSetHash`)는 `HotStuffWindow`와 `Proposal`이 소유하고, `BlockId`는 minimal `Block` whole-value hash로 계산된다.
+- 현재 baseline에서 consensus metadata(`chainId`, `height`, `view`, `validatorSetHash`)와 proposal-level tx membership hash set은 `HotStuffWindow`와 `Proposal`이 소유하고, `BlockId`는 minimal `Block` whole-value hash로 계산된다.
 - 이 구조는 proposal/vote/QC identity를 고정하는 데는 충분하지만, canonical block header contract, post-state commitment, block timestamp, generic block query surface를 제공하지 않는다.
 - state snapshot sync, block explorer/query, execution 결과 추적, body/header 분리 저장 같은 후속 기능은 `parent + payloadHash`만으로는 stable contract를 갖기 어렵다.
 - ADR-0020은 same-block conflict-free selection을 ordering-independent membership 규칙으로 고정했다. 따라서 canonical block body contract는 proposer-local insertion order와 독립적인 body membership semantics를 가질 수 있어야 하며, 동시에 deterministic commitment와 query projection은 유지해야 한다.
@@ -88,6 +88,7 @@ final case class BlockView[TxRef, ResultRef, Event](
 
 7. **consensus proposal contract는 header-first baseline을 따른다.**
    - proposal identity/sign-bytes가 commit 하는 block target은 `BlockId`다.
+   - proposal은 full `BlockView` 대신 canonical tx hash set을 함께 운반할 수 있다. 이 tx hash set은 block body 전체를 대체하지 않지만, receiver가 missing tx payload를 별도 `tx` topic anti-entropy로 요청할 수 있게 하는 minimum availability seam 이다.
    - proposal이 full `BlockView`를 항상 wire payload로 운반해야 한다는 requirement는 두지 않는다.
    - body dissemination, body fetch, storage layout은 header contract 위에서 별도 seam으로 발전시킨다.
 
@@ -151,6 +152,7 @@ final case class BlockView[TxRef, ResultRef, Event](
 ## Follow-Up
 - concrete migration 단계와 test gate는 `docs/plans/0005-canonical-block-structure-migration-plan.md`가 소유한다.
 - `2026-04-04` 기준 canonical `BlockHeader` / `BlockBody` / `BlockView` model, HotStuff header-first integration, `runtime.block.BlockStore` query/storage seam, local `bodyRoot` re-verification baseline은 landed 상태다.
+- `2026-04-04` 기준 shipped HotStuff baseline proposal artifact는 full body 대신 canonical tx hash set을 함께 운반한다.
 - `bodyRoot`를 여러 sub-root로 세분화할 필요가 생기면 후속 ADR에서 supersede 또는 extend 한다.
 - unordered member-set baseline이 insufficient 하거나 multiset semantics가 필요해지면 후속 ADR에서 supersede 또는 extend 한다.
 - remote body fetch, state snapshot transport, proof-serving, execution/result persistence format은 별도 ADR 또는 plan으로 분리한다.
