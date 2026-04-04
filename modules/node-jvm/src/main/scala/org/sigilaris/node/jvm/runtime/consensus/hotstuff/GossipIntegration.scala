@@ -247,6 +247,7 @@ final case class InMemoryHotStuffSinkSnapshot(
     votes: Map[VoteId, Vote],
     accumulator: VoteAccumulator,
     qcs: Map[ProposalId, QuorumCertificate],
+    finalization: Map[ChainId, FinalizationTrackerSnapshot],
     duplicates: Vector[GossipEvent[HotStuffGossipArtifact]],
 )
 
@@ -257,6 +258,7 @@ object InMemoryHotStuffSinkSnapshot:
       votes = Map.empty[VoteId, Vote],
       accumulator = VoteAccumulator.empty,
       qcs = Map.empty[ProposalId, QuorumCertificate],
+      finalization = Map.empty[ChainId, FinalizationTrackerSnapshot],
       duplicates = Vector.empty[GossipEvent[HotStuffGossipArtifact]],
     )
 
@@ -453,9 +455,11 @@ final class InMemoryHotStuffArtifactSink[F[_]: Sync] private (
                     if relayPolicy.relayValidatedArtifacts then
                       Some(event.payload -> event.ts)
                     else Option.empty[RelayEnvelope]
-                  snapshot.copy(
-                    proposals = updatedProposals,
-                    qcs = finalQcs,
+                  withFinalization(
+                    snapshot.copy(
+                      proposals = updatedProposals,
+                      qcs = finalQcs,
+                    ),
                   ) -> (
                     ArtifactApplyResult(
                       applied = true,
@@ -512,6 +516,9 @@ final class InMemoryHotStuffArtifactSink[F[_]: Sync] private (
                     if relayPolicy.relayValidatedArtifacts then
                       Some(event.payload -> event.ts)
                     else Option.empty[RelayEnvelope]
+                  // Finalization currently derives only from stored proposal
+                  // justify chains, so vote-only updates intentionally retain
+                  // the last computed finalization snapshot.
                   snapshot.copy(
                     votes = updatedVotes,
                     accumulator = updatedAccumulator,
@@ -555,6 +562,15 @@ final class InMemoryHotStuffArtifactSink[F[_]: Sync] private (
     QuorumCertificateAssembler
       .assemble(subject, votes, validatorSet)
       .toOption
+
+  private def withFinalization(
+      snapshot: InMemoryHotStuffSinkSnapshot,
+  ): InMemoryHotStuffSinkSnapshot =
+    snapshot.copy(
+      finalization = HotStuffFinalizationTracker.trackAll(
+        snapshot.proposals.values,
+      ),
+    )
 
   def snapshot: F[InMemoryHotStuffSinkSnapshot] =
     ref.get
@@ -888,7 +904,7 @@ object HotStuffNodeRuntime:
           source = source,
           sink = sink,
           topicContracts = HotStuffTopic.registry(gossipPolicy),
-          bootstrap = HotStuffBootstrapServices.static[F](validatorSet),
+          bootstrap = HotStuffBootstrapServicesRuntime.inMemory[F](validatorSet, sink),
         )
       services -> diagnostics
 

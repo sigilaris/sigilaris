@@ -184,11 +184,11 @@ Draft
 - [x] readiness / vote-hold / background backfill baseline 과 Phase 1-2 병렬 경계 문서화
 
 ### Phase 1: Local Finalization Tracker And Anchor Suggestion
-- [ ] justify-chain finalization tracker 추가
-- [ ] best finalized anchor query/service 추가
-- [ ] trust-root-based finalized suggestion verifier 추가
-- [ ] conflicting finalized suggestion safety-fault path 추가
-- [ ] HotStuff in-memory diagnostics / snapshots 에 finalized anchor visibility 추가
+- [x] justify-chain finalization tracker 추가
+- [x] best finalized anchor query/service 추가
+- [x] trust-root-based finalized suggestion verifier 추가
+- [x] conflicting finalized suggestion safety-fault path 추가
+- [x] HotStuff in-memory diagnostics / snapshots 에 finalized anchor visibility 추가
 
 ### Phase 2: Snapshot Store And Trie Fetch Runtime
 - [ ] snapshot metadata store abstraction 추가

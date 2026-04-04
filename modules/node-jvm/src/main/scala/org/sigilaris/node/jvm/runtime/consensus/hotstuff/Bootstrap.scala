@@ -73,6 +73,7 @@ final case class FinalizedAnchorSuggestion(
 
   def snapshotAnchor: SnapshotAnchor =
     SnapshotAnchor(
+      chainId = proposal.window.chainId,
       proposalId = proposal.proposalId,
       blockId = proposal.targetBlockId,
       height = proposal.block.height,
@@ -80,6 +81,7 @@ final case class FinalizedAnchorSuggestion(
     )
 
 final case class SnapshotAnchor(
+    chainId: ChainId,
     proposalId: ProposalId,
     blockId: BlockId,
     height: BlockHeight,
@@ -150,14 +152,20 @@ enum HistoricalBackfillStatus:
   case Idle, Running, Paused, Completed
   case Failed(reason: String)
 
-final case class BootstrapDiagnostics(
-    phase: BootstrapPhase,
+final case class BootstrapChainDiagnostics(
+    bestFinalized: Option[SnapshotAnchor],
     selectedAnchor: Option[SnapshotAnchor],
     pinnedAnchor: Option[SnapshotAnchor],
+    voteReadiness: BootstrapVoteReadiness,
+    finalizationSafetyFaults: Vector[FinalizedAnchorSafetyFault],
+)
+
+final case class BootstrapDiagnostics(
+    phase: BootstrapPhase,
+    chains: Map[ChainId, BootstrapChainDiagnostics],
     retryAttempts: Int,
     nextRetryAt: Option[Instant],
     lastFailure: Option[String],
-    voteReadiness: BootstrapVoteReadiness,
     historicalBackfill: HistoricalBackfillStatus,
 )
 
@@ -165,12 +173,10 @@ object BootstrapDiagnostics:
   val empty: BootstrapDiagnostics =
     BootstrapDiagnostics(
       phase = BootstrapPhase.Discovery,
-      selectedAnchor = None,
-      pinnedAnchor = None,
+      chains = Map.empty[ChainId, BootstrapChainDiagnostics],
       retryAttempts = 0,
       nextRetryAt = None,
       lastFailure = None,
-      voteReadiness = BootstrapVoteReadiness.Held("bootstrapPending"),
       historicalBackfill = HistoricalBackfillStatus.Idle,
     )
 

@@ -77,7 +77,7 @@ final class HotStuffBootstrapContractsSuite extends CatsEffectSuite:
       assertEquals(nodes, Right(Vector.empty))
       assertEquals(replay, Right(Vector.empty))
       assertEquals(backfill, Right(Vector.empty))
-      assertEquals(diagnostics.voteReadiness, BootstrapVoteReadiness.Held("bootstrapPending"))
+      assertEquals(diagnostics.chains, Map.empty)
       assertEquals(diagnostics.historicalBackfill, HistoricalBackfillStatus.Idle)
 
   private def hex(
