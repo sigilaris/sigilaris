@@ -175,6 +175,10 @@ Draft
 - Make block acceptance or vote emission reject bodies that violate the ADR-0020 conflict rule.
 - Keep footprint metadata out of the canonical block header in line with ADR-0019; derive from body transactions instead.
 - Ensure proposal/validation code paths stay application-neutral except for application-owned derivation seams intentionally plugged into block-body verification.
+- The landed helper seam for the current header-only proposal artifact is:
+  - `ConflictFreeBlockBodySelector` for proposer-side candidate filtering,
+  - `HotStuffBlockBodyVerifier` for canonical body/view verification,
+  - `HotStuffProposalViewValidator` for body-visible proposal acceptance or vote-gating call sites.
 
 ### Phase 6: Verification, Docs, And Tightening
 - Add regression tests covering ordering independence of the aggregate-set verifier.
@@ -258,10 +262,10 @@ Draft
 - [x] migration notes for dynamic-scan families written
 
 ### Phase 5: HotStuff Proposer And Validator Integration
-- [ ] proposer-side conflict-free selection integrated against the landed Plan 0005 body contract
-- [ ] validator-side one-pass body verification integrated
-- [ ] block rejection/vote gating for conflicting bodies added
-- [ ] HotStuff regression suite green
+- [x] proposer-side conflict-free selection integrated against the landed Plan 0005 body contract
+- [x] validator-side one-pass body verification integrated
+- [x] block rejection/vote gating for conflicting bodies added
+- [x] HotStuff regression suite green
 
 ### Phase 6: Verification, Docs, And Tightening
 - [ ] ordering-independence regression tests green
