@@ -179,6 +179,7 @@ Phase 6 Complete
   - `ConflictFreeBlockBodySelector` for proposer-side candidate filtering,
   - `HotStuffBlockBodyVerifier` for canonical body/view verification,
   - `HotStuffProposalViewValidator` for body-visible proposal acceptance or vote-gating call sites.
+- The remaining integration decision point is how application-owned `classifyTx` injection gets wired into the concrete proposer assembly path and the body-visible validator vote-gating/acceptance path without collapsing the current application-neutral HotStuff boundary.
 
 ### Phase 6: Verification, Docs, And Tightening
 - Add regression tests covering ordering independence of the aggregate-set verifier.
@@ -280,5 +281,6 @@ Phase 6 Complete
 ## Follow-Ups
 - Introduce explicit object-centric transaction shapes for families that cannot become schedulable with the current table-key model.
 - Revisit whether compatibility-mode batches should remain accepted long-term or be phased out after application migration.
+- Decide the concrete runtime injection seam for application-owned `classifyTx` callbacks now that the shared/local/HotStuff helpers are landed but not yet wired into one end-to-end proposer runtime path.
 - If HotStuff needs body-level footprint caching or receipt projection for operational reasons, document it in a follow-up ADR or plan without widening the ADR-0019 header contract.
 - If exact deterministic derivation proves too expensive for some families, evaluate whether a limited on-wire footprint field is worth introducing as an application-level extension.
