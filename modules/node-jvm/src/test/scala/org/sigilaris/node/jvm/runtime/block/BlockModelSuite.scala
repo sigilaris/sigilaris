@@ -52,6 +52,21 @@ final class BlockModelSuite extends FunSuite:
       BlockBody.bodyRootPreImage(bodyB),
     )
 
+  test("all record permutations collapse to the same canonical body root"):
+    val records = Vector(
+      blockRecord("tx-a", Some("result-a"), Vector("event-1")),
+      blockRecord("tx-b", Some("result-b"), Vector("event-2")),
+      blockRecord("tx-c", Some("result-c"), Vector("event-3")),
+    )
+
+    val roots =
+      records.permutations
+        .map(permutation => BlockBody.computeBodyRoot(BlockBody(permutation.toSet)))
+        .toVector
+
+    assertEquals(roots.distinct.size, 1)
+    assert(roots.forall(_.isRight))
+
   test("canonical body serialization follows record-hash lexicographic ordering"):
     val recordA = blockRecord("tx-a", Some("result-a"), Vector("event-a"))
     val recordB = blockRecord("tx-b", Some("result-b"), Vector("event-b"))
@@ -170,6 +185,35 @@ final class BlockModelSuite extends FunSuite:
     assertNotEquals(
       BlockHeader.computeId(baseline),
       BlockHeader.computeId(differentTimestamp),
+    )
+
+  test("block id stays tied to the header even when block views carry different bodies"):
+    val canonicalBody =
+      blockBody(
+        blockRecord("tx-a", Some("result-a"), Vector("event-a")),
+      )
+    val differentBody =
+      blockBody(
+        blockRecord("tx-b", Some("result-b"), Vector("event-b")),
+      )
+    val header =
+      blockHeader(BlockBody.computeBodyRoot(canonicalBody).toOption.get)
+    val canonicalView =
+      BlockView(header = header, body = canonicalBody)
+    val differentView =
+      BlockView(header = header, body = differentBody)
+
+    assertEquals(
+      BlockView.validate(canonicalView),
+      Right(()),
+    )
+    assertEquals(
+      BlockView.validate(differentView).left.map(_.reason),
+      Left("bodyRootMismatch"),
+    )
+    assertEquals(
+      BlockHeader.computeId(canonicalView.header),
+      BlockHeader.computeId(differentView.header),
     )
 
   test("header id, record hash, and body root stay pinned to golden vectors"):
