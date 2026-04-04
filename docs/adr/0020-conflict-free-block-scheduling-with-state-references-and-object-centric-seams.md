@@ -39,10 +39,13 @@ Draft
 
 4. **Only transactions with explicit pre-execution conflict footprints are eligible for conflict-free block scheduling.**
    - The baseline acquisition path is an application-owned deterministic footprint derivation function over signed transaction bytes plus the explicit state/object references already named in the transaction.
+   - The initial core/shared implementation owns the generic scheduling primitives under `org.sigilaris.core.application.scheduling`, while application modules plug in transaction-family-specific derivation at that seam.
    - Sigilaris does not use proposer-local dry-run as the primary baseline mechanism for obtaining schedulable footprints.
    - Duplicating the full `ConflictFootprint` as a separate mandatory on-wire transaction field is also not the baseline; that remains an optional future or application-specific extension if the wire and signing trade-offs are worth it.
    - A transaction's `ConflictFootprint` may be exact or a conservative deterministic superset, but in either case it must be derivable before block construction.
    - If deterministic derivation fails, the transaction is not eligible for the schedulable conflict-free path. An implementation may either reject it at admission or route it to an explicit non-schedulable compatibility path, but it must not silently treat it as schedulable.
+   - The initial developer-visible classification surface is `Schedulable(footprint)` vs `Compatibility(reason)`.
+   - If a batch mixes schedulable and compatibility transactions, the initial rollout routes the whole batch to compatibility mode instead of partially selecting only the schedulable subset.
    - Transactions that require open-ended prefix scans, automatic coin/input selection, implicit balance search, or other dynamic state discovery are not schedulable under this baseline until they are normalized into explicit state references.
    - "Normalize" here means that the transaction must name the concrete state/object references it may read or write before the proposer attempts same-block conflict analysis.
 
@@ -128,6 +131,7 @@ Draft
 ## Follow-Up
 - Introduce core datatypes and helper APIs for `StateRef` and `ConflictFootprint` in the application/runtime layer.
 - Introduce an application-owned deterministic `FootprintDeriver` seam for signed transactions, and make "schedulable" admission depend on successful derivation.
+- Land the first deriver rollout for the currently shipped account/group transaction families whose touched keys are already explicit in the transaction body.
 - Add proposer-side block selection logic that admits only conflict-free transaction sets under the rule in this ADR.
 - Add validator-side block-body conflict checks before proposal acceptance/vote emission.
 - Add execution-time conformance checks that compare actual `AccessLog` against the transaction's declared or derived footprint.

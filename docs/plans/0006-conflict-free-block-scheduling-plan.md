@@ -62,14 +62,18 @@ Draft
 ## Decisions To Lock Before Implementation
 - `StateRef` baseline representation follows ADR-0020: canonical bytes, with table-key baseline equal to `tablePrefix ++ encodedKey`.
 - `ConflictFootprint` baseline is two concrete `StateRef` sets: `reads` and `writes`.
+- Core/shared ownership for scheduling primitives is `org.sigilaris.core.application.scheduling`; low-level key logging remains in `org.sigilaris.core.application.state`, and Phase 5 block-body verification helpers may live in `org.sigilaris.node.jvm.runtime.consensus.hotstuff` while still consuming the shared scheduling types.
 - The baseline scheduling acquisition path is an application-owned deterministic `FootprintDeriver` over signed transaction bytes plus explicit referenced state/object ids already present in the transaction.
 - If deterministic derivation fails, the transaction is not schedulable. The initial rollout will route it to an explicit compatibility path rather than silently treating it as schedulable.
 - The initial rollout keeps compatibility-path execution sequential. It does not attempt mixed-mode scheduling inside one conflict-free block body.
+- The initial developer-visible classification model is `Schedulable(footprint)` vs `Compatibility(reason)`.
+- Mixed batches fall back to the explicit compatibility path; the initial rollout does not admit only the schedulable subset from a mixed candidate batch.
 - The execution seam must capture actual footprint per transaction, not only a batch-accumulated `AccessLog`.
 - Conformance baseline is subset-based: `actualReads ⊆ declaredReads` and `actualWrites ⊆ declaredWrites`.
 - One-pass aggregate-set verification is the baseline implementation strategy for both proposer-side selection and validator-side body checks; pairwise `O(N^2)` comparison is not required.
 - Full HotStuff proposal/validator enforcement builds on the landed ADR-0019 / Plan 0005 canonical block body or equivalent deterministic transaction projection.
 - Initial schedulable pilot families should prioritize transactions whose touched state can be derived exactly from explicit ids already present in the transaction, and defer dynamic scan / auto-selection families to compatibility mode.
+- For the currently shipped application surface, the initial pilot schedulable families are the existing account and group transactions whose touched keys are explicit in transaction fields: `CreateNamedAccount`, `UpdateAccount`, `AddKeyIds`, `RemoveKeyIds`, `RemoveAccount`, `CreateGroup`, `DisbandGroup`, `AddAccounts`, `RemoveAccounts`, and `ReplaceCoordinator`.
 - Plan completion is split into two landing levels:
   - local rollout completion: Phases 1-4 landed in application/local execution,
   - full consensus rollout completion: Phase 5 landed on top of the Plan 0005 body contract.
@@ -214,11 +218,11 @@ Draft
 ## Checklist
 
 ### Phase 0: Contract Lock And Rollout Shape
-- [ ] package ownership for scheduling types/helpers decided
-- [ ] initial `Schedulable` vs `Compatibility` classification contract decided
-- [ ] derivation-failure routing decided
-- [ ] mixed-batch compatibility rule decided
-- [ ] pilot schedulable transaction families listed
+- [x] package ownership for scheduling types/helpers decided
+- [x] initial `Schedulable` vs `Compatibility` classification contract decided
+- [x] derivation-failure routing decided
+- [x] mixed-batch compatibility rule decided
+- [x] pilot schedulable transaction families listed
 - [x] dependency on landed Plan 0005 block-body contract documented
 
 ### Phase 1: Core Scheduling And Conformance Primitives
