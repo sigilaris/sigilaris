@@ -282,6 +282,25 @@ object BootstrapCoordinator:
       proposalReplay: ProposalReplayService[F],
       readiness: ProposalCatchUpReadiness[F],
   ): F[BootstrapCoordinator[F]] =
+    createWithBackfill(
+      retryPolicy = retryPolicy,
+      validatorSetLookup = validatorSetLookup,
+      finalizedAnchorSuggestions = finalizedAnchorSuggestions,
+      snapshotCoordinator = snapshotCoordinator,
+      proposalReplay = proposalReplay,
+      readiness = readiness,
+      historicalBackfill = HistoricalBackfillWorker.disabled[F],
+    )
+
+  def createWithBackfill[F[_]: Sync](
+      retryPolicy: BootstrapRetryPolicy,
+      validatorSetLookup: ValidatorSetLookup[F],
+      finalizedAnchorSuggestions: FinalizedAnchorSuggestionService[F],
+      snapshotCoordinator: SnapshotCoordinator[F],
+      proposalReplay: ProposalReplayService[F],
+      readiness: ProposalCatchUpReadiness[F],
+      historicalBackfill: HistoricalBackfillWorker[F],
+  ): F[BootstrapCoordinator[F]] =
     Ref
       .of[F, BootstrapCoordinatorState](BootstrapCoordinatorState.empty)
       .map: stateRef =>
@@ -292,6 +311,7 @@ object BootstrapCoordinator:
           snapshotCoordinator = snapshotCoordinator,
           proposalReplay = proposalReplay,
           readiness = readiness,
+          historicalBackfill = historicalBackfill,
           ref = stateRef,
         )
 
@@ -340,11 +360,12 @@ private final class InMemoryBootstrapCoordinator[F[_]: Sync](
     snapshotCoordinator: SnapshotCoordinator[F],
     proposalReplay: ProposalReplayService[F],
     readiness: ProposalCatchUpReadiness[F],
+    historicalBackfill: HistoricalBackfillWorker[F],
     ref: Ref[F, BootstrapCoordinatorState],
 ) extends BootstrapCoordinator[F]:
 
   override def current: F[BootstrapDiagnostics] =
-    ref.get.map(renderDiagnostics)
+    (ref.get, historicalBackfill.current).mapN(renderDiagnostics)
 
   override def discover(
       chainId: ChainId,
@@ -450,13 +471,20 @@ private final class InMemoryBootstrapCoordinator[F[_]: Sync](
                         chainId = chainId,
                         phase = phase,
                         voteReadiness = forward.voteReadiness,
-                      ) *> current.map: diagnostics =>
-                        BootstrapCoordinatorResult(
-                          anchor = anchor,
-                          snapshot = snapshotResult,
-                          forwardCatchUp = forward,
-                          diagnostics = diagnostics,
-                        ).asRight[BootstrapCoordinatorFailure]
+                      ) *>
+                        historicalBackfill.start(
+                          chainId = chainId,
+                          sessions = sessions,
+                          anchor = anchor.snapshotAnchor,
+                          now = startedAt,
+                        ) *>
+                        current.map: diagnostics =>
+                          BootstrapCoordinatorResult(
+                            anchor = anchor,
+                            snapshot = snapshotResult,
+                            forwardCatchUp = forward,
+                            diagnostics = diagnostics,
+                          ).asRight[BootstrapCoordinatorFailure]
 
   private def fetchVerified(
       chainId: ChainId,
@@ -628,6 +656,7 @@ private final class InMemoryBootstrapCoordinator[F[_]: Sync](
 
   private def renderDiagnostics(
       state: BootstrapCoordinatorState,
+      historicalBackfillStatus: HistoricalBackfillStatus,
   ): BootstrapDiagnostics =
     BootstrapDiagnostics(
       phase = state.phase,
@@ -643,5 +672,5 @@ private final class InMemoryBootstrapCoordinator[F[_]: Sync](
       retryAttempts = state.retryAttempts,
       nextRetryAt = state.nextRetryAt,
       lastFailure = state.lastFailure,
-      historicalBackfill = HistoricalBackfillStatus.Idle,
+      historicalBackfill = historicalBackfillStatus,
     )

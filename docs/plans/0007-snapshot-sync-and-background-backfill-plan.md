@@ -209,9 +209,9 @@ Draft
 - [x] bootstrap diagnostics 추가
 
 ### Phase 4: Background Historical Backfill
-- [ ] genesis 방향 historical backfill worker 추가
-- [ ] live catch-up 과 background backfill 우선순위 분리 추가
-- [ ] pause/resume / progress / terminal condition diagnostics 추가
+- [x] genesis 방향 historical backfill worker 추가
+- [x] live catch-up 과 background backfill 우선순위 분리 추가
+- [x] pause/resume / progress / terminal condition diagnostics 추가
 
 ### Phase 5: Verification And Docs
 - [ ] unit / integration / regression test green

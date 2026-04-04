@@ -148,9 +148,37 @@ enum BootstrapVoteReadiness:
   case Held(reason: String)
   case Ready
 
+enum HistoricalBackfillPriority:
+  case Background
+
+final case class HistoricalBackfillProgress(
+    anchor: SnapshotAnchor,
+    nextBeforeBlockId: BlockId,
+    nextBeforeHeight: BlockHeight,
+    fetchedProposalCount: Long,
+    lastUpdatedAt: Instant,
+)
+
 enum HistoricalBackfillStatus:
-  case Idle, Running, Paused, Completed
-  case Failed(reason: String)
+  case Idle
+  case Running(
+      progress: HistoricalBackfillProgress,
+      priority: HistoricalBackfillPriority,
+  )
+  case Paused(
+      reason: String,
+      progress: HistoricalBackfillProgress,
+      priority: HistoricalBackfillPriority,
+  )
+  case Completed(
+      reason: String,
+      progress: HistoricalBackfillProgress,
+  )
+  case Failed(
+      reason: String,
+      detail: Option[String],
+      progress: HistoricalBackfillProgress,
+  )
 
 final case class BootstrapChainDiagnostics(
     bestFinalized: Option[SnapshotAnchor],

@@ -1,0 +1,376 @@
+package org.sigilaris.node.jvm.runtime.consensus.hotstuff
+
+import java.time.{Duration, Instant}
+
+import scala.concurrent.duration.DurationLong
+
+import cats.Applicative
+import cats.effect.kernel.{Async, Clock}
+import cats.effect.Ref
+import cats.syntax.all.*
+
+import org.sigilaris.node.jvm.runtime.block.BlockHeight
+import org.sigilaris.node.jvm.runtime.gossip.{CanonicalRejection, ChainId}
+
+final case class HistoricalBackfillPolicy(
+    batchSize: Int,
+    interBatchDelay: Duration,
+):
+  require(batchSize > 0, "batchSize must be positive")
+  require(!interBatchDelay.isNegative, "interBatchDelay must be non-negative")
+
+object HistoricalBackfillPolicy:
+  val backgroundDefault: HistoricalBackfillPolicy =
+    HistoricalBackfillPolicy(
+      batchSize = 32,
+      interBatchDelay = Duration.ofSeconds(1L),
+    )
+
+trait HistoricalBackfillWorker[F[_]]:
+  def start(
+      chainId: ChainId,
+      sessions: Vector[BootstrapSessionBinding],
+      anchor: SnapshotAnchor,
+      now: Instant,
+  ): F[Unit]
+
+  def pause(
+      reason: String,
+      now: Instant,
+  ): F[Unit]
+
+  def resume(
+      now: Instant,
+  ): F[Unit]
+
+  def current: F[HistoricalBackfillStatus]
+
+object HistoricalBackfillWorker:
+  def disabled[F[_]: Applicative]: HistoricalBackfillWorker[F] =
+    new HistoricalBackfillWorker[F]:
+      override def start(
+          chainId: ChainId,
+          sessions: Vector[BootstrapSessionBinding],
+          anchor: SnapshotAnchor,
+          now: Instant,
+      ): F[Unit] =
+        Applicative[F].unit
+
+      override def pause(
+          reason: String,
+          now: Instant,
+      ): F[Unit] =
+        Applicative[F].unit
+
+      override def resume(
+          now: Instant,
+      ): F[Unit] =
+        Applicative[F].unit
+
+      override def current: F[HistoricalBackfillStatus] =
+        HistoricalBackfillStatus.Idle.pure[F]
+
+  def create[F[_]: Async: Clock](
+      policy: HistoricalBackfillPolicy,
+      historicalBackfill: HistoricalBackfillService[F],
+  ): F[HistoricalBackfillWorker[F]] =
+    createWithNow(policy, historicalBackfill, Clock[F].realTimeInstant)
+
+  def createWithNow[F[_]: Async](
+      policy: HistoricalBackfillPolicy,
+      historicalBackfill: HistoricalBackfillService[F],
+      now: F[Instant],
+  ): F[HistoricalBackfillWorker[F]] =
+    Ref
+      .of[F, HistoricalBackfillWorkerState](HistoricalBackfillWorkerState.empty)
+      .map: stateRef =>
+        new InMemoryHistoricalBackfillWorker[F](
+          policy = policy,
+          historicalBackfill = historicalBackfill,
+          now = now,
+          ref = stateRef,
+        )
+
+private final case class HistoricalBackfillRuntimeState(
+    chainId: ChainId,
+    sessions: Vector[BootstrapSessionBinding],
+    progress: HistoricalBackfillProgress,
+)
+
+private final case class HistoricalBackfillWorkerState(
+    status: HistoricalBackfillStatus,
+    runtime: Option[HistoricalBackfillRuntimeState],
+    generation: Long,
+)
+
+private object HistoricalBackfillWorkerState:
+  val empty: HistoricalBackfillWorkerState =
+    HistoricalBackfillWorkerState(
+      status = HistoricalBackfillStatus.Idle,
+      runtime = None,
+      generation = 0L,
+    )
+
+private final class InMemoryHistoricalBackfillWorker[F[_]: Async](
+    policy: HistoricalBackfillPolicy,
+    historicalBackfill: HistoricalBackfillService[F],
+    now: F[Instant],
+    ref: Ref[F, HistoricalBackfillWorkerState],
+) extends HistoricalBackfillWorker[F]:
+
+  override def start(
+      chainId: ChainId,
+      sessions: Vector[BootstrapSessionBinding],
+      anchor: SnapshotAnchor,
+      startedAt: Instant,
+  ): F[Unit] =
+    val initialProgress =
+      HistoricalBackfillProgress(
+        anchor = anchor,
+        nextBeforeBlockId = anchor.blockId,
+        nextBeforeHeight = anchor.height,
+        fetchedProposalCount = 0L,
+        lastUpdatedAt = startedAt,
+      )
+    if anchor.height === BlockHeight.Genesis then
+      ref.set(
+        HistoricalBackfillWorkerState(
+          status =
+            HistoricalBackfillStatus.Completed(
+              reason = "genesisReached",
+              progress = initialProgress,
+            ),
+          runtime = None,
+          generation = 0L,
+        )
+      )
+    else if sessions.isEmpty then
+      ref.set(
+        HistoricalBackfillWorkerState(
+          status =
+            HistoricalBackfillStatus.Failed(
+              reason = "historicalBackfillNoPeersAvailable",
+              detail = None,
+              progress = initialProgress,
+            ),
+          runtime = None,
+          generation = 0L,
+        )
+      )
+    else
+      ref
+        .modify: state =>
+          state.status match
+            case HistoricalBackfillStatus.Idle =>
+              val nextGeneration = state.generation + 1L
+              HistoricalBackfillWorkerState(
+                status =
+                  HistoricalBackfillStatus.Running(
+                    progress = initialProgress,
+                    priority = HistoricalBackfillPriority.Background,
+                  ),
+                runtime =
+                  Some(
+                    HistoricalBackfillRuntimeState(
+                      chainId = chainId,
+                      sessions = sessions,
+                      progress = initialProgress,
+                    )
+                  ),
+                generation = nextGeneration,
+              ) -> nextGeneration.some
+            case _ =>
+              state -> none[Long]
+        .flatMap:
+          case Some(generation) =>
+            Async[F].start(run(generation)).void
+          case None =>
+            Applicative[F].unit
+
+  override def pause(
+      reason: String,
+      pausedAt: Instant,
+  ): F[Unit] =
+    ref.update: state =>
+      state.status match
+        case HistoricalBackfillStatus.Running(progress, priority) =>
+          state.copy(
+            status =
+              HistoricalBackfillStatus.Paused(
+                reason = reason,
+                progress = progress.copy(lastUpdatedAt = pausedAt),
+                priority = priority,
+              ),
+            generation = state.generation + 1L,
+          )
+        case _ =>
+          state
+
+  override def resume(
+      resumedAt: Instant,
+  ): F[Unit] =
+    ref
+      .modify: state =>
+        state.status match
+          case HistoricalBackfillStatus.Paused(_, progress, priority) =>
+            val nextGeneration = state.generation + 1L
+            state.copy(
+              status =
+                HistoricalBackfillStatus.Running(
+                  progress = progress.copy(lastUpdatedAt = resumedAt),
+                  priority = priority,
+                ),
+              runtime = state.runtime.map(_.copy(progress = progress.copy(lastUpdatedAt = resumedAt))),
+              generation = nextGeneration,
+            ) -> nextGeneration.some
+          case _ =>
+            state -> none[Long]
+      .flatMap:
+        case Some(generation) =>
+          Async[F].start(run(generation)).void
+        case None =>
+          Applicative[F].unit
+
+  override def current: F[HistoricalBackfillStatus] =
+    ref.get.map(_.status)
+
+  @SuppressWarnings(Array("org.wartremover.warts.Recursion"))
+  private def run(
+      generation: Long,
+  ): F[Unit] =
+    ref.get.flatMap: state =>
+      state.runtime match
+        case Some(runtime) if state.generation === generation =>
+          state.status match
+            case HistoricalBackfillStatus.Running(_, _) =>
+              fetchBatch(runtime).flatMap:
+                case Left(rejection) =>
+                  now.flatMap: currentTime =>
+                    ref.update: latest =>
+                      if latest.generation === generation then
+                        latest.copy(
+                          status =
+                            HistoricalBackfillStatus.Failed(
+                              reason = rejection.reason,
+                              detail = rejection.detail,
+                              progress = runtime.progress.copy(lastUpdatedAt = currentTime),
+                            ),
+                          runtime = None,
+                        )
+                      else latest
+                case Right(batch) =>
+                  now.flatMap: currentTime =>
+                    applyBatch(generation, runtime, batch, currentTime).flatMap:
+                      case true =>
+                        Async[F]
+                          .sleep(policy.interBatchDelay.toMillis.millis) *>
+                          run(generation)
+                      case false =>
+                        Applicative[F].unit
+            case _ =>
+              Applicative[F].unit
+        case _ =>
+          Applicative[F].unit
+
+  private def fetchBatch(
+      runtime: HistoricalBackfillRuntimeState,
+  ): F[Either[CanonicalRejection, Vector[Proposal]]] =
+    runtime.sessions
+      .traverse: session =>
+        historicalBackfill.readPrevious(
+          session = session,
+          chainId = runtime.chainId,
+          beforeBlockId = runtime.progress.nextBeforeBlockId,
+          beforeHeight = runtime.progress.nextBeforeHeight,
+          limit = policy.batchSize,
+        )
+      .map: responses =>
+        val successful =
+          dedupeByProposalId(
+            responses.collect { case Right(proposals) => proposals }.flatten
+          )
+            .sortWith(compareProposalDescending)
+            .take(policy.batchSize)
+        if successful.nonEmpty then
+          successful.asRight[CanonicalRejection]
+        else if runtime.progress.nextBeforeHeight === BlockHeight.Genesis then
+          Vector.empty[Proposal].asRight[CanonicalRejection]
+        else
+          responses
+            .collectFirst { case Left(rejection) => rejection }
+            .getOrElse:
+              CanonicalRejection.BackfillUnavailable(
+                reason = "historicalBackfillUnavailable",
+                detail = Some(runtime.progress.nextBeforeHeight.render),
+              )
+            .asLeft[Vector[Proposal]]
+
+  private def applyBatch(
+      generation: Long,
+      runtime: HistoricalBackfillRuntimeState,
+      batch: Vector[Proposal],
+      currentTime: Instant,
+  ): F[Boolean] =
+    ref.modify: state =>
+      if state.generation =!= generation then
+        state -> false
+      else if batch.isEmpty then
+        val progress = runtime.progress.copy(lastUpdatedAt = currentTime)
+        state.copy(
+          status =
+            HistoricalBackfillStatus.Completed(
+              reason = "genesisReached",
+              progress = progress,
+            ),
+          runtime = None,
+        ) -> false
+      else
+        batch.lastOption match
+          case None =>
+            state -> false
+          case Some(oldest) =>
+            val updatedProgress =
+              runtime.progress.copy(
+                nextBeforeBlockId = oldest.targetBlockId,
+                nextBeforeHeight = oldest.block.height,
+                fetchedProposalCount =
+                  runtime.progress.fetchedProposalCount + batch.size.toLong,
+                lastUpdatedAt = currentTime,
+              )
+            if oldest.block.height === BlockHeight.Genesis || oldest.block.parent.isEmpty then
+              state.copy(
+                status =
+                  HistoricalBackfillStatus.Completed(
+                    reason = "genesisReached",
+                    progress = updatedProgress,
+                  ),
+                runtime = None,
+              ) -> false
+            else
+              state.copy(
+                status =
+                  HistoricalBackfillStatus.Running(
+                    progress = updatedProgress,
+                    priority = HistoricalBackfillPriority.Background,
+                  ),
+                runtime = Some(runtime.copy(progress = updatedProgress)),
+              ) -> true
+
+  private def compareProposalDescending(
+      left: Proposal,
+      right: Proposal,
+  ): Boolean =
+    Ordering[BlockHeight].gt(left.block.height, right.block.height) ||
+      (left.block.height === right.block.height &&
+        left.proposalId.toHexLower < right.proposalId.toHexLower)
+
+  private def dedupeByProposalId(
+      proposals: Vector[Proposal],
+  ): Vector[Proposal] =
+    proposals
+      .foldLeft(Map.empty[ProposalId, Proposal]): (acc, proposal) =>
+        acc.updatedWith(proposal.proposalId):
+          case current @ Some(_) => current
+          case None              => Some(proposal)
+      .values
+      .toVector
