@@ -226,13 +226,13 @@ Draft
 - [x] dependency on landed Plan 0005 block-body contract documented
 
 ### Phase 1: Core Scheduling And Conformance Primitives
-- [ ] `StateRef` baseline type added
-- [ ] `ConflictFootprint` type added
-- [ ] one-pass aggregate verifier added
-- [ ] `AccessLog -> ConflictFootprint` conversion helper added
-- [ ] conformance helper for `actual ⊆ declared` added
-- [ ] deterministic `FootprintDeriver` seam added
-- [ ] unit tests for verifier/conformance green
+- [x] `StateRef` baseline type added
+- [x] `ConflictFootprint` type added
+- [x] one-pass aggregate verifier added
+- [x] `AccessLog -> ConflictFootprint` conversion helper added
+- [x] conformance helper for `actual ⊆ declared` added
+- [x] deterministic `FootprintDeriver` seam added
+- [x] unit tests for verifier/conformance green
 
 ### Phase 2: Execution Seam Refactor For Per-Tx Actual Footprints
 - [ ] per-tx fresh-log execution seam implemented
