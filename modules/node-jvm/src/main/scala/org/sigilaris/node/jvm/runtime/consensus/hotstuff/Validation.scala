@@ -6,6 +6,7 @@ import scodec.bits.ByteVector
 import org.sigilaris.core.crypto.{CryptoOps, PublicKey, Signature}
 import org.sigilaris.core.datatype.UInt256
 import org.sigilaris.core.util.SafeStringInterp.*
+import org.sigilaris.node.jvm.runtime.block.BlockHeader
 
 enum VoteRecordOutcome:
   case Applied, Duplicate
@@ -133,7 +134,7 @@ object HotStuffValidator:
           ss"window=${proposal.window.height.render} block=${proposal.block.height.render}"
       )
       _ <- HotStuffValidationSupport.ensure(
-        proposal.targetBlockId === Block.computeId(proposal.block),
+        proposal.targetBlockId === BlockHeader.computeId(proposal.block),
         "targetBlockIdMismatch",
         Some(proposal.targetBlockId.toHexLower),
       )

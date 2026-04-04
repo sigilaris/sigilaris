@@ -11,6 +11,7 @@ import org.sigilaris.core.codec.byte.ByteEncoder
 import org.sigilaris.core.codec.byte.ByteEncoder.ops.*
 import org.sigilaris.core.crypto.KeyPair
 import org.sigilaris.core.util.SafeStringInterp.*
+import org.sigilaris.node.jvm.runtime.block.BlockHeader
 import org.sigilaris.node.jvm.runtime.gossip.*
 
 enum HotStuffGossipArtifact:
@@ -610,7 +611,7 @@ final case class HotStuffNodeRuntime[F[_]: Sync](
 
   def emitProposal(
       proposer: ValidatorId,
-      block: Block,
+      block: BlockHeader,
       window: HotStuffWindow,
       justify: QuorumCertificate,
       ts: Instant,
@@ -620,7 +621,7 @@ final case class HotStuffNodeRuntime[F[_]: Sync](
         UnsignedProposal(
           window = window,
           proposer = proposer,
-          targetBlockId = Block.computeId(block),
+          targetBlockId = BlockHeader.computeId(block),
           block = block,
           justify = justify,
         ),

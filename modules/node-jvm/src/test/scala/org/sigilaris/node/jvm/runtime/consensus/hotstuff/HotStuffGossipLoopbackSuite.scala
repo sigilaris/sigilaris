@@ -12,7 +12,7 @@ import scodec.bits.ByteVector
 
 import org.sigilaris.core.crypto.CryptoOps
 import org.sigilaris.core.datatype.UInt256
-import org.sigilaris.node.jvm.runtime.block.{BlockHeight, BlockTimestamp, BodyRoot, StateRoot}
+import org.sigilaris.node.jvm.runtime.block.{BlockHeader, BlockHeight, BlockTimestamp, BodyRoot, StateRoot}
 import org.sigilaris.node.jvm.runtime.gossip.*
 import org.sigilaris.node.jvm.runtime.gossip.tx.{ControlBatchOutcome, TxGossipRuntime, TxGossipStateStore}
 
@@ -831,7 +831,7 @@ final class HotStuffGossipLoopbackSuite extends CatsEffectSuite:
             UnsignedProposal(
               window = HotStuffWindow(chainId, 2L, 1L, validatorSet.hash),
               proposer = validatorSet.members.head.id,
-              targetBlockId = Block.computeId(block(parent = Some(justify.subject.blockId), height = 2L, rootHex = "87")),
+              targetBlockId = BlockHeader.computeId(block(parent = Some(justify.subject.blockId), height = 2L, rootHex = "87")),
               block = block(parent = Some(justify.subject.blockId), height = 2L, rootHex = "87"),
               justify = justify,
             ),
@@ -961,8 +961,8 @@ final class HotStuffGossipLoopbackSuite extends CatsEffectSuite:
       parent: Option[BlockId],
       height: Long,
       rootHex: String,
-  ): Block =
-    Block(
+  ): BlockHeader =
+    BlockHeader(
       parent = parent,
       height = BlockHeight.unsafeFromLong(height),
       stateRoot = StateRoot(hex(rootHex)),

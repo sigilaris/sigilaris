@@ -9,6 +9,7 @@ import org.sigilaris.core.codec.byte.ByteEncoder
 import org.sigilaris.core.codec.byte.ByteEncoder.ops.*
 import org.sigilaris.core.crypto.{CryptoOps, KeyPair, PublicKey, Signature}
 import org.sigilaris.core.datatype.{UInt256, Utf8}
+import org.sigilaris.node.jvm.runtime.block.BlockHeader
 import org.sigilaris.node.jvm.runtime.gossip.ChainId
 
 given ByteEncoder[ChainId] =
@@ -191,7 +192,7 @@ final case class UnsignedProposal(
     window: HotStuffWindow,
     proposer: ValidatorId,
     targetBlockId: BlockId,
-    block: Block,
+    block: BlockHeader,
     justify: QuorumCertificate,
 )
 
@@ -200,7 +201,7 @@ final case class Proposal(
     window: HotStuffWindow,
     proposer: ValidatorId,
     targetBlockId: BlockId,
-    block: Block,
+    block: BlockHeader,
     justify: QuorumCertificate,
     signature: Signature,
 ) derives ByteEncoder
@@ -295,7 +296,7 @@ object HotStuffCanonicalEncoding:
       proposer: ValidatorId,
       validatorSetHash: ValidatorSetHash,
       targetBlockId: BlockId,
-      block: Block,
+      block: BlockHeader,
       justify: QuorumCertificate,
       signature: Signature,
   ) derives ByteEncoder
@@ -357,7 +358,7 @@ object HotStuffCanonicalEncoding:
       window: HotStuffWindow,
       proposer: ValidatorId,
       targetBlockId: BlockId,
-      block: Block,
+      block: BlockHeader,
       justify: QuorumCertificate,
       signature: Signature,
   ): UInt256 =

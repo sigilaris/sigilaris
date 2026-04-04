@@ -7,7 +7,7 @@ import scodec.bits.ByteVector
 
 import org.sigilaris.core.crypto.CryptoOps
 import org.sigilaris.core.datatype.UInt256
-import org.sigilaris.node.jvm.runtime.block.{BlockHeight, BlockTimestamp, BodyRoot, StateRoot}
+import org.sigilaris.node.jvm.runtime.block.{BlockHeader, BlockHeight, BlockTimestamp, BodyRoot, StateRoot}
 import org.sigilaris.node.jvm.runtime.gossip.{ChainId, CursorToken, GossipEvent, GossipTopic, StableArtifactId}
 
 final class HotStuffValidationSuite extends FunSuite:
@@ -280,7 +280,7 @@ final class HotStuffValidationSuite extends FunSuite:
     val subject = QuorumCertificateSubject(
       window = parentWindow,
       proposalId = parentProposalId,
-      blockId = Block.computeId(parentBlock),
+      blockId = BlockHeader.computeId(parentBlock),
     )
     val voteA = signedVoteFor(subject.window, subject.proposalId, voterIndex = 0)
     val voteB = signedVoteFor(subject.window, subject.proposalId, voterIndex = 1)
@@ -305,7 +305,7 @@ final class HotStuffValidationSuite extends FunSuite:
     val subject = QuorumCertificateSubject(
       window = parentWindow,
       proposalId = parentProposalId,
-      blockId = Block.computeId(parentBlock),
+      blockId = BlockHeader.computeId(parentBlock),
     )
     val voteA = signedVoteFor(subject.window, subject.proposalId, voterIndex = 0)
     val voteAAgain = voteA.copy(voteId = VoteId(hex("43")))
@@ -343,7 +343,7 @@ final class HotStuffValidationSuite extends FunSuite:
     val subject = QuorumCertificateSubject(
       window = parentWindow,
       proposalId = parentProposalId,
-      blockId = Block.computeId(parentBlock),
+      blockId = BlockHeader.computeId(parentBlock),
     )
     val forgedVote =
       Vote
@@ -372,7 +372,7 @@ final class HotStuffValidationSuite extends FunSuite:
     val subject = QuorumCertificateSubject(
       window = subjectWindow,
       proposalId = ProposalId(hex("48")),
-      blockId = Block.computeId(parentBlock),
+      blockId = BlockHeader.computeId(parentBlock),
     )
     val mismatchedVote =
       Vote
@@ -472,7 +472,7 @@ final class HotStuffValidationSuite extends FunSuite:
           UnsignedProposal(
             window = proposal.window,
             proposer = proposal.proposer,
-            targetBlockId = Block.computeId(wrongHeightBlock),
+            targetBlockId = BlockHeader.computeId(wrongHeightBlock),
             block = wrongHeightBlock,
             justify = proposal.justify,
           ),
@@ -487,7 +487,7 @@ final class HotStuffValidationSuite extends FunSuite:
           UnsignedProposal(
             window = proposal.window,
             proposer = proposal.proposer,
-            targetBlockId = Block.computeId(malformedBlock),
+            targetBlockId = BlockHeader.computeId(malformedBlock),
             block = malformedBlock,
             justify = proposal.justify,
           ),
@@ -528,7 +528,7 @@ final class HotStuffValidationSuite extends FunSuite:
     val subject = QuorumCertificateSubject(
       window = parentWindow,
       proposalId = parentProposalId,
-      blockId = Block.computeId(parentBlock),
+      blockId = BlockHeader.computeId(parentBlock),
     )
     val voteA = signedVoteFor(subject.window, subject.proposalId, voterIndex = 0)
     val voteB = signedVoteFor(subject.window, subject.proposalId, voterIndex = 1)
@@ -545,7 +545,7 @@ final class HotStuffValidationSuite extends FunSuite:
     val subject = QuorumCertificateSubject(
       window = parentWindow,
       proposalId = parentProposalId,
-      blockId = Block.computeId(parentBlock),
+      blockId = BlockHeader.computeId(parentBlock),
     )
     val voteA = signedVoteFor(subject.window, subject.proposalId, voterIndex = 0)
     val voteB = signedVoteFor(subject.window, subject.proposalId, voterIndex = 1)
@@ -561,7 +561,7 @@ final class HotStuffValidationSuite extends FunSuite:
           UnsignedProposal(
             window = HotStuffWindow(chainId, 2L, 1L, validatorSet.hash),
             proposer = validatorSet.members.head.id,
-            targetBlockId = Block.computeId(proposalBlock),
+            targetBlockId = BlockHeader.computeId(proposalBlock),
             block = proposalBlock,
             justify = canonicalQc,
           ),
@@ -641,7 +641,7 @@ final class HotStuffValidationSuite extends FunSuite:
           UnsignedProposal(
             window = bootstrapWindow,
             proposer = validatorSet.members.head.id,
-            targetBlockId = Block.computeId(genesisBlock),
+            targetBlockId = BlockHeader.computeId(genesisBlock),
             block = genesisBlock,
             justify = bootstrapQc,
           ),
@@ -676,7 +676,7 @@ final class HotStuffValidationSuite extends FunSuite:
           UnsignedProposal(
             window = bootstrapWindow,
             proposer = validatorSet.members.head.id,
-            targetBlockId = Block.computeId(genesisBlock),
+            targetBlockId = BlockHeader.computeId(genesisBlock),
             block = genesisBlock,
             justify = boundaryQc,
           ),
@@ -712,7 +712,7 @@ final class HotStuffValidationSuite extends FunSuite:
           UnsignedProposal(
             window = bootstrapWindow,
             proposer = validatorSet.members.head.id,
-            targetBlockId = Block.computeId(invalidGenesisBlock),
+            targetBlockId = BlockHeader.computeId(invalidGenesisBlock),
             block = invalidGenesisBlock,
             justify = boundaryQc,
           ),
@@ -750,7 +750,7 @@ final class HotStuffValidationSuite extends FunSuite:
           UnsignedProposal(
             window = bootstrapWindow,
             proposer = validatorSet.members.head.id,
-            targetBlockId = Block.computeId(genesisBlock),
+            targetBlockId = BlockHeader.computeId(genesisBlock),
             block = genesisBlock,
             justify = highQc,
           ),
@@ -771,7 +771,7 @@ final class HotStuffValidationSuite extends FunSuite:
     val subject = QuorumCertificateSubject(
       window = parentWindow,
       proposalId = parentProposalId,
-      blockId = Block.computeId(parentBlock),
+      blockId = BlockHeader.computeId(parentBlock),
     )
     val justify = QuorumCertificateAssembler
       .assemble(
@@ -791,7 +791,7 @@ final class HotStuffValidationSuite extends FunSuite:
         UnsignedProposal(
           window = HotStuffWindow(chainId, 1L, 1L, validatorSet.hash),
           proposer = validatorSet.members.head.id,
-          targetBlockId = Block.computeId(proposalBlock),
+          targetBlockId = BlockHeader.computeId(proposalBlock),
           block = proposalBlock,
           justify = justify,
         ),
@@ -867,7 +867,7 @@ final class HotStuffValidationSuite extends FunSuite:
       parent: Option[BlockId],
       height: Long,
       rootHex: String,
-  ): Block =
+  ): BlockHeader =
     blockAt(
       parent = parent,
       height = height,
@@ -880,8 +880,8 @@ final class HotStuffValidationSuite extends FunSuite:
       height: Long,
       rootHex: String,
       timestampMillis: Long,
-  ): Block =
-    Block(
+  ): BlockHeader =
+    BlockHeader(
       parent = parent,
       height = BlockHeight.unsafeFromLong(height),
       stateRoot = StateRoot(hex(rootHex)),

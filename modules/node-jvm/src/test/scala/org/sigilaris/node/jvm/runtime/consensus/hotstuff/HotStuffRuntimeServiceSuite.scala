@@ -10,7 +10,7 @@ import scodec.bits.ByteVector
 
 import org.sigilaris.core.crypto.CryptoOps
 import org.sigilaris.core.datatype.UInt256
-import org.sigilaris.node.jvm.runtime.block.{BlockHeight, BlockTimestamp, BodyRoot, StateRoot}
+import org.sigilaris.node.jvm.runtime.block.{BlockHeader, BlockHeight, BlockTimestamp, BodyRoot, StateRoot}
 import org.sigilaris.node.jvm.runtime.gossip.*
 
 final class HotStuffRuntimeServiceSuite extends CatsEffectSuite:
@@ -228,8 +228,8 @@ final class HotStuffRuntimeServiceSuite extends CatsEffectSuite:
       parent: Option[BlockId],
       height: Long,
       rootHex: String,
-  ): Block =
-    Block(
+  ): BlockHeader =
+    BlockHeader(
       parent = parent,
       height = BlockHeight.unsafeFromLong(height),
       stateRoot = StateRoot(hex(rootHex)),
