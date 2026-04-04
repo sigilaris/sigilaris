@@ -141,6 +141,25 @@ final class HotStuffBlockSchedulingSuite extends FunSuite:
     assertEquals(result.left.map(_.reason), Left("conflictingBlockBodyTransaction"))
     assert(result.left.toOption.flatMap(_.detail).exists(_.contains(stateRef("shared").toHexLower)))
 
+  test("HotStuffBlockBodyVerifier is ordering-independent for equivalent conflicting bodies"):
+    val writer = record("writer")
+    val reader = record("reader")
+    val bodyA = BlockBody(Set(writer, reader))
+    val bodyB = BlockBody(Set(reader, writer))
+    val classification = Map(
+      writer.tx -> schedulable(writes = Set("shared")),
+      reader.tx -> schedulable(reads = Set("shared")),
+    )
+
+    val resultA =
+      HotStuffBlockBodyVerifier.validateBody(bodyA): tx =>
+        classification(tx)
+    val resultB =
+      HotStuffBlockBodyVerifier.validateBody(bodyB): tx =>
+        classification(tx)
+
+    assertEquals(resultA, resultB)
+
   test("HotStuffProposalViewValidator rejects conflicting bodies before proposal acceptance"):
     val writer = record("writer")
     val reader = record("reader")

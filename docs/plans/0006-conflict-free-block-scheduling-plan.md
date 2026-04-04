@@ -1,7 +1,7 @@
 # 0006 - Conflict-Free Block Scheduling Plan
 
 ## Status
-Draft
+Phase 6 Complete
 
 ## Created
 2026-04-03
@@ -185,6 +185,10 @@ Draft
 - Add tests that prove compatibility batches do not get misclassified as schedulable.
 - Tighten docs and status in ADR-0020 once the initial rollout shape is implemented.
 - Revisit whether some compatibility-path families can be promoted to schedulable status after initial landing.
+- Ordering-independence regression remains locked in the shared scheduling verifier suite, while HotStuff body-level regression now also checks canonical unordered-body validation and compatibility rejection at the body boundary.
+- Compatibility behavior is now documented in both:
+  - `CurrentApplicationScheduling.documentedCompatibilityFamilies` for shipped application families,
+  - this plan / ADR-0020 follow-up wording for future dynamic-discovery families that must stay on `Compatibility(reason)` until their transaction shape names explicit refs.
 
 ## Test Plan
 - Phase 1 Success: unit tests show `StateRef` / `ConflictFootprint` equality, merge, and forbidden-overlap predicates behave deterministically.
@@ -268,10 +272,10 @@ Draft
 - [x] HotStuff regression suite green
 
 ### Phase 6: Verification, Docs, And Tightening
-- [ ] ordering-independence regression tests green
-- [ ] compatibility-path behavior documented
-- [ ] ADR-0020 / plan wording updated to match landed shape
-- [ ] follow-up items for remaining compatibility families documented
+- [x] ordering-independence regression tests green
+- [x] compatibility-path behavior documented
+- [x] ADR-0020 / plan wording updated to match landed shape
+- [x] follow-up items for remaining compatibility families documented
 
 ## Follow-Ups
 - Introduce explicit object-centric transaction shapes for families that cannot become schedulable with the current table-key model.

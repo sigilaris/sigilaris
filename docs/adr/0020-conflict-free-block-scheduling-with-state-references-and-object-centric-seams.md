@@ -1,7 +1,7 @@
 # ADR-0020: Conflict-Free Block Scheduling With State References And Object-Centric Seams
 
 ## Status
-Draft
+Accepted
 
 ## Context
 - ADR-0009 already introduced `StoreState` and `AccessLog` as the execution-time carrier for precise key-level read/write tracking, and the current implementation records concrete accesses at `StateTable` boundary.
@@ -14,6 +14,8 @@ Draft
   - ensuring that transactions touching the same mutable state do not coexist in one block.
 - Current and likely future applications may contain flows that discover touched state dynamically during execution, for example prefix scans, automatic input selection, or open-ended balance search. Those flows make pre-execution conflict checks difficult because the exact touched-key set is not known from transaction bytes alone.
 - A full Sui-style object runtime could make same-block conflict detection easier, but rewriting the entire Sigilaris storage and execution stack around first-class objects immediately would be a large migration. The near-term need is a scheduling and validation contract that works with the current trie/KV execution core while creating a clean seam for more object-centric applications.
+- As of `2026-04-04`, the local rollout has landed per-tx footprint witnesses, batch-level schedulable vs compatibility planning, and deterministic footprint derivation for the currently shipped account/group transaction surface.
+- As of `2026-04-04`, the HotStuff baseline still keeps proposals header-only, but the canonical `BlockBody` / `BlockView` contract from ADR-0019 is now paired with proposer-side conflict-free body selection and body-visible validator helpers that re-check schedulability from block-body transactions without widening the header contract.
 
 ## Decision
 1. **Sigilaris introduces `StateRef` and `ConflictFootprint` as the canonical scheduling contract for transaction conflict analysis.**
@@ -46,8 +48,10 @@ Draft
    - If deterministic derivation fails, the transaction is not eligible for the schedulable conflict-free path. An implementation may either reject it at admission or route it to an explicit non-schedulable compatibility path, but it must not silently treat it as schedulable.
    - The initial developer-visible classification surface is `Schedulable(footprint)` vs `Compatibility(reason)`.
    - If a batch mixes schedulable and compatibility transactions, the initial rollout routes the whole batch to compatibility mode instead of partially selecting only the schedulable subset.
+   - This mixed-batch fallback applies to the current local application batch path. Proposer-side block construction may still filter a larger candidate pool down to the schedulable, conflict-free subset that enters a conflict-free block body.
    - Transactions that require open-ended prefix scans, automatic coin/input selection, implicit balance search, or other dynamic state discovery are not schedulable under this baseline until they are normalized into explicit state references.
    - "Normalize" here means that the transaction must name the concrete state/object references it may read or write before the proposer attempts same-block conflict analysis.
+   - As of `2026-04-04`, the currently shipped account/group transaction surface has no remaining compatibility-only family in the deployed baseline. Future dynamic-discovery families must still ship on `Compatibility(reason)` until they expose explicit refs.
 
 5. **`AccessLog` remains mandatory, but as an execution witness and conformance check rather than the primary admission contract.**
    - The scheduler may use declared or deterministically derived `ConflictFootprint` before execution.
@@ -76,6 +80,7 @@ Draft
    - Proposal/block acceptance must reject a block whose transaction footprints overlap under the baseline conflict rule.
    - Pairwise `O(N^2)` comparison is not required. A validator may verify the block body in one pass by maintaining aggregate read/write sets and checking each transaction against the current aggregates before unioning its footprint into them.
    - Execution validation must also reject a transaction whose actual `AccessLog` exceeds its declared/derived footprint.
+   - In the current HotStuff baseline, proposal artifacts remain header-only. Body-aware validation therefore attaches at call sites that also hold canonical `BlockView` access, using helpers equivalent to proposer-side body selection plus `HotStuffProposalViewValidator`.
 
 9. **Current compile-time `Reads` / `Writes` remain in place as schema capability declarations and are not replaced by `ConflictFootprint`.**
    - `Reads` / `Writes` still describe which tables a reducer may legally access.
@@ -129,15 +134,11 @@ Draft
    - It would reduce throughput by serializing harmless shared reads of immutable or stable state.
 
 ## Follow-Up
-- Introduce core datatypes and helper APIs for `StateRef` and `ConflictFootprint` in the application/runtime layer.
-- Introduce an application-owned deterministic `FootprintDeriver` seam for signed transactions, and make "schedulable" admission depend on successful derivation.
-- Land the first deriver rollout for the currently shipped account/group transaction families whose touched keys are already explicit in the transaction body.
-- Add proposer-side block selection logic that admits only conflict-free transaction sets under the rule in this ADR.
-- Add validator-side block-body conflict checks before proposal acceptance/vote emission.
-- Add execution-time conformance checks that compare actual `AccessLog` against the transaction's declared or derived footprint.
 - Define how application packages expose explicit state/object references in transaction bodies.
 - Migrate application flows that still rely on dynamic state discovery so they can participate in conflict-free scheduling.
-- Concrete rollout order and migration gates are tracked in `docs/plans/0006-conflict-free-block-scheduling-plan.md`.
+- Keep future dynamic-discovery families on `Compatibility(reason)` until they name explicit refs or move to a more object-centric transaction shape.
+- If the header-only HotStuff artifact baseline later needs first-class body fetch/availability wiring for validator vote emission, document that transport/runtime seam in a follow-up ADR or plan without widening the ADR-0019 header contract.
+- Concrete rollout history and migration gates are tracked in `docs/plans/0006-conflict-free-block-scheduling-plan.md`.
 - If a first-class object runtime becomes necessary later, write a follow-up ADR that supersedes or extends the `StateRef` representation while preserving the same high-level conflict rules.
 
 ## References
