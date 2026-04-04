@@ -158,6 +158,7 @@ final case class FinalizedAnchorSuggestion(
    - baseline mandatory follow-up 은 snapshot anchor discovery 와 trie node fetch 이고, post-anchor full transfer 는 optional optimization 또는 별도 follow-up 으로 남기는 편이 낫다.
 
 ## Follow-Up
+- concrete implementation sequence 는 `docs/plans/0007-snapshot-sync-and-background-backfill-plan.md` 에서 추적한다.
 - **Phase 1 / blocking**
   - 이 ADR 에서 고정한 `FinalizedProof(child, grandchild)` semantic minimum 을 기준으로, anchor proposal `P0` 와 proof bundle(`P1`, `P2`)을 `best finalized block suggestion` response 에 어떻게 encode / batch / inline 할지 wire contract 를 별도 spec 또는 implementation plan 에서 고정한다.
   - trusted bootstrap root 형식과 validator-set continuity derivation rule 을 고정해 initial bootstrap paradox 를 해소한다.
@@ -179,3 +180,4 @@ final case class FinalizedAnchorSuggestion(
 - [0004 - HotStuff Consensus Without Threshold Signatures Plan](../plans/0004-hotstuff-consensus-without-threshold-signatures-plan.md)
 - [0005 - Canonical Block Structure Migration Plan](../plans/0005-canonical-block-structure-migration-plan.md)
 - [0006 - Conflict-Free Block Scheduling Plan](../plans/0006-conflict-free-block-scheduling-plan.md)
+- [0007 - Snapshot Sync And Background Backfill Plan](../plans/0007-snapshot-sync-and-background-backfill-plan.md)
