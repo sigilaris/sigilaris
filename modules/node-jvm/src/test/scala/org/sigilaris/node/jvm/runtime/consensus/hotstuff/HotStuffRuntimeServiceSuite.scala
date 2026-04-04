@@ -81,6 +81,7 @@ final class HotStuffRuntimeServiceSuite extends CatsEffectSuite:
       emitted <- runtime.emitProposal(
         proposer = validatorSet.members(0).id,
         block = block(parent = Some(bootstrapQc().subject.blockId), height = 2L, rootHex = "91"),
+        txSet = ProposalTxSet.empty,
         window = HotStuffWindow(chainId, 2L, 1L, validatorSet.hash),
         justify = bootstrapQc(),
         ts = startedAt,

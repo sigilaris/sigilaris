@@ -429,6 +429,7 @@ final class HotStuffValidationSuite extends FunSuite:
             proposer = proposal.proposer,
             targetBlockId = proposal.targetBlockId,
             block = proposal.block,
+            txSet = proposal.txSet,
             justify = differentChainQc,
           ),
           validatorKeys.head,
@@ -458,6 +459,7 @@ final class HotStuffValidationSuite extends FunSuite:
             proposer = proposal.proposer,
             targetBlockId = proposal.targetBlockId,
             block = proposal.block,
+            txSet = proposal.txSet,
             justify = nonProgressingQc,
           ),
           validatorKeys.head,
@@ -474,6 +476,7 @@ final class HotStuffValidationSuite extends FunSuite:
             proposer = proposal.proposer,
             targetBlockId = BlockHeader.computeId(wrongHeightBlock),
             block = wrongHeightBlock,
+            txSet = proposal.txSet,
             justify = proposal.justify,
           ),
           validatorKeys.head,
@@ -489,6 +492,7 @@ final class HotStuffValidationSuite extends FunSuite:
             proposer = proposal.proposer,
             targetBlockId = BlockHeader.computeId(malformedBlock),
             block = malformedBlock,
+            txSet = proposal.txSet,
             justify = proposal.justify,
           ),
           validatorKeys.head,
@@ -519,6 +523,21 @@ final class HotStuffValidationSuite extends FunSuite:
     assertEquals(
       HotStuffValidator.validateProposal(malformedJustification, validatorSet).left.map(_.reason),
       Left("justifyBlockMismatch"),
+    )
+
+  test("proposal validation rejects non-canonical tx sets before proposal id checks"):
+    val proposal = signedProposal().copy(
+      txSet = ProposalTxSet(
+        Vector(
+          StableArtifactId.unsafeFromHex("02"),
+          StableArtifactId.unsafeFromHex("01"),
+        ),
+      ),
+    )
+
+    assertEquals(
+      HotStuffValidator.validateProposal(proposal, validatorSet).left.map(_.reason),
+      Left("proposalTxSetNotCanonical"),
     )
 
   test("qc assembly deduplicates repeated vote ids and produces a quorum certificate"):
@@ -563,6 +582,7 @@ final class HotStuffValidationSuite extends FunSuite:
             proposer = validatorSet.members.head.id,
             targetBlockId = BlockHeader.computeId(proposalBlock),
             block = proposalBlock,
+            txSet = ProposalTxSet.empty,
             justify = canonicalQc,
           ),
           validatorKeys.head,
@@ -577,6 +597,7 @@ final class HotStuffValidationSuite extends FunSuite:
             proposer = canonicalProposal.proposer,
             targetBlockId = canonicalProposal.targetBlockId,
             block = canonicalProposal.block,
+            txSet = canonicalProposal.txSet,
             justify = shuffledQc,
           ),
           validatorKeys.head,
@@ -643,6 +664,7 @@ final class HotStuffValidationSuite extends FunSuite:
             proposer = validatorSet.members.head.id,
             targetBlockId = BlockHeader.computeId(genesisBlock),
             block = genesisBlock,
+            txSet = ProposalTxSet.empty,
             justify = bootstrapQc,
           ),
           validatorKeys.head,
@@ -678,6 +700,7 @@ final class HotStuffValidationSuite extends FunSuite:
             proposer = validatorSet.members.head.id,
             targetBlockId = BlockHeader.computeId(genesisBlock),
             block = genesisBlock,
+            txSet = ProposalTxSet.empty,
             justify = boundaryQc,
           ),
           validatorKeys.head,
@@ -714,6 +737,7 @@ final class HotStuffValidationSuite extends FunSuite:
             proposer = validatorSet.members.head.id,
             targetBlockId = BlockHeader.computeId(invalidGenesisBlock),
             block = invalidGenesisBlock,
+            txSet = ProposalTxSet.empty,
             justify = boundaryQc,
           ),
           validatorKeys.head,
@@ -752,6 +776,7 @@ final class HotStuffValidationSuite extends FunSuite:
             proposer = validatorSet.members.head.id,
             targetBlockId = BlockHeader.computeId(genesisBlock),
             block = genesisBlock,
+            txSet = ProposalTxSet.empty,
             justify = highQc,
           ),
           validatorKeys.head,
@@ -793,6 +818,7 @@ final class HotStuffValidationSuite extends FunSuite:
           proposer = validatorSet.members.head.id,
           targetBlockId = BlockHeader.computeId(proposalBlock),
           block = proposalBlock,
+          txSet = ProposalTxSet.empty,
           justify = justify,
         ),
         validatorKeys.head,
@@ -831,6 +857,7 @@ final class HotStuffValidationSuite extends FunSuite:
       proposer = proposal.proposer,
       targetBlockId = proposal.targetBlockId,
       block = proposal.block,
+      txSet = proposal.txSet,
       justify = proposal.justify,
     )
 

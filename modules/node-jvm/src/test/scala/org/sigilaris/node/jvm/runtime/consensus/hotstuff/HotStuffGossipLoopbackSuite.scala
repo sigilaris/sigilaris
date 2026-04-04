@@ -64,6 +64,7 @@ final class HotStuffGossipLoopbackSuite extends CatsEffectSuite:
       proposalEvent <- a.consensus.emitProposal(
         proposer = validatorSet.members.head.id,
         block = block(parent = Some(justify.subject.blockId), height = 2L, rootHex = "81"),
+        txSet = ProposalTxSet.empty,
         window = HotStuffWindow(chainId, 2L, 1L, validatorSet.hash),
         justify = justify,
         ts = baseInstant,
@@ -139,6 +140,7 @@ final class HotStuffGossipLoopbackSuite extends CatsEffectSuite:
       proposalEvent <- a.consensus.emitProposal(
         proposer = validatorSet.members.head.id,
         block = block(parent = Some(justify.subject.blockId), height = 2L, rootHex = "82"),
+        txSet = ProposalTxSet.empty,
         window = HotStuffWindow(chainId, 2L, 1L, validatorSet.hash),
         justify = justify,
         ts = baseInstant,
@@ -150,6 +152,7 @@ final class HotStuffGossipLoopbackSuite extends CatsEffectSuite:
       emitAuditProposal <- b.consensus.emitProposal(
         proposer = validatorSet.members.head.id,
         block = block(parent = Some(justify.subject.blockId), height = 3L, rootHex = "83"),
+        txSet = ProposalTxSet.empty,
         window = HotStuffWindow(chainId, 3L, 2L, validatorSet.hash),
         justify = justify,
         ts = baseInstant.plusMillis(10),
@@ -186,6 +189,7 @@ final class HotStuffGossipLoopbackSuite extends CatsEffectSuite:
       proposalEvent <- a.consensus.emitProposal(
         proposer = validatorSet.members.head.id,
         block = block(parent = Some(justify.subject.blockId), height = 2L, rootHex = "89"),
+        txSet = ProposalTxSet.empty,
         window = HotStuffWindow(chainId, 2L, 1L, validatorSet.hash),
         justify = justify,
         ts = baseInstant,
@@ -246,6 +250,7 @@ final class HotStuffGossipLoopbackSuite extends CatsEffectSuite:
       proposalEvent <- a.consensus.emitProposal(
         proposer = validatorSet.members.head.id,
         block = block(parent = Some(justify.subject.blockId), height = 2L, rootHex = "8a"),
+        txSet = ProposalTxSet.empty,
         window = HotStuffWindow(chainId, 2L, 1L, validatorSet.hash),
         justify = justify,
         ts = baseInstant,
@@ -290,6 +295,7 @@ final class HotStuffGossipLoopbackSuite extends CatsEffectSuite:
       proposalEvent <- a.consensus.emitProposal(
         proposer = validatorSet.members.head.id,
         block = block(parent = Some(justify.subject.blockId), height = 2L, rootHex = "8b"),
+        txSet = ProposalTxSet.empty,
         window = HotStuffWindow(chainId, 2L, 1L, validatorSet.hash),
         justify = justify,
         ts = baseInstant,
@@ -351,6 +357,7 @@ final class HotStuffGossipLoopbackSuite extends CatsEffectSuite:
       proposalEvent <- a.consensus.emitProposal(
         proposer = validatorSet.members.head.id,
         block = block(parent = Some(justify.subject.blockId), height = 2L, rootHex = "88"),
+        txSet = ProposalTxSet.empty,
         window = HotStuffWindow(chainId, 2L, 1L, validatorSet.hash),
         justify = justify,
         ts = baseInstant,
@@ -417,6 +424,7 @@ final class HotStuffGossipLoopbackSuite extends CatsEffectSuite:
         .flatMap(_.emitProposal(
           proposer = validatorId,
           block = block(parent = Some(justify.subject.blockId), height = 2L, rootHex = "84"),
+          txSet = ProposalTxSet.empty,
           window = HotStuffWindow(chainId, 2L, 1L, validatorSet.hash),
           justify = justify,
           ts = baseInstant,
@@ -425,6 +433,7 @@ final class HotStuffGossipLoopbackSuite extends CatsEffectSuite:
         .flatMap(_.emitProposal(
           proposer = validatorId,
           block = block(parent = Some(justify.subject.blockId), height = 2L, rootHex = "85"),
+          txSet = ProposalTxSet.empty,
           window = HotStuffWindow(chainId, 2L, 1L, validatorSet.hash),
           justify = justify,
           ts = baseInstant.plusMillis(1),
@@ -454,6 +463,7 @@ final class HotStuffGossipLoopbackSuite extends CatsEffectSuite:
       proposalEvent <- a.consensus.emitProposal(
         proposer = validatorSet.members.head.id,
         block = block(parent = Some(justify.subject.blockId), height = 2L, rootHex = "86"),
+        txSet = ProposalTxSet.empty,
         window = HotStuffWindow(chainId, 2L, 1L, validatorSet.hash),
         justify = justify,
         ts = baseInstant,
@@ -517,6 +527,7 @@ final class HotStuffGossipLoopbackSuite extends CatsEffectSuite:
       proposalEvent <- a.consensus.emitProposal(
         proposer = validatorSet.members.head.id,
         block = block(parent = Some(justify.subject.blockId), height = 2L, rootHex = "8c"),
+        txSet = ProposalTxSet.empty,
         window = HotStuffWindow(chainId, 2L, 1L, validatorSet.hash),
         justify = justify,
         ts = baseInstant,
@@ -638,6 +649,7 @@ final class HotStuffGossipLoopbackSuite extends CatsEffectSuite:
       proposalEvent <- a.consensus.emitProposal(
         proposer = validatorSet.members.head.id,
         block = block(parent = Some(justify.subject.blockId), height = 2L, rootHex = "8d"),
+        txSet = ProposalTxSet.empty,
         window = HotStuffWindow(chainId, 2L, 1L, validatorSet.hash),
         justify = justify,
         ts = baseInstant,
@@ -833,6 +845,7 @@ final class HotStuffGossipLoopbackSuite extends CatsEffectSuite:
               proposer = validatorSet.members.head.id,
               targetBlockId = BlockHeader.computeId(block(parent = Some(justify.subject.blockId), height = 2L, rootHex = "87")),
               block = block(parent = Some(justify.subject.blockId), height = 2L, rootHex = "87"),
+              txSet = ProposalTxSet.empty,
               justify = justify,
             ),
             validatorKeys.head,

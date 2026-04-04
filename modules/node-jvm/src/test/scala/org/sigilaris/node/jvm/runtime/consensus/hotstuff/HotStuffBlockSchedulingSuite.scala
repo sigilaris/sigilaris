@@ -5,7 +5,7 @@ import scodec.bits.ByteVector
 
 import org.sigilaris.core.application.scheduling.{CompatibilityReason, ConflictFootprint, ConflictKind, SchedulingClassification, StateRef}
 import org.sigilaris.core.codec.byte.ByteEncoder
-import org.sigilaris.core.crypto.CryptoOps
+import org.sigilaris.core.crypto.{CryptoOps, Hash}
 import org.sigilaris.core.datatype.{UInt256, Utf8}
 import org.sigilaris.node.jvm.runtime.block.{BlockBody, BlockHeader, BlockHeight, BlockRecord, BlockTimestamp, BlockView, BodyRoot, StateRoot}
 import org.sigilaris.node.jvm.runtime.gossip.ChainId
@@ -24,6 +24,8 @@ final class HotStuffBlockSchedulingSuite extends FunSuite:
   private final case class TestTxRef(
       id: Utf8,
   ) derives ByteEncoder
+
+  private given Hash[TestTxRef] = Hash.build
 
   private type TestRecord = BlockRecord[TestTxRef, Utf8, Utf8]
 
@@ -165,7 +167,7 @@ final class HotStuffBlockSchedulingSuite extends FunSuite:
     val reader = record("reader")
     val body = BlockBody(Set(writer, reader))
     val view = blockView(body, rootHex = "61")
-    val proposal = signedProposal(view.header)
+    val proposal = signedProposal(view.header, body)
     val classification = Map(
       writer.tx -> schedulable(writes = Set("shared")),
       reader.tx -> schedulable(reads = Set("shared")),
@@ -189,7 +191,7 @@ final class HotStuffBlockSchedulingSuite extends FunSuite:
         header = blockHeader(body, rootHex = "71", timestampMillis = 1_712_345_679_000L),
         body = body,
       )
-    val proposal = signedProposal(proposalHeader)
+    val proposal = signedProposal(proposalHeader, body)
 
     val result =
       HotStuffProposalViewValidator.validateProposalView(
@@ -200,6 +202,21 @@ final class HotStuffBlockSchedulingSuite extends FunSuite:
         schedulable(writes = Set("ok"))
 
     assertEquals(result.left.map(_.reason), Left("proposalBlockViewMismatch"))
+
+  test("HotStuffProposalViewValidator rejects proposal tx-set mismatches before body validation"):
+    val body = BlockBody(Set(record("only")))
+    val view = blockView(body, rootHex = "72")
+    val proposal = signedProposal(view.header, body, Some(ProposalTxSet.empty))
+
+    val result =
+      HotStuffProposalViewValidator.validateProposalView(
+        proposal,
+        view,
+        validatorSet,
+      ): _ =>
+        schedulable(writes = Set("only"))
+
+    assertEquals(result.left.map(_.reason), Left("proposalTxSetMismatch"))
 
   private def record(
       id: String,
@@ -259,6 +276,8 @@ final class HotStuffBlockSchedulingSuite extends FunSuite:
 
   private def signedProposal(
       block: BlockHeader,
+      body: BlockBody[TestTxRef, Utf8, Utf8],
+      txSet: Option[ProposalTxSet] = None,
   ): Proposal =
     val parentBlock = parentHeader()
     val parentWindow = HotStuffWindow(chainId, 0L, 0L, validatorSet.hash)
@@ -288,6 +307,7 @@ final class HotStuffBlockSchedulingSuite extends FunSuite:
           proposer = validatorSet.members.head.id,
           targetBlockId = BlockHeader.computeId(block),
           block = block,
+          txSet = txSet.getOrElse(ProposalTxSet.fromTxs(body.records.toVector.map(_.tx))),
           justify = justify,
         ),
         validatorKeys.head,

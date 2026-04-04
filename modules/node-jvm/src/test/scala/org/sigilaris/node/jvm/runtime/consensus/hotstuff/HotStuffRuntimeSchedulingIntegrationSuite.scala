@@ -9,7 +9,7 @@ import scodec.bits.ByteVector
 
 import org.sigilaris.core.application.scheduling.{CompatibilityReason, ConflictFootprint, SchedulingClassification, StateRef}
 import org.sigilaris.core.codec.byte.ByteEncoder
-import org.sigilaris.core.crypto.CryptoOps
+import org.sigilaris.core.crypto.{CryptoOps, Hash}
 import org.sigilaris.core.datatype.{UInt256, Utf8}
 import org.sigilaris.node.jvm.runtime.block.{BlockBody, BlockHeader, BlockHeight, BlockStore, BlockTimestamp, BlockView, StateRoot}
 import org.sigilaris.node.jvm.runtime.gossip.{ChainId, GossipClock, GossipEvent, PeerIdentity}
@@ -33,6 +33,8 @@ final class HotStuffRuntimeSchedulingIntegrationSuite extends CatsEffectSuite:
   private final case class TestTxRef(
       id: Utf8,
   ) derives ByteEncoder
+
+  private given Hash[TestTxRef] = Hash.build
 
   private type TestRecord = org.sigilaris.node.jvm.runtime.block.BlockRecord[TestTxRef, Utf8, Utf8]
 
@@ -77,6 +79,10 @@ final class HotStuffRuntimeSchedulingIntegrationSuite extends CatsEffectSuite:
         proposalPayload(emission.event).targetBlockId,
         BlockHeader.computeId(emission.view.header),
       )
+      assertEquals(
+        proposalPayload(emission.event).txSet,
+        ProposalTxSet.fromTxs(emission.selection.accepted.map(_.tx)),
+      )
 
   test("emitVoteForProposalView rejects proposals whose stored bodies violate scheduling rules"):
     given GossipClock[IO] = GossipClock.constant[IO](startedAt)
@@ -97,6 +103,7 @@ final class HotStuffRuntimeSchedulingIntegrationSuite extends CatsEffectSuite:
       proposalEvent <- runtime.emitProposal(
         proposer = validatorSet.members.head.id,
         block = view.header,
+        txSet = ProposalTxSet.fromTxs(view.body.records.toVector.map(_.tx)),
         window = HotStuffWindow(chainId, 2L, 1L, validatorSet.hash),
         justify = bootstrapQc(),
         ts = startedAt,
@@ -135,6 +142,7 @@ final class HotStuffRuntimeSchedulingIntegrationSuite extends CatsEffectSuite:
       proposalEvent <- proposerRuntime.emitProposal(
         proposer = validatorSet.members.head.id,
         block = view.header,
+        txSet = ProposalTxSet.fromTxs(view.body.records.toVector.map(_.tx)),
         window = HotStuffWindow(chainId, 2L, 1L, validatorSet.hash),
         justify = bootstrapQc(),
         ts = startedAt,
