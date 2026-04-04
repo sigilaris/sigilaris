@@ -116,8 +116,8 @@ Phase 4 Complete
 - `bodyRoot` verification helper를 추가한다.
 - `recordHash` duplicate 검사를 runtime collection semantics 와 독립적으로 수행하는 validation helper 를 추가한다.
 - canonical encoding helper와 fixture를 갱신한다.
-- 기존 HotStuff minimal `Block`은 Phase 2 migration bridge 로 일시 유지하고, 새 canonical public surface는 `runtime.block.BlockHeader`로 고정한다.
-- 이 Phase의 landed state는 compile/test green 이어야 한다. 필요하면 temporary bridge type, alias, adapter를 둬서 HotStuff code path를 단계적으로 옮긴다.
+- migration 중 temporary bridge type, alias, adapter를 둘 수 있지만, landed state의 canonical public surface는 `runtime.block.BlockHeader`이고 HotStuff package는 이를 직접 소비해야 한다.
+- 이 Phase의 landed state는 compile/test green 이어야 한다.
 
 ### Phase 2: HotStuff Integration Migration
 - `UnsignedProposal`, `Proposal`, validation path를 새 block header contract로 갱신한다.
@@ -145,8 +145,8 @@ Phase 4 Complete
 - Phase 1 Success: permutation regression 또는 property-style unit test 로 input construction order 변화가 canonical serialization order 와 `bodyRoot` 를 바꾸지 않는지를 검증한다.
 - Phase 1 Failure: pure unit test로 duplicate `recordHash` body 를 reject 하는지를 검증한다.
 - Phase 1 Failure: pure unit test로 runtime collection 이 distinct member 로 보더라도 `recordHash` 가 같으면 reject 하는지를 검증한다.
-- Phase 1 Regression: bridge 상태에서도 compile/test green 이 유지되고, landed commit 이 intentionally broken intermediate 에 의존하지 않는지를 검증한다.
-- Phase 1 Failure: pure unit test로 malformed timestamp, missing mandatory header field, invalid parent representation을 reject 하는지를 검증한다.
+- Phase 1 Regression: temporary migration bridge 를 제거한 landed state에서도 compile/test green 이 유지되고, landed commit 이 intentionally broken intermediate 에 의존하지 않는지를 확인한다.
+- Phase 1 Failure: pure unit test로 negative timestamp/height constructor input 을 reject 하고, generic `BlockView` validation 이 wrong `bodyRoot` 를 reject 하는지를 검증한다.
 - Phase 2 Success: HotStuff validation test로 `proposal.targetBlockId == computeId(header)`, `proposal.window.height == header.height`, non-genesis `header.parent == justify.subject.blockId`를 검증한다.
 - Phase 2 Failure: HotStuff validation test로 wrong `BlockId`, wrong height, wrong parent linkage, genesis parent present 를 reject 하는지를 검증한다.
 - Phase 2 Regression: existing proposal/vote/QC exact known-set, replay dedupe, bounded `requestById`, audit relay path가 block shape 변경 후에도 유지되는지를 검증한다.
@@ -192,7 +192,7 @@ Phase 4 Complete
 - [x] `BlockRecordHash` helper 추가
 - [x] `bodyRoot` verification helper 추가
 - [x] canonical encoding / fixture 갱신
-- [x] minimal `Block` naming migration 정리
+- [x] HotStuff public `Block` alias 제거를 포함한 naming migration 정리
 - [x] compile/test green bridge 상태 유지
 
 ### Phase 2: HotStuff Integration Migration

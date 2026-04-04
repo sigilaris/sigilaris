@@ -22,7 +22,7 @@ Draft
   - the current local reducer path still executes transactions sequentially and carries `StoreState` forward across the batch, so access logs accumulate unless the execution seam is changed,
   - the current local batch admission/commit path still accepts same-batch causality structurally because later transactions run on top of earlier transactions' writes in sequence.
 - In the current local execution path, one accepted batch is reduced and committed as one block-shaped unit. The initial rollout in this plan therefore applies the future block-level conflict rule at the batch boundary as a local stand-in for future conflict-free block bodies.
-- The current HotStuff baseline in `sigilaris-node-jvm` still uses the minimal `Block(parent, payloadHash)` artifact. Full consensus-level enforcement of ADR-0020 depends on ADR-0019 / Plan 0005 exposing a canonical block body or equivalent deterministic body projection that validators can inspect.
+- The shipped HotStuff baseline in `sigilaris-node-jvm` now consumes the ADR-0019 canonical `BlockHeader` / `BlockBody` / `BlockView` contract. Full consensus-level enforcement of ADR-0020 therefore no longer waits on block-model readiness itself; it depends on integrating deterministic footprint derivation and validation against that landed body/query surface.
 - The current application layer contains a mix of transaction families:
   - some can be made schedulable from explicit references already present in the transaction,
   - some still rely on dynamic discovery such as prefix scan, automatic input selection, or open-ended balance search and therefore cannot participate in the schedulable path yet.
@@ -32,14 +32,14 @@ Draft
 - Change execution so actual per-transaction footprints are observable and can be checked against declared or derived footprints.
 - Introduce a conflict-free schedulable batch path in the current local application execution flow as the first landing zone for ADR-0020.
 - Provide an explicit compatibility path for non-schedulable transactions during migration.
-- Prepare proposer-side selection and validator-side block-body verification for HotStuff once ADR-0019 / Plan 0005 provides the required body contract.
+- Prepare proposer-side selection and validator-side block-body verification for HotStuff on top of the landed ADR-0019 / Plan 0005 body contract.
 
 ## Scope
 - Core/shared scheduling abstractions and verification helpers.
 - Per-transaction actual footprint capture in the current execution path.
 - Application-owned admission and batch-planning logic for schedulable vs compatibility transactions.
 - Initial deterministic `FootprintDeriver` rollout for pilot transaction families.
-- HotStuff integration hooks and follow-through once canonical block body support is available.
+- HotStuff integration hooks and follow-through on top of the landed canonical block body support.
 - Tests, docs, and migration notes related to the new scheduling contract.
 
 ## Non-Goals
@@ -48,7 +48,7 @@ Draft
 - Eliminating the compatibility path immediately.
 - Designing final distributed mempool policy, fee market policy, or proposer fairness strategy.
 - Solving pacemaker, timeout, or leader-rotation policy in HotStuff.
-- Replacing ADR-0019 / Plan 0005 block migration work; this plan depends on that work for full consensus-level enforcement.
+- Replacing ADR-0019 / Plan 0005 block migration work; this plan consumes that landed block contract rather than redefining it.
 
 ## Related ADRs And Docs
 - ADR-0009: Blockchain Application Architecture
@@ -68,11 +68,11 @@ Draft
 - The execution seam must capture actual footprint per transaction, not only a batch-accumulated `AccessLog`.
 - Conformance baseline is subset-based: `actualReads ⊆ declaredReads` and `actualWrites ⊆ declaredWrites`.
 - One-pass aggregate-set verification is the baseline implementation strategy for both proposer-side selection and validator-side body checks; pairwise `O(N^2)` comparison is not required.
-- Full HotStuff proposal/validator enforcement depends on ADR-0019 / Plan 0005 exposing a canonical block body or equivalent deterministic transaction projection.
+- Full HotStuff proposal/validator enforcement builds on the landed ADR-0019 / Plan 0005 canonical block body or equivalent deterministic transaction projection.
 - Initial schedulable pilot families should prioritize transactions whose touched state can be derived exactly from explicit ids already present in the transaction, and defer dynamic scan / auto-selection families to compatibility mode.
 - Plan completion is split into two landing levels:
   - local rollout completion: Phases 1-4 landed in application/local execution,
-  - full consensus rollout completion: Phase 5 landed after Plan 0005 body-contract readiness.
+  - full consensus rollout completion: Phase 5 landed on top of the Plan 0005 body contract.
 
 ## Change Areas
 
@@ -82,14 +82,14 @@ Draft
 - possibly a new package for scheduling helpers, for example `org.sigilaris.core.application.scheduling` or equivalent
 - application-owned reducer / coordinator / admission modules that currently own local batch execution
 - transaction-family-specific footprint derivation code in application-owned modules
-- `sigilaris/modules/node-jvm/src/main/scala/org/sigilaris/node/jvm/runtime/consensus/hotstuff` after Plan 0005 reaches the required block-body baseline
+- `sigilaris/modules/node-jvm/src/main/scala/org/sigilaris/node/jvm/runtime/consensus/hotstuff` to integrate against the landed Plan 0005 block-body baseline
 
 ### Tests
 - unit tests for `StateRef`, `ConflictFootprint`, merge/intersection, and one-pass verification
 - execution tests for per-transaction access-log reset and actual-footprint capture
 - application batch-planning tests for schedulable success, schedulable conflict rejection, and compatibility fallback
 - conformance tests for `actual ⊆ declared`
-- HotStuff proposal/block validation tests once canonical body support lands
+- HotStuff proposal/block validation tests on top of the landed canonical body support
 
 ### Docs
 - `docs/adr/0020-conflict-free-block-scheduling-with-state-references-and-object-centric-seams.md`
@@ -106,7 +106,7 @@ Draft
   - if a batch mixes schedulable and non-schedulable transactions, the initial rollout should route the whole batch to compatibility mode rather than partially schedule it.
 - Lock the initial developer-visible classification model, for example `Schedulable(footprint)` vs `Compatibility(reason)`.
 - Lock the first pilot transaction families that must produce exact or conservative deterministic footprints.
-- Explicitly gate HotStuff proposer/validator enforcement on Plan 0005 body-contract readiness so the local application rollout can land first without pretending consensus-level enforcement already exists.
+- Even though Plan 0005 body-contract readiness is already satisfied, keep HotStuff proposer/validator enforcement as a later phase so the local application rollout can land first without pretending consensus-level enforcement already exists.
 
 ### Phase 1: Core Scheduling And Conformance Primitives
 - Add the core data types for `StateRef` and `ConflictFootprint`.
@@ -159,7 +159,7 @@ Draft
   - or splitting the flow across blocks.
 
 ### Phase 5: HotStuff Proposer And Validator Integration
-- Start only after Plan 0005 provides a canonical block body or equivalent deterministic block transaction projection visible to validators.
+- Consume the landed Plan 0005 canonical block body or equivalent deterministic block transaction projection visible to validators.
 - Introduce proposer-side selection that only assembles schedulable, conflict-free transaction sets into conflict-free block bodies.
 - Add validator-side one-pass body verification using deterministic footprint derivation from block-body transactions.
 - Make block acceptance or vote emission reject bodies that violate the ADR-0020 conflict rule.
@@ -184,7 +184,7 @@ Draft
 - Phase 3 Failure: conformance tests fail when actual execution touches a `StateRef` outside the declared or derived footprint.
 - Phase 4 Success: pilot transaction families derive deterministic footprints without dry-run.
 - Phase 4 Failure: dynamic scan or auto-selection families remain compatibility-only until migrated.
-- Phase 5 Success: once block-body support exists, proposer-side selection and validator-side body verification reject conflicting block bodies.
+- Phase 5 Success: proposer-side selection and validator-side body verification reject conflicting block bodies on top of the landed canonical block-body support.
 - Phase 5 Regression: HotStuff proposal/vote/QC identity, request-by-id, and exact-known-set behavior remain green after adding body-level conflict checks.
 
 ## Risks And Mitigations
@@ -196,8 +196,8 @@ Draft
   - Mitigation: add explicit classification and compatibility-path reason reporting in internal logs or diagnostics.
 - Dynamic application transaction families may take longer to migrate than the core/shared seam.
   - Mitigation: keep compatibility mode explicit and list non-schedulable families in docs instead of forcing premature partial derivation.
-- HotStuff integration may stall if Plan 0005 does not expose a usable canonical body contract quickly enough.
-  - Mitigation: land Phase 1-4 in local application execution first and make the dependency explicit instead of blocking the whole effort.
+- HotStuff integration may still stall even though Plan 0005 has landed, because application-specific footprint derivation and validator-side body verification are separate work.
+  - Mitigation: land Phase 1-4 in local application execution first and keep the remaining HotStuff integration scope explicit instead of pretending the landed block contract already solves scheduler enforcement.
 - Application-specific derivation logic may diverge from actual reducer behavior.
   - Mitigation: subset-based conformance checking is mandatory, and derivation bugs should fail fast in schedulable mode.
 
@@ -209,7 +209,7 @@ Draft
 5. At least one pilot transaction family derives deterministic footprints without dry-run, and dynamic discovery families are explicitly classified as compatibility-only.
 6. Ordering-independence, conformance failure, compatibility fallback, and schedulable conflict rejection are all locked by tests.
 7. Local rollout completion is achieved when Phases 1-4 are landed and the current local application path enforces ADR-0020 semantics at the current batch-to-block boundary.
-8. Once Plan 0005 exposes canonical block-body support, HotStuff proposer/validator integration can enforce ADR-0020 conflict rules without changing the ADR-0019 header contract.
+8. With Plan 0005 canonical block-body support already landed, HotStuff proposer/validator integration can enforce ADR-0020 conflict rules without changing the ADR-0019 header contract.
 
 ## Checklist
 
@@ -219,7 +219,7 @@ Draft
 - [ ] derivation-failure routing decided
 - [ ] mixed-batch compatibility rule decided
 - [ ] pilot schedulable transaction families listed
-- [ ] dependency on Plan 0005 block-body readiness documented
+- [x] dependency on landed Plan 0005 block-body contract documented
 
 ### Phase 1: Core Scheduling And Conformance Primitives
 - [ ] `StateRef` baseline type added
@@ -248,7 +248,7 @@ Draft
 - [ ] migration notes for dynamic-scan families written
 
 ### Phase 5: HotStuff Proposer And Validator Integration
-- [ ] proposer-side conflict-free selection integrated after Plan 0005 readiness
+- [ ] proposer-side conflict-free selection integrated against the landed Plan 0005 body contract
 - [ ] validator-side one-pass body verification integrated
 - [ ] block rejection/vote gating for conflicting bodies added
 - [ ] HotStuff regression suite green
