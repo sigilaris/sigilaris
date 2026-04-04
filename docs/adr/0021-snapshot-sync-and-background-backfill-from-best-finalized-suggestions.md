@@ -132,6 +132,11 @@ final case class FinalizedAnchorSuggestion(
 - 대신 `FinalizedProof` wire encoding/transport optimization, bootstrap trust root contract, validator-set continuity derivation, snapshot node batching/rate-limit, proposal replay budget 같은 follow-up spec 이 더 필요해진다.
 - conflicting valid finalized suggestion 을 explicit safety fault 로 surface 하므로, bootstrap path 가 consensus safety anomaly 를 조용히 삼키지 않게 된다.
 
+## Implementation Status
+- `2026-04-05` 기준 shipped JVM baseline 은 runtime-owned `FinalizedAnchorSuggestion` discovery/verification, snapshot metadata + trie persistence seam, anchor-pinned bootstrap coordinator, tx-aware forward catch-up vote-hold gating, low-priority historical backfill worker, 그리고 관련 diagnostics/test coverage 까지 landed 했다.
+- shipped bootstrap trust root 는 현재 `HotStuffBootstrapConfig.validatorSet` 과 동등한 static validator-set baseline 이다.
+- validator-set rotation continuity, historical validator-set lookup, operator checkpoint / weak-subjectivity bootstrap material, archive-grade accelerated backfill, peer scoring/bandwidth shaping 은 여전히 follow-up 범위다.
+
 ## Rejected Alternatives
 1. **가장 높다고 주장된 block/header 를 proof 없이 anchor 로 채택한다**
    - 구현은 단순해 보이지만 stale peer 나 byzantine peer 에 쉽게 흔들린다.

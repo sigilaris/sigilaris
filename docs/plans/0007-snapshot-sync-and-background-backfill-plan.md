@@ -1,7 +1,7 @@
 # 0007 - Snapshot Sync And Background Backfill Plan
 
 ## Status
-Draft
+Phase 5 Complete
 
 ## Created
 2026-04-05
@@ -173,6 +173,23 @@ Draft
 7. `StorageLayout.state.snapshot` / `state.nodes` 를 사용하는 snapshot persistence seam 이 존재하고, snapshot trie node / snapshot metadata 는 `BlockQuery` / `BlockStore` interface 로 조회하거나 저장할 수 없다는 negative invariant 가 코드와 테스트에 반영된다.
 8. ADR-0021 와 plan 0007, 필요 시 plan 0003 / 0004 / README 가 shipped bootstrap baseline 과 residual follow-up 을 일관된 용어로 설명한다.
 
+## Verification Snapshot
+- `2026-04-05` 기준 아래 suite 가 green 이다.
+- `HotStuffBootstrapContractsSuite`
+- `HotStuffRuntimeServiceSuite`
+- `HotStuffFinalizationSuite`
+- `HotStuffSnapshotSyncSuite`
+- `HotStuffSnapshotStoresSuite`
+- `HotStuffBootstrapCoordinatorSuite`
+- `HotStuffHistoricalBackfillSuite`
+- `HotStuffProposalTxSyncSuite`
+- `RuntimeImportRuleSuite`
+
+## Residual Gaps After Phase 5
+- shipped bootstrap trust root 는 여전히 `HotStuffBootstrapConfig.validatorSet` 기반 static validator-set baseline 이다. operator checkpoint 나 weak-subjectivity anchor 는 follow-up bootstrap material 로 남아 있다.
+- `ValidatorSetLookup` seam 은 landed 되었지만 historical validator-set rotation continuity 와 finalized-proof historical lookup 은 아직 구현되지 않았다.
+- historical backfill 은 low-priority background baseline 까지 landed 되었고, archive-grade acceleration, peer scoring, bandwidth shaping, snapshot batching optimization 은 후속 작업으로 남아 있다.
+
 ## Checklist
 
 ### Phase 0: Contract Lock And Bootstrap Baseline
@@ -214,9 +231,9 @@ Draft
 - [x] pause/resume / progress / terminal condition diagnostics 추가
 
 ### Phase 5: Verification And Docs
-- [ ] unit / integration / regression test green
-- [ ] ADR / plan / README 용어 정렬
-- [ ] static bootstrap baseline 과 future rotation residual gap 문서화
+- [x] unit / integration / regression test green
+- [x] ADR / plan / README 용어 정렬
+- [x] static bootstrap baseline 과 future rotation residual gap 문서화
 
 ## Follow-Ups
 - `P1`: validator-set rotation 이 shipped baseline 으로 도입되면 bootstrap trust root 와 historical validator-set lookup contract 를 별도 ADR 또는 superseding plan 으로 확장한다.
