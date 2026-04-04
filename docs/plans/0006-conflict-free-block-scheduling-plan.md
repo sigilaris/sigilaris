@@ -154,6 +154,10 @@ Draft
   - account or registry transactions whose touched state is fully named by explicit ids in the transaction,
   - membership or governance transactions whose mutable objects are all explicitly referenced,
   - payment or escrow transactions that already carry explicit input ids, balance ids, or escrow ids and can be derived without open-ended search, subject to Phase 0 lock.
+- The current shipped account/group surface lands schedulable derivation for the Phase 0 pilot families:
+  - `CreateNamedAccount`, `UpdateAccount`, `AddKeyIds`, `RemoveKeyIds`, `RemoveAccount`,
+  - `CreateGroup`, `DisbandGroup`, `AddAccounts`, `RemoveAccounts`, `ReplaceCoordinator`.
+- `CurrentApplicationScheduling.documentedCompatibilityFamilies` is intentionally empty for the current shipped surface because no remaining account/group transaction family still requires compatibility-only routing.
 - Keep dynamic discovery families on the compatibility path initially, especially flows that currently perform prefix scans or automatic UTXO/input selection.
 - Document each non-schedulable family and the reason it remains on compatibility mode.
 - For dynamic families that must eventually become schedulable, identify whether the right migration is:
@@ -161,6 +165,8 @@ Draft
   - new object-centric transaction shapes,
   - collapsing dependent operations into one transaction,
   - or splitting the flow across blocks.
+- Migration note for future reducer changes:
+  - if a family grows prefix scans, automatic input selection, or open-ended membership/key cleanup, it must either expose those touched refs explicitly in the transaction or fall back to `Compatibility(reason)` until the transaction shape is migrated.
 
 ### Phase 5: HotStuff Proposer And Validator Integration
 - Consume the landed Plan 0005 canonical block body or equivalent deterministic block transaction projection visible to validators.
@@ -247,9 +253,9 @@ Draft
 - [x] duplicate/idempotency path remains green
 
 ### Phase 4: Pilot FootprintDeriver Rollout And Compatibility Classification
-- [ ] pilot transaction-family derivation implementations added
-- [ ] non-schedulable families explicitly classified and documented
-- [ ] migration notes for dynamic-scan families written
+- [x] pilot transaction-family derivation implementations added
+- [x] non-schedulable families explicitly classified and documented
+- [x] migration notes for dynamic-scan families written
 
 ### Phase 5: HotStuff Proposer And Validator Integration
 - [ ] proposer-side conflict-free selection integrated against the landed Plan 0005 body contract
