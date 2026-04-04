@@ -240,11 +240,11 @@ Draft
 - [x] regression tests prove no hidden batch-level log dependency remains
 
 ### Phase 3: Local Application Admission And Batch Planning
-- [ ] schedulable vs compatibility batch planner added
-- [ ] schedulable conflict rejection integrated before reduction
-- [ ] compatibility-path routing integrated
-- [ ] post-execution conformance check integrated
-- [ ] duplicate/idempotency path remains green
+- [x] schedulable vs compatibility batch planner added
+- [x] schedulable conflict rejection integrated before reduction
+- [x] compatibility-path routing integrated
+- [x] post-execution conformance check integrated
+- [x] duplicate/idempotency path remains green
 
 ### Phase 4: Pilot FootprintDeriver Rollout And Compatibility Classification
 - [ ] pilot transaction-family derivation implementations added
