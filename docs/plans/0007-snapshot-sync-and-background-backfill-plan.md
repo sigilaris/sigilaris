@@ -191,13 +191,13 @@ Draft
 - [x] HotStuff in-memory diagnostics / snapshots 에 finalized anchor visibility 추가
 
 ### Phase 2: Snapshot Store And Trie Fetch Runtime
-- [ ] snapshot metadata store abstraction 추가
-- [ ] trie node store abstraction 추가
-- [ ] in-memory snapshot/node store baseline 추가
-- [ ] `StorageLayout.state.snapshot` / `state.nodes` backing seam 추가
-- [ ] `SnapshotNodeFetchService` 추가
-- [ ] node-by-hash fetch / verification helper 추가
-- [ ] snapshot coordinator completion gate 추가
+- [x] snapshot metadata store abstraction 추가
+- [x] trie node store abstraction 추가
+- [x] in-memory snapshot/node store baseline 추가
+- [x] `StorageLayout.state.snapshot` / `state.nodes` backing seam 추가
+- [x] `SnapshotNodeFetchService` 추가
+- [x] node-by-hash fetch / verification helper 추가
+- [x] snapshot coordinator completion gate 추가
 
 ### Phase 3: Bootstrap Coordinator And Forward Catch-Up
 - [ ] best finalized suggestion fan-out / retry / anchor selection coordinator 추가
