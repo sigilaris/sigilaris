@@ -1,0 +1,647 @@
+package org.sigilaris.node.jvm.runtime.consensus.hotstuff
+
+import java.time.{Duration, Instant}
+
+import cats.effect.kernel.Sync
+import cats.effect.Ref
+import cats.syntax.all.*
+
+import org.sigilaris.core.application.scheduling.SchedulingClassification
+import org.sigilaris.core.codec.byte.ByteEncoder
+import org.sigilaris.core.crypto.Hash
+import org.sigilaris.core.datatype.BigNat
+import org.sigilaris.node.jvm.runtime.block.{BlockHeight, BlockQuery}
+import org.sigilaris.node.jvm.runtime.gossip.{CanonicalRejection, ChainId, ControlBatch, StableArtifactId}
+import org.sigilaris.node.jvm.runtime.gossip.tx.TxRuntimePolicy
+
+final case class BootstrapRetryPolicy(
+    baseDelay: Duration,
+    maxDelay: Duration,
+):
+  require(!baseDelay.isNegative, "baseDelay must be non-negative")
+  require(!maxDelay.isNegative, "maxDelay must be non-negative")
+
+  def nextRetryAt(
+      now: Instant,
+      attempt: Int,
+  ): Instant =
+    val cappedAttempt = attempt.max(1).toLong
+    val rawMillis     = baseDelay.toMillis * cappedAttempt
+    val cappedMillis  = Math.min(rawMillis, maxDelay.toMillis)
+    now.plusMillis(cappedMillis)
+
+object BootstrapRetryPolicy:
+  val boundedDefault: BootstrapRetryPolicy =
+    BootstrapRetryPolicy(
+      baseDelay = Duration.ofSeconds(5L),
+      maxDelay = Duration.ofMinutes(1L),
+    )
+
+final case class BootstrapCoordinatorFailure(
+    reason: String,
+    detail: Option[String],
+)
+
+object BootstrapCoordinatorFailure:
+  def fromSnapshotFailure(
+      failure: SnapshotSyncFailure,
+  ): BootstrapCoordinatorFailure =
+    BootstrapCoordinatorFailure(
+      reason = failure.reason,
+      detail = failure.detail,
+    )
+
+  def fromValidation(
+      failure: HotStuffValidationFailure,
+  ): BootstrapCoordinatorFailure =
+    BootstrapCoordinatorFailure(
+      reason = failure.reason,
+      detail = failure.detail,
+    )
+
+final case class ProposalCatchUpAssessment(
+    voteReadiness: BootstrapVoteReadiness,
+    controlBatch: Option[ControlBatch],
+)
+
+trait ProposalCatchUpReadiness[F[_]]:
+  def assess(
+      proposal: Proposal,
+  ): F[Either[BootstrapCoordinatorFailure, ProposalCatchUpAssessment]]
+
+object ProposalCatchUpReadiness:
+  def static[F[_]: Sync](
+      assessment: ProposalCatchUpAssessment,
+  ): ProposalCatchUpReadiness[F] =
+    new ProposalCatchUpReadiness[F]:
+      override def assess(
+          proposal: Proposal,
+      ): F[Either[BootstrapCoordinatorFailure, ProposalCatchUpAssessment]] =
+        assessment.asRight[BootstrapCoordinatorFailure].pure[F]
+
+  def fromBlockQuery[
+      F[_]: Sync,
+      TxRef: ByteEncoder: Hash,
+      ResultRef: ByteEncoder,
+      Event: ByteEncoder,
+  ](
+      validatorSet: ValidatorSet,
+      knownTxIds: F[Set[StableArtifactId]],
+      blockQuery: BlockQuery[F, TxRef, ResultRef, Event],
+      txPolicy: TxRuntimePolicy,
+      idempotencyKeyFor: Proposal => String,
+  )(
+      classifyTx: TxRef => SchedulingClassification,
+  ): ProposalCatchUpReadiness[F] =
+    new ProposalCatchUpReadiness[F]:
+      override def assess(
+          proposal: Proposal,
+      ): F[Either[BootstrapCoordinatorFailure, ProposalCatchUpAssessment]] =
+        knownTxIds.flatMap: known =>
+          val missingTxIds =
+            HotStuffProposalTxSync.missingTxIds(
+              proposal = proposal,
+              knownTxIds = known,
+            )
+          if missingTxIds.nonEmpty then
+            HotStuffProposalTxSync
+              .controlBatchForProposal(
+                proposal = proposal,
+                knownTxIds = known,
+                idempotencyKey = idempotencyKeyFor(proposal),
+                txPolicy = txPolicy,
+              ) match
+              case Left(rejection) =>
+                BootstrapCoordinatorFailure(
+                  reason = rejection.reason,
+                  detail = rejection.detail,
+                ).asLeft[ProposalCatchUpAssessment].pure[F]
+              case Right(controlBatch) =>
+                ProposalCatchUpAssessment(
+                  voteReadiness = BootstrapVoteReadiness.Held("missingTxPayload"),
+                  controlBatch = controlBatch,
+                ).asRight[BootstrapCoordinatorFailure].pure[F]
+          else
+              HotStuffRuntimeScheduling
+                .validateProposalViewFromBlockQuery(
+                  proposal = proposal,
+                  validatorSet = validatorSet,
+                  blockQuery = blockQuery,
+                )(classifyTx)
+                .map:
+                  case Left(failure)
+                      if failure.reason === "proposalBlockViewUnavailable" =>
+                    ProposalCatchUpAssessment(
+                      voteReadiness =
+                        BootstrapVoteReadiness.Held("proposalViewUnavailable"),
+                      controlBatch = None,
+                    ).asRight[BootstrapCoordinatorFailure]
+                  case Left(failure) =>
+                    BootstrapCoordinatorFailure.fromValidation(failure)
+                      .asLeft[ProposalCatchUpAssessment]
+                  case Right(_) =>
+                    ProposalCatchUpAssessment(
+                      voteReadiness = BootstrapVoteReadiness.Ready,
+                      controlBatch = None,
+                    ).asRight[BootstrapCoordinatorFailure]
+
+final case class ForwardCatchUpResult(
+    applied: Vector[Proposal],
+    queued: Vector[Proposal],
+    controlBatches: Vector[ControlBatch],
+    frontierBlockId: BlockId,
+    frontierHeight: BlockHeight,
+    voteReadiness: BootstrapVoteReadiness,
+)
+
+object HotStuffForwardCatchUp:
+  def plan[F[_]: Sync](
+      anchor: FinalizedAnchorSuggestion,
+      replayed: Vector[Proposal],
+      live: Vector[Proposal],
+      readiness: ProposalCatchUpReadiness[F],
+  ): F[Either[BootstrapCoordinatorFailure, ForwardCatchUpResult]] =
+    val ordered =
+      dedupeByProposalId(replayed ++ live)
+        .sortBy(proposal => (proposal.block.height, proposal.proposalId.toHexLower))
+
+    @SuppressWarnings(Array("org.wartremover.warts.Recursion"))
+    def loop(
+        frontierBlockId: BlockId,
+        frontierHeight: BlockHeight,
+        remaining: Vector[Proposal],
+        applied: Vector[Proposal],
+        controlBatches: Vector[ControlBatch],
+    ): F[Either[BootstrapCoordinatorFailure, ForwardCatchUpResult]] =
+      val expectedHeight = increment(frontierHeight)
+      remaining.find(proposal =>
+        proposal.block.parent.contains(frontierBlockId) &&
+          proposal.block.height.toBigNat === expectedHeight.toBigNat
+      ) match
+        case None =>
+          val readinessState =
+            if remaining.isEmpty then BootstrapVoteReadiness.Ready
+            else BootstrapVoteReadiness.Held("proposalReplayGap")
+          ForwardCatchUpResult(
+            applied = applied,
+            queued =
+              remaining.sortBy(proposal =>
+                (proposal.block.height, proposal.proposalId.toHexLower)
+              ),
+            controlBatches = controlBatches,
+            frontierBlockId = frontierBlockId,
+            frontierHeight = frontierHeight,
+            voteReadiness = readinessState,
+          ).asRight[BootstrapCoordinatorFailure].pure[F]
+        case Some(nextProposal) =>
+          readiness.assess(nextProposal).flatMap:
+            case Left(error) =>
+              error.asLeft[ForwardCatchUpResult].pure[F]
+            case Right(assessment) =>
+              val nextRemaining =
+                remaining.filterNot(_.proposalId === nextProposal.proposalId)
+              val nextBatches =
+                assessment.controlBatch.fold(controlBatches)(controlBatches :+ _)
+              assessment.voteReadiness match
+                case held @ BootstrapVoteReadiness.Held(_) =>
+                  ForwardCatchUpResult(
+                    applied = applied,
+                    queued =
+                      (nextProposal +: nextRemaining)
+                        .sortBy(proposal =>
+                          (
+                            proposal.block.height,
+                            proposal.proposalId.toHexLower,
+                          )
+                        ),
+                    controlBatches = nextBatches,
+                    frontierBlockId = frontierBlockId,
+                    frontierHeight = frontierHeight,
+                    voteReadiness = held,
+                  ).asRight[BootstrapCoordinatorFailure].pure[F]
+                case BootstrapVoteReadiness.Ready =>
+                  loop(
+                    frontierBlockId = nextProposal.targetBlockId,
+                    frontierHeight = nextProposal.block.height,
+                    remaining = nextRemaining,
+                    applied = applied :+ nextProposal,
+                    controlBatches = nextBatches,
+                  )
+
+    loop(
+      frontierBlockId = anchor.anchorBlockId,
+      frontierHeight = anchor.anchorHeight,
+      remaining = ordered,
+      applied = Vector.empty[Proposal],
+      controlBatches = Vector.empty[ControlBatch],
+    )
+
+  private def increment(
+      height: BlockHeight,
+  ): BlockHeight =
+    BlockHeight(BigNat.add(height.toBigNat, BigNat.One))
+
+  private def dedupeByProposalId(
+      proposals: Vector[Proposal],
+  ): Vector[Proposal] =
+    proposals
+      .foldLeft(Map.empty[ProposalId, Proposal]): (acc, proposal) =>
+        acc.updatedWith(proposal.proposalId):
+          case current @ Some(_) => current
+          case None              => Some(proposal)
+      .values
+      .toVector
+
+trait BootstrapCoordinator[F[_]] extends BootstrapDiagnosticsSource[F]:
+  def discover(
+      chainId: ChainId,
+      sessions: Vector[BootstrapSessionBinding],
+      now: Instant,
+  ): F[Either[BootstrapCoordinatorFailure, Option[FinalizedAnchorSuggestion]]]
+
+  def bootstrap(
+      chainId: ChainId,
+      sessions: Vector[BootstrapSessionBinding],
+      startedAt: Instant,
+      liveProposals: Vector[Proposal],
+  ): F[Either[BootstrapCoordinatorFailure, BootstrapCoordinatorResult]]
+
+final case class BootstrapCoordinatorResult(
+    anchor: FinalizedAnchorSuggestion,
+    snapshot: SnapshotSyncResult,
+    forwardCatchUp: ForwardCatchUpResult,
+    diagnostics: BootstrapDiagnostics,
+)
+
+object BootstrapCoordinator:
+  def create[F[_]: Sync](
+      retryPolicy: BootstrapRetryPolicy,
+      validatorSetLookup: ValidatorSetLookup[F],
+      finalizedAnchorSuggestions: FinalizedAnchorSuggestionService[F],
+      snapshotCoordinator: SnapshotCoordinator[F],
+      proposalReplay: ProposalReplayService[F],
+      readiness: ProposalCatchUpReadiness[F],
+  ): F[BootstrapCoordinator[F]] =
+    Ref
+      .of[F, BootstrapCoordinatorState](BootstrapCoordinatorState.empty)
+      .map: stateRef =>
+        new InMemoryBootstrapCoordinator[F](
+          retryPolicy = retryPolicy,
+          validatorSetLookup = validatorSetLookup,
+          finalizedAnchorSuggestions = finalizedAnchorSuggestions,
+          snapshotCoordinator = snapshotCoordinator,
+          proposalReplay = proposalReplay,
+          readiness = readiness,
+          ref = stateRef,
+        )
+
+private final case class BootstrapCoordinatorChainState(
+    bestFinalized: Option[SnapshotAnchor],
+    selectedAnchor: Option[SnapshotAnchor],
+    pinnedAnchor: Option[SnapshotAnchor],
+    pinnedSuggestion: Option[FinalizedAnchorSuggestion],
+    voteReadiness: BootstrapVoteReadiness,
+    finalizationSafetyFaults: Vector[FinalizedAnchorSafetyFault],
+)
+
+private object BootstrapCoordinatorChainState:
+  val empty: BootstrapCoordinatorChainState =
+    BootstrapCoordinatorChainState(
+      bestFinalized = None,
+      selectedAnchor = None,
+      pinnedAnchor = None,
+      pinnedSuggestion = None,
+      voteReadiness = BootstrapVoteReadiness.Held("snapshotPending"),
+      finalizationSafetyFaults = Vector.empty[FinalizedAnchorSafetyFault],
+    )
+
+private final case class BootstrapCoordinatorState(
+    phase: BootstrapPhase,
+    chains: Map[ChainId, BootstrapCoordinatorChainState],
+    retryAttempts: Int,
+    nextRetryAt: Option[Instant],
+    lastFailure: Option[String],
+)
+
+private object BootstrapCoordinatorState:
+  val empty: BootstrapCoordinatorState =
+    BootstrapCoordinatorState(
+      phase = BootstrapPhase.Discovery,
+      chains = Map.empty[ChainId, BootstrapCoordinatorChainState],
+      retryAttempts = 0,
+      nextRetryAt = None,
+      lastFailure = None,
+    )
+
+private final class InMemoryBootstrapCoordinator[F[_]: Sync](
+    retryPolicy: BootstrapRetryPolicy,
+    validatorSetLookup: ValidatorSetLookup[F],
+    finalizedAnchorSuggestions: FinalizedAnchorSuggestionService[F],
+    snapshotCoordinator: SnapshotCoordinator[F],
+    proposalReplay: ProposalReplayService[F],
+    readiness: ProposalCatchUpReadiness[F],
+    ref: Ref[F, BootstrapCoordinatorState],
+) extends BootstrapCoordinator[F]:
+
+  override def current: F[BootstrapDiagnostics] =
+    ref.get.map(renderDiagnostics)
+
+  override def discover(
+      chainId: ChainId,
+      sessions: Vector[BootstrapSessionBinding],
+      now: Instant,
+  ): F[Either[BootstrapCoordinatorFailure, Option[FinalizedAnchorSuggestion]]] =
+    fetchVerified(chainId, sessions).flatMap:
+      case Left(error) =>
+        updateFailure(chainId, now, error.reason, error.detail, Vector.empty) *>
+          error.asLeft[Option[FinalizedAnchorSuggestion]].pure[F]
+      case Right(None) =>
+        updateNoCandidate(chainId, now) *>
+          Option.empty[FinalizedAnchorSuggestion]
+            .asRight[BootstrapCoordinatorFailure]
+            .pure[F]
+      case Right(Some((suggestion, faults))) =>
+        ref.update: state =>
+          val chainState = state.chains.getOrElse(chainId, BootstrapCoordinatorChainState.empty)
+          state.copy(
+            chains = state.chains.updated(
+              chainId,
+              chainState.copy(
+                bestFinalized = Some(suggestion.snapshotAnchor),
+                finalizationSafetyFaults = faults,
+              ),
+            ),
+            retryAttempts = 0,
+            nextRetryAt = None,
+            lastFailure = None,
+          )
+        *> suggestion.some
+          .asRight[BootstrapCoordinatorFailure]
+          .pure[F]
+
+  override def bootstrap(
+      chainId: ChainId,
+      sessions: Vector[BootstrapSessionBinding],
+      startedAt: Instant,
+      liveProposals: Vector[Proposal],
+  ): F[Either[BootstrapCoordinatorFailure, BootstrapCoordinatorResult]] =
+    pinnedSuggestion(chainId).flatMap:
+      case Some(anchor) =>
+        runPinnedBootstrap(chainId, anchor, sessions, startedAt, liveProposals)
+      case None =>
+        discover(chainId, sessions, startedAt).flatMap:
+          case Left(error) =>
+            error.asLeft[BootstrapCoordinatorResult].pure[F]
+          case Right(None) =>
+            BootstrapCoordinatorFailure(
+              reason = "noVerifiableFinalizedAnchor",
+              detail = None,
+            ).asLeft[BootstrapCoordinatorResult].pure[F]
+          case Right(Some(anchor)) =>
+            pinAnchor(chainId, anchor) *>
+              runPinnedBootstrap(chainId, anchor, sessions, startedAt, liveProposals)
+
+  private def runPinnedBootstrap(
+      chainId: ChainId,
+      anchor: FinalizedAnchorSuggestion,
+      sessions: Vector[BootstrapSessionBinding],
+      startedAt: Instant,
+      liveProposals: Vector[Proposal],
+  ): F[Either[BootstrapCoordinatorFailure, BootstrapCoordinatorResult]] =
+    updatePhase(chainId, BootstrapPhase.SnapshotSync, None) *>
+      snapshotCoordinator
+        .sync(anchor, sessions, startedAt)
+        .flatMap:
+          case Left(failure) =>
+            val error = BootstrapCoordinatorFailure.fromSnapshotFailure(failure)
+            updateFailure(chainId, startedAt, error.reason, error.detail, Vector.empty) *>
+              error.asLeft[BootstrapCoordinatorResult].pure[F]
+          case Right(snapshotResult) =>
+            readReplay(chainId, anchor, sessions).flatMap:
+              case Left(error) =>
+                updateFailure(chainId, startedAt, error.reason, error.detail, Vector.empty) *>
+                  error.asLeft[BootstrapCoordinatorResult].pure[F]
+              case Right(replayBatch) =>
+                HotStuffForwardCatchUp
+                  .plan(
+                    anchor = anchor,
+                    replayed = replayBatch,
+                    live = liveProposals,
+                    readiness = readiness,
+                  )
+                  .flatMap:
+                    case Left(error) =>
+                      updateFailure(
+                        chainId,
+                        startedAt,
+                        error.reason,
+                        error.detail,
+                        Vector.empty,
+                      ) *> error.asLeft[BootstrapCoordinatorResult].pure[F]
+                    case Right(forward) =>
+                      val phase =
+                        forward.voteReadiness match
+                          case BootstrapVoteReadiness.Ready
+                              if forward.queued.isEmpty =>
+                            BootstrapPhase.Ready
+                          case _ =>
+                            BootstrapPhase.ForwardCatchUp
+                      updateForwardState(
+                        chainId = chainId,
+                        phase = phase,
+                        voteReadiness = forward.voteReadiness,
+                      ) *> current.map: diagnostics =>
+                        BootstrapCoordinatorResult(
+                          anchor = anchor,
+                          snapshot = snapshotResult,
+                          forwardCatchUp = forward,
+                          diagnostics = diagnostics,
+                        ).asRight[BootstrapCoordinatorFailure]
+
+  private def fetchVerified(
+      chainId: ChainId,
+      sessions: Vector[BootstrapSessionBinding],
+  ): F[Either[
+    BootstrapCoordinatorFailure,
+    Option[(FinalizedAnchorSuggestion, Vector[FinalizedAnchorSafetyFault])],
+  ]] =
+    sessions
+      .traverse(finalizedAnchorSuggestions.bestFinalized(_, chainId))
+      .flatMap: responses =>
+        val candidateSuggestions =
+          responses.collect { case Right(Some(suggestion)) => suggestion }
+        val surfacedFaults =
+          responses.collect {
+            case Left(CanonicalRejection.BackfillUnavailable(reason, detail))
+                if reason === "conflictingFinalizedSuggestion" =>
+              FinalizedAnchorSafetyFault(
+                chainId = chainId,
+                height = BlockHeight.Genesis,
+                conflictingAnchors = Vector.empty[SnapshotAnchor],
+              )
+          }
+        HotStuffFinalizedAnchorVerifier
+          .selectHighestVerified(candidateSuggestions, validatorSetLookup)
+          .map:
+            case Left(fault) =>
+              BootstrapCoordinatorFailure(
+                reason = fault.reason,
+                detail = fault.detail,
+              ).asLeft[Option[(FinalizedAnchorSuggestion, Vector[
+                FinalizedAnchorSafetyFault,
+              ])]]
+            case Right(None) =>
+              Option.empty[(FinalizedAnchorSuggestion, Vector[
+                FinalizedAnchorSafetyFault,
+              ])].asRight[BootstrapCoordinatorFailure]
+            case Right(Some(suggestion)) =>
+              (suggestion, surfacedFaults).some
+                .asRight[BootstrapCoordinatorFailure]
+
+  private def readReplay(
+      chainId: ChainId,
+      anchor: FinalizedAnchorSuggestion,
+      sessions: Vector[BootstrapSessionBinding],
+  ): F[Either[BootstrapCoordinatorFailure, Vector[Proposal]]] =
+    sessions
+      .traverse: session =>
+        proposalReplay.readNext(
+          session = session,
+          chainId = chainId,
+          anchorBlockId = anchor.anchorBlockId,
+          nextHeight = BlockHeight(BigNat.add(anchor.anchorHeight.toBigNat, BigNat.One)),
+          limit = 256,
+        )
+      .map: batches =>
+        val successful =
+          batches.collect { case Right(proposals) => proposals }.flatten
+        if successful.nonEmpty then
+          successful.asRight[BootstrapCoordinatorFailure]
+        else if batches.isEmpty || batches.exists {
+            case Right(_) => true
+            case Left(_)  => false
+          } then
+          Vector.empty[Proposal].asRight[BootstrapCoordinatorFailure]
+        else
+          val firstFailure =
+            batches.collectFirst { case Left(rejection) =>
+              BootstrapCoordinatorFailure(rejection.reason, rejection.detail)
+            }
+          firstFailure.getOrElse(BootstrapCoordinatorFailure("proposalReplayUnavailable", None))
+            .asLeft[Vector[Proposal]]
+
+  private def pinAnchor(
+      chainId: ChainId,
+      anchor: FinalizedAnchorSuggestion,
+  ): F[Unit] =
+    ref.update: state =>
+      val chainState = state.chains.getOrElse(chainId, BootstrapCoordinatorChainState.empty)
+      state.copy(
+        chains = state.chains.updated(
+          chainId,
+          chainState.copy(
+            bestFinalized = Some(anchor.snapshotAnchor),
+            selectedAnchor = Some(anchor.snapshotAnchor),
+            pinnedAnchor = Some(anchor.snapshotAnchor),
+            pinnedSuggestion = Some(anchor),
+            voteReadiness = BootstrapVoteReadiness.Held("snapshotPending"),
+          ),
+        ),
+      )
+
+  private def pinnedSuggestion(
+      chainId: ChainId,
+  ): F[Option[FinalizedAnchorSuggestion]] =
+    ref.get.map(_.chains.get(chainId).flatMap(_.pinnedSuggestion))
+
+  private def updatePhase(
+      chainId: ChainId,
+      phase: BootstrapPhase,
+      lastFailure: Option[String],
+  ): F[Unit] =
+    ref.update: state =>
+      val chainState = state.chains.getOrElse(chainId, BootstrapCoordinatorChainState.empty)
+      state.copy(
+        phase = phase,
+        chains = state.chains.updated(chainId, chainState),
+        lastFailure = lastFailure.orElse(state.lastFailure),
+      )
+
+  private def updateForwardState(
+      chainId: ChainId,
+      phase: BootstrapPhase,
+      voteReadiness: BootstrapVoteReadiness,
+  ): F[Unit] =
+    ref.update: state =>
+      val chainState = state.chains.getOrElse(chainId, BootstrapCoordinatorChainState.empty)
+      state.copy(
+        phase = phase,
+        chains = state.chains.updated(
+          chainId,
+          chainState.copy(voteReadiness = voteReadiness),
+        ),
+        retryAttempts = 0,
+        nextRetryAt = None,
+        lastFailure = None,
+      )
+
+  private def updateNoCandidate(
+      chainId: ChainId,
+      now: Instant,
+  ): F[Unit] =
+    ref.update: state =>
+      val attempts  = state.retryAttempts + 1
+      val nextRetry = Some(retryPolicy.nextRetryAt(now, attempts))
+      val chainState = state.chains.getOrElse(chainId, BootstrapCoordinatorChainState.empty)
+      state.copy(
+        phase = BootstrapPhase.Discovery,
+        chains = state.chains.updated(
+          chainId,
+          chainState.copy(bestFinalized = None),
+        ),
+        retryAttempts = attempts,
+        nextRetryAt = nextRetry,
+        lastFailure = Some("noVerifiableFinalizedAnchor"),
+      )
+
+  private def updateFailure(
+      chainId: ChainId,
+      now: Instant,
+      reason: String,
+      detail: Option[String],
+      faults: Vector[FinalizedAnchorSafetyFault],
+  ): F[Unit] =
+    ref.update: state =>
+      val attempts  = state.retryAttempts + 1
+      val nextRetry = Some(retryPolicy.nextRetryAt(now, attempts))
+      val chainState = state.chains.getOrElse(chainId, BootstrapCoordinatorChainState.empty)
+      state.copy(
+        phase = BootstrapPhase.Discovery,
+        chains = state.chains.updated(
+          chainId,
+          chainState.copy(finalizationSafetyFaults = faults),
+        ),
+        retryAttempts = attempts,
+        nextRetryAt = nextRetry,
+        lastFailure = Some(detail.fold(reason)(value => reason + ":" + value)),
+      )
+
+  private def renderDiagnostics(
+      state: BootstrapCoordinatorState,
+  ): BootstrapDiagnostics =
+    BootstrapDiagnostics(
+      phase = state.phase,
+      chains = state.chains.view.mapValues: chainState =>
+        BootstrapChainDiagnostics(
+          bestFinalized = chainState.bestFinalized,
+          selectedAnchor = chainState.selectedAnchor,
+          pinnedAnchor = chainState.pinnedAnchor,
+          voteReadiness = chainState.voteReadiness,
+          finalizationSafetyFaults = chainState.finalizationSafetyFaults,
+        )
+      .toMap,
+      retryAttempts = state.retryAttempts,
+      nextRetryAt = state.nextRetryAt,
+      lastFailure = state.lastFailure,
+      historicalBackfill = HistoricalBackfillStatus.Idle,
+    )

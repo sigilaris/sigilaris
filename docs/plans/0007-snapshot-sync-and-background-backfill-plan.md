@@ -200,13 +200,13 @@ Draft
 - [x] snapshot coordinator completion gate 추가
 
 ### Phase 3: Bootstrap Coordinator And Forward Catch-Up
-- [ ] best finalized suggestion fan-out / retry / anchor selection coordinator 추가
-- [ ] anchor pinning runtime enforcement 추가
-- [ ] proposal replay/backfill seam 추가
-- [ ] anchor-forward contiguous replay / live-queue merge rule 추가
-- [ ] snapshot-complete -> forward-catch-up transition 추가
-- [ ] `ProposalTxSync` + body/view validation + vote-hold gating 연결
-- [ ] bootstrap diagnostics 추가
+- [x] best finalized suggestion fan-out / retry / anchor selection coordinator 추가
+- [x] anchor pinning runtime enforcement 추가
+- [x] proposal replay/backfill seam 추가
+- [x] anchor-forward contiguous replay / live-queue merge rule 추가
+- [x] snapshot-complete -> forward-catch-up transition 추가
+- [x] `ProposalTxSync` + body/view validation + vote-hold gating 연결
+- [x] bootstrap diagnostics 추가
 
 ### Phase 4: Background Historical Backfill
 - [ ] genesis 방향 historical backfill worker 추가

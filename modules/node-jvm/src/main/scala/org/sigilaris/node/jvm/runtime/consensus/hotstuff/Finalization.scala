@@ -322,6 +322,25 @@ private final class InMemoryBootstrapDiagnosticsSource[F[_]: Sync](
         historicalBackfill = HistoricalBackfillStatus.Idle,
       )
 
+private final class InMemoryProposalReplayService[F[_]: Sync](
+    sink: InMemoryHotStuffArtifactSink[F],
+) extends ProposalReplayService[F]:
+  override def readNext(
+      session: BootstrapSessionBinding,
+      chainId: ChainId,
+      anchorBlockId: org.sigilaris.node.jvm.runtime.block.BlockId,
+      nextHeight: org.sigilaris.node.jvm.runtime.block.BlockHeight,
+      limit: Int,
+  ): F[Either[CanonicalRejection, Vector[Proposal]]] =
+    sink.snapshot.map: snapshot =>
+      snapshot.proposals.valuesIterator
+        .filter(_.window.chainId === chainId)
+        .filter(proposal => Ordering[BlockHeight].gteq(proposal.block.height, nextHeight))
+        .toVector
+        .sortBy(proposal => (proposal.block.height, proposal.proposalId.toHexLower))
+        .take(limit.max(0))
+        .asRight[CanonicalRejection]
+
 object HotStuffBootstrapServicesRuntime:
   def inMemory[F[_]: Sync](
       validatorSet: ValidatorSet,
@@ -349,7 +368,8 @@ object HotStuffBootstrapServicesRuntime:
             nextHeight: org.sigilaris.node.jvm.runtime.block.BlockHeight,
             limit: Int,
         ): F[Either[CanonicalRejection, Vector[Proposal]]] =
-          Vector.empty[Proposal].asRight[CanonicalRejection].pure[F]
+          new InMemoryProposalReplayService(sink)
+            .readNext(session, chainId, anchorBlockId, nextHeight, limit)
       ,
       historicalBackfill = new HistoricalBackfillService[F]:
         override def readPrevious(
