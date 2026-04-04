@@ -26,6 +26,10 @@ trait BlockStore[F[_], TxRef, ResultRef, Event]
       header: BlockHeader,
   ): F[BlockId]
 
+  // Split storage is allowed to receive a body before its header is available.
+  // When the header is already present, the write path rejects a mismatched
+  // `bodyRoot` immediately; otherwise `getView` remains the hydration-time
+  // integrity gate once both halves exist.
   def putBody(
       blockId: BlockId,
       body: BlockBody[TxRef, ResultRef, Event],
@@ -83,10 +87,18 @@ object BlockStore:
         blockId: BlockId,
         body: BlockBody[TxRef, ResultRef, Event],
     ): EitherT[F, BlockValidationFailure, Unit] =
-      EitherT
-        .fromEither[F](BlockBody.computeBodyRoot(body).void)
-        .semiflatMap: _ =>
-          bodies.update(_.updated(blockId, body))
+      for
+        _ <- EitherT.fromEither[F](BlockBody.computeBodyRoot(body).void)
+        maybeHeader <- EitherT.right[BlockValidationFailure](getHeader(blockId))
+        _ <- maybeHeader match
+          case Some(header) =>
+            EitherT.fromEither[F](BlockBody.verifyBodyRoot(body, header.bodyRoot))
+          case None =>
+            EitherT.rightT[F, BlockValidationFailure](())
+        _ <- EitherT.right[BlockValidationFailure](
+          bodies.update(_.updated(blockId, body)),
+        )
+      yield ()
 
     override def putView(
         view: BlockView[TxRef, ResultRef, Event],

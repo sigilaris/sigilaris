@@ -48,13 +48,12 @@ final class BlockStoreSuite extends CatsEffectSuite:
       store <- BlockStore.inMemory[IO, InventoryTxRef, InventoryResultRef, InventoryEvent]
       blockId <- store.putHeader(header)
       missingView <- store.getView(blockId).value
-      _ <- unwrap(store.putBody(blockId, mismatchedBody))
-      mismatchedView <- store.getView(blockId).value
+      mismatchedWrite <- store.putBody(blockId, mismatchedBody).value
       _ <- unwrap(store.putBody(blockId, canonicalBody))
       hydratedView <- store.getView(blockId).value
     yield
       assertEquals(missingView, Right(None))
-      assertEquals(mismatchedView.left.map(_.reason), Left("bodyRootMismatch"))
+      assertEquals(mismatchedWrite.left.map(_.reason), Left("bodyRootMismatch"))
       assertEquals(
         hydratedView,
         Right(
@@ -66,6 +65,29 @@ final class BlockStoreSuite extends CatsEffectSuite:
           )
         ),
       )
+
+  test("body-first storage still defers body-root mismatch detection until hydration"):
+    val canonicalBody =
+      blockBody(
+        blockRecord("tx-a", Some("result-a"), Vector("event-a")),
+      )
+    val mismatchedBody =
+      blockBody(
+        blockRecord("tx-b", Some("result-b"), Vector("event-b")),
+      )
+    val header =
+      blockHeader(BlockBody.computeBodyRoot(canonicalBody).toOption.get)
+
+    for
+      store <- BlockStore.inMemory[IO, InventoryTxRef, InventoryResultRef, InventoryEvent]
+      blockId = BlockHeader.computeId(header)
+      _ <- unwrap(store.putBody(blockId, mismatchedBody))
+      missingView <- store.getView(blockId).value
+      _ <- store.putHeader(header)
+      mismatchedView <- store.getView(blockId).value
+    yield
+      assertEquals(missingView, Right(None))
+      assertEquals(mismatchedView.left.map(_.reason), Left("bodyRootMismatch"))
 
   private def unwrap[A](
       result: cats.data.EitherT[IO, BlockValidationFailure, A],

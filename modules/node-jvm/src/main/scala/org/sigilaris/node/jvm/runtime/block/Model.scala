@@ -11,6 +11,7 @@ import org.sigilaris.core.codec.byte.ByteEncoder
 import org.sigilaris.core.codec.byte.ByteEncoder.ops.*
 import org.sigilaris.core.crypto.CryptoOps
 import org.sigilaris.core.datatype.{BigNat, UInt256, Utf8}
+import org.sigilaris.core.util.SafeStringInterp.*
 
 private object BlockEncodingInstances:
   given [A: ByteEncoder]: ByteEncoder[Vector[A]] =
@@ -289,7 +290,7 @@ object BlockBody:
     computeBodyRoot(body).flatMap: (actualRoot: BodyRoot) =>
       val expectedHex: String = expectedRoot.toHexLower
       val actualHex: String   = actualRoot.toHexLower
-      val mismatchDetail      = "expected=" + expectedHex + " actual=" + actualHex
+      val mismatchDetail: String = ss"expected=$expectedHex actual=$actualHex"
       Either.cond(
         actualRoot === expectedRoot,
         (),
@@ -305,6 +306,10 @@ final case class BlockView[TxRef, ResultRef, Event](
 )
 
 object BlockView:
+  // This check is intentionally limited to the header/body commitment contract.
+  // Header-level progress rules such as genesis-parent shape or consensus-owned
+  // height linkage belong to the enclosing validation path, not the generic
+  // application-neutral block view surface.
   def validate[TxRef: ByteEncoder, ResultRef: ByteEncoder, Event: ByteEncoder](
       view: BlockView[TxRef, ResultRef, Event],
   ): Either[BlockValidationFailure, Unit] =
@@ -358,8 +363,10 @@ private object BlockCanonicalEncoding:
 
   // `BlockRecordHash` values decide the canonical ordering, but the body-root
   // commitment is over the sorted full records rather than the hashes
-  // themselves. Ordering/hash-scheme changes are versioned through the body
-  // root domain string.
+  // themselves so receivers can recompute the same commitment directly from a
+  // fetched body without introducing a separate "hash list" body format.
+  // Ordering/hash-scheme changes are versioned through the body root domain
+  // string.
   def bodyRootPreImage[TxRef: ByteEncoder, ResultRef: ByteEncoder, Event: ByteEncoder](
       entries: Vector[(BlockRecordHash, BlockRecord[TxRef, ResultRef, Event])],
   ): ByteVector =
