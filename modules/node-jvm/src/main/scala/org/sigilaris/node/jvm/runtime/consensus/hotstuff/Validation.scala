@@ -139,6 +139,11 @@ object HotStuffValidator:
         Some(proposal.targetBlockId.toHexLower),
       )
       _ <- HotStuffValidationSupport.ensure(
+        ProposalTxSet.isCanonical(proposal.txSet),
+        "proposalTxSetNotCanonical",
+        Some(proposal.targetBlockId.toHexLower),
+      )
+      _ <- HotStuffValidationSupport.ensure(
         proposal.proposalId === Proposal.recomputeId(proposal),
         "proposalIdMismatch",
         Some(proposal.proposalId.toHexLower),
@@ -176,6 +181,7 @@ object HotStuffValidator:
             proposer = proposal.proposer,
             targetBlockId = proposal.targetBlockId,
             block = proposal.block,
+            txSet = proposal.txSet,
             justify = proposal.justify,
           ),
         proposal.signature,

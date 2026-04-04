@@ -4,6 +4,7 @@ import cats.syntax.all.*
 
 import org.sigilaris.core.application.scheduling.{AggregateFootprint, CompatibilityReason, ConflictKind, SchedulingClassification, StateRef}
 import org.sigilaris.core.codec.byte.ByteEncoder
+import org.sigilaris.core.crypto.Hash
 import org.sigilaris.core.util.SafeStringInterp.*
 import org.sigilaris.node.jvm.runtime.block.{BlockBody, BlockHeader, BlockRecord, BlockRecordHash, BlockValidationFailure, BlockView}
 
@@ -143,7 +144,7 @@ object HotStuffBlockBodyVerifier:
     )
 
 object HotStuffProposalViewValidator:
-  def validateProposalView[TxRef: ByteEncoder, ResultRef: ByteEncoder, Event: ByteEncoder](
+  def validateProposalView[TxRef: ByteEncoder: Hash, ResultRef: ByteEncoder, Event: ByteEncoder](
       proposal: Proposal,
       view: BlockView[TxRef, ResultRef, Event],
       validatorSet: ValidatorSet,
@@ -161,6 +162,16 @@ object HotStuffProposalViewValidator:
           reason = "proposalBlockViewMismatch",
           detail = Some:
             ss"proposal=${proposalBlockId.toHexLower} view=${viewBlockId.toHexLower}"
+        ),
+      )
+      _ <- Either.cond(
+        proposal.txSet === ProposalTxSet.fromTxs(
+          view.body.records.toVector.map(_.tx),
+        ),
+        (),
+        HotStuffValidationFailure(
+          reason = "proposalTxSetMismatch",
+          detail = Some(proposal.targetBlockId.toHexLower),
         ),
       )
       _ <- HotStuffBlockBodyVerifier.validateView(view)(classifyTx)

@@ -1,19 +1,26 @@
 package org.sigilaris.node.jvm.runtime.consensus.hotstuff
 
-import scala.collection.immutable.VectorMap
+import java.util.Arrays
 
+import scala.collection.immutable.{HashSet, VectorMap}
+
+import cats.Eq
 import cats.syntax.all.*
 import scodec.bits.ByteVector
 
 import org.sigilaris.core.codec.byte.ByteEncoder
 import org.sigilaris.core.codec.byte.ByteEncoder.ops.*
-import org.sigilaris.core.crypto.{CryptoOps, KeyPair, PublicKey, Signature}
+import org.sigilaris.core.codec.OrderedCodec.orderedByteVector
+import org.sigilaris.core.crypto.{CryptoOps, Hash, KeyPair, PublicKey, Signature}
+import org.sigilaris.core.crypto.Hash.ops.*
 import org.sigilaris.core.datatype.{UInt256, Utf8}
 import org.sigilaris.node.jvm.runtime.block.BlockHeader
-import org.sigilaris.node.jvm.runtime.gossip.ChainId
+import org.sigilaris.node.jvm.runtime.gossip.{ChainId, StableArtifactId}
 
 given ByteEncoder[ChainId] =
   ByteEncoder[Utf8].contramap(chainId => Utf8(chainId.value))
+given ByteEncoder[StableArtifactId] =
+  ByteEncoder[ByteVector].contramap(_.bytes)
 given ByteEncoder[HotStuffWindow] = ByteEncoder.derived
 given ByteEncoder[Signature] = signature =>
   ByteEncoder[Long].encode:
@@ -188,11 +195,77 @@ final case class QuorumCertificate(
     votes: Vector[Vote],
 ) derives ByteEncoder
 
+final case class ProposalTxSet(
+    txIds: Vector[StableArtifactId],
+) derives ByteEncoder
+
+object ProposalTxSet:
+  given Eq[ProposalTxSet] = Eq.by(_.txIds)
+
+  val empty: ProposalTxSet = ProposalTxSet(Vector.empty)
+
+  def canonical(
+      txSet: ProposalTxSet,
+  ): ProposalTxSet =
+    if isCanonical(txSet) then txSet
+    else ProposalTxSet(canonicalize(txSet.txIds))
+
+  def canonicalize(
+      txIds: Iterable[StableArtifactId],
+  ): Vector[StableArtifactId] =
+    val (_, deduped) =
+      txIds.iterator.foldLeft(
+        (HashSet.empty[StableArtifactId], Vector.empty[StableArtifactId]),
+      ):
+        case ((seen, acc), txId) if seen.contains(txId) =>
+          (seen, acc)
+        case ((seen, acc), txId) =>
+          ((seen + txId), (acc :+ txId))
+    deduped
+      .sortWith: (left, right) =>
+        compareCanonicalOrder(left, right) < 0
+
+  def fromTxs[TxRef: Hash](
+      txs: Iterable[TxRef],
+  ): ProposalTxSet =
+    ProposalTxSet(
+      canonicalize(
+        txs.iterator.map: tx =>
+          StableArtifactId.unsafeFromBytes(tx.toHash.toUInt256.bytes)
+        .toVector
+      ),
+    )
+
+  def isCanonical(
+      txSet: ProposalTxSet,
+  ): Boolean =
+    txSet.txIds.iterator
+      .foldLeft(
+        (Option.empty[StableArtifactId], true),
+      ):
+        case ((previous, false), _) =>
+          (previous, false)
+        case ((None, true), txId) =>
+          (txId.some, true)
+        case ((Some(previous), true), txId) =>
+          (txId.some, compareCanonicalOrder(previous, txId) < 0)
+      ._2
+
+  private def compareCanonicalOrder(
+      left: StableArtifactId,
+      right: StableArtifactId,
+  ): Int =
+    Arrays.compareUnsigned(
+      left.bytes.toArray,
+      right.bytes.toArray,
+    )
+
 final case class UnsignedProposal(
     window: HotStuffWindow,
     proposer: ValidatorId,
     targetBlockId: BlockId,
     block: BlockHeader,
+    txSet: ProposalTxSet,
     justify: QuorumCertificate,
 )
 
@@ -202,6 +275,7 @@ final case class Proposal(
     proposer: ValidatorId,
     targetBlockId: BlockId,
     block: BlockHeader,
+    txSet: ProposalTxSet,
     justify: QuorumCertificate,
     signature: Signature,
 ) derives ByteEncoder
@@ -211,46 +285,66 @@ object Proposal:
       unsigned: UnsignedProposal,
       keyPair: KeyPair,
   ): Either[HotStuffValidationFailure, Proposal] =
+    val canonicalUnsigned = normalizeUnsignedProposal(unsigned)
     HotStuffCanonicalEncoding
-      .sign(HotStuffCanonicalEncoding.proposalSignBytes(unsigned), keyPair)
+      .sign(
+        HotStuffCanonicalEncoding.proposalSignBytes(canonicalUnsigned),
+        keyPair,
+      )
       .map: signature =>
         val proposalId =
           ProposalId:
             HotStuffCanonicalEncoding.proposalId(
-              window = unsigned.window,
-              proposer = unsigned.proposer,
-              targetBlockId = unsigned.targetBlockId,
-              block = unsigned.block,
-              justify = unsigned.justify,
+              window = canonicalUnsigned.window,
+              proposer = canonicalUnsigned.proposer,
+              targetBlockId = canonicalUnsigned.targetBlockId,
+              block = canonicalUnsigned.block,
+              txSet = canonicalUnsigned.txSet,
+              justify = canonicalUnsigned.justify,
               signature = signature,
             )
         Proposal(
           proposalId = proposalId,
-          window = unsigned.window,
-          proposer = unsigned.proposer,
-          targetBlockId = unsigned.targetBlockId,
-          block = unsigned.block,
-          justify = unsigned.justify,
+          window = canonicalUnsigned.window,
+          proposer = canonicalUnsigned.proposer,
+          targetBlockId = canonicalUnsigned.targetBlockId,
+          block = canonicalUnsigned.block,
+          txSet = canonicalUnsigned.txSet,
+          justify = canonicalUnsigned.justify,
           signature = signature,
         )
 
   def signBytes(
       unsigned: UnsignedProposal,
   ): ByteVector =
-    HotStuffCanonicalEncoding.proposalSignBytes(unsigned)
+    HotStuffCanonicalEncoding.proposalSignBytes(
+      normalizeUnsignedProposal(unsigned),
+    )
 
   def recomputeId(
       proposal: Proposal,
   ): ProposalId =
+    val canonicalProposal = normalizeProposal(proposal)
     ProposalId:
       HotStuffCanonicalEncoding.proposalId(
-        window = proposal.window,
-        proposer = proposal.proposer,
-        targetBlockId = proposal.targetBlockId,
-        block = proposal.block,
-        justify = proposal.justify,
-        signature = proposal.signature,
+        window = canonicalProposal.window,
+        proposer = canonicalProposal.proposer,
+        targetBlockId = canonicalProposal.targetBlockId,
+        block = canonicalProposal.block,
+        txSet = canonicalProposal.txSet,
+        justify = canonicalProposal.justify,
+        signature = canonicalProposal.signature,
       )
+
+  private def normalizeUnsignedProposal(
+      unsigned: UnsignedProposal,
+  ): UnsignedProposal =
+    unsigned.copy(txSet = ProposalTxSet.canonical(unsigned.txSet))
+
+  private def normalizeProposal(
+      proposal: Proposal,
+  ): Proposal =
+    proposal.copy(txSet = ProposalTxSet.canonical(proposal.txSet))
 
 object HotStuffCanonicalEncoding:
   private val ProposalSignDomain: Utf8 = Utf8:
@@ -275,6 +369,7 @@ object HotStuffCanonicalEncoding:
       proposer: ValidatorId,
       validatorSetHash: ValidatorSetHash,
       targetBlockId: BlockId,
+      txSet: ProposalTxSet,
       justifySubject: QuorumCertificateSubject,
   ) derives ByteEncoder
 
@@ -297,6 +392,7 @@ object HotStuffCanonicalEncoding:
       validatorSetHash: ValidatorSetHash,
       targetBlockId: BlockId,
       block: BlockHeader,
+      txSet: ProposalTxSet,
       justify: QuorumCertificate,
       signature: Signature,
   ) derives ByteEncoder
@@ -338,6 +434,7 @@ object HotStuffCanonicalEncoding:
       proposer = unsigned.proposer,
       validatorSetHash = unsigned.window.validatorSetHash,
       targetBlockId = unsigned.targetBlockId,
+      txSet = unsigned.txSet,
       justifySubject = unsigned.justify.subject,
     ).toBytes
 
@@ -359,6 +456,7 @@ object HotStuffCanonicalEncoding:
       proposer: ValidatorId,
       targetBlockId: BlockId,
       block: BlockHeader,
+      txSet: ProposalTxSet,
       justify: QuorumCertificate,
       signature: Signature,
   ): UInt256 =
@@ -372,6 +470,7 @@ object HotStuffCanonicalEncoding:
         validatorSetHash = window.validatorSetHash,
         targetBlockId = targetBlockId,
         block = block,
+        txSet = txSet,
         justify = canonicalizeQuorumCertificate(justify),
         signature = signature,
       )
