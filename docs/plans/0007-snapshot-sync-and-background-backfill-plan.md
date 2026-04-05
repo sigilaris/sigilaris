@@ -1,7 +1,7 @@
 # 0007 - Snapshot Sync And Background Backfill Plan
 
 ## Status
-Phase 7 Complete, Phase 8 Planned
+Phase 8 Complete
 
 ## Created
 2026-04-05
@@ -202,22 +202,24 @@ Phase 7 Complete, Phase 8 Planned
 ## Verification Snapshot
 - `2026-04-05` 기준 아래 suite 가 green 이다.
 - `HotStuffBootstrapContractsSuite`
+- `HotStuffBootstrapLifecycleSuite`
 - `HotStuffRuntimeServiceSuite`
+- `HotStuffRuntimeBootstrapSuite`
 - `HotStuffBootstrapArmeriaAdapterSuite`
 - `HotStuffFinalizationSuite`
 - `HotStuffSnapshotSyncSuite`
 - `HotStuffSnapshotStoresSuite`
 - `HotStuffBootstrapCoordinatorSuite`
 - `HotStuffHistoricalBackfillSuite`
+- `HotStuffReplayBackfillMaterializationSuite`
 - `HotStuffProposalTxSyncSuite`
 - `RuntimeImportRuleSuite`
 
-## Residual Gaps After Phase 7
-- bootstrap coordinator / historical backfill worker 는 diagnostics 와 progress 를 계산하고 assembled lifecycle gate / transport path 까지 연결됐지만, replay/backfill artifact 를 concrete runtime storage/query seam 에 materialize 하거나 vote eligibility advancement 와 end-to-end 로 연결하지는 않았다.
-- in-memory replay/backfill service baseline 은 현재 height 중심 filtering 을 사용하고 있어 anchor ancestry 기준 replay/backfill contract 를 더 엄밀히 잠글 필요가 있다.
+## Residual Gaps After Phase 8
+- bootstrap coordinator 는 forward catch-up 결과를 runtime-owned materialization seam 에 기록하고, historical backfill worker 는 unique proposal archive ingestion baseline 을 갖췄지만, shipped runtime 이 그 materialized state 를 자동으로 tx anti-entropy replay / proposal validation retry / vote eligibility advancement 에 재주입하는 full consumer path 는 후속 작업으로 남아 있다.
 - shipped bootstrap trust root 는 여전히 `HotStuffBootstrapConfig.validatorSet` 기반 static validator-set baseline 이다. operator checkpoint 나 weak-subjectivity anchor 는 follow-up bootstrap material 로 남아 있다.
 - `ValidatorSetLookup` seam 은 landed 되었지만 historical validator-set rotation continuity 와 finalized-proof historical lookup 은 아직 구현되지 않았다.
-- historical backfill 은 low-priority background baseline 까지 landed 되었고, durable proposal archive retention, archive-grade acceleration, peer scoring, bandwidth shaping, snapshot batching optimization 은 후속 작업으로 남아 있다.
+- historical backfill 은 low-priority background baseline 과 in-memory archive retention seam 까지 landed 되었고, durable storage backing, archive-grade acceleration, peer scoring, bandwidth shaping, snapshot batching optimization 은 후속 작업으로 남아 있다.
 
 ## Checklist
 
@@ -277,10 +279,10 @@ Phase 7 Complete, Phase 8 Planned
 - [x] loopback/transport integration test 로 finalized suggestion fan-out / snapshot fetch / replay-backfill request 검증
 
 ### Phase 8: Replay And Backfill Materialization
-- [ ] forward catch-up 결과를 concrete tx anti-entropy / proposal validation / local replay / vote eligibility path 에 연결
-- [ ] historical backfill fetched proposal 을 durable retention / archive ingestion seam 에 반영
-- [ ] replay/backfill service contract 를 anchor ancestry semantics 기준으로 tighten
-- [ ] readiness budget / duplicate replay / ancestry mismatch regression test 추가
+- [x] forward catch-up 결과를 concrete runtime-owned materialization seam 에 반영
+- [x] historical backfill fetched proposal 을 archive ingestion seam 에 반영
+- [x] replay/backfill service contract 를 anchor ancestry semantics 기준으로 tighten
+- [x] duplicate replay / ancestry mismatch / materialization regression test 추가
 
 ## Follow-Ups
 - `P1`: validator-set rotation 이 shipped baseline 으로 도입되면 bootstrap trust root 와 historical validator-set lookup contract 를 별도 ADR 또는 superseding plan 으로 확장한다.

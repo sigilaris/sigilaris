@@ -52,6 +52,10 @@ final class HotStuffBootstrapLifecycleSuite extends CatsEffectSuite:
         proposalReplay = services.proposalReplay,
         historicalBackfill = services.historicalBackfill,
         readiness = readiness,
+        forwardStore = ForwardCatchUpStore.noop[IO],
+        historicalArchive = HistoricalProposalArchive.noop[IO],
+        retryPolicy = BootstrapRetryPolicy.boundedDefault,
+        historicalBackfillPolicy = HistoricalBackfillPolicy.backgroundDefault,
         beforeCoordinatorBuild = Some(_ =>
           hookCalls.update(_ + 1) *>
             entered.complete(()).void *>
@@ -107,6 +111,10 @@ final class HotStuffBootstrapLifecycleSuite extends CatsEffectSuite:
         proposalReplay = services.proposalReplay,
         historicalBackfill = services.historicalBackfill,
         readiness = readiness,
+        forwardStore = ForwardCatchUpStore.noop[IO],
+        historicalArchive = HistoricalProposalArchive.noop[IO],
+        retryPolicy = BootstrapRetryPolicy.boundedDefault,
+        historicalBackfillPolicy = HistoricalBackfillPolicy.backgroundDefault,
         beforeCoordinatorBuild = Some(_ =>
           failFirst.modify: shouldFail =>
             if shouldFail then false -> IO.raiseError[Unit](
@@ -235,6 +243,11 @@ final class HotStuffBootstrapLifecycleSuite extends CatsEffectSuite:
             controlBatch = None,
           ),
         ),
+        forwardStore = ForwardCatchUpStore.noop[IO],
+        historicalArchive = HistoricalProposalArchive.noop[IO],
+        retryPolicy = BootstrapRetryPolicy.boundedDefault,
+        historicalBackfillPolicy = HistoricalBackfillPolicy.backgroundDefault,
+        beforeCoordinatorBuild = None,
         currentInstant = IO.pure(startedAt),
       )
       firstAttempt <- lifecycle.bootstrap(

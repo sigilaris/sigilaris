@@ -401,6 +401,8 @@ object HotStuffRuntimeBootstrap:
             for
               metadataStore <- SnapshotMetadataStore.inMemory[F]
               nodeStore     <- SnapshotNodeStore.inMemory[F]
+              forwardStore  <- ForwardCatchUpStore.inMemory[F]
+              historicalArchive <- HistoricalProposalArchive.inMemory[F]
               emptyDiagnostics = BootstrapDiagnosticsSource.const[F](
                 BootstrapDiagnostics.empty,
               )
@@ -425,6 +427,12 @@ object HotStuffRuntimeBootstrap:
                 snapshotNodeFetch = transportServices.snapshotNodeFetch,
                 proposalReplay = transportServices.proposalReplay,
                 historicalBackfill = transportServices.historicalBackfill,
+                forwardStore = forwardStore,
+                historicalArchive = historicalArchive,
+                retryPolicy = BootstrapRetryPolicy.boundedDefault,
+                historicalBackfillPolicy =
+                  HistoricalBackfillPolicy.backgroundDefault,
+                beforeCoordinatorBuild = None,
                 // Phase 6 wires the lifecycle gate but does not yet connect
                 // concrete replay/view validation into the shipped newcomer
                 // runtime path. Nodes with no catch-up proposals can become

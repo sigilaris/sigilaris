@@ -56,6 +56,7 @@ final class HotStuffBootstrapCoordinatorSuite extends CatsEffectSuite:
         readiness = ProposalCatchUpReadiness.static[IO](
           ProposalCatchUpAssessment(BootstrapVoteReadiness.Ready, None),
         ),
+        forwardStore = ForwardCatchUpStore.noop[IO],
       )
       firstRun <- coordinator.bootstrap(chainId, Vector(peer1, peer2), startedAt, Vector.empty)
       _ <- suggestions.set(
@@ -105,6 +106,7 @@ final class HotStuffBootstrapCoordinatorSuite extends CatsEffectSuite:
         readiness = ProposalCatchUpReadiness.static[IO](
           ProposalCatchUpAssessment(BootstrapVoteReadiness.Ready, None),
         ),
+        forwardStore = ForwardCatchUpStore.noop[IO],
       )
       discovered <- coordinator.discover(chainId, Vector(peer1, peer2), startedAt)
       diagnostics <- coordinator.current
@@ -205,6 +207,7 @@ final class HotStuffBootstrapCoordinatorSuite extends CatsEffectSuite:
         readiness = ProposalCatchUpReadiness.static[IO](
           ProposalCatchUpAssessment(BootstrapVoteReadiness.Ready, None),
         ),
+        forwardStore = ForwardCatchUpStore.noop[IO],
       )
       result <- coordinator.bootstrap(chainId, Vector(peer1), startedAt, Vector.empty)
     yield
@@ -251,6 +254,7 @@ final class HotStuffBootstrapCoordinatorSuite extends CatsEffectSuite:
         readiness = ProposalCatchUpReadiness.static[IO](
           ProposalCatchUpAssessment(BootstrapVoteReadiness.Ready, None),
         ),
+        forwardStore = ForwardCatchUpStore.noop[IO],
       )
       result <- coordinator.bootstrap(chainId, Vector(peer1, peer2), startedAt, Vector.empty)
     yield

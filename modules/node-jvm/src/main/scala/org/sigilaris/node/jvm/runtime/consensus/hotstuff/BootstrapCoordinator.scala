@@ -281,6 +281,7 @@ object BootstrapCoordinator:
       snapshotCoordinator: SnapshotCoordinator[F],
       proposalReplay: ProposalReplayService[F],
       readiness: ProposalCatchUpReadiness[F],
+      forwardStore: ForwardCatchUpStore[F],
   ): F[BootstrapCoordinator[F]] =
     createWithBackfill(
       retryPolicy = retryPolicy,
@@ -289,6 +290,7 @@ object BootstrapCoordinator:
       snapshotCoordinator = snapshotCoordinator,
       proposalReplay = proposalReplay,
       readiness = readiness,
+      forwardStore = forwardStore,
       historicalBackfill = HistoricalBackfillWorker.disabled[F],
     )
 
@@ -299,6 +301,7 @@ object BootstrapCoordinator:
       snapshotCoordinator: SnapshotCoordinator[F],
       proposalReplay: ProposalReplayService[F],
       readiness: ProposalCatchUpReadiness[F],
+      forwardStore: ForwardCatchUpStore[F],
       historicalBackfill: HistoricalBackfillWorker[F],
   ): F[BootstrapCoordinator[F]] =
     Ref
@@ -311,6 +314,7 @@ object BootstrapCoordinator:
           snapshotCoordinator = snapshotCoordinator,
           proposalReplay = proposalReplay,
           readiness = readiness,
+          forwardStore = forwardStore,
           historicalBackfill = historicalBackfill,
           ref = stateRef,
         )
@@ -360,6 +364,7 @@ private final class InMemoryBootstrapCoordinator[F[_]: Sync](
     snapshotCoordinator: SnapshotCoordinator[F],
     proposalReplay: ProposalReplayService[F],
     readiness: ProposalCatchUpReadiness[F],
+    forwardStore: ForwardCatchUpStore[F],
     historicalBackfill: HistoricalBackfillWorker[F],
     ref: Ref[F, BootstrapCoordinatorState],
 ) extends BootstrapCoordinator[F]:
@@ -467,11 +472,24 @@ private final class InMemoryBootstrapCoordinator[F[_]: Sync](
                             BootstrapPhase.Ready
                           case _ =>
                             BootstrapPhase.ForwardCatchUp
-                      updateForwardState(
-                        chainId = chainId,
-                        phase = phase,
-                        voteReadiness = forward.voteReadiness,
+                      forwardStore.put(
+                        ForwardCatchUpMaterialization(
+                          chainId = chainId,
+                          anchor = anchor.snapshotAnchor,
+                          applied = forward.applied,
+                          queued = forward.queued,
+                          controlBatches = forward.controlBatches,
+                          frontierBlockId = forward.frontierBlockId,
+                          frontierHeight = forward.frontierHeight,
+                          voteReadiness = forward.voteReadiness,
+                          lastUpdatedAt = startedAt,
+                        ),
                       ) *>
+                        updateForwardState(
+                          chainId = chainId,
+                          phase = phase,
+                          voteReadiness = forward.voteReadiness,
+                        ) *>
                         historicalBackfill.start(
                           chainId = chainId,
                           sessions = sessions,

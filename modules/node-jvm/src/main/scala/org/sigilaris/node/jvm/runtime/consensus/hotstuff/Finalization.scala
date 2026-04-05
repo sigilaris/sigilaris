@@ -1,5 +1,7 @@
 package org.sigilaris.node.jvm.runtime.consensus.hotstuff
 
+import scala.annotation.tailrec
+
 import cats.Monad
 import cats.effect.kernel.Sync
 import cats.syntax.all.*
@@ -359,17 +361,34 @@ private final class InMemoryProposalReplayService[F[_]: Sync](
       limit: Int,
   ): F[Either[CanonicalRejection, Vector[Proposal]]] =
     sink.snapshot.map: snapshot =>
-      snapshot.proposals.valuesIterator
-        .filter(_.window.chainId === chainId)
-        .filter(proposal =>
-          Ordering[BlockHeight].gteq(proposal.block.height, nextHeight),
-        )
-        .toVector
-        .sortBy(proposal =>
-          (proposal.block.height, proposal.proposalId.toHexLower),
-        )
-        .take(limit.max(0))
-        .asRight[CanonicalRejection]
+      val proposalsByChainAndBlockId =
+        snapshot.proposals.valuesIterator
+          .map(proposal => (proposal.window.chainId, proposal.targetBlockId) -> proposal)
+          .toMap
+      if !proposalsByChainAndBlockId.contains(chainId -> anchorBlockId) then
+        CanonicalRejection.BackfillUnavailable(
+          reason = "proposalReplayAnchorUnknown",
+          detail = Some(anchorBlockId.toHexLower),
+        ).asLeft[Vector[Proposal]]
+      else
+        snapshot.proposals.valuesIterator
+          .filter(_.window.chainId === chainId)
+          .filter(proposal =>
+            Ordering[BlockHeight].gteq(proposal.block.height, nextHeight),
+          )
+          .filter(proposal =>
+            descendsFromAnchor(
+              proposal = proposal,
+              anchorBlockId = anchorBlockId,
+              proposalsByChainAndBlockId = proposalsByChainAndBlockId,
+            ),
+          )
+          .toVector
+          .sortBy(proposal =>
+            (proposal.block.height, proposal.proposalId.toHexLower),
+          )
+          .take(limit.max(0))
+          .asRight[CanonicalRejection]
 
 private final class InMemoryHistoricalBackfillService[F[_]: Sync](
     sink: InMemoryHotStuffArtifactSink[F],
@@ -382,18 +401,90 @@ private final class InMemoryHistoricalBackfillService[F[_]: Sync](
       limit: Int,
   ): F[Either[CanonicalRejection, Vector[Proposal]]] =
     sink.snapshot.map: snapshot =>
-      snapshot.proposals.valuesIterator
-        .filter(_.window.chainId === chainId)
-        .filter(proposal =>
-          Ordering[BlockHeight].lt(proposal.block.height, beforeHeight),
-        )
-        .toVector
-        .sortWith: (left, right) =>
-          Ordering[BlockHeight].gt(left.block.height, right.block.height) ||
-            (left.block.height === right.block.height &&
-              left.proposalId.toHexLower < right.proposalId.toHexLower)
-        .take(limit.max(0))
-        .asRight[CanonicalRejection]
+      val proposalsByBlockId =
+        snapshot.proposals.valuesIterator.toVector.groupBy(_.targetBlockId)
+      proposalsByBlockId.get(beforeBlockId) match
+        case None =>
+          CanonicalRejection.BackfillUnavailable(
+            reason = "historicalBackfillAnchorUnknown",
+            detail = Some(beforeBlockId.toHexLower),
+          ).asLeft[Vector[Proposal]]
+        case Some(candidates)
+            if !candidates.exists(_.window.chainId === chainId) =>
+          CanonicalRejection.BackfillUnavailable(
+            reason = "historicalBackfillAnchorChainMismatch",
+            detail = Some(beforeBlockId.toHexLower),
+          ).asLeft[Vector[Proposal]]
+        case Some(candidates) =>
+          val proposalsByChainAndBlockId =
+            snapshot.proposals.valuesIterator
+              .map(proposal => (proposal.window.chainId, proposal.targetBlockId) -> proposal)
+              .toMap
+          candidates.find(_.window.chainId === chainId) match
+            case Some(beforeProposal) =>
+              if beforeProposal.block.height =!= beforeHeight then
+                CanonicalRejection.BackfillUnavailable(
+                  reason = "historicalBackfillHeightMismatch",
+                  detail =
+                    Some(
+                      ss"expected=${beforeHeight.render} actual=${beforeProposal.block.height.render}",
+                    ),
+                ).asLeft[Vector[Proposal]]
+              else
+                ancestorChain(
+                  start = beforeProposal,
+                  chainId = chainId,
+                  proposalsByChainAndBlockId = proposalsByChainAndBlockId,
+                )
+                  .take(limit.max(0))
+                  .asRight[CanonicalRejection]
+            case None =>
+              CanonicalRejection.BackfillUnavailable(
+                reason = "historicalBackfillAnchorChainMismatch",
+                detail = Some(beforeBlockId.toHexLower),
+              ).asLeft[Vector[Proposal]]
+
+private def descendsFromAnchor(
+    proposal: Proposal,
+    anchorBlockId: org.sigilaris.node.jvm.runtime.block.BlockId,
+    proposalsByChainAndBlockId: Map[(ChainId, org.sigilaris.node.jvm.runtime.block.BlockId), Proposal],
+): Boolean =
+  @tailrec
+  def loop(
+      currentBlockId: Option[org.sigilaris.node.jvm.runtime.block.BlockId],
+  ): Boolean =
+    currentBlockId match
+      case Some(blockId) if blockId === anchorBlockId =>
+        true
+      case Some(blockId) =>
+        proposalsByChainAndBlockId.get(proposal.window.chainId -> blockId) match
+          case Some(currentProposal) =>
+            loop(currentProposal.block.parent)
+          case None =>
+            false
+      case None =>
+        false
+
+  loop(proposal.block.parent)
+
+private def ancestorChain(
+    start: Proposal,
+    chainId: ChainId,
+    proposalsByChainAndBlockId: Map[(ChainId, org.sigilaris.node.jvm.runtime.block.BlockId), Proposal],
+): Vector[Proposal] =
+  @tailrec
+  def loop(
+      current: Proposal,
+      acc: List[Proposal],
+  ): List[Proposal] =
+    current.block.parent
+      .flatMap(parentBlockId => proposalsByChainAndBlockId.get(chainId -> parentBlockId)) match
+      case Some(parentProposal) =>
+        loop(parentProposal, parentProposal :: acc)
+      case None =>
+        acc
+
+  loop(start, Nil).reverse.toVector
 
 object HotStuffBootstrapServicesRuntime:
   def inMemory[F[_]: Sync](

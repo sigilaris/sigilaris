@@ -34,6 +34,7 @@ final class HotStuffHistoricalBackfillSuite extends CatsEffectSuite:
     for
       started <- Deferred[IO, Unit]
       release <- Deferred[IO, Unit]
+      archive <- HistoricalProposalArchive.inMemory[IO]
       suggestions <- Ref.of[IO, Map[PeerIdentity, Either[CanonicalRejection, Option[FinalizedAnchorSuggestion]]]](
         Map(session1.peer -> Right(Some(anchor)))
       )
@@ -48,6 +49,7 @@ final class HotStuffHistoricalBackfillSuite extends CatsEffectSuite:
             release = release,
             response = Right(Vector(genesis)),
           ),
+        archive = archive,
         now = IO.pure(startedAt),
       )
       coordinator <- BootstrapCoordinator.createWithBackfill[IO](
@@ -59,6 +61,7 @@ final class HotStuffHistoricalBackfillSuite extends CatsEffectSuite:
         readiness = ProposalCatchUpReadiness.static[IO](
           ProposalCatchUpAssessment(BootstrapVoteReadiness.Ready, None),
         ),
+        forwardStore = ForwardCatchUpStore.noop[IO],
         historicalBackfill = backfill,
       )
       bootstrap <- coordinator.bootstrap(chainId, Vector(session1), startedAt, Vector.empty)
@@ -120,6 +123,7 @@ final class HotStuffHistoricalBackfillSuite extends CatsEffectSuite:
             detail = Some("missingArchive"),
           )
         ),
+        archive = HistoricalProposalArchive.noop[IO],
         now = IO.pure(startedAt),
       )
       coordinator <- BootstrapCoordinator.createWithBackfill[IO](
@@ -131,6 +135,7 @@ final class HotStuffHistoricalBackfillSuite extends CatsEffectSuite:
         readiness = ProposalCatchUpReadiness.static[IO](
           ProposalCatchUpAssessment(BootstrapVoteReadiness.Ready, None),
         ),
+        forwardStore = ForwardCatchUpStore.noop[IO],
         historicalBackfill = backfill,
       )
       bootstrap <- coordinator.bootstrap(chainId, Vector(session1), startedAt, Vector.empty)
@@ -170,12 +175,14 @@ final class HotStuffHistoricalBackfillSuite extends CatsEffectSuite:
           Right(Vector(genesis)),
         )
       )
+      archive <- HistoricalProposalArchive.inMemory[IO]
       worker <- HistoricalBackfillWorker.createWithNow[IO](
         policy = HistoricalBackfillPolicy(
           batchSize = 1,
           interBatchDelay = Duration.ofMillis(200L),
         ),
         historicalBackfill = sequentialBackfillService(responses),
+        archive = archive,
         now = IO.pure(startedAt),
       )
       _ <- worker.start(chainId, Vector(session1), anchor.snapshotAnchor, startedAt)
@@ -222,6 +229,80 @@ final class HotStuffHistoricalBackfillSuite extends CatsEffectSuite:
           assertEquals(progress.fetchedProposalCount, 3L)
         case other =>
           fail("expected completed status but saw " + other.toString)
+
+  test("historical backfill pause waits for in-flight archive writes before changing generation"):
+    val anchor = finalizedSuggestion("b0", 3L, validatorSet, validatorKeys)
+    val genesis = genesisProposal("21")
+    val proposal1 = childProposal(genesis, "22", 1L)
+    val proposal2 = childProposal(proposal1, "23", 2L)
+
+    for
+      responses <- Ref.of[IO, Vector[Either[CanonicalRejection, Vector[Proposal]]]](
+        Vector(Right(Vector(proposal2)))
+      )
+      archiveEntered <- Deferred[IO, Unit]
+      archiveRelease <- Deferred[IO, Unit]
+      innerArchive <- HistoricalProposalArchive.inMemory[IO]
+      archive = new HistoricalProposalArchive[IO]:
+        override def list(
+            chainId: ChainId,
+        ): IO[Vector[HistoricalArchiveEntry]] =
+          innerArchive.list(chainId)
+
+        override def contains(
+            chainId: ChainId,
+            proposalId: ProposalId,
+        ): IO[Boolean] =
+          innerArchive.contains(chainId, proposalId)
+
+        override def putAll(
+            chainId: ChainId,
+            proposals: Vector[Proposal],
+            source: HistoricalArchiveSource,
+            storedAt: Instant,
+        ): IO[Vector[ProposalId]] =
+          archiveEntered.complete(()).attempt *> archiveRelease.get *>
+            innerArchive.putAll(chainId, proposals, source, storedAt)
+
+        override def removeAll(
+            chainId: ChainId,
+            proposalIds: Vector[ProposalId],
+        ): IO[Int] =
+          innerArchive.removeAll(chainId, proposalIds)
+      worker <- HistoricalBackfillWorker.createWithNow[IO](
+        policy = HistoricalBackfillPolicy(
+          batchSize = 1,
+          interBatchDelay = Duration.ofMillis(10L),
+        ),
+        historicalBackfill = sequentialBackfillService(responses),
+        archive = archive,
+        now = IO.pure(startedAt),
+      )
+      _ <- worker.start(chainId, Vector(session1), anchor.snapshotAnchor, startedAt)
+      _ <- archiveEntered.get
+      pauseCompleted <- Ref.of[IO, Boolean](false)
+      pauseFiber <- (worker.pause("operatorPaused", startedAt.plusSeconds(1L)) *> pauseCompleted.set(true)).start
+      pauseBeforeRelease <- IO.sleep(100.millis) *> pauseCompleted.get
+      _ <- archiveRelease.complete(()).void
+      _ <- pauseFiber.joinWithNever
+      paused <- awaitValue(worker.current, attempts = 20):
+        case HistoricalBackfillStatus.Paused("operatorPaused", progress, _)
+            if progress.fetchedProposalCount === 1L =>
+          true
+        case _ =>
+          false
+      archived <- innerArchive.list(chainId)
+    yield
+      assertEquals(pauseBeforeRelease, false)
+      paused match
+        case HistoricalBackfillStatus.Paused(reason, progress, priority) =>
+          assertEquals(reason, "operatorPaused")
+          assertEquals(priority, HistoricalBackfillPriority.Background)
+          assertEquals(progress.fetchedProposalCount, 1L)
+          assertEquals(progress.nextBeforeBlockId, proposal2.targetBlockId)
+        case other =>
+          fail("expected paused status but saw " + other.toString)
+      assertEquals(archived.map(_.proposal.proposalId), Vector(proposal2.proposalId))
 
   private def suggestionService(
       ref: Ref[IO, Map[PeerIdentity, Either[CanonicalRejection, Option[FinalizedAnchorSuggestion]]]],

@@ -12,6 +12,10 @@ trait HotStuffBootstrapLifecycle[F[_]] extends BootstrapDiagnosticsSource[F]:
 
   def nodeStore: SnapshotNodeStore[F]
 
+  def forwardStore: ForwardCatchUpStore[F]
+
+  def historicalArchive: HistoricalProposalArchive[F]
+
   def bootstrap(
       chainId: ChainId,
       sessions: Vector[BootstrapSessionBinding],
@@ -39,7 +43,6 @@ object HotStuffBootstrapLifecycle:
         promise: Deferred[F, Either[Throwable, BootstrapCoordinator[F]]],
     )
 
-  @SuppressWarnings(Array("org.wartremover.warts.DefaultArguments"))
   def inMemory[F[_]: Sync](
       metadataStore: SnapshotMetadataStore[F],
       nodeStore: SnapshotNodeStore[F],
@@ -49,10 +52,11 @@ object HotStuffBootstrapLifecycle:
       proposalReplay: ProposalReplayService[F],
       historicalBackfill: HistoricalBackfillService[F],
       readiness: ProposalCatchUpReadiness[F],
-      retryPolicy: BootstrapRetryPolicy = BootstrapRetryPolicy.boundedDefault,
-      historicalBackfillPolicy: HistoricalBackfillPolicy =
-        HistoricalBackfillPolicy.backgroundDefault,
-      beforeCoordinatorBuild: Option[ChainId => F[Unit]] = None,
+      forwardStore: ForwardCatchUpStore[F],
+      historicalArchive: HistoricalProposalArchive[F],
+      retryPolicy: BootstrapRetryPolicy,
+      historicalBackfillPolicy: HistoricalBackfillPolicy,
+      beforeCoordinatorBuild: Option[ChainId => F[Unit]],
       currentInstant: F[Instant],
   ): F[HotStuffBootstrapLifecycle[F]] =
     Ref
@@ -69,6 +73,8 @@ object HotStuffBootstrapLifecycle:
           proposalReplay = proposalReplay,
           historicalBackfill = historicalBackfill,
           readiness = readiness,
+          forwardStore = forwardStore,
+          historicalArchive = historicalArchive,
           retryPolicy = retryPolicy,
           historicalBackfillPolicy = historicalBackfillPolicy,
           beforeCoordinatorBuild = buildHook,
@@ -79,6 +85,8 @@ object HotStuffBootstrapLifecycle:
 private final class InMemoryHotStuffBootstrapLifecycle[F[_]: Sync](
     override val metadataStore: SnapshotMetadataStore[F],
     override val nodeStore: SnapshotNodeStore[F],
+    override val forwardStore: ForwardCatchUpStore[F],
+    override val historicalArchive: HistoricalProposalArchive[F],
     validatorSetLookup: ValidatorSetLookup[F],
     finalizedAnchorSuggestions: FinalizedAnchorSuggestionService[F],
     snapshotNodeFetch: SnapshotNodeFetchService[F],
@@ -193,6 +201,7 @@ private final class InMemoryHotStuffBootstrapLifecycle[F[_]: Sync](
       historicalBackfillWorker <- HistoricalBackfillWorker.createWithNow[F](
         policy = historicalBackfillPolicy,
         historicalBackfill = historicalBackfill,
+        archive = historicalArchive,
         now = currentInstant,
       )
       coordinator <- BootstrapCoordinator.createWithBackfill[F](
@@ -208,6 +217,7 @@ private final class InMemoryHotStuffBootstrapLifecycle[F[_]: Sync](
         ),
         proposalReplay = proposalReplay,
         readiness = readiness,
+        forwardStore = forwardStore,
         historicalBackfill = historicalBackfillWorker,
       )
     yield coordinator
