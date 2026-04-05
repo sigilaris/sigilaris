@@ -2,10 +2,15 @@ package org.sigilaris.node.jvm.runtime.consensus.hotstuff
 
 import java.time.Instant
 
+import scala.concurrent.duration.*
+
+import cats.data.EitherT
 import cats.effect.{IO, Ref}
+import cats.syntax.all.*
 import munit.CatsEffectSuite
 import scodec.bits.ByteVector
 
+import org.sigilaris.core.failure.DecodeFailure
 import org.sigilaris.core.crypto.CryptoOps
 import org.sigilaris.core.crypto.Hash.ops.*
 import org.sigilaris.core.datatype.UInt256
@@ -13,6 +18,7 @@ import org.sigilaris.core.merkle.MerkleTrieNode
 import org.sigilaris.core.merkle.Nibbles.*
 import org.sigilaris.node.jvm.runtime.block.{BlockHeader, BlockHeight, BlockTimestamp, BlockId, BodyRoot, StateRoot}
 import org.sigilaris.node.jvm.runtime.gossip.{CanonicalRejection, ChainId, DirectionalSessionId, PeerIdentity}
+import org.sigilaris.node.jvm.storage.KeyValueStore
 
 final class HotStuffSnapshotSyncSuite extends CatsEffectSuite:
 
@@ -146,6 +152,48 @@ final class HotStuffSnapshotSyncSuite extends CatsEffectSuite:
       assertEquals(result.left.map(_.detail), Left(Some("peerRefused")))
       assertEquals(metadata.map(_.status), Some(SnapshotStatus.Failed))
 
+  test("snapshot coordinator retries transient peer rejections before failing the snapshot"):
+    val graph = snapshotGraph("27")
+
+    for
+      metadataStore <- SnapshotMetadataStore.inMemory[IO]
+      localNodeStore <- SnapshotNodeStore.inMemory[IO]
+      peerStore <- SnapshotNodeStore.inMemory[IO]
+      attemptCount <- Ref.of[IO, Int](0)
+      _ <- peerStore.putAll(Vector(graph.rootNode, graph.leftNode, graph.rightNode))
+      fetchService =
+        new SnapshotNodeFetchService[IO]:
+          private val delegated =
+            SnapshotNodeFetchServiceRuntime.fromNodeStore[IO](peerStore)
+
+          override def fetchNodes(
+              session: BootstrapSessionBinding,
+              chainId: ChainId,
+              stateRoot: StateRoot,
+              hashes: Vector[MerkleTrieNode.MerkleHash],
+          ): IO[Either[CanonicalRejection, Vector[SnapshotTrieNode]]] =
+            attemptCount.modify(current => (current + 1, current)).flatMap:
+              case 0 =>
+                IO.pure(Left(CanonicalRejection.BackfillUnavailable("transientPeerFailure")))
+              case _ =>
+                delegated.fetchNodes(session, chainId, stateRoot, hashes)
+      coordinator =
+        SnapshotCoordinator.createWithPolicyAndNow[IO](
+          chainId = chainId,
+          metadataStore = metadataStore,
+          nodeStore = localNodeStore,
+          fetchService = fetchService,
+          fetchPolicy = SnapshotFetchPolicy(maxPeerRounds = 2),
+          currentInstant = IO.pure(startedAt.plusSeconds(1L)),
+        )
+      result <- coordinator.sync(graph.anchorSuggestion, Vector(peer1), startedAt)
+      attempts <- attemptCount.get
+      metadata <- metadataStore.get(chainId)
+    yield
+      assertEquals(result.map(_.metadata.status), Right(SnapshotStatus.Complete))
+      assertEquals(metadata.map(_.status), Some(SnapshotStatus.Complete))
+      assert(attempts >= 2)
+
   test("snapshot coordinator does not promote incomplete closures to complete"):
     val graph = snapshotGraph("30")
 
@@ -221,6 +269,104 @@ final class HotStuffSnapshotSyncSuite extends CatsEffectSuite:
       assertEquals(result.map(_.fetchedNodeCount), Right(0L))
       assertEquals(calls, 0)
       assertEquals(metadata.map(_.status), Some(SnapshotStatus.Complete))
+
+  test("snapshot metadata store keeps anchor-specific history instead of overwriting prior sync state"):
+    val graph1 = snapshotGraph("46")
+    val graph2 = snapshotGraph("47")
+    val metadata1 =
+      SnapshotMetadata(
+        anchor = graph1.anchorSuggestion.snapshotAnchor,
+        status = SnapshotStatus.Syncing,
+        verifiedNodeCount = 1L,
+        pendingNodeCount = 2L,
+        lastUpdatedAt = startedAt.plusSeconds(1L),
+      )
+    val metadata1Updated =
+      metadata1.copy(
+        verifiedNodeCount = 3L,
+        pendingNodeCount = 0L,
+        status = SnapshotStatus.Complete,
+        lastUpdatedAt = startedAt.plusSeconds(2L),
+      )
+    val metadata2 =
+      SnapshotMetadata(
+        anchor = graph2.anchorSuggestion.snapshotAnchor,
+        status = SnapshotStatus.Syncing,
+        verifiedNodeCount = 1L,
+        pendingNodeCount = 1L,
+        lastUpdatedAt = startedAt.plusSeconds(3L),
+      )
+
+    for
+      metadataStore <- SnapshotMetadataStore.inMemory[IO]
+      _ <- metadataStore.put(metadata1)
+      _ <- metadataStore.put(metadata1Updated)
+      _ <- metadataStore.put(metadata2)
+      latest <- metadataStore.get(chainId)
+      anchor1 <- metadataStore.getForAnchor(metadata1.anchor)
+      anchor2 <- metadataStore.getForAnchor(metadata2.anchor)
+      history <- metadataStore.list(chainId)
+    yield
+      assertEquals(latest, Some(metadata2))
+      assertEquals(anchor1, Some(metadata1Updated))
+      assertEquals(anchor2, Some(metadata2))
+      assertEquals(history, Vector(metadata2, metadata1Updated))
+
+  test("kv-backed snapshot metadata store serializes concurrent history updates"):
+    val graph1 = snapshotGraph("48")
+    val graph2 = snapshotGraph("49")
+    val metadata1 =
+      SnapshotMetadata(
+        anchor = graph1.anchorSuggestion.snapshotAnchor,
+        status = SnapshotStatus.Syncing,
+        verifiedNodeCount = 1L,
+        pendingNodeCount = 1L,
+        lastUpdatedAt = startedAt.plusSeconds(1L),
+      )
+    val metadata2 =
+      SnapshotMetadata(
+        anchor = graph2.anchorSuggestion.snapshotAnchor,
+        status = SnapshotStatus.Complete,
+        verifiedNodeCount = 2L,
+        pendingNodeCount = 0L,
+        lastUpdatedAt = startedAt.plusSeconds(2L),
+      )
+
+    for
+      stored <- Ref.of[IO, Map[ChainId, Vector[SnapshotMetadata]]](Map.empty)
+      concurrentGets <- Ref.of[IO, Int](0)
+      maxConcurrentGets <- Ref.of[IO, Int](0)
+      metadataStore <- SnapshotMetadataStore.fromKeyValueStore[IO](
+        new KeyValueStore[IO, ChainId, Vector[SnapshotMetadata]]:
+          override def get(
+              key: ChainId,
+          ): EitherT[IO, DecodeFailure, Option[Vector[SnapshotMetadata]]] =
+            EitherT.right:
+              concurrentGets
+                .modify(current => (current + 1, current + 1))
+                .flatMap: current =>
+                  maxConcurrentGets.update(_.max(current)) *>
+                    IO.sleep(50.millis) *>
+                    stored.get.map(_.get(key))
+                .guarantee(concurrentGets.update(current => (current - 1).max(0)))
+
+          override def put(
+              key: ChainId,
+              value: Vector[SnapshotMetadata],
+          ): IO[Unit] =
+            stored.update(_.updated(key, value))
+
+          override def remove(
+              key: ChainId,
+          ): IO[Unit] =
+            stored.update(_ - key)
+      )
+      _ <- Vector(metadata1, metadata2).parTraverse_(metadataStore.put)
+      history <- metadataStore.list(chainId)
+      maxConcurrent <- maxConcurrentGets.get
+    yield
+      assertEquals(maxConcurrent, 1)
+      assertEquals(history, Vector(metadata2, metadata1))
 
   test("snapshot node verifier derives the trie root hash from the snapshot state root"):
     val graph = snapshotGraph("45")

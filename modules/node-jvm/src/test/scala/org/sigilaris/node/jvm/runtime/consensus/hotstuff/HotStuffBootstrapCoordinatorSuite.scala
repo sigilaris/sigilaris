@@ -188,6 +188,117 @@ final class HotStuffBootstrapCoordinatorSuite extends CatsEffectSuite:
       assertEquals(secondPass.map(_.queued), Right(Vector.empty))
       assertEquals(secondPass.map(_.voteReadiness), Right(BootstrapVoteReadiness.Ready))
 
+  test("bootstrap coordinator pages replay batches beyond the first replay window"):
+    val anchor = finalizedSuggestion("60", 2L, validatorSet, validatorKeys)
+    val replayed = proposalChain(anchor.proposal, startSeed = 0x6000, length = 300)
+
+    for
+      suggestions <- Ref.of[IO, Map[PeerIdentity, Either[CanonicalRejection, Option[FinalizedAnchorSuggestion]]]](
+        Map(peer1.peer -> Right(Some(anchor)))
+      )
+      coordinator <- BootstrapCoordinator.create[IO](
+        retryPolicy = BootstrapRetryPolicy.boundedDefault,
+        validatorSetLookup = ValidatorSetLookup.static[IO](BootstrapTrustRoot.staticValidatorSet(validatorSet)),
+        finalizedAnchorSuggestions = suggestionService(suggestions),
+        snapshotCoordinator = completedSnapshotCoordinator,
+        proposalReplay = replayService(replayed),
+        readiness = ProposalCatchUpReadiness.static[IO](
+          ProposalCatchUpAssessment(BootstrapVoteReadiness.Ready, None),
+        ),
+      )
+      result <- coordinator.bootstrap(chainId, Vector(peer1), startedAt, Vector.empty)
+    yield
+      assertEquals(result.map(_.forwardCatchUp.applied.size), Right(replayed.size))
+      assertEquals(result.map(_.forwardCatchUp.queued), Right(Vector.empty))
+      assertEquals(result.map(_.forwardCatchUp.voteReadiness), Right(BootstrapVoteReadiness.Ready))
+
+  test("bootstrap coordinator widens replay prefix without skipping slower peer histories"):
+    val anchor = finalizedSuggestion("65", 2L, validatorSet, validatorKeys)
+    val replayed = proposalChain(anchor.proposal, startSeed = 0xff00, length = 300)
+    val peer1Noise =
+      (0 until 256).toVector.map: index =>
+        unrelatedProposal(
+          justifyProposal = anchor.proposal,
+          seed = f"${0x6500 + index}%04x",
+          height = 3L + index.toLong,
+        )
+    val peer2PrefixNoise =
+      (0 until 256).toVector.map: index =>
+        unrelatedProposal(
+          justifyProposal = anchor.proposal,
+          seed = f"${0x7500 + index}%04x",
+          height = 3L,
+        )
+
+    for
+      suggestions <- Ref.of[IO, Map[PeerIdentity, Either[CanonicalRejection, Option[FinalizedAnchorSuggestion]]]](
+        Map(
+          peer1.peer -> Right(Some(anchor)),
+          peer2.peer -> Right(Some(anchor)),
+        )
+      )
+      coordinator <- BootstrapCoordinator.create[IO](
+        retryPolicy = BootstrapRetryPolicy.boundedDefault,
+        validatorSetLookup = ValidatorSetLookup.static[IO](BootstrapTrustRoot.staticValidatorSet(validatorSet)),
+        finalizedAnchorSuggestions = suggestionService(suggestions),
+        snapshotCoordinator = completedSnapshotCoordinator,
+        proposalReplay = replayServiceByPeer(
+          Map(
+            peer1.peer -> peer1Noise,
+            peer2.peer -> (peer2PrefixNoise ++ replayed),
+          )
+        ),
+        readiness = ProposalCatchUpReadiness.static[IO](
+          ProposalCatchUpAssessment(BootstrapVoteReadiness.Ready, None),
+        ),
+      )
+      result <- coordinator.bootstrap(chainId, Vector(peer1, peer2), startedAt, Vector.empty)
+    yield
+      assertEquals(
+        result.map(_.forwardCatchUp.applied.map(_.proposalId)),
+        Right(replayed.map(_.proposalId)),
+      )
+      assert(result.exists(_.forwardCatchUp.queued.nonEmpty))
+      assertEquals(
+        result.map(_.forwardCatchUp.voteReadiness),
+        Right(BootstrapVoteReadiness.Held("proposalReplayGap")),
+      )
+
+  test("forward catch-up recovers once the proposal block view becomes locally available"):
+    val anchor = finalizedSuggestion("70", 2L, validatorSet, validatorKeys)
+    val proposal1 = childProposal(anchor.proposal, "71", 3L, Vector.empty)
+
+    for
+      blockStore <- BlockStore.inMemory[IO, TestTx, Utf8, Utf8]
+      readiness = ProposalCatchUpReadiness.fromBlockQuery[IO, TestTx, Utf8, Utf8](
+        validatorSet = validatorSet,
+        knownTxIds = IO.pure(Set.empty[StableArtifactId]),
+        blockQuery = blockStore,
+        txPolicy = TxRuntimePolicy(),
+        idempotencyKeyFor = _ => "dddddddd-dddd-4ddd-8ddd-dddddddddddd",
+      )(_ => schedulable())
+      firstPass <- HotStuffForwardCatchUp.plan(
+        anchor = anchor,
+        replayed = Vector(proposal1),
+        live = Vector.empty,
+        readiness = readiness,
+      )
+      _ <- putProposalView(blockStore, proposal1, Vector.empty)
+      secondPass <- HotStuffForwardCatchUp.plan(
+        anchor = anchor,
+        replayed = Vector(proposal1),
+        live = Vector.empty,
+        readiness = readiness,
+      )
+    yield
+      assertEquals(
+        firstPass.map(_.voteReadiness),
+        Right(BootstrapVoteReadiness.Held("proposalViewUnavailable")),
+      )
+      assertEquals(firstPass.map(_.queued.map(_.proposalId)), Right(Vector(proposal1.proposalId)))
+      assertEquals(secondPass.map(_.applied.map(_.proposalId)), Right(Vector(proposal1.proposalId)))
+      assertEquals(secondPass.map(_.voteReadiness), Right(BootstrapVoteReadiness.Ready))
+
   private def suggestionService(
       ref: Ref[IO, Map[PeerIdentity, Either[CanonicalRejection, Option[FinalizedAnchorSuggestion]]]],
   ): FinalizedAnchorSuggestionService[IO] =
@@ -231,7 +342,39 @@ final class HotStuffBootstrapCoordinatorSuite extends CatsEffectSuite:
           nextHeight: org.sigilaris.node.jvm.runtime.block.BlockHeight,
           limit: Int,
       ): IO[Either[CanonicalRejection, Vector[Proposal]]] =
-        IO.pure(Right(proposals.take(limit.max(0))))
+        // Test helper for replay window sizing and contiguous merge behavior.
+        // Anchor lineage filtering is intentionally not modeled here.
+        IO.pure(
+          Right(
+            proposals
+              .filter(proposal => Ordering[BlockHeight].gteq(proposal.block.height, nextHeight))
+              .sortBy(proposal => (proposal.block.height, proposal.proposalId.toHexLower))
+              .take(limit.max(0))
+          )
+        )
+
+  private def replayServiceByPeer(
+      proposalsByPeer: Map[PeerIdentity, Vector[Proposal]],
+  ): ProposalReplayService[IO] =
+    new ProposalReplayService[IO]:
+      override def readNext(
+          session: BootstrapSessionBinding,
+          chainId: ChainId,
+          anchorBlockId: org.sigilaris.node.jvm.runtime.block.BlockId,
+          nextHeight: org.sigilaris.node.jvm.runtime.block.BlockHeight,
+          limit: Int,
+      ): IO[Either[CanonicalRejection, Vector[Proposal]]] =
+        // This variant keeps the same simplification as replayService above and
+        // only varies responses by peer so paging/merge behavior can be isolated.
+        IO.pure(
+          Right(
+            proposalsByPeer
+              .getOrElse(session.peer, Vector.empty)
+              .filter(proposal => Ordering[BlockHeight].gteq(proposal.block.height, nextHeight))
+              .sortBy(proposal => (proposal.block.height, proposal.proposalId.toHexLower))
+              .take(limit.max(0))
+          )
+        )
 
   private def putProposalView(
       blockStore: BlockStore[IO, TestTx, Utf8, Utf8],
@@ -423,3 +566,50 @@ final class HotStuffBootstrapCoordinatorSuite extends CatsEffectSuite:
       value: String,
   ): UInt256 =
     UInt256.fromHex(value).toOption.get
+
+  private def proposalChain(
+      parentProposal: Proposal,
+      startSeed: Int,
+      length: Int,
+  ): Vector[Proposal] =
+    (0 until length).foldLeft((Vector.empty[Proposal], parentProposal)):
+      case ((acc, parent), index) =>
+        val height = parent.block.height.toBigNat.toBigInt.toLong + 1L
+        val proposal =
+          childProposal(
+            parentProposal = parent,
+            seed = f"${startSeed + index}%04x",
+            height = height,
+            txs = Vector.empty,
+          )
+        (acc :+ proposal, proposal)
+    ._1
+
+  private def unrelatedProposal(
+      justifyProposal: Proposal,
+      seed: String,
+      height: Long,
+      activeValidatorSet: ValidatorSet = validatorSet,
+      keys: Vector[org.sigilaris.core.crypto.KeyPair] = validatorKeys,
+  ): Proposal =
+    val blockHeader =
+      block(
+        parent = Some(BlockId(hex(seed + "90"))),
+        height = height,
+        stateRootHex = seed + "91",
+        bodyRootHex = seed + "92",
+      )
+    Proposal
+      .sign(
+        UnsignedProposal(
+          window = HotStuffWindow(chainId, height, height, activeValidatorSet.hash),
+          proposer = activeValidatorSet.members((height.toInt % 3).min(2)).id,
+          targetBlockId = BlockHeader.computeId(blockHeader),
+          block = blockHeader,
+          txSet = ProposalTxSet.empty,
+          justify = qcFor(activeValidatorSet, keys, justifyProposal),
+        ),
+        keys((height.toInt % 3).min(2)),
+      )
+      .toOption
+      .get

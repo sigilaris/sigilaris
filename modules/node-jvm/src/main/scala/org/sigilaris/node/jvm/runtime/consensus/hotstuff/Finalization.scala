@@ -246,6 +246,10 @@ object HotStuffFinalizedAnchorVerifier:
                     Option.empty[FinalizedAnchorSuggestion]
                       .asRight[FinalizedAnchorSafetyFault]
               case _ =>
+                // Once all highest verified suggestions point at the same anchor
+                // height and block, any deterministic pick is equivalent for the
+                // current static-trust-root bootstrap session. Use a canonical
+                // lexicographic order to keep selection stable across peers/tests.
                 val highestOrdering =
                   Ordering.by[FinalizedAnchorSuggestion, (String, String)]:
                     suggestion =>

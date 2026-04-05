@@ -3,18 +3,28 @@ package org.sigilaris.node.jvm.runtime.consensus.hotstuff
 import java.time.Instant
 
 import cats.{Applicative, Functor}
-import cats.effect.kernel.{Clock, Ref, Sync}
+import cats.effect.kernel.{Clock, Concurrent, Ref, Sync}
+import cats.effect.std.Semaphore
 import cats.syntax.all.*
 
 import org.sigilaris.core.crypto.Hash
 import org.sigilaris.core.crypto.Hash.ops.*
 import org.sigilaris.core.merkle.MerkleTrieNode
+import org.sigilaris.node.jvm.runtime.block.BlockHeight
 import org.sigilaris.node.jvm.storage.KeyValueStore
 
 trait SnapshotMetadataStore[F[_]]:
   def get(
       chainId: org.sigilaris.node.jvm.runtime.gossip.ChainId,
   ): F[Option[SnapshotMetadata]]
+
+  def getForAnchor(
+      anchor: SnapshotAnchor,
+  ): F[Option[SnapshotMetadata]]
+
+  def list(
+      chainId: org.sigilaris.node.jvm.runtime.gossip.ChainId,
+  ): F[Vector[SnapshotMetadata]]
 
   def put(
       metadata: SnapshotMetadata,
@@ -25,53 +35,145 @@ trait SnapshotMetadataStore[F[_]]:
   ): F[Unit]
 
 object SnapshotMetadataStore:
+  private val latestOrdering: Ordering[SnapshotMetadata] =
+    Ordering.by[SnapshotMetadata, (Instant, BlockHeight, String, String)]:
+      metadata =>
+        (
+          metadata.lastUpdatedAt,
+          metadata.anchor.height,
+          metadata.anchor.blockId.toHexLower,
+          metadata.anchor.proposalId.toHexLower,
+        )
+
+  private val historyOrdering: Ordering[SnapshotMetadata] =
+    latestOrdering.reverse
+
   def inMemory[F[_]: Sync]: F[SnapshotMetadataStore[F]] =
     Ref
-      .of[F, Map[org.sigilaris.node.jvm.runtime.gossip.ChainId, SnapshotMetadata]](
+      .of[F, Map[org.sigilaris.node.jvm.runtime.gossip.ChainId, Vector[
+        SnapshotMetadata,
+      ]]](
         Map.empty,
       )
       .map(new InMemorySnapshotMetadataStore[F](_))
 
-  def fromKeyValueStore[F[_]: Sync](
-      keyValueStore: KeyValueStore[F, org.sigilaris.node.jvm.runtime.gossip.ChainId, SnapshotMetadata],
-  ): SnapshotMetadataStore[F] =
-    new SnapshotMetadataStore[F]:
-      override def get(
-          chainId: org.sigilaris.node.jvm.runtime.gossip.ChainId,
-      ): F[Option[SnapshotMetadata]] =
-        keyValueStore.get(chainId).value.flatMap:
-          case Right(metadata) =>
-            metadata.pure[F]
-          case Left(error) =>
-            Sync[F].raiseError(new IllegalStateException(error.msg))
+  def fromKeyValueStore[F[_]: Concurrent](
+      keyValueStore: KeyValueStore[
+        F,
+        org.sigilaris.node.jvm.runtime.gossip.ChainId,
+        Vector[SnapshotMetadata],
+      ],
+  ): F[SnapshotMetadataStore[F]] =
+    Semaphore[F](1).map: writeLock =>
+      new SnapshotMetadataStore[F]:
+        override def get(
+            chainId: org.sigilaris.node.jvm.runtime.gossip.ChainId,
+        ): F[Option[SnapshotMetadata]] =
+          keyValueStore.get(chainId).value.flatMap:
+            case Right(metadata) =>
+              latestMetadata(metadata.getOrElse(Vector.empty)).pure[F]
+            case Left(error) =>
+              Concurrent[F].raiseError(new IllegalStateException(error.msg))
 
-      override def put(
-          metadata: SnapshotMetadata,
-      ): F[Unit] =
-        keyValueStore.put(metadata.anchor.chainId, metadata)
+        override def getForAnchor(
+            anchor: SnapshotAnchor,
+        ): F[Option[SnapshotMetadata]] =
+          list(anchor.chainId).map(
+            _.find(metadata => sameAnchor(metadata.anchor, anchor))
+          )
 
-      override def remove(
-          chainId: org.sigilaris.node.jvm.runtime.gossip.ChainId,
-      ): F[Unit] =
-        keyValueStore.remove(chainId)
+        override def list(
+            chainId: org.sigilaris.node.jvm.runtime.gossip.ChainId,
+        ): F[Vector[SnapshotMetadata]] =
+          keyValueStore.get(chainId).value.flatMap:
+            case Right(metadata) =>
+              sortHistory(metadata.getOrElse(Vector.empty)).pure[F]
+            case Left(error) =>
+              Concurrent[F].raiseError(new IllegalStateException(error.msg))
+
+        override def put(
+            metadata: SnapshotMetadata,
+        ): F[Unit] =
+          writeLock.permit.use: _ =>
+            list(metadata.anchor.chainId).flatMap: history =>
+              keyValueStore.put(
+                metadata.anchor.chainId,
+                upsertHistory(history, metadata),
+              )
+
+        override def remove(
+            chainId: org.sigilaris.node.jvm.runtime.gossip.ChainId,
+        ): F[Unit] =
+          keyValueStore.remove(chainId)
 
   private final class InMemorySnapshotMetadataStore[F[_]: Sync](
-      ref: Ref[F, Map[org.sigilaris.node.jvm.runtime.gossip.ChainId, SnapshotMetadata]],
+      ref: Ref[F, Map[org.sigilaris.node.jvm.runtime.gossip.ChainId, Vector[
+        SnapshotMetadata,
+      ]]],
   ) extends SnapshotMetadataStore[F]:
     override def get(
         chainId: org.sigilaris.node.jvm.runtime.gossip.ChainId,
     ): F[Option[SnapshotMetadata]] =
-      ref.get.map(_.get(chainId))
+      ref.get.map: historyByChain =>
+        latestMetadata(historyByChain.getOrElse(chainId, Vector.empty))
+
+    override def getForAnchor(
+        anchor: SnapshotAnchor,
+    ): F[Option[SnapshotMetadata]] =
+      list(anchor.chainId).map(
+        _.find(metadata => sameAnchor(metadata.anchor, anchor))
+      )
+
+    override def list(
+        chainId: org.sigilaris.node.jvm.runtime.gossip.ChainId,
+    ): F[Vector[SnapshotMetadata]] =
+      ref.get.map: historyByChain =>
+        sortHistory(historyByChain.getOrElse(chainId, Vector.empty))
 
     override def put(
         metadata: SnapshotMetadata,
     ): F[Unit] =
-      ref.update(_.updated(metadata.anchor.chainId, metadata))
+      ref.update: historyByChain =>
+        historyByChain.updated(
+          metadata.anchor.chainId,
+          upsertHistory(
+            historyByChain.getOrElse(metadata.anchor.chainId, Vector.empty),
+            metadata,
+          ),
+        )
 
     override def remove(
         chainId: org.sigilaris.node.jvm.runtime.gossip.ChainId,
     ): F[Unit] =
       ref.update(_ - chainId)
+
+  private def sameAnchor(
+      left: SnapshotAnchor,
+      right: SnapshotAnchor,
+  ): Boolean =
+    left.chainId === right.chainId &&
+      left.proposalId === right.proposalId &&
+      left.blockId === right.blockId &&
+      left.height === right.height &&
+      left.stateRoot === right.stateRoot
+
+  private def latestMetadata(
+      history: Vector[SnapshotMetadata],
+  ): Option[SnapshotMetadata] =
+    history.maxOption(using latestOrdering)
+
+  private def sortHistory(
+      history: Vector[SnapshotMetadata],
+  ): Vector[SnapshotMetadata] =
+    history.sorted(using historyOrdering)
+
+  private def upsertHistory(
+      history: Vector[SnapshotMetadata],
+      metadata: SnapshotMetadata,
+  ): Vector[SnapshotMetadata] =
+    sortHistory(
+      history.filterNot(existing => sameAnchor(existing.anchor, metadata.anchor)) :+ metadata
+    )
 
 trait SnapshotNodeStore[F[_]]:
   def get(
@@ -139,6 +241,15 @@ final case class SnapshotSyncResult(
     fetchedNodeCount: Long,
 )
 
+final case class SnapshotFetchPolicy(
+    maxPeerRounds: Int,
+):
+  require(maxPeerRounds > 0, "maxPeerRounds must be positive")
+
+object SnapshotFetchPolicy:
+  val default: SnapshotFetchPolicy =
+    SnapshotFetchPolicy(maxPeerRounds = 3)
+
 trait SnapshotCoordinator[F[_]]:
   def sync(
       anchor: FinalizedAnchorSuggestion,
@@ -198,11 +309,12 @@ object SnapshotCoordinator:
       nodeStore: SnapshotNodeStore[F],
       fetchService: SnapshotNodeFetchService[F],
   ): SnapshotCoordinator[F] =
-    createWithNow(
+    createWithPolicyAndNow(
       chainId = chainId,
       metadataStore = metadataStore,
       nodeStore = nodeStore,
       fetchService = fetchService,
+      fetchPolicy = SnapshotFetchPolicy.default,
       currentInstant = Clock[F].realTimeInstant,
     )
 
@@ -211,6 +323,39 @@ object SnapshotCoordinator:
       metadataStore: SnapshotMetadataStore[F],
       nodeStore: SnapshotNodeStore[F],
       fetchService: SnapshotNodeFetchService[F],
+      currentInstant: F[Instant],
+  ): SnapshotCoordinator[F] =
+    createWithPolicyAndNow(
+      chainId = chainId,
+      metadataStore = metadataStore,
+      nodeStore = nodeStore,
+      fetchService = fetchService,
+      fetchPolicy = SnapshotFetchPolicy.default,
+      currentInstant = currentInstant,
+    )
+
+  def createWithPolicy[F[_]: Sync: Clock](
+      chainId: org.sigilaris.node.jvm.runtime.gossip.ChainId,
+      metadataStore: SnapshotMetadataStore[F],
+      nodeStore: SnapshotNodeStore[F],
+      fetchService: SnapshotNodeFetchService[F],
+      fetchPolicy: SnapshotFetchPolicy,
+  ): SnapshotCoordinator[F] =
+    createWithPolicyAndNow(
+      chainId = chainId,
+      metadataStore = metadataStore,
+      nodeStore = nodeStore,
+      fetchService = fetchService,
+      fetchPolicy = fetchPolicy,
+      currentInstant = Clock[F].realTimeInstant,
+    )
+
+  def createWithPolicyAndNow[F[_]: Sync](
+      chainId: org.sigilaris.node.jvm.runtime.gossip.ChainId,
+      metadataStore: SnapshotMetadataStore[F],
+      nodeStore: SnapshotNodeStore[F],
+      fetchService: SnapshotNodeFetchService[F],
+      fetchPolicy: SnapshotFetchPolicy,
       currentInstant: F[Instant],
   ): SnapshotCoordinator[F] =
     new SnapshotCoordinator[F]:
@@ -280,56 +425,91 @@ object SnapshotCoordinator:
               detail = Some(anchor.snapshotAnchor.chainId.value),
             ).asLeft[Long].pure[F]
           else
-            sessions.foldLeft(
-              (missing.distinct, 0L).asRight[SnapshotSyncFailure].pure[F],
-            ):
-              case (effect, session) =>
-                effect.flatMap:
-                  case left @ Left(_) =>
-                    left.pure[F]
-                  case Right((Vector(), storedCount)) =>
-                    (Vector.empty[MerkleTrieNode.MerkleHash], storedCount)
-                      .asRight[SnapshotSyncFailure]
-                      .pure[F]
-                  case Right((remaining, storedCount)) =>
-                    fetchService
-                      .fetchNodes(
-                        session = session,
-                        chainId = chainId,
-                        stateRoot = anchor.stateRoot,
-                        hashes = remaining,
-                      )
-                      .flatMap:
-                        case Left(rejection) =>
-                          SnapshotSyncFailure(
-                            reason = "snapshotFetchRejected",
-                            detail = Some(rejection.reason),
-                          ).asLeft[(Vector[MerkleTrieNode.MerkleHash], Long)]
-                            .pure[F]
-                        case Right(nodes) =>
-                          SnapshotNodeVerifier.verifyBatch(nodes) match
-                            case Left(error) =>
-                              error
-                                .asLeft[(Vector[MerkleTrieNode.MerkleHash], Long)]
-                                .pure[F]
-                            case Right(verifiedNodes) =>
-                              nodeStore.putAll(verifiedNodes).as:
-                                val fetchedHashes =
-                                  verifiedNodes.iterator.map(_.hash).toSet
-                                (
-                                  remaining.filterNot(fetchedHashes.contains),
-                                  storedCount + verifiedNodes.size.toLong,
-                                ).asRight[SnapshotSyncFailure]
-            .map:
-              case Left(error) =>
-                error.asLeft[Long]
-              case Right((remaining, storedCount)) if remaining.nonEmpty =>
-                SnapshotSyncFailure(
-                  reason = "snapshotClosureIncomplete",
-                  detail = Some(remaining.map(_.hex).mkString(",")),
-                ).asLeft[Long]
-              case Right((_, storedCount)) =>
-                storedCount.asRight[SnapshotSyncFailure]
+            @SuppressWarnings(Array("org.wartremover.warts.Recursion"))
+            def runRounds(
+                remaining: Vector[MerkleTrieNode.MerkleHash],
+                roundsLeft: Int,
+                storedCount: Long,
+                lastRejection: Option[SnapshotSyncFailure],
+            ): F[Either[SnapshotSyncFailure, Long]] =
+              sessions
+                .foldLeft(
+                  (remaining.distinct, storedCount, lastRejection)
+                    .asRight[SnapshotSyncFailure]
+                    .pure[F],
+                ):
+                  case (effect, session) =>
+                    effect.flatMap:
+                      case left @ Left(_) =>
+                        left.pure[F]
+                      case Right((Vector(), persistedCount, rejection)) =>
+                        (Vector.empty[MerkleTrieNode.MerkleHash], persistedCount, rejection)
+                          .asRight[SnapshotSyncFailure]
+                          .pure[F]
+                      case Right((pending, persistedCount, rejection)) =>
+                        fetchService
+                          .fetchNodes(
+                            session = session,
+                            chainId = chainId,
+                            stateRoot = anchor.stateRoot,
+                            hashes = pending,
+                          )
+                          .flatMap:
+                            case Left(fetchRejection) =>
+                              (
+                                pending,
+                                persistedCount,
+                                SnapshotSyncFailure(
+                                  reason = "snapshotFetchRejected",
+                                  detail =
+                                    fetchRejection.detail.orElse(Some(fetchRejection.reason)),
+                                ).some,
+                              ).asRight[SnapshotSyncFailure].pure[F]
+                            case Right(nodes) =>
+                              SnapshotNodeVerifier.verifyBatch(nodes) match
+                                case Left(error) =>
+                                  error
+                                    .asLeft[(Vector[
+                                      MerkleTrieNode.MerkleHash,
+                                    ], Long, Option[SnapshotSyncFailure])]
+                                    .pure[F]
+                                case Right(verifiedNodes) =>
+                                  nodeStore.putAll(verifiedNodes).as:
+                                    val fetchedHashes =
+                                      verifiedNodes.iterator.map(_.hash).toSet
+                                    (
+                                      pending.filterNot(fetchedHashes.contains),
+                                      persistedCount + verifiedNodes.size.toLong,
+                                      rejection,
+                                    ).asRight[SnapshotSyncFailure]
+                .flatMap:
+                  case Left(error) =>
+                    error.asLeft[Long].pure[F]
+                  case Right((remainingAfterRound, persistedCount, rejection))
+                      if remainingAfterRound.isEmpty =>
+                    persistedCount.asRight[SnapshotSyncFailure].pure[F]
+                  case Right((remainingAfterRound, persistedCount, rejection))
+                      if roundsLeft > 1 =>
+                    runRounds(
+                      remaining = remainingAfterRound,
+                      roundsLeft = roundsLeft - 1,
+                      storedCount = persistedCount,
+                      lastRejection = rejection,
+                    )
+                  case Right((remainingAfterRound, _, Some(rejection))) =>
+                    rejection.asLeft[Long].pure[F]
+                  case Right((remainingAfterRound, _, None)) =>
+                    SnapshotSyncFailure(
+                      reason = "snapshotClosureIncomplete",
+                      detail = Some(remainingAfterRound.map(_.hex).mkString(",")),
+                    ).asLeft[Long].pure[F]
+
+            runRounds(
+              remaining = missing,
+              roundsLeft = fetchPolicy.maxPeerRounds,
+              storedCount = 0L,
+              lastRejection = None,
+            )
 
         def childHashes(
             nodes: Iterable[MerkleTrieNode],

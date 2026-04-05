@@ -58,6 +58,26 @@ final class HotStuffSnapshotStoresSuite extends CatsEffectSuite:
         pendingNodeCount = 2L,
         lastUpdatedAt = Instant.parse("2026-04-05T03:00:00Z"),
       )
+    val metadataUpdated =
+      metadata.copy(
+        verifiedNodeCount = 2L,
+        pendingNodeCount = 1L,
+        lastUpdatedAt = Instant.parse("2026-04-05T03:01:00Z"),
+      )
+    val metadataOtherAnchor =
+      SnapshotMetadata(
+        anchor = SnapshotAnchor(
+          chainId = chainId,
+          proposalId = org.sigilaris.node.jvm.runtime.consensus.hotstuff.ProposalId(UInt256.fromHex("11").toOption.get),
+          blockId = BlockId(UInt256.fromHex("12").toOption.get),
+          height = BlockHeight.unsafeFromLong(9L),
+          stateRoot = StateRoot(childHash.toUInt256),
+        ),
+        status = SnapshotStatus.Complete,
+        verifiedNodeCount = 3L,
+        pendingNodeCount = 0L,
+        lastUpdatedAt = Instant.parse("2026-04-05T03:02:00Z"),
+      )
 
     tempDirResource.use: root =>
       val layout = StorageLayout.fromRoot(root)
@@ -65,6 +85,8 @@ final class HotStuffSnapshotStoresSuite extends CatsEffectSuite:
         (metadataStore, nodeStore) =>
           for
             _ <- metadataStore.put(metadata)
+            _ <- metadataStore.put(metadataUpdated)
+            _ <- metadataStore.put(metadataOtherAnchor)
             _ <- nodeStore.putAll(
               Vector(
                 org.sigilaris.node.jvm.runtime.consensus.hotstuff.SnapshotTrieNode(rootHash, rootNode),
@@ -72,18 +94,26 @@ final class HotStuffSnapshotStoresSuite extends CatsEffectSuite:
               ),
             )
             loadedMetadata <- metadataStore.get(chainId)
+            loadedOriginal <- metadataStore.getForAnchor(metadata.anchor)
+            loadedOther <- metadataStore.getForAnchor(metadataOtherAnchor.anchor)
+            history <- metadataStore.list(chainId)
             loadedNode <- nodeStore.get(rootHash)
             loadedChild <- nodeStore.get(childHash)
             containsRoot <- nodeStore.contains(rootHash)
             containsChild <- nodeStore.contains(childHash)
             _ <- metadataStore.remove(chainId)
             removedMetadata <- metadataStore.get(chainId)
+            removedHistory <- metadataStore.list(chainId)
           yield
             assertEquals(layout.state.snapshot, root.resolve("state").resolve("snapshot"))
             assertEquals(layout.state.nodes, root.resolve("state").resolve("nodes"))
-            assertEquals(loadedMetadata, Some(metadata))
+            assertEquals(loadedMetadata, Some(metadataOtherAnchor))
+            assertEquals(loadedOriginal, Some(metadataUpdated))
+            assertEquals(loadedOther, Some(metadataOtherAnchor))
+            assertEquals(history, Vector(metadataOtherAnchor, metadataUpdated))
             assertEquals(loadedNode, Some(rootNode))
             assertEquals(loadedChild, Some(childNode))
             assertEquals(containsRoot, true)
             assertEquals(containsChild, true)
             assertEquals(removedMetadata, None)
+            assertEquals(removedHistory, Vector.empty)

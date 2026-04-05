@@ -531,32 +531,79 @@ private final class InMemoryBootstrapCoordinator[F[_]: Sync](
       anchor: FinalizedAnchorSuggestion,
       sessions: Vector[BootstrapSessionBinding],
   ): F[Either[BootstrapCoordinatorFailure, Vector[Proposal]]] =
-    sessions
-      .traverse: session =>
-        proposalReplay.readNext(
-          session = session,
-          chainId = chainId,
-          anchorBlockId = anchor.anchorBlockId,
-          nextHeight = BlockHeight(BigNat.add(anchor.anchorHeight.toBigNat, BigNat.One)),
-          limit = 256,
-        )
-      .map: batches =>
-        val successful =
-          batches.collect { case Right(proposals) => proposals }.flatten
-        if successful.nonEmpty then
-          successful.asRight[BootstrapCoordinatorFailure]
-        else if batches.isEmpty || batches.exists {
-            case Right(_) => true
-            case Left(_)  => false
-          } then
-          Vector.empty[Proposal].asRight[BootstrapCoordinatorFailure]
-        else
-          val firstFailure =
-            batches.collectFirst { case Left(rejection) =>
-              BootstrapCoordinatorFailure(rejection.reason, rejection.detail)
+    val replayPageSize = 256
+    val replayMaxLimit = replayPageSize * 16
+    val replayStartHeight =
+      BlockHeight(BigNat.add(anchor.anchorHeight.toBigNat, BigNat.One))
+
+    def dedupeReplayedProposals(
+        proposals: Vector[Proposal],
+    ): Vector[Proposal] =
+      proposals
+        .foldLeft(Map.empty[ProposalId, Proposal]): (acc, proposal) =>
+          acc.updatedWith(proposal.proposalId):
+            case current @ Some(_) => current
+            case None              => Some(proposal)
+        .values
+        .toVector
+
+    @SuppressWarnings(Array("org.wartremover.warts.Recursion"))
+    def loop(
+        limit: Int,
+    ): F[Either[BootstrapCoordinatorFailure, Vector[Proposal]]] =
+      sessions
+        .traverse: session =>
+          proposalReplay.readNext(
+            session = session,
+            chainId = chainId,
+            anchorBlockId = anchor.anchorBlockId,
+            nextHeight = replayStartHeight,
+            limit = limit,
+          )
+        .flatMap: batches =>
+          val successfulBatches =
+            batches.collect { case Right(proposals) =>
+              dedupeReplayedProposals(proposals)
+                .filter(proposal =>
+                  Ordering[BlockHeight].gteq(proposal.block.height, replayStartHeight)
+                )
+                .sortBy(proposal => (proposal.block.height, proposal.proposalId.toHexLower))
             }
-          firstFailure.getOrElse(BootstrapCoordinatorFailure("proposalReplayUnavailable", None))
-            .asLeft[Vector[Proposal]]
+          val successful =
+            dedupeReplayedProposals(successfulBatches.flatten)
+              .sortBy(proposal => (proposal.block.height, proposal.proposalId.toHexLower))
+          val highestHeight =
+            successful.iterator.map(_.block.height).maxOption(using Ordering[BlockHeight])
+          val saturated =
+            successfulBatches.exists(_.sizeCompare(limit) >= 0)
+
+          // `readNext` is keyed only by `nextHeight`, so paging by advancing a
+          // shared height cursor can skip proposals from peers that returned a
+          // shorter prefix. Re-read from the anchor with a larger limit instead.
+          if saturated && limit < replayMaxLimit then
+            loop(Math.min(limit * 2, replayMaxLimit))
+          else if saturated then
+            BootstrapCoordinatorFailure(
+              reason = "proposalReplayPageBudgetExceeded",
+              detail = Some(
+                highestHeight.getOrElse(replayStartHeight).render
+              ),
+            ).asLeft[Vector[Proposal]].pure[F]
+          else if batches.isEmpty || batches.exists {
+              case Right(_) => true
+              case Left(_)  => false
+            } then
+            successful.asRight[BootstrapCoordinatorFailure].pure[F]
+          else
+            val firstFailure =
+              batches.collectFirst { case Left(rejection) =>
+                BootstrapCoordinatorFailure(rejection.reason, rejection.detail)
+              }
+            firstFailure.getOrElse(BootstrapCoordinatorFailure("proposalReplayUnavailable", None))
+              .asLeft[Vector[Proposal]]
+              .pure[F]
+
+    loop(limit = replayPageSize)
 
   private def pinAnchor(
       chainId: ChainId,
