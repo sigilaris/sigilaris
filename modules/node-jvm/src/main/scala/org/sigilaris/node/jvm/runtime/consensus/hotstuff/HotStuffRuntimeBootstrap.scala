@@ -329,6 +329,7 @@ object HotStuffRuntimeBootstrap:
       clock: GossipClock[F],
       runtimePolicy: TxRuntimePolicy = DefaultRuntimePolicy,
       handshakePolicy: HandshakePolicy = HandshakePolicy.default,
+      bootstrapTransport: Option[HotStuffBootstrapTransportServices[F]] = None,
       peerConfigPath: String = StaticPeerTopologyConfig.DefaultPath,
       consensusConfigPath: String = HotStuffBootstrapConfig.DefaultPath,
   ): F[Either[String, HotStuffRuntimeBootstrap[F]]] =
@@ -362,6 +363,7 @@ object HotStuffRuntimeBootstrap:
             clock = clock,
             runtimePolicy = runtimePolicy,
             handshakePolicy = handshakePolicy,
+            bootstrapTransport = bootstrapTransport,
           )
 
   @SuppressWarnings(Array("org.wartremover.warts.DefaultArguments"))
@@ -371,6 +373,7 @@ object HotStuffRuntimeBootstrap:
       clock: GossipClock[F],
       runtimePolicy: TxRuntimePolicy = DefaultRuntimePolicy,
       handshakePolicy: HandshakePolicy = HandshakePolicy.default,
+      bootstrapTransport: Option[HotStuffBootstrapTransportServices[F]] = None,
   ): F[Either[String, HotStuffRuntimeBootstrap[F]]] =
     given GossipClock[F] = clock
     val bootstrapInput =
@@ -408,15 +411,20 @@ object HotStuffRuntimeBootstrap:
                   snapshotNodeStore = nodeStore.some,
                   diagnostics = emptyDiagnostics,
                 )
+              transportServices =
+                bootstrapTransport.getOrElse(
+                  HotStuffBootstrapTransportServices
+                    .fromBootstrapServices(bootstrapServices),
+                )
               bootstrapLifecycle <- HotStuffBootstrapLifecycle.inMemory[F](
                 metadataStore = metadataStore,
                 nodeStore = nodeStore,
                 validatorSetLookup = bootstrapServices.validatorSetLookup,
                 finalizedAnchorSuggestions =
-                  bootstrapServices.finalizedAnchorSuggestions,
-                snapshotNodeFetch = bootstrapServices.snapshotNodeFetch,
-                proposalReplay = bootstrapServices.proposalReplay,
-                historicalBackfill = bootstrapServices.historicalBackfill,
+                  transportServices.finalizedAnchorSuggestions,
+                snapshotNodeFetch = transportServices.snapshotNodeFetch,
+                proposalReplay = transportServices.proposalReplay,
+                historicalBackfill = transportServices.historicalBackfill,
                 // Phase 6 wires the lifecycle gate but does not yet connect
                 // concrete replay/view validation into the shipped newcomer
                 // runtime path. Nodes with no catch-up proposals can become

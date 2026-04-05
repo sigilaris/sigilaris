@@ -1,7 +1,7 @@
 # 0007 - Snapshot Sync And Background Backfill Plan
 
 ## Status
-Phase 6 Complete, Phase 7 Planned
+Phase 7 Complete, Phase 8 Planned
 
 ## Created
 2026-04-05
@@ -203,6 +203,7 @@ Phase 6 Complete, Phase 7 Planned
 - `2026-04-05` 기준 아래 suite 가 green 이다.
 - `HotStuffBootstrapContractsSuite`
 - `HotStuffRuntimeServiceSuite`
+- `HotStuffBootstrapArmeriaAdapterSuite`
 - `HotStuffFinalizationSuite`
 - `HotStuffSnapshotSyncSuite`
 - `HotStuffSnapshotStoresSuite`
@@ -211,14 +212,12 @@ Phase 6 Complete, Phase 7 Planned
 - `HotStuffProposalTxSyncSuite`
 - `RuntimeImportRuleSuite`
 
-## Residual Gaps After Phase 5
-- current landed bootstrap component 는 mostly standalone runtime primitive / test coverage 로 존재하고, `HotStuffRuntimeBootstrap` / `HotStuffNodeRuntime` shipped assembly path 에 newcomer bootstrap coordinator graph 로 아직 조립되지 않았다.
-- assembled `HotStuffBootstrapServicesRuntime.inMemory` 는 finalized suggestion / replay / backfill surface 는 제공하지만, `SnapshotNodeFetchService` 는 아직 stub 이고 bootstrap service family 는 transport adapter 에 노출되지 않았다.
-- bootstrap coordinator / historical backfill worker 는 diagnostics 와 progress 를 계산하지만, replay/backfill artifact 를 concrete runtime storage/query seam 에 materialize 하거나 startup lifecycle gate 와 end-to-end 로 연결하지는 않았다.
+## Residual Gaps After Phase 7
+- bootstrap coordinator / historical backfill worker 는 diagnostics 와 progress 를 계산하고 assembled lifecycle gate / transport path 까지 연결됐지만, replay/backfill artifact 를 concrete runtime storage/query seam 에 materialize 하거나 vote eligibility advancement 와 end-to-end 로 연결하지는 않았다.
 - in-memory replay/backfill service baseline 은 현재 height 중심 filtering 을 사용하고 있어 anchor ancestry 기준 replay/backfill contract 를 더 엄밀히 잠글 필요가 있다.
 - shipped bootstrap trust root 는 여전히 `HotStuffBootstrapConfig.validatorSet` 기반 static validator-set baseline 이다. operator checkpoint 나 weak-subjectivity anchor 는 follow-up bootstrap material 로 남아 있다.
 - `ValidatorSetLookup` seam 은 landed 되었지만 historical validator-set rotation continuity 와 finalized-proof historical lookup 은 아직 구현되지 않았다.
-- historical backfill 은 low-priority background baseline 까지 landed 되었고, archive-grade acceleration, peer scoring, bandwidth shaping, snapshot batching optimization 은 후속 작업으로 남아 있다.
+- historical backfill 은 low-priority background baseline 까지 landed 되었고, durable proposal archive retention, archive-grade acceleration, peer scoring, bandwidth shaping, snapshot batching optimization 은 후속 작업으로 남아 있다.
 
 ## Checklist
 
@@ -272,10 +271,10 @@ Phase 6 Complete, Phase 7 Planned
 - [x] config/bootstrap integration test 로 assembled newcomer bootstrap path 검증
 
 ### Phase 7: Session-Bound Bootstrap Service Transport And Remote Fetch
-- [ ] transport adapter 에 session-bound bootstrap service family 노출
-- [ ] stub 이 아닌 remote `SnapshotNodeFetchService` 연결
-- [ ] session revoke/close auth binding 및 canonical rejection handling 연결
-- [ ] loopback/transport integration test 로 finalized suggestion fan-out / snapshot fetch / replay-backfill request 검증
+- [x] transport adapter 에 session-bound bootstrap service family 노출
+- [x] stub 이 아닌 remote `SnapshotNodeFetchService` 연결
+- [x] session revoke/close auth binding 및 canonical rejection handling 연결
+- [x] loopback/transport integration test 로 finalized suggestion fan-out / snapshot fetch / replay-backfill request 검증
 
 ### Phase 8: Replay And Backfill Materialization
 - [ ] forward catch-up 결과를 concrete tx anti-entropy / proposal validation / local replay / vote eligibility path 에 연결

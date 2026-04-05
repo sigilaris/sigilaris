@@ -425,6 +425,30 @@ final class TxControlInterpreterSuite extends CatsEffectSuite:
       assertEquals(keepAlive.left.map(_.rejectionClass), Left("controlBatchRejected"))
       assertEquals(keepAlive.left.map(_.reason), Left("unknownSession"))
 
+  test("authorizeOpenSession rejects unknown and non-open sessions and touches open-session activity"):
+    for
+      unknownHarness <- Harness.create("node-a", startedAt)
+      openingHarness <- Harness.create("node-a", startedAt)
+      openHarness <- Harness.create("node-a", startedAt)
+      unknown <- unknownHarness.runtime.authorizeOpenSession(DirectionalSessionId.random())
+      openingSessionId <- startOutboundOpening(openingHarness)
+      opening <- openingHarness.runtime.authorizeOpenSession(openingSessionId)
+      openSessionId <- openOutbound(openHarness)
+      before <- openHarness.runtime.snapshotState.map(
+        _.engine.sessionById(openSessionId).map(_.lastActivityAt)
+      )
+      _ <- openHarness.clock.advance(Duration.ofSeconds(5))
+      authorized <- openHarness.runtime.authorizeOpenSession(openSessionId)
+      after <- openHarness.runtime.snapshotState.map(
+        _.engine.sessionById(openSessionId).map(_.lastActivityAt)
+      )
+    yield
+      assertEquals(unknown.left.map(_.reason), Left("unknownSession"))
+      assertEquals(opening.left.map(_.reason), Left("sessionNotOpen"))
+      assertEquals(authorized.map(_.sessionId), Right(openSessionId))
+      assertEquals(before, Some(startedAt))
+      assertEquals(after, Some(startedAt.plusSeconds(5)))
+
   private def openOutbound(
       harness: Harness,
   ): IO[DirectionalSessionId] =

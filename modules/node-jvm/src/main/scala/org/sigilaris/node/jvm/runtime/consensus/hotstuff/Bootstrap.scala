@@ -229,6 +229,24 @@ final case class HotStuffBootstrapServices[F[_]](
     diagnostics: BootstrapDiagnosticsSource[F],
 )
 
+final case class HotStuffBootstrapTransportServices[F[_]](
+    finalizedAnchorSuggestions: FinalizedAnchorSuggestionService[F],
+    snapshotNodeFetch: SnapshotNodeFetchService[F],
+    proposalReplay: ProposalReplayService[F],
+    historicalBackfill: HistoricalBackfillService[F],
+)
+
+object HotStuffBootstrapTransportServices:
+  def fromBootstrapServices[F[_]](
+      services: HotStuffBootstrapServices[F],
+  ): HotStuffBootstrapTransportServices[F] =
+    HotStuffBootstrapTransportServices(
+      finalizedAnchorSuggestions = services.finalizedAnchorSuggestions,
+      snapshotNodeFetch = services.snapshotNodeFetch,
+      proposalReplay = services.proposalReplay,
+      historicalBackfill = services.historicalBackfill,
+    )
+
 object HotStuffBootstrapServices:
   def static[F[_]: Applicative](
       validatorSet: ValidatorSet,

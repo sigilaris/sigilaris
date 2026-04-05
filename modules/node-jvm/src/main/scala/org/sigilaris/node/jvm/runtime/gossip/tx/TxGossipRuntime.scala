@@ -292,6 +292,31 @@ final class TxGossipRuntime[F[_]: Sync, A](
               ) -> ().asRight[HandshakeRejected],
           )
 
+  def authorizeOpenSession(
+      sessionId: DirectionalSessionId,
+  ): F[Either[CanonicalRejection.HandshakeRejected, DirectionalSession]] =
+    clock.now.flatMap: now =>
+      stateStore.modify: state =>
+        val currentState = expireState(state, now)
+        currentState.engine.sessionById(sessionId) match
+          case None =>
+            currentState ->
+              handshakeRejected("unknownSession", sessionId.value)
+                .asLeft[DirectionalSession]
+          case Some(session)
+              if session.status =!= DirectionalSessionStatus.Open =>
+            currentState ->
+              handshakeRejected("sessionNotOpen", sessionId.value)
+                .asLeft[DirectionalSession]
+          case Some(session) =>
+            touchSessionActivity(currentState, sessionId, now).fold(
+              rejection =>
+                currentState -> rejection.asLeft[DirectionalSession],
+              updatedState =>
+                updatedState ->
+                  session.asRight[CanonicalRejection.HandshakeRejected],
+            )
+
   def receiveControlBatch(
       sessionId: DirectionalSessionId,
       batch: ControlBatch,
