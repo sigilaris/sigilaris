@@ -395,30 +395,76 @@ object HotStuffRuntimeBootstrap:
             relayPolicy = HotStuffRelayPolicy.forRole(validatedInput.role),
           )
           .flatMap: (services, diagnostics) =>
-            val consensus =
-              HotStuffNodeRuntime.fromValidatedServices[F](
-                bootstrapInput = validatedInput,
-                services = services,
-                diagnostics = Some(diagnostics),
+            for
+              metadataStore <- SnapshotMetadataStore.inMemory[F]
+              nodeStore     <- SnapshotNodeStore.inMemory[F]
+              emptyDiagnostics = BootstrapDiagnosticsSource.const[F](
+                BootstrapDiagnostics.empty,
               )
-            TxGossipRuntimeBootstrap
-              .fromTopology[F, HotStuffGossipArtifact](
-                topology = topology,
-                clock = clock,
-                source = consensus.source,
-                sink = consensus.sink,
-                topicContracts = consensus.topicContracts,
-                runtimePolicy = runtimePolicy,
-                handshakePolicy = handshakePolicy,
+              bootstrapServices =
+                HotStuffBootstrapServicesRuntime.inMemoryWithNodeStore[F](
+                  validatorSet = validatedInput.validatorSet,
+                  sink = diagnostics.sink,
+                  snapshotNodeStore = nodeStore.some,
+                  diagnostics = emptyDiagnostics,
+                )
+              bootstrapLifecycle <- HotStuffBootstrapLifecycle.inMemory[F](
+                metadataStore = metadataStore,
+                nodeStore = nodeStore,
+                validatorSetLookup = bootstrapServices.validatorSetLookup,
+                finalizedAnchorSuggestions =
+                  bootstrapServices.finalizedAnchorSuggestions,
+                snapshotNodeFetch = bootstrapServices.snapshotNodeFetch,
+                proposalReplay = bootstrapServices.proposalReplay,
+                historicalBackfill = bootstrapServices.historicalBackfill,
+                // Phase 6 wires the lifecycle gate but does not yet connect
+                // concrete replay/view validation into the shipped newcomer
+                // runtime path. Nodes with no catch-up proposals can become
+                // ready, but any actual replayed/live proposal keeps voting
+                // held until a later phase installs the real readiness
+                // pipeline.
+                readiness = new ProposalCatchUpReadiness[F]:
+                  override def assess(
+                      proposal: Proposal,
+                  ): F[Either[BootstrapCoordinatorFailure, ProposalCatchUpAssessment]] =
+                    ProposalCatchUpAssessment(
+                      voteReadiness =
+                        BootstrapVoteReadiness.Held(
+                          "forwardCatchUpUnavailable",
+                        ),
+                      controlBatch = None,
+                    ).asRight[BootstrapCoordinatorFailure].pure[F],
+                currentInstant = clock.now,
               )
-              .map: gossipBootstrap =>
-                HotStuffRuntimeBootstrap(
-                  topology = gossipBootstrap.topology,
-                  registry = gossipBootstrap.registry,
-                  authenticator = gossipBootstrap.authenticator,
-                  consensus = consensus,
-                  runtime = gossipBootstrap.runtime,
-                ).asRight[String]
+              assembledServices =
+                services.copy(
+                  bootstrap =
+                    bootstrapServices.copy(diagnostics = bootstrapLifecycle),
+                )
+              consensus =
+                HotStuffNodeRuntime.fromValidatedServices[F](
+                  bootstrapInput = validatedInput,
+                  services = assembledServices,
+                  diagnostics = Some(diagnostics),
+                  bootstrapLifecycle = bootstrapLifecycle.some,
+                )
+              gossipBootstrap <- TxGossipRuntimeBootstrap
+                .fromTopology[F, HotStuffGossipArtifact](
+                  topology = topology,
+                  clock = clock,
+                  source = consensus.source,
+                  sink = consensus.sink,
+                  topicContracts = consensus.topicContracts,
+                  runtimePolicy = runtimePolicy,
+                  handshakePolicy = handshakePolicy,
+                )
+            yield HotStuffRuntimeBootstrap(
+              topology = gossipBootstrap.topology,
+              registry = gossipBootstrap.registry,
+              authenticator = gossipBootstrap.authenticator,
+              consensus = consensus,
+              runtime = gossipBootstrap.runtime,
+            ).asRight[String]
 
   private def renderPolicyViolation(
       rejection: HotStuffPolicyViolation,

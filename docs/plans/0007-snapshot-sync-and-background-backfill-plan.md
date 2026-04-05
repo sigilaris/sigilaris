@@ -1,7 +1,7 @@
 # 0007 - Snapshot Sync And Background Backfill Plan
 
 ## Status
-Phase 5 Complete, Phase 6 Planned
+Phase 6 Complete, Phase 7 Planned
 
 ## Created
 2026-04-05
@@ -266,10 +266,10 @@ Phase 5 Complete, Phase 6 Planned
 - [x] static bootstrap baseline 과 future rotation residual gap 문서화
 
 ### Phase 6: Runtime Assembly And Bootstrap Activation
-- [ ] `HotStuffRuntimeBootstrap` / `HotStuffNodeRuntime` assembly path 에 snapshot store / snapshot coordinator / bootstrap coordinator / historical backfill worker 를 실제로 조립
-- [ ] validator runtime 의 vote emission 을 bootstrap readiness gate 와 연결
-- [ ] bootstrap diagnostics 를 concrete runtime startup state 와 operator-visible surface 에 연결
-- [ ] config/bootstrap integration test 로 assembled newcomer bootstrap path 검증
+- [x] `HotStuffRuntimeBootstrap` / `HotStuffNodeRuntime` assembly path 에 snapshot store / snapshot coordinator / bootstrap coordinator / historical backfill worker 를 실제로 조립
+- [x] validator runtime 의 vote emission 을 bootstrap readiness gate 와 연결
+- [x] bootstrap diagnostics 를 concrete runtime startup state 와 operator-visible surface 에 연결
+- [x] config/bootstrap integration test 로 assembled newcomer bootstrap path 검증
 
 ### Phase 7: Session-Bound Bootstrap Service Transport And Remote Fetch
 - [ ] transport adapter 에 session-bound bootstrap service family 노출

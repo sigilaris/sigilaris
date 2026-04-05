@@ -10,34 +10,63 @@ import scodec.bits.ByteVector
 
 import org.sigilaris.core.crypto.CryptoOps
 import org.sigilaris.core.datatype.UInt256
-import org.sigilaris.node.jvm.runtime.block.{BlockHeader, BlockHeight, BlockTimestamp, BodyRoot, StateRoot}
+import org.sigilaris.node.jvm.runtime.block.{
+  BlockHeader,
+  BlockHeight,
+  BlockTimestamp,
+  BodyRoot,
+  StateRoot,
+}
 import org.sigilaris.node.jvm.runtime.gossip.*
 
 final class HotStuffRuntimeServiceSuite extends CatsEffectSuite:
 
-  private val chainId = ChainId.unsafe("chain-main")
-  private val startedAt = Instant.parse("2026-04-02T02:00:00Z")
+  private val chainId       = ChainId.unsafe("chain-main")
+  private val startedAt     = Instant.parse("2026-04-02T02:00:00Z")
   private val validatorKeys = Vector.fill(4)(CryptoOps.generate())
   private val validatorSet = ValidatorSet.unsafe(
     validatorKeys.zipWithIndex.map: (keyPair, index) =>
-      ValidatorMember(ValidatorId.unsafe(s"validator-${index + 1}"), keyPair.publicKey)
+      ValidatorMember(
+        ValidatorId.unsafe(s"validator-${index + 1}"),
+        keyPair.publicKey,
+      ),
   )
 
   private val holders = Vector(
-    ValidatorKeyHolder(validatorSet.members(0).id, PeerIdentity.unsafe("node-a"), ValidatorKeyHolderStatus.Active),
-    ValidatorKeyHolder(validatorSet.members(1).id, PeerIdentity.unsafe("node-a"), ValidatorKeyHolderStatus.Active),
-    ValidatorKeyHolder(validatorSet.members(2).id, PeerIdentity.unsafe("node-a"), ValidatorKeyHolderStatus.Active),
-    ValidatorKeyHolder(validatorSet.members(3).id, PeerIdentity.unsafe("node-b"), ValidatorKeyHolderStatus.Active),
+    ValidatorKeyHolder(
+      validatorSet.members(0).id,
+      PeerIdentity.unsafe("node-a"),
+      ValidatorKeyHolderStatus.Active,
+    ),
+    ValidatorKeyHolder(
+      validatorSet.members(1).id,
+      PeerIdentity.unsafe("node-a"),
+      ValidatorKeyHolderStatus.Active,
+    ),
+    ValidatorKeyHolder(
+      validatorSet.members(2).id,
+      PeerIdentity.unsafe("node-a"),
+      ValidatorKeyHolderStatus.Active,
+    ),
+    ValidatorKeyHolder(
+      validatorSet.members(3).id,
+      PeerIdentity.unsafe("node-b"),
+      ValidatorKeyHolderStatus.Active,
+    ),
   )
 
-  test("runtime-owned service contract can back HotStuffNodeRuntime without the in-memory assembly"):
+  test(
+    "runtime-owned service contract can back HotStuffNodeRuntime without the in-memory assembly",
+  ):
     val publisher = RecordingPublisher.create
     val source = new GossipArtifactSource[IO, HotStuffGossipArtifact]:
       override def readAfter(
           chainId: ChainId,
           topic: GossipTopic,
           cursor: Option[CursorToken],
-      ): IO[Either[CanonicalRejection, Vector[AvailableGossipEvent[HotStuffGossipArtifact]]]] =
+      ): IO[Either[CanonicalRejection, Vector[
+        AvailableGossipEvent[HotStuffGossipArtifact],
+      ]]] =
         IO.pure(Right(Vector.empty))
 
       override def readByIds(
@@ -50,7 +79,9 @@ final class HotStuffRuntimeServiceSuite extends CatsEffectSuite:
     val sink = new GossipArtifactSink[IO, HotStuffGossipArtifact]:
       override def applyEvent(
           event: GossipEvent[HotStuffGossipArtifact],
-      ): IO[Either[CanonicalRejection.ArtifactContractRejected, ArtifactApplyResult]] =
+      ): IO[
+        Either[CanonicalRejection.ArtifactContractRejected, ArtifactApplyResult],
+      ] =
         IO.pure(Right(ArtifactApplyResult(applied = true, duplicate = false)))
 
     val services =
@@ -78,18 +109,34 @@ final class HotStuffRuntimeServiceSuite extends CatsEffectSuite:
     val runtimeEither = HotStuffNodeRuntime.fromServices[IO](input, services)
 
     for
-      runtime <- IO.fromEither(runtimeEither.leftMap(rejection => new IllegalArgumentException(rejection.reason)))
+      runtime <- IO.fromEither(
+        runtimeEither.leftMap(rejection =>
+          new IllegalArgumentException(rejection.reason),
+        ),
+      )
       emitted <- runtime.emitProposal(
         proposer = validatorSet.members(0).id,
-        block = block(parent = Some(bootstrapQc().subject.blockId), height = 2L, rootHex = "91"),
+        block = block(
+          parent = Some(bootstrapQc().subject.blockId),
+          height = 2L,
+          rootHex = "91",
+        ),
         txSet = ProposalTxSet.empty,
         window = HotStuffWindow(chainId, 2L, 1L, validatorSet.hash),
         justify = bootstrapQc(),
         ts = startedAt,
       )
-      event <- IO.fromEither(emitted.leftMap(rejection => new IllegalStateException(rejection.reason)))
+      event <- IO.fromEither(
+        emitted.leftMap(rejection =>
+          new IllegalStateException(rejection.reason),
+        ),
+      )
       published <- publisher.snapshot
-      visibleFromSource <- runtime.source.readAfter(chainId, GossipTopic.consensusProposal, None)
+      visibleFromSource <- runtime.source.readAfter(
+        chainId,
+        GossipTopic.consensusProposal,
+        None,
+      )
       lookup <- runtime.bootstrapServices.validatorSetLookup
         .validatorSetFor(HotStuffWindow(chainId, 2L, 1L, validatorSet.hash))
       diagnostics <- runtime.bootstrapServices.diagnostics.current
@@ -97,21 +144,45 @@ final class HotStuffRuntimeServiceSuite extends CatsEffectSuite:
       assertEquals(runtime.bootstrapInput, input)
       assert(runtime.inMemorySink.isEmpty)
       assert(runtime.inMemorySource.isEmpty)
+      assert(runtime.bootstrapLifecycle.isEmpty)
       assert(runtime.source eq source)
       assert(runtime.sink eq sink)
-      assertEquals(runtime.bootstrapTrustRoot.validatorSetHash, validatorSet.hash)
-      assertEquals(runtime.bootstrapServices.trustRoot.validatorSetHash, validatorSet.hash)
-      assert(runtime.topicContracts.contractFor(GossipTopic.consensusProposal).isRight)
+      assertEquals(
+        runtime.bootstrapTrustRoot.validatorSetHash,
+        validatorSet.hash,
+      )
+      assertEquals(
+        runtime.bootstrapServices.trustRoot.validatorSetHash,
+        validatorSet.hash,
+      )
+      assert(
+        runtime.topicContracts
+          .contractFor(GossipTopic.consensusProposal)
+          .isRight,
+      )
       assertEquals(event.topic, GossipTopic.consensusProposal)
-      assertEquals(published.map(_.topic), Vector(GossipTopic.consensusProposal))
+      assertEquals(
+        published.map(_.topic),
+        Vector(GossipTopic.consensusProposal),
+      )
       assertEquals(visibleFromSource, Right(Vector.empty))
       assertEquals(lookup.map(_.hash), Right(validatorSet.hash))
       assertEquals(diagnostics.phase, BootstrapPhase.Discovery)
 
-  test("fromServices rejects dual-active holders before constructing the runtime"):
+  test(
+    "fromServices rejects dual-active holders before constructing the runtime",
+  ):
     val dualActive = Vector(
-      ValidatorKeyHolder(validatorSet.members(0).id, PeerIdentity.unsafe("node-a"), ValidatorKeyHolderStatus.Active),
-      ValidatorKeyHolder(validatorSet.members(0).id, PeerIdentity.unsafe("node-b"), ValidatorKeyHolderStatus.Active),
+      ValidatorKeyHolder(
+        validatorSet.members(0).id,
+        PeerIdentity.unsafe("node-a"),
+        ValidatorKeyHolderStatus.Active,
+      ),
+      ValidatorKeyHolder(
+        validatorSet.members(0).id,
+        PeerIdentity.unsafe("node-b"),
+        ValidatorKeyHolderStatus.Active,
+      ),
     )
 
     val services =
@@ -122,7 +193,9 @@ final class HotStuffRuntimeServiceSuite extends CatsEffectSuite:
               chainId: ChainId,
               topic: GossipTopic,
               cursor: Option[CursorToken],
-          ): IO[Either[CanonicalRejection, Vector[AvailableGossipEvent[HotStuffGossipArtifact]]]] =
+          ): IO[Either[CanonicalRejection, Vector[
+            AvailableGossipEvent[HotStuffGossipArtifact],
+          ]]] =
             IO.pure(Right(Vector.empty))
 
           override def readByIds(
@@ -130,12 +203,19 @@ final class HotStuffRuntimeServiceSuite extends CatsEffectSuite:
               topic: GossipTopic,
               ids: Vector[StableArtifactId],
           ): IO[Vector[AvailableGossipEvent[HotStuffGossipArtifact]]] =
-            IO.pure(Vector.empty),
+            IO.pure(Vector.empty)
+        ,
         sink = new GossipArtifactSink[IO, HotStuffGossipArtifact]:
           override def applyEvent(
               event: GossipEvent[HotStuffGossipArtifact],
-          ): IO[Either[CanonicalRejection.ArtifactContractRejected, ArtifactApplyResult]] =
-            IO.pure(Right(ArtifactApplyResult(applied = true, duplicate = false))),
+          ): IO[Either[
+            CanonicalRejection.ArtifactContractRejected,
+            ArtifactApplyResult,
+          ]] =
+            IO.pure(
+              Right(ArtifactApplyResult(applied = true, duplicate = false)),
+            )
+        ,
         topicContracts = HotStuffTopic.registry(),
         bootstrap = HotStuffBootstrapServices.static[IO](validatorSet),
       )
@@ -154,7 +234,47 @@ final class HotStuffRuntimeServiceSuite extends CatsEffectSuite:
 
     assertEquals(runtime.left.map(_.reason), Left("dualActiveKeyHolder"))
 
-  test("concrete bootstrap surface exposes bootstrap input and runtime services explicitly"):
+  test(
+    "runtime bootstrap surface reports an unavailable lifecycle when newcomer bootstrap is not assembled",
+  ):
+    given GossipClock[IO] = GossipClock.constant[IO](startedAt)
+
+    val runtimeResult =
+      HotStuffNodeRuntime.create[IO](
+        localPeer = PeerIdentity.unsafe("node-a"),
+        role = LocalNodeRole.Validator,
+        validatorSet = validatorSet,
+        holders = holders,
+        localKeys = Map(
+          validatorSet.members(0).id -> validatorKeys(0),
+          validatorSet.members(1).id -> validatorKeys(1),
+          validatorSet.members(2).id -> validatorKeys(2),
+        ),
+      )
+
+    for
+      runtimeEither <- runtimeResult
+      runtime <- IO.fromEither(
+        runtimeEither.leftMap(rejection =>
+          new IllegalArgumentException(rejection.reason),
+        ),
+      )
+      result <- runtime.bootstrap(
+        chainId = chainId,
+        sessions = Vector.empty,
+        startedAt = startedAt,
+        liveProposals = Vector.empty,
+      )
+    yield
+      assert(runtime.bootstrapLifecycle.isEmpty)
+      assertEquals(
+        result.left.map(_.reason),
+        Left("bootstrapLifecycleUnavailable"),
+      )
+
+  test(
+    "concrete bootstrap surface exposes bootstrap input and runtime services explicitly",
+  ):
     val topology =
       StaticPeerTopology
         .parse(
@@ -183,20 +303,52 @@ final class HotStuffRuntimeServiceSuite extends CatsEffectSuite:
         consensusConfig = config,
         clock = GossipClock.constant[IO](startedAt),
       )
-      bootstrap <- IO.fromEither(bootstrapEither.leftMap(new IllegalArgumentException(_)))
+      bootstrap <- IO.fromEither(
+        bootstrapEither.leftMap(new IllegalArgumentException(_)),
+      )
     yield
-      assertEquals(bootstrap.consensus.bootstrapInput.localPeer, topology.localNodeIdentity)
-      assertEquals(bootstrap.consensus.bootstrapInput.role, LocalNodeRole.Validator)
-      assertEquals(bootstrap.consensus.bootstrapInput.validatorSet.hash, validatorSet.hash)
+      assertEquals(
+        bootstrap.consensus.bootstrapInput.localPeer,
+        topology.localNodeIdentity,
+      )
+      assertEquals(
+        bootstrap.consensus.bootstrapInput.role,
+        LocalNodeRole.Validator,
+      )
+      assertEquals(
+        bootstrap.consensus.bootstrapInput.validatorSet.hash,
+        validatorSet.hash,
+      )
       assertEquals(bootstrap.consensus.bootstrapInput.holders, holders)
-      assertEquals(bootstrap.consensus.bootstrapInput.localKeys.keySet, config.localKeys.keySet)
-      assertEquals(bootstrap.consensus.bootstrapTrustRoot.validatorSetHash, validatorSet.hash)
-      assertEquals(bootstrap.consensus.bootstrapServices.trustRoot.validatorSetHash, validatorSet.hash)
-      assert(bootstrap.consensus.topicContracts.contractFor(GossipTopic.consensusProposal).isRight)
-      assert(bootstrap.consensus.topicContracts.contractFor(GossipTopic.consensusVote).isRight)
+      assertEquals(
+        bootstrap.consensus.bootstrapInput.localKeys.keySet,
+        config.localKeys.keySet,
+      )
+      assertEquals(
+        bootstrap.consensus.bootstrapTrustRoot.validatorSetHash,
+        validatorSet.hash,
+      )
+      assertEquals(
+        bootstrap.consensus.bootstrapServices.trustRoot.validatorSetHash,
+        validatorSet.hash,
+      )
+      assert(
+        bootstrap.consensus.topicContracts
+          .contractFor(GossipTopic.consensusProposal)
+          .isRight,
+      )
+      assert(
+        bootstrap.consensus.topicContracts
+          .contractFor(GossipTopic.consensusVote)
+          .isRight,
+      )
       assert(bootstrap.consensus.inMemorySource.nonEmpty)
       assert(bootstrap.consensus.inMemorySink.nonEmpty)
-      assertEquals(bootstrap.registry.localPeer, bootstrap.consensus.bootstrapInput.localPeer)
+      assert(bootstrap.consensus.bootstrapLifecycle.nonEmpty)
+      assertEquals(
+        bootstrap.registry.localPeer,
+        bootstrap.consensus.bootstrapInput.localPeer,
+      )
 
   private def bootstrapQc(): QuorumCertificate =
     val window = HotStuffWindow(chainId, 0L, 0L, validatorSet.hash)
@@ -249,8 +401,9 @@ final class HotStuffRuntimeServiceSuite extends CatsEffectSuite:
       timestamp = BlockTimestamp.unsafeFromEpochMillis(startedAt.toEpochMilli),
     )
 
-  private final class RecordingPublisher private (ref: Ref[IO, Vector[GossipEvent[HotStuffGossipArtifact]]])
-      extends HotStuffArtifactPublisher[IO]:
+  private final class RecordingPublisher private (
+      ref: Ref[IO, Vector[GossipEvent[HotStuffGossipArtifact]]],
+  ) extends HotStuffArtifactPublisher[IO]:
     override def append(
         artifact: HotStuffGossipArtifact,
         ts: Instant,
@@ -258,8 +411,9 @@ final class HotStuffRuntimeServiceSuite extends CatsEffectSuite:
       ref.modify: existing =>
         val sequence = existing.size.toLong + 1L
         val chainId = artifact match
-          case HotStuffGossipArtifact.ProposalArtifact(proposal) => proposal.window.chainId
-          case HotStuffGossipArtifact.VoteArtifact(vote)         => vote.window.chainId
+          case HotStuffGossipArtifact.ProposalArtifact(proposal) =>
+            proposal.window.chainId
+          case HotStuffGossipArtifact.VoteArtifact(vote) => vote.window.chainId
         val event =
           GossipEvent(
             chainId = chainId,

@@ -3,7 +3,7 @@ package org.sigilaris.node.jvm.runtime.consensus.hotstuff
 import java.nio.ByteBuffer
 import java.time.{Duration, Instant}
 
-import cats.effect.kernel.{Ref, Sync}
+import cats.effect.kernel.{Async, Ref, Sync}
 import cats.syntax.all.*
 import scodec.bits.ByteVector
 
@@ -11,7 +11,17 @@ import org.sigilaris.core.codec.byte.ByteEncoder
 import org.sigilaris.core.codec.byte.ByteEncoder.ops.*
 import org.sigilaris.core.crypto.{Hash, KeyPair}
 import org.sigilaris.core.util.SafeStringInterp.*
-import org.sigilaris.node.jvm.runtime.block.{BlockBody, BlockHeader, BlockHeight, BlockQuery, BlockRecord, BlockStore, BlockTimestamp, BlockView, StateRoot}
+import org.sigilaris.node.jvm.runtime.block.{
+  BlockBody,
+  BlockHeader,
+  BlockHeight,
+  BlockQuery,
+  BlockRecord,
+  BlockStore,
+  BlockTimestamp,
+  BlockView,
+  StateRoot,
+}
 import org.sigilaris.node.jvm.runtime.gossip.*
 
 enum HotStuffGossipArtifact:
@@ -329,7 +339,7 @@ final class InMemoryHotStuffArtifactSource[F[_]: Sync] private (
               CanonicalRejection.StaleCursor(
                 reason = "unknownCursor",
                 detail = Some:
-                  ss"sequence=${sequence.toString} max=${maxSequence.toString}"
+                  ss"sequence=${sequence.toString} max=${maxSequence.toString}",
               ),
             )
 
@@ -426,7 +436,10 @@ final class InMemoryHotStuffArtifactSink[F[_]: Sync] private (
               .modify: snapshot =>
                 if snapshot.proposals.contains(proposal.proposalId) then
                   snapshot.copy(duplicates = snapshot.duplicates :+ event) -> (
-                    ArtifactApplyResult(applied = false, duplicate = true) -> Option
+                    ArtifactApplyResult(
+                      applied = false,
+                      duplicate = true,
+                    ) -> Option
                       .empty[RelayEnvelope]
                   ).asRight[CanonicalRejection.ArtifactContractRejected]
                 else
@@ -536,7 +549,9 @@ final class InMemoryHotStuffArtifactSink[F[_]: Sync] private (
         CanonicalRejection.ArtifactContractRejected,
         (ArtifactApplyResult, Option[RelayEnvelope]),
       ],
-  ): F[Either[CanonicalRejection.ArtifactContractRejected, ArtifactApplyResult]] =
+  ): F[
+    Either[CanonicalRejection.ArtifactContractRejected, ArtifactApplyResult],
+  ] =
     stored match
       case Left(rejection) =>
         rejection.asLeft[ArtifactApplyResult].pure[F]
@@ -592,7 +607,8 @@ object InMemoryHotStuffArtifactSink:
           _,
         )
 
-  def createWithProposalValidation[F[_]: Sync, TxRef: ByteEncoder: Hash, ResultRef: ByteEncoder, Event: ByteEncoder](
+  def createWithProposalValidation[F[_]
+    : Sync, TxRef: ByteEncoder: Hash, ResultRef: ByteEncoder, Event: ByteEncoder](
       validatorSet: ValidatorSet,
       relayPolicy: HotStuffRelayPolicy,
       relayPublisher: HotStuffArtifactPublisher[F],
@@ -651,6 +667,7 @@ final case class HotStuffNodeRuntime[F[_]: Sync](
     bootstrapInput: HotStuffRuntimeBootstrapInput,
     services: HotStuffRuntimeServices[F],
     diagnostics: Option[HotStuffInMemoryRuntimeDiagnostics[F]] = None,
+    bootstrapLifecycle: Option[HotStuffBootstrapLifecycle[F]] = None,
 ):
   def localPeer: PeerIdentity = bootstrapInput.localPeer
 
@@ -683,6 +700,29 @@ final case class HotStuffNodeRuntime[F[_]: Sync](
   def inMemorySink: Option[InMemoryHotStuffArtifactSink[F]] =
     diagnostics.map(_.sink)
 
+  def currentBootstrapDiagnostics: F[BootstrapDiagnostics] =
+    bootstrapLifecycle.fold(services.bootstrap.diagnostics.current)(_.current)
+
+  def bootstrap(
+      chainId: ChainId,
+      sessions: Vector[BootstrapSessionBinding],
+      startedAt: Instant,
+      liveProposals: Vector[Proposal],
+  )(using Async[F]): F[Either[BootstrapCoordinatorFailure, BootstrapCoordinatorResult]] =
+    bootstrapLifecycle match
+      case Some(lifecycle) =>
+        lifecycle.bootstrap(
+          chainId = chainId,
+          sessions = sessions,
+          startedAt = startedAt,
+          liveProposals = liveProposals,
+        )
+      case None =>
+        BootstrapCoordinatorFailure(
+          reason = "bootstrapLifecycleUnavailable",
+          detail = None,
+        ).asLeft[BootstrapCoordinatorResult].pure[F]
+
   def emitProposal(
       proposer: ValidatorId,
       block: BlockHeader,
@@ -714,7 +754,11 @@ final case class HotStuffNodeRuntime[F[_]: Sync](
             ts,
           )
 
-  def emitProposalFromCandidates[TxRef: ByteEncoder: Hash, ResultRef: ByteEncoder, Event: ByteEncoder](
+  def emitProposalFromCandidates[
+      TxRef: ByteEncoder: Hash,
+      ResultRef: ByteEncoder,
+      Event: ByteEncoder,
+  ](
       proposer: ValidatorId,
       candidates: Iterable[BlockRecord[TxRef, ResultRef, Event]],
       parent: Option[BlockId],
@@ -735,14 +779,17 @@ final case class HotStuffNodeRuntime[F[_]: Sync](
       ConflictFreeBlockBodySelector.select(candidates)(classifyTx)
     selection.toBody match
       case Left(failure) =>
-        HotStuffRuntimeRejection.Validation(failure)
+        HotStuffRuntimeRejection
+          .Validation(failure)
           .asLeft[HotStuffProposalEmission[TxRef, ResultRef, Event]]
           .pure[F]
       case Right(body) =>
-        BlockBody.computeBodyRoot(body)
+        BlockBody
+          .computeBodyRoot(body)
           .leftMap(HotStuffRuntimeScheduling.fromBlockValidationFailure) match
           case Left(failure) =>
-            HotStuffRuntimeRejection.Validation(failure)
+            HotStuffRuntimeRejection
+              .Validation(failure)
               .asLeft[HotStuffProposalEmission[TxRef, ResultRef, Event]]
               .pure[F]
           case Right(bodyRoot) =>
@@ -763,7 +810,8 @@ final case class HotStuffNodeRuntime[F[_]: Sync](
               .value
               .flatMap:
                 case Left(failure) =>
-                  HotStuffRuntimeRejection.Validation(failure)
+                  HotStuffRuntimeRejection
+                    .Validation(failure)
                     .asLeft[HotStuffProposalEmission[TxRef, ResultRef, Event]]
                     .pure[F]
                 case Right(_) =>
@@ -785,7 +833,7 @@ final case class HotStuffNodeRuntime[F[_]: Sync](
                           selection = selection,
                           view = view,
                           event = event,
-                        )
+                        ),
                   )
 
   def emitVote(
@@ -793,27 +841,43 @@ final case class HotStuffNodeRuntime[F[_]: Sync](
       proposal: Proposal,
       ts: Instant,
   ): F[Either[HotStuffPolicyViolation, GossipEvent[HotStuffGossipArtifact]]] =
-    emitSigned(voter): keyPair =>
-      Vote.sign(
-        UnsignedVote(
-          window = proposal.window,
-          voter = voter,
-          targetProposalId = proposal.proposalId,
-        ),
-        keyPair,
-      ) match
-        case Left(error) =>
-          Sync[F].raiseError[GossipEvent[HotStuffGossipArtifact]]:
-            new IllegalStateException(
-              ss"${error.reason}:${error.detail.getOrElse("")}",
-            )
-        case Right(vote) =>
-          services.publisher.append(
-            HotStuffGossipArtifact.VoteArtifact(vote),
-            ts,
-          )
+    resolveSigner(voter) match
+      case Left(rejection) =>
+        rejection.asLeft[GossipEvent[HotStuffGossipArtifact]].pure[F]
+      case Right(keyPair) =>
+        ensureVoteReadiness(proposal.window.chainId).flatMap:
+          case Left(rejection) =>
+            rejection.asLeft[GossipEvent[HotStuffGossipArtifact]].pure[F]
+          case Right(_) =>
+            Vote.sign(
+              UnsignedVote(
+                window = proposal.window,
+                voter = voter,
+                targetProposalId = proposal.proposalId,
+              ),
+              keyPair,
+            ) match
+              case Left(error) =>
+                Sync[F].raiseError[
+                  Either[
+                    HotStuffPolicyViolation,
+                    GossipEvent[HotStuffGossipArtifact],
+                  ],
+                ]:
+                  new IllegalStateException(
+                    ss"${error.reason}:${error.detail.getOrElse("")}",
+                  )
+              case Right(vote) =>
+                services.publisher.append(
+                  HotStuffGossipArtifact.VoteArtifact(vote),
+                  ts,
+                ).map(_.asRight[HotStuffPolicyViolation])
 
-  def emitVoteForProposalView[TxRef: ByteEncoder: Hash, ResultRef: ByteEncoder, Event: ByteEncoder](
+  def emitVoteForProposalView[
+      TxRef: ByteEncoder: Hash,
+      ResultRef: ByteEncoder,
+      Event: ByteEncoder,
+  ](
       voter: ValidatorId,
       proposal: Proposal,
       ts: Instant,
@@ -829,7 +893,8 @@ final case class HotStuffNodeRuntime[F[_]: Sync](
       )(classifyTx)
       .flatMap:
         case Left(failure) =>
-          HotStuffRuntimeRejection.Validation(failure)
+          HotStuffRuntimeRejection
+            .Validation(failure)
             .asLeft[GossipEvent[HotStuffGossipArtifact]]
             .pure[F]
         case Right(_) =>
@@ -841,18 +906,41 @@ final case class HotStuffNodeRuntime[F[_]: Sync](
   )(
       f: KeyPair => F[GossipEvent[HotStuffGossipArtifact]],
   ): F[Either[HotStuffPolicyViolation, GossipEvent[HotStuffGossipArtifact]]] =
-    HotStuffPolicy.canEmitLocally(role, localPeer, validatorId, holders) match
+    resolveSigner(validatorId) match
       case Left(rejection) =>
         rejection.asLeft[GossipEvent[HotStuffGossipArtifact]].pure[F]
-      case Right(_) =>
-        localKeys.get(validatorId) match
-          case None =>
-            HotStuffPolicyViolation(
-              reason = "localValidatorKeyUnavailable",
-              detail = Some(ss"${validatorId.value}@${localPeer.value}"),
-            ).asLeft[GossipEvent[HotStuffGossipArtifact]].pure[F]
-          case Some(keyPair) =>
-            f(keyPair).map(_.asRight[HotStuffPolicyViolation])
+      case Right(keyPair) =>
+        f(keyPair).map(_.asRight[HotStuffPolicyViolation])
+
+  private def resolveSigner(
+      validatorId: ValidatorId,
+  ): Either[HotStuffPolicyViolation, KeyPair] =
+    HotStuffPolicy.canEmitLocally(role, localPeer, validatorId, holders).flatMap:
+      _ =>
+        localKeys.get(validatorId).toRight(
+          HotStuffPolicyViolation(
+            reason = "localValidatorKeyUnavailable",
+            detail = Some(ss"${validatorId.value}@${localPeer.value}"),
+          ),
+        )
+
+  private def ensureVoteReadiness(
+      chainId: ChainId,
+  ): F[Either[HotStuffPolicyViolation, Unit]] =
+    bootstrapLifecycle match
+      case Some(lifecycle) if role === LocalNodeRole.Validator =>
+        lifecycle
+          .voteReadiness(chainId)
+          .map:
+            case BootstrapVoteReadiness.Ready =>
+              ().asRight[HotStuffPolicyViolation]
+            case BootstrapVoteReadiness.Held(reason) =>
+              HotStuffPolicyViolation(
+                reason = "bootstrapVoteHeld",
+                detail = Some(reason),
+              ).asLeft[Unit]
+      case _ =>
+        ().asRight[HotStuffPolicyViolation].pure[F]
 
 object HotStuffNodeRuntime:
   def validateBootstrapInput(
@@ -866,11 +954,13 @@ object HotStuffNodeRuntime:
       bootstrapInput: HotStuffRuntimeBootstrapInput,
       services: HotStuffRuntimeServices[F],
       diagnostics: Option[HotStuffInMemoryRuntimeDiagnostics[F]],
+      bootstrapLifecycle: Option[HotStuffBootstrapLifecycle[F]],
   ): HotStuffNodeRuntime[F] =
     HotStuffNodeRuntime(
       bootstrapInput = bootstrapInput,
       services = services,
       diagnostics = diagnostics,
+      bootstrapLifecycle = bootstrapLifecycle,
     )
 
   @SuppressWarnings(Array("org.wartremover.warts.DefaultArguments"))
@@ -878,11 +968,15 @@ object HotStuffNodeRuntime:
       bootstrapInput: HotStuffRuntimeBootstrapInput,
       services: HotStuffRuntimeServices[F],
       diagnostics: Option[HotStuffInMemoryRuntimeDiagnostics[F]] = None,
+      bootstrapLifecycle: Option[HotStuffBootstrapLifecycle[F]] = None,
   ): Either[HotStuffPolicyViolation, HotStuffNodeRuntime[F]] =
     validateBootstrapInput(bootstrapInput)
-      .map(fromValidatedServices(_, services, diagnostics))
+      .map(fromValidatedServices(_, services, diagnostics, bootstrapLifecycle))
 
   @SuppressWarnings(Array("org.wartremover.warts.DefaultArguments"))
+  // This helper intentionally assembles only the artifact-plane in-memory
+  // runtime. The newcomer bootstrap lifecycle is wired by
+  // `HotStuffRuntimeBootstrap.fromTopology`, not by the raw test helper path.
   def inMemoryServices[F[_]: Sync](
       validatorSet: ValidatorSet,
       gossipPolicy: HotStuffGossipPolicy = HotStuffGossipPolicy.default,
@@ -904,11 +998,15 @@ object HotStuffNodeRuntime:
           source = source,
           sink = sink,
           topicContracts = HotStuffTopic.registry(gossipPolicy),
-          bootstrap = HotStuffBootstrapServicesRuntime.inMemory[F](validatorSet, sink),
+          bootstrap =
+            HotStuffBootstrapServicesRuntime.inMemory[F](validatorSet, sink),
         )
       services -> diagnostics
 
   @SuppressWarnings(Array("org.wartremover.warts.DefaultArguments"))
+  // `create` remains a lightweight test/runtime convenience that omits the
+  // shipped newcomer bootstrap lifecycle. Use `HotStuffRuntimeBootstrap` when
+  // the assembled bootstrap gate and diagnostics are required.
   def create[F[_]: Sync](
       localPeer: PeerIdentity,
       role: LocalNodeRole,
@@ -937,5 +1035,10 @@ object HotStuffNodeRuntime:
           gossipPolicy,
           HotStuffRelayPolicy.forRole(role),
         ).map: (services, diagnostics) =>
-          fromValidatedServices(validatedInput, services, Some(diagnostics))
+          fromValidatedServices(
+            validatedInput,
+            services,
+            Some(diagnostics),
+            none[HotStuffBootstrapLifecycle[F]],
+          )
             .asRight[HotStuffPolicyViolation]

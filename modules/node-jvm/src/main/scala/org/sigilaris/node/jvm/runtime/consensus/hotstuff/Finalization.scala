@@ -49,7 +49,9 @@ object FinalizedAnchorSafetyFault:
       conflictingAnchors = suggestions.iterator
         .map(_.snapshotAnchor)
         .toVector
-        .sortBy(anchor => (anchor.blockId.toHexLower, anchor.proposalId.toHexLower))
+        .sortBy(anchor =>
+          (anchor.blockId.toHexLower, anchor.proposalId.toHexLower),
+        )
         .distinctBy(_.blockId.toHexLower),
     )
 
@@ -78,8 +80,7 @@ object HotStuffFinalizationTracker:
   def trackAll(
       proposals: Iterable[Proposal],
   ): Map[ChainId, FinalizationTrackerSnapshot] =
-    proposals.iterator
-      .toVector
+    proposals.iterator.toVector
       .groupBy(_.window.chainId)
       .view
       .mapValues(track)
@@ -93,7 +94,8 @@ object HotStuffFinalizationTracker:
       case None =>
         FinalizationTrackerSnapshot.empty
       case Some(firstProposal) =>
-        val byProposalId = proposalVector.iterator.map(p => p.proposalId -> p).toMap
+        val byProposalId =
+          proposalVector.iterator.map(p => p.proposalId -> p).toMap
         val candidates = proposalVector.flatMap: grandchild =>
           for
             child <- byProposalId.get(grandchild.justify.subject.proposalId)
@@ -115,7 +117,7 @@ object HotStuffFinalizationTracker:
             .flatMap(
               _.reduceLeftOption: (current, next) =>
                 if candidateOrdering.lteq(current, next) then current
-                else next
+                else next,
             )
             .toVector
         val safetyFaults =
@@ -138,7 +140,9 @@ object HotStuffFinalizationTracker:
         val faultHeights = safetyFaults.iterator.map(_.height).toSet
         val bestFinalized =
           canonicalCandidates
-            .filterNot(candidate => faultHeights.contains(candidate.anchorHeight))
+            .filterNot(candidate =>
+              faultHeights.contains(candidate.anchorHeight),
+            )
             .maxOption(using candidateOrdering)
         FinalizationTrackerSnapshot(
           bestFinalized = bestFinalized,
@@ -172,50 +176,57 @@ object HotStuffFinalizedAnchorVerifier:
 
     for
       anchorSetEither <- validatorSetLookup.validatorSetFor(anchor.window)
-      childSetEither <- validatorSetLookup.validatorSetFor(child.window)
-      grandchildSetEither <- validatorSetLookup.validatorSetFor(grandchild.window)
-    yield
-      for
-        anchorSet <- anchorSetEither.leftMap(FinalizedAnchorVerificationFailure.fromValidation)
-        childSet <- childSetEither.leftMap(FinalizedAnchorVerificationFailure.fromValidation)
-        grandchildSet <- grandchildSetEither.leftMap(FinalizedAnchorVerificationFailure.fromValidation)
-        _ <- HotStuffValidator
-          .validateQuorumCertificate(anchor.justify, anchorSet)
-          .leftMap(FinalizedAnchorVerificationFailure.fromValidation)
-        _ <- HotStuffValidator
-          .validateQuorumCertificate(child.justify, childSet)
-          .leftMap(FinalizedAnchorVerificationFailure.fromValidation)
-        _ <- HotStuffValidator
-          .validateQuorumCertificate(grandchild.justify, grandchildSet)
-          .leftMap(FinalizedAnchorVerificationFailure.fromValidation)
-        _ <- HotStuffValidator
-          .validateProposal(anchor, anchorSet)
-          .leftMap(FinalizedAnchorVerificationFailure.fromValidation)
-        _ <- HotStuffValidator
-          .validateProposal(child, childSet)
-          .leftMap(FinalizedAnchorVerificationFailure.fromValidation)
-        _ <- HotStuffValidator
-          .validateProposal(grandchild, grandchildSet)
-          .leftMap(FinalizedAnchorVerificationFailure.fromValidation)
-        _ <- ensure(
-          proposalMatchesSubject(child.justify.subject, anchor),
-          "finalizedProofChildMismatch",
-          Some(anchor.proposalId.toHexLower),
-        )
-        _ <- ensure(
-          proposalMatchesSubject(grandchild.justify.subject, child),
-          "finalizedProofGrandchildMismatch",
-          Some(child.proposalId.toHexLower),
-        )
-        _ <- ensure(
-          Ordering[BlockHeight].lt(anchor.block.height, child.block.height) &&
-            Ordering[BlockHeight].lt(child.block.height, grandchild.block.height),
-          "finalizedProofHeightOrderMismatch",
-          Some(
-            ss"${anchor.block.height.render}:${child.block.height.render}:${grandchild.block.height.render}",
-          ),
-        )
-      yield suggestion
+      childSetEither  <- validatorSetLookup.validatorSetFor(child.window)
+      grandchildSetEither <- validatorSetLookup.validatorSetFor(
+        grandchild.window,
+      )
+    yield for
+      anchorSet <- anchorSetEither.leftMap(
+        FinalizedAnchorVerificationFailure.fromValidation,
+      )
+      childSet <- childSetEither.leftMap(
+        FinalizedAnchorVerificationFailure.fromValidation,
+      )
+      grandchildSet <- grandchildSetEither.leftMap(
+        FinalizedAnchorVerificationFailure.fromValidation,
+      )
+      _ <- HotStuffValidator
+        .validateQuorumCertificate(anchor.justify, anchorSet)
+        .leftMap(FinalizedAnchorVerificationFailure.fromValidation)
+      _ <- HotStuffValidator
+        .validateQuorumCertificate(child.justify, childSet)
+        .leftMap(FinalizedAnchorVerificationFailure.fromValidation)
+      _ <- HotStuffValidator
+        .validateQuorumCertificate(grandchild.justify, grandchildSet)
+        .leftMap(FinalizedAnchorVerificationFailure.fromValidation)
+      _ <- HotStuffValidator
+        .validateProposal(anchor, anchorSet)
+        .leftMap(FinalizedAnchorVerificationFailure.fromValidation)
+      _ <- HotStuffValidator
+        .validateProposal(child, childSet)
+        .leftMap(FinalizedAnchorVerificationFailure.fromValidation)
+      _ <- HotStuffValidator
+        .validateProposal(grandchild, grandchildSet)
+        .leftMap(FinalizedAnchorVerificationFailure.fromValidation)
+      _ <- ensure(
+        proposalMatchesSubject(child.justify.subject, anchor),
+        "finalizedProofChildMismatch",
+        Some(anchor.proposalId.toHexLower),
+      )
+      _ <- ensure(
+        proposalMatchesSubject(grandchild.justify.subject, child),
+        "finalizedProofGrandchildMismatch",
+        Some(child.proposalId.toHexLower),
+      )
+      _ <- ensure(
+        Ordering[BlockHeight].lt(anchor.block.height, child.block.height) &&
+          Ordering[BlockHeight].lt(child.block.height, grandchild.block.height),
+        "finalizedProofHeightOrderMismatch",
+        Some(
+          ss"${anchor.block.height.render}:${child.block.height.render}:${grandchild.block.height.render}",
+        ),
+      )
+    yield suggestion
 
   def selectHighestVerified[F[_]: Monad](
       suggestions: Iterable[FinalizedAnchorSuggestion],
@@ -226,10 +237,12 @@ object HotStuffFinalizedAnchorVerifier:
       .map: verified =>
         val validSuggestions =
           verified.collect { case Right(suggestion) => suggestion }
-        val highestHeight = validSuggestions.iterator.map(_.anchorHeight).maxOption
+        val highestHeight =
+          validSuggestions.iterator.map(_.anchorHeight).maxOption
         highestHeight match
           case None =>
-            Option.empty[FinalizedAnchorSuggestion]
+            Option
+              .empty[FinalizedAnchorSuggestion]
               .asRight[FinalizedAnchorSafetyFault]
           case Some(height) =>
             val highest = validSuggestions.filter(_.anchorHeight === height)
@@ -237,13 +250,16 @@ object HotStuffFinalizedAnchorVerifier:
               case size if size > 0 =>
                 highest.headOption match
                   case Some(first) =>
-                    FinalizedAnchorSafetyFault.fromSuggestions(
-                      chainId = first.proposal.window.chainId,
-                      height = height,
-                      suggestions = highest,
-                    ).asLeft[Option[FinalizedAnchorSuggestion]]
+                    FinalizedAnchorSafetyFault
+                      .fromSuggestions(
+                        chainId = first.proposal.window.chainId,
+                        height = height,
+                        suggestions = highest,
+                      )
+                      .asLeft[Option[FinalizedAnchorSuggestion]]
                   case None =>
-                    Option.empty[FinalizedAnchorSuggestion]
+                    Option
+                      .empty[FinalizedAnchorSuggestion]
                       .asRight[FinalizedAnchorSafetyFault]
               case _ =>
                 // Once all highest verified suggestions point at the same anchor
@@ -291,16 +307,22 @@ private final class InMemoryFinalizedAnchorSuggestionService[F[_]: Sync](
       chainId: ChainId,
   ): F[Either[CanonicalRejection, Option[FinalizedAnchorSuggestion]]] =
     sink.snapshot.map: snapshot =>
-      snapshot.finalization.getOrElse(chainId, FinalizationTrackerSnapshot.empty) match
+      snapshot.finalization.getOrElse(
+        chainId,
+        FinalizationTrackerSnapshot.empty,
+      ) match
         case FinalizationTrackerSnapshot(bestFinalized @ Some(_), _) =>
           bestFinalized.asRight[CanonicalRejection]
         case FinalizationTrackerSnapshot(_, fault +: _) =>
-          CanonicalRejection.BackfillUnavailable(
-            reason = fault.reason,
-            detail = fault.detail,
-          ).asLeft[Option[FinalizedAnchorSuggestion]]
+          CanonicalRejection
+            .BackfillUnavailable(
+              reason = fault.reason,
+              detail = fault.detail,
+            )
+            .asLeft[Option[FinalizedAnchorSuggestion]]
         case FinalizationTrackerSnapshot(None, _) =>
-          Option.empty[FinalizedAnchorSuggestion]
+          Option
+            .empty[FinalizedAnchorSuggestion]
             .asRight[CanonicalRejection]
 
 private final class InMemoryBootstrapDiagnosticsSource[F[_]: Sync](
@@ -339,9 +361,13 @@ private final class InMemoryProposalReplayService[F[_]: Sync](
     sink.snapshot.map: snapshot =>
       snapshot.proposals.valuesIterator
         .filter(_.window.chainId === chainId)
-        .filter(proposal => Ordering[BlockHeight].gteq(proposal.block.height, nextHeight))
+        .filter(proposal =>
+          Ordering[BlockHeight].gteq(proposal.block.height, nextHeight),
+        )
         .toVector
-        .sortBy(proposal => (proposal.block.height, proposal.proposalId.toHexLower))
+        .sortBy(proposal =>
+          (proposal.block.height, proposal.proposalId.toHexLower),
+        )
         .take(limit.max(0))
         .asRight[CanonicalRejection]
 
@@ -358,7 +384,9 @@ private final class InMemoryHistoricalBackfillService[F[_]: Sync](
     sink.snapshot.map: snapshot =>
       snapshot.proposals.valuesIterator
         .filter(_.window.chainId === chainId)
-        .filter(proposal => Ordering[BlockHeight].lt(proposal.block.height, beforeHeight))
+        .filter(proposal =>
+          Ordering[BlockHeight].lt(proposal.block.height, beforeHeight),
+        )
         .toVector
         .sortWith: (left, right) =>
           Ordering[BlockHeight].gt(left.block.height, right.block.height) ||
@@ -372,19 +400,39 @@ object HotStuffBootstrapServicesRuntime:
       validatorSet: ValidatorSet,
       sink: InMemoryHotStuffArtifactSink[F],
   ): HotStuffBootstrapServices[F] =
+    inMemoryWithNodeStore(
+      validatorSet = validatorSet,
+      sink = sink,
+      snapshotNodeStore = none[SnapshotNodeStore[F]],
+      diagnostics = new InMemoryBootstrapDiagnosticsSource(sink),
+    )
+
+  def inMemoryWithNodeStore[F[_]: Sync](
+      validatorSet: ValidatorSet,
+      sink: InMemoryHotStuffArtifactSink[F],
+      snapshotNodeStore: Option[SnapshotNodeStore[F]],
+      diagnostics: BootstrapDiagnosticsSource[F],
+  ): HotStuffBootstrapServices[F] =
     val trustRoot = BootstrapTrustRoot.staticValidatorSet(validatorSet)
     HotStuffBootstrapServices(
       trustRoot = trustRoot,
       validatorSetLookup = ValidatorSetLookup.static[F](trustRoot),
-      finalizedAnchorSuggestions = new InMemoryFinalizedAnchorSuggestionService(sink),
-      snapshotNodeFetch = new SnapshotNodeFetchService[F]:
-        override def fetchNodes(
-            session: BootstrapSessionBinding,
-            chainId: ChainId,
-            stateRoot: org.sigilaris.node.jvm.runtime.block.StateRoot,
-            hashes: Vector[org.sigilaris.core.merkle.MerkleTrieNode.MerkleHash],
-        ): F[Either[CanonicalRejection, Vector[SnapshotTrieNode]]] =
-          Vector.empty[SnapshotTrieNode].asRight[CanonicalRejection].pure[F]
+      finalizedAnchorSuggestions =
+        new InMemoryFinalizedAnchorSuggestionService(sink),
+      snapshotNodeFetch = snapshotNodeStore match
+        case Some(nodeStore) =>
+          SnapshotNodeFetchServiceRuntime.fromNodeStore(nodeStore)
+        case None =>
+          new SnapshotNodeFetchService[F]:
+            override def fetchNodes(
+                session: BootstrapSessionBinding,
+                chainId: ChainId,
+                stateRoot: org.sigilaris.node.jvm.runtime.block.StateRoot,
+                hashes: Vector[
+                  org.sigilaris.core.merkle.MerkleTrieNode.MerkleHash,
+                ],
+            ): F[Either[CanonicalRejection, Vector[SnapshotTrieNode]]] =
+              Vector.empty[SnapshotTrieNode].asRight[CanonicalRejection].pure[F]
       ,
       proposalReplay = new ProposalReplayService[F]:
         override def readNext(
@@ -408,5 +456,5 @@ object HotStuffBootstrapServicesRuntime:
           new InMemoryHistoricalBackfillService(sink)
             .readPrevious(session, chainId, beforeBlockId, beforeHeight, limit)
       ,
-      diagnostics = new InMemoryBootstrapDiagnosticsSource(sink),
+      diagnostics = diagnostics,
     )
