@@ -1,7 +1,7 @@
 # 0007 - Snapshot Sync And Background Backfill Plan
 
 ## Status
-Phase 5 Complete
+Phase 5 Complete, Phase 6 Planned
 
 ## Created
 2026-04-05
@@ -142,6 +142,25 @@ Phase 5 Complete
 - ADR-0021, plan 0003, plan 0004, plan 0007, README 용어를 정렬한다.
 - current static-validator-set bootstrap baseline 과 future rotation/backfill optimization residual gap 을 문서에 남긴다.
 
+### Phase 6: Runtime Assembly And Bootstrap Activation
+- current landed bootstrap component 를 standalone unit/integration primitive 단계에서 멈추지 않고, shipped newcomer bootstrap assembly 경로에 실제로 조립한다.
+- `HotStuffRuntimeBootstrap` / `HotStuffNodeRuntime` service graph 에 snapshot metadata store, trie node store, snapshot coordinator, bootstrap coordinator, historical backfill worker 를 연결한다.
+- validator runtime 이 `Discovery -> SnapshotSync -> ForwardCatchUp -> Ready` bootstrap lifecycle 을 실제 startup/readiness gate 로 사용하고, ready 이전 vote emit 은 보류한다.
+- bootstrap diagnostics 를 concrete runtime startup state 와 operator-visible surface 로 연결한다.
+- config/bootstrap integration test 를 확장해 newcomer bootstrap assembly 가 실제 runtime path 에서 생성되고 lifecycle gate 를 거치는지 검증한다.
+
+### Phase 7: Session-Bound Bootstrap Service Transport And Remote Fetch
+- `best finalized block suggestion`, snapshot trie node fetch, proposal replay/backfill, historical backfill 을 runtime-owned session-bound bootstrap service family 로 transport adapter 에 노출한다.
+- currently stub 인 assembled `SnapshotNodeFetchService` 를 실제 remote fetch path 로 교체하고, authenticated live neighbor 에 대한 peer switching / multi-peer mixing / retry policy 를 concrete path 에 반영한다.
+- parent directional session revoke/close 시 bootstrap capability 도 즉시 중단되도록 auth binding 과 rejection handling 을 고정한다.
+- loopback / transport integration test 로 finalized suggestion fan-out, snapshot node multi-peer fetch, replay/backfill request, session revoke 를 검증한다.
+
+### Phase 8: Replay And Backfill Materialization
+- current forward catch-up / historical backfill baseline 의 planner-progress 성격을 넘어, replayed/backfilled proposal 을 concrete runtime storage/query seam 에 반영한다.
+- `ProposalReplayService.readNext` / `HistoricalBackfillService.readPrevious` contract 를 height-only filtering 이 아니라 anchor block ancestry 기준 semantics 로 tighten 한다.
+- forward catch-up 결과의 queued proposal / control batch / vote-hold state 를 실제 tx anti-entropy, proposal validation, local replay, vote eligibility advancement 와 연결한다.
+- historical backfill fetched proposal 의 durable retention / archive ingestion seam 과 low-priority budget rule 을 추가한다.
+
 ## Test Plan
 - Phase 1 Success: unit test 로 local tracker 가 `P0 <-justify- P1 <-justify- P2` 구조에서 `P0` finalized anchor 를 materialize 하는지 검증한다.
 - Phase 1 Success: unit test 로 `FinalizedAnchorSuggestion` 검증이 anchor proposal `P0` 와 `FinalizedProof(P1, P2)` 만으로 가능하고, 별도 proposal/vote fetch 가 없어도 시작 가능한지를 검증한다.
@@ -154,6 +173,11 @@ Phase 5 Complete
 - Phase 4 Success: integration test 로 historical backfill 이 background 에서 진행되면서 live proposal catch-up / vote readiness 를 막지 않는지 검증한다.
 - Phase 4 Failure: integration test 로 historical backfill failure 가 initial readiness 를 silent-fail 시키지 않고 background error/diagnostic 으로 분리되는지 검증한다.
 - Phase 5 Regression: existing HotStuff proposal/vote/QC validation, request-by-id, proposal tx-set sync, block-view validation, gossip substrate regression suite 가 bootstrap/sync 추가 후에도 green 상태를 유지해야 한다.
+- Phase 6 Success: config/bootstrap integration test 로 shipped runtime assembly 가 bootstrap coordinator / snapshot store / backfill worker 를 실제 service graph 에 포함하고, ready 이전 vote emission 을 gate 하는지 검증한다.
+- Phase 7 Success: loopback/transport integration test 로 session-bound bootstrap service family 가 finalized suggestion, snapshot node fetch, replay/backfill request 를 authenticated directional session 아래에서 제공하는지 검증한다.
+- Phase 7 Failure: integration test 로 session revoke/close 뒤 bootstrap capability 가 더 이상 data 를 승인하지 않고 canonical rejection 을 반환하는지 검증한다.
+- Phase 8 Success: integration test 로 forward catch-up 결과가 concrete runtime state / tx anti-entropy / local replay / vote eligibility advancement 에 반영되고, historical backfill artifact 도 durable seam 으로 들어가는지 검증한다.
+- Phase 8 Failure: integration test 로 ancestry mismatch replay, duplicate historical proposal, budget exhaustion 이 readiness state 를 corrupt 하지 않고 explicit diagnostics / failure 로 surface 되는지 검증한다.
 
 ## Risks And Mitigations
 - current static-validator-set assumption 이 bootstrap 구현 깊숙이 박히면 future validator-set rotation support 가 어려워질 수 있다. bootstrap trust root 와 validator-set lookup 을 explicit abstraction 으로 먼저 분리한다.
@@ -162,6 +186,8 @@ Phase 5 Complete
 - background historical backfill 이 live catch-up 자원을 잡아먹을 수 있다. low-priority scheduling 과 explicit budget separation 으로 완화한다.
 - bootstrap start 시점에 self-contained proof 가 없으면 verification 이 normal artifact plane 가용성에 의존하게 된다. suggestion response 의 self-contained baseline 과 테스트로 막는다.
 - forward catch-up 이 current proposal stream 과 historical replay 를 중복 적용하거나 순서를 틀리면 readiness bug 가 생길 수 있다. explicit coordinator state machine 과 replay/stream merge regression test 로 완화한다.
+- Phase 7 에서 bootstrap service family 를 transport adapter 에 노출할 때 auth binding, session revoke propagation, request budgeting 이 느슨하면 unauthenticated snapshot/replay request 나 replay amplification surface 가 생길 수 있다. directional session identity 재검증, parent-session revoke cascade, canonical rejection, per-session budget test 로 잠근다.
+- Phase 8 에서 replay/backfill contract 를 height-only filtering 에서 anchor ancestry semantics 로 tighten 할 때 기존 caller 가 넓은 superset 반환을 암묵적으로 기대하면 compatibility regression 이 생길 수 있다. contract 를 trait/test 에서 명시적으로 재고정하고, ancestry mismatch / duplicate replay / budget exhaustion regression suite 로 전환을 보호한다.
 
 ## Acceptance Criteria
 1. local HotStuff runtime 이 current artifact history 에서 `best finalized block suggestion` 을 materialize 할 수 있고, suggestion 은 self-contained `P0 + FinalizedProof(P1, P2)` 로 검증 가능하다.
@@ -186,6 +212,10 @@ Phase 5 Complete
 - `RuntimeImportRuleSuite`
 
 ## Residual Gaps After Phase 5
+- current landed bootstrap component 는 mostly standalone runtime primitive / test coverage 로 존재하고, `HotStuffRuntimeBootstrap` / `HotStuffNodeRuntime` shipped assembly path 에 newcomer bootstrap coordinator graph 로 아직 조립되지 않았다.
+- assembled `HotStuffBootstrapServicesRuntime.inMemory` 는 finalized suggestion / replay / backfill surface 는 제공하지만, `SnapshotNodeFetchService` 는 아직 stub 이고 bootstrap service family 는 transport adapter 에 노출되지 않았다.
+- bootstrap coordinator / historical backfill worker 는 diagnostics 와 progress 를 계산하지만, replay/backfill artifact 를 concrete runtime storage/query seam 에 materialize 하거나 startup lifecycle gate 와 end-to-end 로 연결하지는 않았다.
+- in-memory replay/backfill service baseline 은 현재 height 중심 filtering 을 사용하고 있어 anchor ancestry 기준 replay/backfill contract 를 더 엄밀히 잠글 필요가 있다.
 - shipped bootstrap trust root 는 여전히 `HotStuffBootstrapConfig.validatorSet` 기반 static validator-set baseline 이다. operator checkpoint 나 weak-subjectivity anchor 는 follow-up bootstrap material 로 남아 있다.
 - `ValidatorSetLookup` seam 은 landed 되었지만 historical validator-set rotation continuity 와 finalized-proof historical lookup 은 아직 구현되지 않았다.
 - historical backfill 은 low-priority background baseline 까지 landed 되었고, archive-grade acceleration, peer scoring, bandwidth shaping, snapshot batching optimization 은 후속 작업으로 남아 있다.
@@ -234,6 +264,24 @@ Phase 5 Complete
 - [x] unit / integration / regression test green
 - [x] ADR / plan / README 용어 정렬
 - [x] static bootstrap baseline 과 future rotation residual gap 문서화
+
+### Phase 6: Runtime Assembly And Bootstrap Activation
+- [ ] `HotStuffRuntimeBootstrap` / `HotStuffNodeRuntime` assembly path 에 snapshot store / snapshot coordinator / bootstrap coordinator / historical backfill worker 를 실제로 조립
+- [ ] validator runtime 의 vote emission 을 bootstrap readiness gate 와 연결
+- [ ] bootstrap diagnostics 를 concrete runtime startup state 와 operator-visible surface 에 연결
+- [ ] config/bootstrap integration test 로 assembled newcomer bootstrap path 검증
+
+### Phase 7: Session-Bound Bootstrap Service Transport And Remote Fetch
+- [ ] transport adapter 에 session-bound bootstrap service family 노출
+- [ ] stub 이 아닌 remote `SnapshotNodeFetchService` 연결
+- [ ] session revoke/close auth binding 및 canonical rejection handling 연결
+- [ ] loopback/transport integration test 로 finalized suggestion fan-out / snapshot fetch / replay-backfill request 검증
+
+### Phase 8: Replay And Backfill Materialization
+- [ ] forward catch-up 결과를 concrete tx anti-entropy / proposal validation / local replay / vote eligibility path 에 연결
+- [ ] historical backfill fetched proposal 을 durable retention / archive ingestion seam 에 반영
+- [ ] replay/backfill service contract 를 anchor ancestry semantics 기준으로 tighten
+- [ ] readiness budget / duplicate replay / ancestry mismatch regression test 추가
 
 ## Follow-Ups
 - `P1`: validator-set rotation 이 shipped baseline 으로 도입되면 bootstrap trust root 와 historical validator-set lookup contract 를 별도 ADR 또는 superseding plan 으로 확장한다.
