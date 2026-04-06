@@ -3,7 +3,10 @@ package org.sigilaris.node.jvm.transport.armeria.gossip
 import java.net.URI
 import java.net.http.{HttpClient, HttpRequest, HttpResponse}
 import java.time.{Duration, Instant}
+import java.util.Optional
+import java.util.concurrent.CompletableFuture
 
+import scala.concurrent.duration.DurationInt
 import cats.effect.{IO, Resource}
 import cats.effect.kernel.Ref
 import cats.syntax.all.*
@@ -12,6 +15,7 @@ import io.circe.parser.decode
 import io.circe.syntax.*
 import munit.CatsEffectSuite
 import scodec.bits.ByteVector
+import scala.jdk.CollectionConverters.*
 
 import org.sigilaris.core.crypto.{CryptoOps, Hash}
 import org.sigilaris.core.crypto.Hash.ops.*
@@ -59,13 +63,14 @@ final class HotStuffBootstrapArmeriaAdapterSuite extends CatsEffectSuite:
       yield (client, server)
     ).use: (client, server) =>
       val graph = snapshotGraph("10")
+      val history = historicalChain("1f")
       val anchor =
-        finalizedSuggestion(
+        finalizedSuggestionFromParent(
+          parentProposal = history.proposal2,
           seed = "10",
           anchorHeight = 3L,
           stateRoot = StateRoot(graph.rootHash.toUInt256),
         )
-      val history = historicalChain("1f")
 
       for
         _ <- server.seedSnapshot(graph.rootNode, graph.leftNode, graph.rightNode)
@@ -376,6 +381,85 @@ final class HotStuffBootstrapArmeriaAdapterSuite extends CatsEffectSuite:
         assertEquals(response._1, Right(Some(localAnchor)))
         assertEquals(response._2.map(_.map(_.hash)), Right(Vector(localGraph.rootHash)))
 
+  test("bootstrap http transport applies explicit request timeouts to outbound requests"):
+    val httpClient = RecordingHttpClient()
+    httpClient.respondImmediately(
+      200,
+      FinalizedSuggestionResponseWire(None).asJson.noSpaces,
+    )
+    val session =
+      BootstrapSessionBinding(
+        peer = PeerIdentity.unsafe("node-b"),
+        sessionId =
+          DirectionalSessionId
+            .parse("aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa")
+            .toOption
+            .get,
+      )
+
+    for
+      result <- HotStuffBootstrapHttpTransport
+        .services[IO](
+          peerBaseUris = Map(session.peer -> "http://bootstrap.test"),
+          httpClient = httpClient,
+          requestTimeout = Duration.ofMillis(250L),
+        )
+        .finalizedAnchorSuggestions
+        .bestFinalized(session, chainId)
+    yield
+      assertEquals(result, Right(None))
+      assertEquals(
+        httpClient.recordedTimeouts,
+        Vector(Some(Duration.ofMillis(250L))),
+      )
+
+  test("bootstrap http transport bounds concurrent outbound requests"):
+    val httpClient = RecordingHttpClient()
+    val session =
+      BootstrapSessionBinding(
+        peer = PeerIdentity.unsafe("node-b"),
+        sessionId =
+          DirectionalSessionId
+            .parse("bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb")
+            .toOption
+            .get,
+      )
+    val transport =
+      HotStuffBootstrapHttpTransport.services[IO](
+        peerBaseUris = Map(session.peer -> "http://bootstrap.test"),
+        httpClient = httpClient,
+        maxConcurrentRequests = 1,
+      )
+
+    for
+      fiber1 <- transport.finalizedAnchorSuggestions.bestFinalized(session, chainId).start
+      _ <- IO.blocking(httpClient.awaitStartedCount(1))
+      fiber2 <- transport.finalizedAnchorSuggestions.bestFinalized(session, chainId).start
+      _ <- IO.sleep(100.millis)
+      startedBeforeRelease <- IO(httpClient.startedCount)
+      maxActiveBeforeRelease <- IO(httpClient.maxActiveCount)
+      _ <- IO.blocking(
+        httpClient.completeNext(
+          200,
+          FinalizedSuggestionResponseWire(None).asJson.noSpaces,
+        )
+      )
+      _ <- IO.blocking(httpClient.awaitStartedCount(2))
+      _ <- IO.blocking(
+        httpClient.completeNext(
+          200,
+          FinalizedSuggestionResponseWire(None).asJson.noSpaces,
+        )
+      )
+      result1 <- fiber1.joinWithNever
+      result2 <- fiber2.joinWithNever
+    yield
+      assertEquals(startedBeforeRelease, 1)
+      assertEquals(maxActiveBeforeRelease, 1)
+      assertEquals(httpClient.maxActiveCount, 1)
+      assertEquals(result1, Right(None))
+      assertEquals(result2, Right(None))
+
   private def bootstrapTransport(
       server: Harness,
   ): HotStuffBootstrapTransportServices[IO] =
@@ -565,6 +649,32 @@ final class HotStuffBootstrapArmeriaAdapterSuite extends CatsEffectSuite:
         )
         .toOption
         .get
+    val child =
+      childProposal(anchor, seed + "20", anchorHeight + 1L)
+    val grandchild =
+      childProposal(child, seed + "30", anchorHeight + 2L)
+
+    FinalizedAnchorSuggestion(
+      proposal = anchor,
+      finalizedProof = FinalizedProof(
+        child = child,
+        grandchild = grandchild,
+      ),
+    )
+
+  private def finalizedSuggestionFromParent(
+      parentProposal: Proposal,
+      seed: String,
+      anchorHeight: Long,
+      stateRoot: StateRoot,
+  ): FinalizedAnchorSuggestion =
+    val anchor =
+      childProposal(
+        parentProposal = parentProposal,
+        seed = seed + "10",
+        height = anchorHeight,
+        stateRoot = stateRoot,
+      )
     val child =
       childProposal(anchor, seed + "20", anchorHeight + 1L)
     val grandchild =
@@ -931,6 +1041,168 @@ final class HotStuffBootstrapArmeriaAdapterSuite extends CatsEffectSuite:
   private object TestClock:
     def create(instant: Instant): IO[TestClock] =
       Ref.of[IO, Instant](instant).map(new TestClock(_))
+
+  private final class RecordingHttpClient private () extends HttpClient:
+    private val timeouts =
+      new java.util.concurrent.CopyOnWriteArrayList[Option[Duration]]()
+    private val pendingResponses =
+      new java.util.concurrent.LinkedBlockingQueue[
+        CompletableFuture[HttpResponse[String]]
+      ]()
+    private val startedRef =
+      new java.util.concurrent.atomic.AtomicInteger(0)
+    private val activeRef =
+      new java.util.concurrent.atomic.AtomicInteger(0)
+    private val maxActiveRef =
+      new java.util.concurrent.atomic.AtomicInteger(0)
+    private val immediateResponseRef =
+      new java.util.concurrent.atomic.AtomicReference[
+        Option[(Int, String)]
+      ](None)
+
+    def respondImmediately(
+        statusCode: Int,
+        body: String,
+    ): Unit =
+      immediateResponseRef.set((statusCode, body).some)
+
+    def completeNext(
+        statusCode: Int,
+        body: String,
+    ): Unit =
+      Option(pendingResponses.poll())
+        .getOrElse(
+          throw new IllegalStateException("no pending bootstrap request"),
+        )
+        .complete(httpResponse(statusCode, body)): Unit
+
+    def awaitStartedCount(
+        expected: Int,
+    ): Unit =
+      val deadlineNanos =
+        System.nanoTime() + Duration.ofSeconds(5L).toNanos
+      while startedRef.get() < expected && System.nanoTime() < deadlineNanos do
+        Thread.sleep(10L)
+      if startedRef.get() < expected then
+        throw new IllegalStateException(
+          s"timed out waiting for $expected started requests",
+        )
+
+    def recordedTimeouts: Vector[Option[Duration]] =
+      timeouts.asScala.toVector
+
+    def startedCount: Int =
+      startedRef.get()
+
+    def maxActiveCount: Int =
+      maxActiveRef.get()
+
+    override def cookieHandler(): Optional[java.net.CookieHandler] =
+      Optional.empty()
+
+    override def connectTimeout(): Optional[Duration] =
+      Optional.empty()
+
+    override def followRedirects(): HttpClient.Redirect =
+      HttpClient.Redirect.NEVER
+
+    override def proxy(): Optional[java.net.ProxySelector] =
+      Optional.empty()
+
+    override def sslContext(): javax.net.ssl.SSLContext =
+      javax.net.ssl.SSLContext.getDefault
+
+    override def sslParameters(): javax.net.ssl.SSLParameters =
+      new javax.net.ssl.SSLParameters()
+
+    override def authenticator(): Optional[java.net.Authenticator] =
+      Optional.empty()
+
+    override def version(): HttpClient.Version =
+      HttpClient.Version.HTTP_1_1
+
+    override def executor(): Optional[java.util.concurrent.Executor] =
+      Optional.empty()
+
+    override def send[A](
+        request: HttpRequest,
+        responseBodyHandler: HttpResponse.BodyHandler[A],
+    ): HttpResponse[A] =
+      throw new UnsupportedOperationException("send not used in tests")
+
+    override def sendAsync[A](
+        request: HttpRequest,
+        responseBodyHandler: HttpResponse.BodyHandler[A],
+    ): CompletableFuture[HttpResponse[A]] =
+      track(request).asInstanceOf[CompletableFuture[HttpResponse[A]]]
+
+    override def sendAsync[A](
+        request: HttpRequest,
+        responseBodyHandler: HttpResponse.BodyHandler[A],
+        pushPromiseHandler: HttpResponse.PushPromiseHandler[A],
+    ): CompletableFuture[HttpResponse[A]] =
+      sendAsync(request, responseBodyHandler)
+
+    override def newWebSocketBuilder(): java.net.http.WebSocket.Builder =
+      throw new UnsupportedOperationException("websocket not used in tests")
+
+    private def track(
+        request: HttpRequest,
+    ): CompletableFuture[HttpResponse[String]] =
+      timeouts.add(
+        if request.timeout().isPresent then request.timeout().get().some
+        else none[Duration],
+      )
+      startedRef.incrementAndGet()
+      val active = activeRef.incrementAndGet()
+      updateMaxActive(active)
+      val future =
+        immediateResponseRef.get() match
+          case Some((statusCode, body)) =>
+            CompletableFuture.completedFuture(httpResponse(statusCode, body))
+          case None =>
+            val pending = new CompletableFuture[HttpResponse[String]]()
+            pendingResponses.put(pending)
+            pending
+      future.whenComplete((_: HttpResponse[String], _: Throwable) =>
+        activeRef.decrementAndGet(): Unit
+      )
+      future
+
+    @SuppressWarnings(Array("org.wartremover.warts.While"))
+    private def updateMaxActive(
+        active: Int,
+    ): Unit =
+      var current = maxActiveRef.get()
+      while active > current && !maxActiveRef.compareAndSet(current, active) do
+        current = maxActiveRef.get()
+
+    private def httpResponse(
+        statusCodeValue: Int,
+        bodyValue: String,
+    ): HttpResponse[String] =
+      new HttpResponse[String]:
+        override def statusCode(): Int = statusCodeValue
+        override def request(): HttpRequest =
+          HttpRequest.newBuilder(URI.create("http://bootstrap.test")).build()
+        override def previousResponse(): Optional[HttpResponse[String]] =
+          Optional.empty()
+        override def headers(): java.net.http.HttpHeaders =
+          java.net.http.HttpHeaders.of(
+            Map.empty[String, java.util.List[String]].asJava,
+            (_, _) => true,
+          )
+        override def body(): String = bodyValue
+        override def sslSession(): Optional[javax.net.ssl.SSLSession] =
+          Optional.empty()
+        override def uri(): URI =
+          URI.create("http://bootstrap.test")
+        override def version(): HttpClient.Version =
+          HttpClient.Version.HTTP_1_1
+
+  private object RecordingHttpClient:
+    def apply(): RecordingHttpClient =
+      new RecordingHttpClient()
 
   private given Encoder[HotStuffGossipArtifact] =
     Encoder.instance:

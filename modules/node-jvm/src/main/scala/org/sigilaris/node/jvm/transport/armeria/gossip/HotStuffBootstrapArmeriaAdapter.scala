@@ -2,11 +2,13 @@ package org.sigilaris.node.jvm.transport.armeria.gossip
 
 import java.net.URI
 import java.net.http.{HttpClient, HttpRequest, HttpResponse}
+import java.time.Duration
 import java.util.Base64
 
 import scala.util.Try
 
 import cats.effect.Async
+import cats.effect.syntax.all.*
 import cats.syntax.all.*
 import io.circe.{Decoder, Encoder}
 import io.circe.generic.semiauto.*
@@ -426,11 +428,30 @@ object HotStuffBootstrapArmeriaAdapter:
     )
 
 object HotStuffBootstrapHttpTransport:
+  val DefaultRequestTimeout: Duration = Duration.ofSeconds(10L)
+  val DefaultMaxConcurrentRequests: Int = 16
+
   @SuppressWarnings(Array("org.wartremover.warts.DefaultArguments"))
   def services[F[_]: Async](
       peerBaseUris: Map[PeerIdentity, String],
-      httpClient: HttpClient = HttpClient.newHttpClient(),
+      httpClient: HttpClient =
+        HttpClient
+          .newBuilder()
+          .connectTimeout(DefaultRequestTimeout)
+          .build(),
+      requestTimeout: Duration = DefaultRequestTimeout,
+      maxConcurrentRequests: Int = DefaultMaxConcurrentRequests,
   ): HotStuffBootstrapTransportServices[F] =
+    require(
+      requestTimeout.compareTo(Duration.ZERO) > 0,
+      "requestTimeout must be positive",
+    )
+    require(
+      maxConcurrentRequests > 0,
+      "maxConcurrentRequests must be positive",
+    )
+    val requestGate =
+      new java.util.concurrent.Semaphore(maxConcurrentRequests, true)
     HotStuffBootstrapTransportServices(
       finalizedAnchorSuggestions = new FinalizedAnchorSuggestionService[F]:
         override def bestFinalized(
@@ -443,6 +464,8 @@ object HotStuffBootstrapHttpTransport:
               ss"/gossip/bootstrap/finalized/${session.sessionId.value}/${chainId.value}",
             body = None,
             httpClient = httpClient,
+            requestTimeout = requestTimeout,
+            requestGate = requestGate,
             peerBaseUris = peerBaseUris,
           ).flatMap:
             case Left(rejection) =>
@@ -481,6 +504,8 @@ object HotStuffBootstrapHttpTransport:
               ss"/gossip/bootstrap/snapshot/${session.sessionId.value}/${chainId.value}",
             body = Some(body),
             httpClient = httpClient,
+            requestTimeout = requestTimeout,
+            requestGate = requestGate,
             peerBaseUris = peerBaseUris,
           ).flatMap:
             case Left(rejection) =>
@@ -531,6 +556,8 @@ object HotStuffBootstrapHttpTransport:
               limit = limit,
             ),
             httpClient = httpClient,
+            requestTimeout = requestTimeout,
+            requestGate = requestGate,
             peerBaseUris = peerBaseUris,
           )
       ,
@@ -552,6 +579,8 @@ object HotStuffBootstrapHttpTransport:
               limit = limit,
             ),
             httpClient = httpClient,
+            requestTimeout = requestTimeout,
+            requestGate = requestGate,
             peerBaseUris = peerBaseUris,
           )
       ,
@@ -562,6 +591,8 @@ object HotStuffBootstrapHttpTransport:
       path: String,
       pageRequest: ProposalPageRequestWire,
       httpClient: HttpClient,
+      requestTimeout: Duration,
+      requestGate: java.util.concurrent.Semaphore,
       peerBaseUris: Map[PeerIdentity, String],
   ): F[Either[CanonicalRejection, Vector[Proposal]]] =
     executeRequest(
@@ -569,6 +600,8 @@ object HotStuffBootstrapHttpTransport:
       path = path,
       body = Some(pageRequest.asJson.noSpaces),
       httpClient = httpClient,
+      requestTimeout = requestTimeout,
+      requestGate = requestGate,
       peerBaseUris = peerBaseUris,
     ).flatMap:
       case Left(rejection) =>
@@ -595,47 +628,64 @@ object HotStuffBootstrapHttpTransport:
       path: String,
       body: Option[String],
       httpClient: HttpClient,
+      requestTimeout: Duration,
+      requestGate: java.util.concurrent.Semaphore,
       peerBaseUris: Map[PeerIdentity, String],
   ): F[Either[CanonicalRejection, String]] =
     peerBaseUris.get(session.peer) match
       case None =>
         CanonicalRejection.BackfillUnavailable(
-          reason = "bootstrapPeerEndpointUnavailable",
-          detail = Some(session.peer.value),
+            reason = "bootstrapPeerEndpointUnavailable",
+            detail = Some(session.peer.value),
         ).asLeft[String].pure[F]
       case Some(baseUri) =>
-        Async[F].blocking:
-          val builder =
-            HttpRequest
-              .newBuilder(URI.create(baseUri + path))
-              .header("content-type", "application/json")
-          val request =
-            body match
-              case Some(payload) =>
-                builder.POST(HttpRequest.BodyPublishers.ofString(payload)).build()
-              case None =>
-                builder.POST(HttpRequest.BodyPublishers.noBody()).build()
-          httpClient.send(request, HttpResponse.BodyHandlers.ofString())
-        .attempt
-        .map:
-          case Left(error) =>
-            CanonicalRejection.BackfillUnavailable(
-              reason = "bootstrapTransportFailed",
-              detail = Some(error.getMessage),
-            ).asLeft[String]
-          case Right(response) if response.statusCode() == 200 =>
-            response.body().asRight[CanonicalRejection]
-          case Right(response) =>
-            HotStuffBootstrapArmeriaAdapter
-              .decodeRejection(response.body())
-              .leftMap(error =>
-                CanonicalRejection.BackfillUnavailable(
-                  reason = "invalidBootstrapRejection",
-                  detail = Some(error),
-                ),
+        Async[F]
+          .blocking(requestGate.acquire())
+          .bracket(_ =>
+            Async[F]
+              .fromCompletableFuture(
+                Async[F].delay:
+                  val builder =
+                    HttpRequest
+                      .newBuilder(URI.create(baseUri + path))
+                      .timeout(requestTimeout)
+                      .header("content-type", "application/json")
+                  val request =
+                    body match
+                      case Some(payload) =>
+                        builder
+                          .POST(HttpRequest.BodyPublishers.ofString(payload))
+                          .build()
+                      case None =>
+                        builder
+                          .POST(HttpRequest.BodyPublishers.noBody())
+                          .build()
+                  httpClient.sendAsync(
+                    request,
+                    HttpResponse.BodyHandlers.ofString(),
+                  )
               )
-              .merge
-              .asLeft[String]
+              .attempt
+              .map:
+                case Left(error) =>
+                  CanonicalRejection.BackfillUnavailable(
+                    reason = "bootstrapTransportFailed",
+                    detail = Some(error.getMessage),
+                  ).asLeft[String]
+                case Right(response) if response.statusCode() == 200 =>
+                  response.body().asRight[CanonicalRejection]
+                case Right(response) =>
+                  HotStuffBootstrapArmeriaAdapter
+                    .decodeRejection(response.body())
+                    .leftMap(error =>
+                      CanonicalRejection.BackfillUnavailable(
+                        reason = "invalidBootstrapRejection",
+                        detail = Some(error),
+                      ),
+                    )
+                    .merge
+                    .asLeft[String]
+          )(_ => Async[F].delay(requestGate.release()).void)
 
 object HotStuffGossipArmeriaAdapter:
   def endpoints[F[_]: Async](

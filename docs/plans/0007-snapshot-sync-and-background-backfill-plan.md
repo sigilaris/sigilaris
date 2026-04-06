@@ -159,7 +159,7 @@ Phase 8 Complete
 - current forward catch-up / historical backfill baseline 의 planner-progress 성격을 넘어, replayed/backfilled proposal 을 concrete runtime storage/query seam 에 반영한다.
 - `ProposalReplayService.readNext` / `HistoricalBackfillService.readPrevious` contract 를 height-only filtering 이 아니라 anchor block ancestry 기준 semantics 로 tighten 한다.
 - forward catch-up 결과의 queued proposal / control batch / vote-hold state 를 실제 tx anti-entropy, proposal validation, local replay, vote eligibility advancement 와 연결한다.
-- historical backfill fetched proposal 의 durable retention / archive ingestion seam 과 low-priority budget rule 을 추가한다.
+- historical backfill fetched proposal 의 durable retention / archive ingestion seam 을 추가하고, low-priority budget shaping 은 후속 작업으로 남긴다.
 
 ## Test Plan
 - Phase 1 Success: unit test 로 local tracker 가 `P0 <-justify- P1 <-justify- P2` 구조에서 `P0` finalized anchor 를 materialize 하는지 검증한다.
@@ -177,7 +177,7 @@ Phase 8 Complete
 - Phase 7 Success: loopback/transport integration test 로 session-bound bootstrap service family 가 finalized suggestion, snapshot node fetch, replay/backfill request 를 authenticated directional session 아래에서 제공하는지 검증한다.
 - Phase 7 Failure: integration test 로 session revoke/close 뒤 bootstrap capability 가 더 이상 data 를 승인하지 않고 canonical rejection 을 반환하는지 검증한다.
 - Phase 8 Success: integration test 로 forward catch-up 결과가 concrete runtime state / tx anti-entropy / local replay / vote eligibility advancement 에 반영되고, historical backfill artifact 도 durable seam 으로 들어가는지 검증한다.
-- Phase 8 Failure: integration test 로 ancestry mismatch replay, duplicate historical proposal, budget exhaustion 이 readiness state 를 corrupt 하지 않고 explicit diagnostics / failure 로 surface 되는지 검증한다.
+- Phase 8 Failure: integration test 로 ancestry mismatch replay 와 duplicate historical proposal 이 readiness state 를 corrupt 하지 않고 explicit diagnostics / failure 로 surface 되는지 검증한다.
 
 ## Risks And Mitigations
 - current static-validator-set assumption 이 bootstrap 구현 깊숙이 박히면 future validator-set rotation support 가 어려워질 수 있다. bootstrap trust root 와 validator-set lookup 을 explicit abstraction 으로 먼저 분리한다.
@@ -187,7 +187,7 @@ Phase 8 Complete
 - bootstrap start 시점에 self-contained proof 가 없으면 verification 이 normal artifact plane 가용성에 의존하게 된다. suggestion response 의 self-contained baseline 과 테스트로 막는다.
 - forward catch-up 이 current proposal stream 과 historical replay 를 중복 적용하거나 순서를 틀리면 readiness bug 가 생길 수 있다. explicit coordinator state machine 과 replay/stream merge regression test 로 완화한다.
 - Phase 7 에서 bootstrap service family 를 transport adapter 에 노출할 때 auth binding, session revoke propagation, request budgeting 이 느슨하면 unauthenticated snapshot/replay request 나 replay amplification surface 가 생길 수 있다. directional session identity 재검증, parent-session revoke cascade, canonical rejection, per-session budget test 로 잠근다.
-- Phase 8 에서 replay/backfill contract 를 height-only filtering 에서 anchor ancestry semantics 로 tighten 할 때 기존 caller 가 넓은 superset 반환을 암묵적으로 기대하면 compatibility regression 이 생길 수 있다. contract 를 trait/test 에서 명시적으로 재고정하고, ancestry mismatch / duplicate replay / budget exhaustion regression suite 로 전환을 보호한다.
+- Phase 8 에서 replay/backfill contract 를 height-only filtering 에서 anchor ancestry semantics 로 tighten 할 때 기존 caller 가 넓은 superset 반환을 암묵적으로 기대하면 compatibility regression 이 생길 수 있다. contract 를 trait/test 에서 명시적으로 재고정하고, ancestry mismatch / duplicate replay regression suite 로 전환을 보호한다.
 
 ## Acceptance Criteria
 1. local HotStuff runtime 이 current artifact history 에서 `best finalized block suggestion` 을 materialize 할 수 있고, suggestion 은 self-contained `P0 + FinalizedProof(P1, P2)` 로 검증 가능하다.
@@ -217,9 +217,10 @@ Phase 8 Complete
 
 ## Residual Gaps After Phase 8
 - bootstrap coordinator 는 forward catch-up 결과를 runtime-owned materialization seam 에 기록하고, historical backfill worker 는 unique proposal archive ingestion baseline 을 갖췄지만, shipped runtime 이 그 materialized state 를 자동으로 tx anti-entropy replay / proposal validation retry / vote eligibility advancement 에 재주입하는 full consumer path 는 후속 작업으로 남아 있다.
+- shipped newcomer bootstrap assembly 는 remote snapshot/replay/backfill transport 와 materialization seam 까지 연결됐지만, assembled `ProposalCatchUpReadiness` 는 아직 placeholder `forwardCatchUpUnavailable` hold 를 사용한다. no-op catch-up 에서는 ready 로 전이되지만, replayed/live proposal 에 대한 concrete readiness consumer path 는 follow-up 이다.
 - shipped bootstrap trust root 는 여전히 `HotStuffBootstrapConfig.validatorSet` 기반 static validator-set baseline 이다. operator checkpoint 나 weak-subjectivity anchor 는 follow-up bootstrap material 로 남아 있다.
 - `ValidatorSetLookup` seam 은 landed 되었지만 historical validator-set rotation continuity 와 finalized-proof historical lookup 은 아직 구현되지 않았다.
-- historical backfill 은 low-priority background baseline 과 in-memory archive retention seam 까지 landed 되었고, durable storage backing, archive-grade acceleration, peer scoring, bandwidth shaping, snapshot batching optimization 은 후속 작업으로 남아 있다.
+- historical backfill 은 low-priority background baseline 과 in-memory archive retention seam 까지 landed 되었고, durable storage backing, archive-grade acceleration, peer scoring, bandwidth shaping, explicit budget shaping, snapshot batching optimization 은 후속 작업으로 남아 있다.
 
 ## Checklist
 
