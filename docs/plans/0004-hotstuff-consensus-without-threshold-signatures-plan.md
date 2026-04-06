@@ -1,7 +1,7 @@
 # 0004 - HotStuff Consensus Without Threshold Signatures Plan
 
 ## Status
-Phase 3A Complete; ADR-0022 Drafted; Pacemaker Runtime Follow-Up Pending
+Phase 3A Complete; ADR-0022 Drafted; Pacemaker Follow-Up Scoped
 
 ## Created
 2026-03-29
@@ -239,9 +239,9 @@ Phase 3A Complete; ADR-0022 Drafted; Pacemaker Runtime Follow-Up Pending
 - [x] `3A-6` gossip/consensus dependency rule test 및 README / ADR / plan shipped-vs-pending 상태 정렬
 
 ## Follow-Ups
-- static peer topology, same-DC validator placement, emergency promotion baseline은 ADR-0018이 소유한다.
-- canonical block header/body contract, application-neutral `BlockView`, `BlockStore` query/storage seam, residual body sync follow-up 은 ADR-0019와 `docs/plans/0005-canonical-block-structure-migration-plan.md`에서 추적한다.
-- operator-managed raw key custody를 대체할 KMS/HSM/remote signer baseline은 별도 ADR로 분리한다.
-- timeout vote, timeout certificate, new-view wire contract, leader rotation policy의 semantic baseline은 ADR-0022가 소유한다. 이 plan 은 concrete runtime integration 과 test/backlog follow-up 만 남긴다.
-- validator-set commitment derivation의 exact byte contract는 follow-up spec으로 고정한다.
-- aggregate signature 또는 threshold signature 기반 최적화가 필요해지면 별도 ADR에서 baseline을 supersede 한다.
+- `P1`: current static-validator-set baseline 위에서 `TimeoutVote` / `TimeoutCertificate` / `NewView` runtime model, validation, equivocation detection, bootstrap vote-hold interaction 을 이 plan 에서 구현한다.
+- `P2`: pacemaker artifact dissemination 을 ADR-0016 gossip substrate 위에 연결한다. exact known-set / bounded `requestById` / replay / rejection / batching policy 는 이 plan 또는 별도 protocol spec 에서 고정한다.
+- `P3`: pacemaker timer/backoff/jitter constant, diagnostics, test gate 는 implementation follow-up 으로 고정한다. timing-domain separation 자체는 ADR-0022 baseline 을 그대로 유지한다.
+- `P4`: historical leader-order lookup 과 rotated validator-set continuity input 은 ADR-0023 및 plan `0007` 이 제공하는 seam 을 소비한다. current static-validator-set baseline 을 먼저 깨지 않고 단계적으로 확장한다.
+- `P5`: static peer topology, same-DC validator placement, emergency promotion baseline은 ADR-0018이 소유하고, canonical block header/body contract 및 residual body sync follow-up 은 ADR-0019와 `docs/plans/0005-canonical-block-structure-migration-plan.md`가 소유한다.
+- `P6`: operator-managed raw key custody를 대체할 KMS/HSM/remote signer baseline은 별도 ADR로 분리하고, aggregate signature 또는 threshold signature 기반 최적화가 필요해지면 별도 ADR에서 baseline을 supersede 한다.

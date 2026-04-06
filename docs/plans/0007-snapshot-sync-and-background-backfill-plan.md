@@ -1,7 +1,7 @@
 # 0007 - Snapshot Sync And Background Backfill Plan
 
 ## Status
-Phase 8 Complete; ADR-0023/0024 Drafted; Rotation/Identity Runtime Follow-Up Pending
+Phase 8 Complete; ADR-0023/0024 Drafted; Rotation/Identity Follow-Up Scoped
 
 ## Created
 2026-04-05
@@ -293,7 +293,8 @@ Phase 8 Complete; ADR-0023/0024 Drafted; Rotation/Identity Runtime Follow-Up Pen
 - [x] duplicate replay / ancestry mismatch / materialization regression test 추가
 
 ## Follow-Ups
-- `P1`: ADR-0023 semantic baseline 을 concrete checkpoint/root bundle, historical validator-set lookup runtime, bootstrap verification path 에 연결하는 implementation plan 을 별도로 확장한다.
-- `P2`: archive-grade accelerated historical backfill, snapshot compression, Merkle proof serving 은 별도 plan 또는 ADR 로 분리한다.
-- `P3`: full durable proposal/vote archive retention policy 와 compaction policy 는 별도 storage follow-up 으로 분리한다.
-- `P4`: production-grade peer scoring / bandwidth shaping / backpressure policy 는 gossip/deployment follow-up 으로 분리한다.
+- `P1`: ADR-0023 semantic baseline 을 concrete trusted checkpoint bundle, weak-subjectivity freshness policy, historical `ValidatorSetLookup`, bootstrap verification path 에 연결한다.
+- `P2`: ADR-0023 continuity seam 은 finalized-proof verification 뿐 아니라 향후 plan `0004` pacemaker follow-up 의 historical leader-order / timeout-proof verification 에도 소비될 수 있게 runtime seam 으로 남긴다.
+- `P3`: ADR-0024 semantic baseline 을 concrete bootstrap transport hardening 으로 내린다. stronger transport credential binding, capability token or equivalent transport projection, re-auth/disconnect diagnostics 는 이 plan 이 bootstrap service family 관점에서 받는다.
+- `P4`: archive-grade accelerated historical backfill, snapshot compression, Merkle proof serving 은 별도 plan 또는 ADR 로 분리한다.
+- `P5`: full durable proposal/vote archive retention policy 와 compaction policy 는 별도 storage follow-up 으로 분리하고, production-grade peer scoring / bandwidth shaping / backpressure policy 는 gossip/deployment follow-up 으로 분리한다.
