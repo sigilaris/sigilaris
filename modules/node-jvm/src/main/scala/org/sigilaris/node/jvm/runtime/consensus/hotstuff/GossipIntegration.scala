@@ -645,9 +645,11 @@ final case class HotStuffRuntimeBootstrapInput(
     validatorSet: ValidatorSet,
     localKeys: Map[ValidatorId, KeyPair],
     gossipPolicy: HotStuffGossipPolicy = HotStuffGossipPolicy.default,
+    bootstrapTrustRootOverride: Option[BootstrapTrustRoot] = None,
 ):
   def bootstrapTrustRoot: BootstrapTrustRoot =
-    BootstrapTrustRoot.staticValidatorSet(validatorSet)
+    bootstrapTrustRootOverride.getOrElse:
+      BootstrapTrustRoot.staticValidatorSet(validatorSet)
 
 /** Runtime-owned HotStuff service surface.
   *

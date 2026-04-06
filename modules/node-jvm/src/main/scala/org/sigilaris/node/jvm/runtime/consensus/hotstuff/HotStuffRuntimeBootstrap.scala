@@ -1,6 +1,6 @@
 package org.sigilaris.node.jvm.runtime.consensus.hotstuff
 
-import java.time.Duration
+import java.time.{Duration, Instant}
 import java.util.Locale
 
 import scala.jdk.CollectionConverters.*
@@ -28,9 +28,21 @@ final case class HotStuffBootstrapConfig(
     holders: Vector[ValidatorKeyHolder],
     localKeys: Map[ValidatorId, KeyPair],
     gossipPolicy: HotStuffGossipPolicy = HotStuffGossipPolicy.default,
+    bootstrapTrustRootOverride: Option[BootstrapTrustRoot] = None,
+    historicalValidatorSets: Vector[ValidatorSet] = Vector.empty,
 ):
   def bootstrapTrustRoot: BootstrapTrustRoot =
-    BootstrapTrustRoot.staticValidatorSet(validatorSet)
+    bootstrapTrustRootOverride.getOrElse:
+      BootstrapTrustRoot.staticValidatorSet(validatorSet)
+
+  def validatorSetLookupInventory: Vector[ValidatorSet] =
+    (Vector(bootstrapTrustRoot.validatorSet, validatorSet) ++ historicalValidatorSets)
+      .foldLeft((Set.empty[ValidatorSetHash], Vector.empty[ValidatorSet])):
+        case ((seen, acc), next) if seen.contains(next.hash) =>
+          seen -> acc
+        case ((seen, acc), next) =>
+          (seen + next.hash) -> (acc :+ next)
+      ._2
 
 object HotStuffBootstrapConfig:
   val DefaultPath: String = "sigilaris.node.consensus.hotstuff"
@@ -62,6 +74,11 @@ object HotStuffBootstrapConfig:
       localKeys <- requiredConfigList(section, "local-signers", "localSigners")
         .flatMap(parseLocalKeys(validatorSet))
       gossipPolicy <- loadGossipPolicy(section)
+      historicalValidatorSets <- loadHistoricalValidatorSets(section)
+      bootstrapTrustRootOverride <- loadBootstrapTrustRoot(
+        section,
+        validatorSet,
+      )
       _            <- validateHolders(holders, validatorSet)
     yield HotStuffBootstrapConfig(
       role = role,
@@ -69,12 +86,19 @@ object HotStuffBootstrapConfig:
       holders = holders,
       localKeys = localKeys,
       gossipPolicy = gossipPolicy,
+      bootstrapTrustRootOverride = bootstrapTrustRootOverride,
+      historicalValidatorSets = historicalValidatorSets,
     )
 
   private def parseValidators(
       sections: List[Config],
   ): Either[String, Vector[ValidatorMember]] =
     sections.traverse(parseValidator).map(_.toVector)
+
+  private def parseValidatorSet(
+      sections: List[Config],
+  ): Either[String, ValidatorSet] =
+    parseValidators(sections).flatMap(ValidatorSet(_).leftMap(_.message))
 
   private def parseHolders(
       sections: List[Config],
@@ -142,6 +166,179 @@ object HotStuffBootstrapConfig:
       .toLeft(())
       .leftMap: holder =>
         ss"unknown key holder validator: ${holder.validatorId.value}"
+
+  private def loadBootstrapTrustRoot(
+      section: Config,
+      currentValidatorSet: ValidatorSet,
+  ): Either[String, Option[BootstrapTrustRoot]] =
+    optionalConfig(section, "bootstrap-trust-root", "bootstrapTrustRoot")
+      .flatMap:
+        case None =>
+          none[BootstrapTrustRoot].asRight[String]
+        case Some(rootSection) =>
+          requiredString(rootSection, "kind", "kind")
+            .map(_.trim.toLowerCase(Locale.ROOT))
+            .flatMap:
+              case "genesis-config" | "genesisconfig" | "static-validator-set" | "staticvalidatorset" =>
+                for
+                  rootValidatorSet <- loadBootstrapTrustRootValidatorSet(
+                    rootSection,
+                    currentValidatorSet,
+                    allowDefaultToCurrent = true,
+                  )
+                  _ <- validateExplicitValidatorSetHash(
+                    rootSection,
+                    rootValidatorSet,
+                  )
+                yield BootstrapTrustRoot.staticValidatorSet(rootValidatorSet).some
+              case "trusted-checkpoint" | "trustedcheckpoint" =>
+                for
+                  rootValidatorSet <- loadBootstrapTrustRootValidatorSet(
+                    rootSection,
+                    currentValidatorSet,
+                    allowDefaultToCurrent = false,
+                  )
+                  _ <- validateExplicitValidatorSetHash(
+                    rootSection,
+                    rootValidatorSet,
+                  )
+                  window <- parseBootstrapTrustRootWindow(
+                    rootSection,
+                    rootValidatorSet,
+                  )
+                  trustRoot <- BootstrapTrustRoot
+                    .trustedCheckpoint(window, rootValidatorSet)
+                    .leftMap(identity)
+                yield trustRoot.some
+              case "weak-subjectivity-anchor" | "weaksubjectivityanchor" | "weak-subjectivity" | "weaksubjectivity" =>
+                for
+                  rootValidatorSet <- loadBootstrapTrustRootValidatorSet(
+                    rootSection,
+                    currentValidatorSet,
+                    allowDefaultToCurrent = false,
+                  )
+                  _ <- validateExplicitValidatorSetHash(
+                    rootSection,
+                    rootValidatorSet,
+                  )
+                  window <- parseBootstrapTrustRootWindow(
+                    rootSection,
+                    rootValidatorSet,
+                  )
+                  freshUntil <- requiredString(
+                    rootSection,
+                    "fresh-until",
+                    "freshUntil",
+                  ).flatMap(parseInstant)
+                  trustRoot <- BootstrapTrustRoot
+                    .weakSubjectivityAnchor(
+                      window,
+                      rootValidatorSet,
+                      freshUntil,
+                    )
+                    .leftMap(identity)
+                yield trustRoot.some
+              case other =>
+                ss"unsupported bootstrap trust root kind: ${other}"
+                  .asLeft[Option[BootstrapTrustRoot]]
+
+  private def loadBootstrapTrustRootValidatorSet(
+      rootSection: Config,
+      currentValidatorSet: ValidatorSet,
+      allowDefaultToCurrent: Boolean,
+  ): Either[String, ValidatorSet] =
+    optionalConfigList(rootSection, "validator-set", "validatorSet")
+      .flatMap:
+        case Some(sections) =>
+          parseValidatorSet(sections)
+        case None =>
+          Either.cond(
+            allowDefaultToCurrent,
+            currentValidatorSet,
+            ss"missing required config key: validator-set",
+          )
+
+  private def parseBootstrapTrustRootWindow(
+      rootSection: Config,
+      validatorSet: ValidatorSet,
+  ): Either[String, HotStuffWindow] =
+    for
+      chainId <- requiredString(rootSection, "chain-id", "chainId")
+        .flatMap(ChainId.parse)
+      heightValue <- requiredLong(rootSection, "height", "height")
+      height      <- HotStuffHeight.fromLong(heightValue)
+      viewValue   <- requiredLong(rootSection, "view", "view")
+      view        <- HotStuffView.fromLong(viewValue)
+    yield HotStuffWindow(
+      chainId = chainId,
+      height = height,
+      view = view,
+      validatorSetHash = validatorSet.hash,
+    )
+
+  private def loadHistoricalValidatorSets(
+      section: Config,
+  ): Either[String, Vector[ValidatorSet]] =
+    optionalConfigList(
+      section,
+      "historical-validator-sets",
+      "historicalValidatorSets",
+    ).flatMap:
+      case None =>
+        Vector.empty[ValidatorSet].asRight[String]
+      case Some(sections) =>
+        sections
+          .traverse(parseHistoricalValidatorSet)
+          .map(_.toVector)
+          .flatTap(validateDistinctValidatorSetHashes)
+
+  private def parseHistoricalValidatorSet(
+      section: Config,
+  ): Either[String, ValidatorSet] =
+    for
+      validatorSet <- requiredConfigList(section, "validators", "validators")
+        .flatMap(parseValidatorSet)
+      _ <- validateExplicitValidatorSetHash(section, validatorSet)
+    yield validatorSet
+
+  private def validateDistinctValidatorSetHashes(
+      validatorSets: Vector[ValidatorSet],
+  ): Either[String, Unit] =
+    validatorSets
+      .groupBy(_.hash)
+      .collectFirst:
+        case (hash, duplicates) if duplicates.sizeCompare(1) > 0 =>
+          hash
+      .toLeft(())
+      .leftMap(hash =>
+        ss"duplicate historical validator-set hash: ${hash.toHexLower}",
+      )
+
+  private def validateExplicitValidatorSetHash(
+      section: Config,
+      validatorSet: ValidatorSet,
+  ): Either[String, Unit] =
+    optionalString(section, "validator-set-hash", "validatorSetHash")
+      .flatMap:
+        case None =>
+          ().asRight[String]
+        case Some(value) =>
+          ValidatorSetHash
+            .fromHex(value)
+            .leftMap(identity)
+            .flatMap: expected =>
+              Either.cond(
+                expected === validatorSet.hash,
+                (),
+                ss"validator-set-hash mismatch: expected ${expected.toHexLower}, derived ${validatorSet.hash.toHexLower}",
+              )
+
+  private def parseInstant(
+      value: String,
+  ): Either[String, Instant] =
+    Either
+      .catchNonFatal(Instant.parse(value))
+      .leftMap(_ => "invalid ISO-8601 instant: " + value)
 
   private def parseRole(
       value: String,
@@ -263,6 +460,16 @@ object HotStuffBootstrapConfig:
           .catchNonFatal(config.getConfigList(path).asScala.toList)
           .leftMap(_.getMessage)
 
+  private def requiredLong(
+      config: Config,
+      primary: String,
+      alternate: String,
+  ): Either[String, Long] =
+    findPath(config, primary, alternate)
+      .toRight(ss"missing required config key: ${primary}")
+      .flatMap: path =>
+        Either.catchNonFatal(config.getLong(path)).leftMap(_.getMessage)
+
   private def optionalInt(
       config: Config,
       primary: String,
@@ -287,6 +494,20 @@ object HotStuffBootstrapConfig:
       case Some(path) =>
         Either.catchNonFatal(config.getLong(path)).leftMap(_.getMessage)
 
+  private def optionalString(
+      config: Config,
+      primary: String,
+      alternate: String,
+  ): Either[String, Option[String]] =
+    findPath(config, primary, alternate) match
+      case None =>
+        Option.empty[String].asRight[String]
+      case Some(path) =>
+        Either
+          .catchNonFatal(config.getString(path))
+          .leftMap(_.getMessage)
+          .map(Some(_))
+
   private def optionalConfig(
       config: Config,
       primary: String,
@@ -298,6 +519,20 @@ object HotStuffBootstrapConfig:
       case Some(path) =>
         Either
           .catchNonFatal(config.getConfig(path))
+          .leftMap(_.getMessage)
+          .map(Some(_))
+
+  private def optionalConfigList(
+      config: Config,
+      primary: String,
+      alternate: String,
+  ): Either[String, Option[List[Config]]] =
+    findPath(config, primary, alternate) match
+      case None =>
+        Option.empty[List[Config]].asRight[String]
+      case Some(path) =>
+        Either
+          .catchNonFatal(config.getConfigList(path).asScala.toList)
           .leftMap(_.getMessage)
           .map(Some(_))
 
@@ -384,6 +619,7 @@ object HotStuffRuntimeBootstrap:
         validatorSet = consensusConfig.validatorSet,
         localKeys = consensusConfig.localKeys,
         gossipPolicy = consensusConfig.gossipPolicy,
+        bootstrapTrustRootOverride = consensusConfig.bootstrapTrustRoot.some,
       )
     HotStuffNodeRuntime
       .validateBootstrapInput(bootstrapInput)
@@ -391,96 +627,104 @@ object HotStuffRuntimeBootstrap:
       case Left(rejection) =>
         Sync[F].pure(rejection.asLeft[HotStuffRuntimeBootstrap[F]])
       case Right(validatedInput) =>
-        HotStuffNodeRuntime
-          .inMemoryServices[F](
-            validatorSet = validatedInput.validatorSet,
-            gossipPolicy = validatedInput.gossipPolicy,
-            relayPolicy = HotStuffRelayPolicy.forRole(validatedInput.role),
-          )
-          .flatMap: (services, diagnostics) =>
-            for
-              metadataStore <- SnapshotMetadataStore.inMemory[F]
-              nodeStore     <- SnapshotNodeStore.inMemory[F]
-              forwardStore  <- ForwardCatchUpStore.inMemory[F]
-              historicalArchive <- HistoricalProposalArchive.inMemory[F]
-              emptyDiagnostics = BootstrapDiagnosticsSource.const[F](
-                BootstrapDiagnostics.empty,
-              )
-              bootstrapServices =
-                HotStuffBootstrapServicesRuntime.inMemoryWithNodeStore[F](
+        clock.now.flatMap: now =>
+          ensureBootstrapTrustRootFreshness(validatedInput.bootstrapTrustRoot, now) match
+            case Left(error) =>
+              Sync[F].pure(error.asLeft[HotStuffRuntimeBootstrap[F]])
+            case Right(_) =>
+              HotStuffNodeRuntime
+                .inMemoryServices[F](
                   validatorSet = validatedInput.validatorSet,
-                  sink = diagnostics.sink,
-                  snapshotNodeStore = nodeStore.some,
-                  diagnostics = emptyDiagnostics,
+                  gossipPolicy = validatedInput.gossipPolicy,
+                  relayPolicy = HotStuffRelayPolicy.forRole(validatedInput.role),
                 )
-              transportServices =
-                bootstrapTransport.getOrElse(
-                  HotStuffBootstrapTransportServices
-                    .fromBootstrapServices(bootstrapServices),
-                )
-              bootstrapLifecycle <- HotStuffBootstrapLifecycle.inMemory[F](
-                metadataStore = metadataStore,
-                nodeStore = nodeStore,
-                validatorSetLookup = bootstrapServices.validatorSetLookup,
-                finalizedAnchorSuggestions =
-                  transportServices.finalizedAnchorSuggestions,
-                snapshotNodeFetch = transportServices.snapshotNodeFetch,
-                proposalReplay = transportServices.proposalReplay,
-                historicalBackfill = transportServices.historicalBackfill,
-                forwardStore = forwardStore,
-                historicalArchive = historicalArchive,
-                retryPolicy = BootstrapRetryPolicy.boundedDefault,
-                historicalBackfillPolicy =
-                  HistoricalBackfillPolicy.backgroundDefault,
-                beforeCoordinatorBuild = None,
-                // Phase 6 wires the lifecycle gate but does not yet connect
-                // concrete replay/view validation into the shipped newcomer
-                // runtime path. Nodes with no catch-up proposals can become
-                // ready, but any actual replayed/live proposal keeps voting
-                // held until a later phase installs the real readiness
-                // pipeline.
-                readiness = new ProposalCatchUpReadiness[F]:
-                  override def assess(
-                      proposal: Proposal,
-                  ): F[Either[BootstrapCoordinatorFailure, ProposalCatchUpAssessment]] =
-                    ProposalCatchUpAssessment(
-                      voteReadiness =
-                        BootstrapVoteReadiness.Held(
-                          "forwardCatchUpUnavailable",
-                        ),
-                      controlBatch = None,
-                    ).asRight[BootstrapCoordinatorFailure].pure[F],
-                currentInstant = clock.now,
-              )
-              assembledServices =
-                services.copy(
-                  bootstrap =
-                    bootstrapServices.copy(diagnostics = bootstrapLifecycle),
-                )
-              consensus =
-                HotStuffNodeRuntime.fromValidatedServices[F](
-                  bootstrapInput = validatedInput,
-                  services = assembledServices,
-                  diagnostics = Some(diagnostics),
-                  bootstrapLifecycle = bootstrapLifecycle.some,
-                )
-              gossipBootstrap <- TxGossipRuntimeBootstrap
-                .fromTopology[F, HotStuffGossipArtifact](
-                  topology = topology,
-                  clock = clock,
-                  source = consensus.source,
-                  sink = consensus.sink,
-                  topicContracts = consensus.topicContracts,
-                  runtimePolicy = runtimePolicy,
-                  handshakePolicy = handshakePolicy,
-                )
-            yield HotStuffRuntimeBootstrap(
-              topology = gossipBootstrap.topology,
-              registry = gossipBootstrap.registry,
-              authenticator = gossipBootstrap.authenticator,
-              consensus = consensus,
-              runtime = gossipBootstrap.runtime,
-            ).asRight[String]
+                .flatMap: (services, diagnostics) =>
+                  for
+                    metadataStore <- SnapshotMetadataStore.inMemory[F]
+                    nodeStore     <- SnapshotNodeStore.inMemory[F]
+                    forwardStore  <- ForwardCatchUpStore.inMemory[F]
+                    historicalArchive <- HistoricalProposalArchive.inMemory[F]
+                    emptyDiagnostics = BootstrapDiagnosticsSource.const[F](
+                      BootstrapDiagnostics.empty,
+                    )
+                    bootstrapServices =
+                      HotStuffBootstrapServicesRuntime
+                        .fromTrustRootWithNodeStore[F](
+                          trustRoot = validatedInput.bootstrapTrustRoot,
+                          validatorSetInventory =
+                            consensusConfig.validatorSetLookupInventory,
+                          sink = diagnostics.sink,
+                          snapshotNodeStore = nodeStore.some,
+                          diagnostics = emptyDiagnostics,
+                        )
+                    transportServices =
+                      bootstrapTransport.getOrElse(
+                        HotStuffBootstrapTransportServices
+                          .fromBootstrapServices(bootstrapServices),
+                      )
+                    bootstrapLifecycle <- HotStuffBootstrapLifecycle.inMemory[F](
+                      metadataStore = metadataStore,
+                      nodeStore = nodeStore,
+                      validatorSetLookup = bootstrapServices.validatorSetLookup,
+                      finalizedAnchorSuggestions =
+                        transportServices.finalizedAnchorSuggestions,
+                      snapshotNodeFetch = transportServices.snapshotNodeFetch,
+                      proposalReplay = transportServices.proposalReplay,
+                      historicalBackfill = transportServices.historicalBackfill,
+                      forwardStore = forwardStore,
+                      historicalArchive = historicalArchive,
+                      retryPolicy = BootstrapRetryPolicy.boundedDefault,
+                      historicalBackfillPolicy =
+                        HistoricalBackfillPolicy.backgroundDefault,
+                      beforeCoordinatorBuild = None,
+                      // Phase 6 wires the lifecycle gate but does not yet connect
+                      // concrete replay/view validation into the shipped newcomer
+                      // runtime path. Nodes with no catch-up proposals can become
+                      // ready, but any actual replayed/live proposal keeps voting
+                      // held until a later phase installs the real readiness
+                      // pipeline.
+                      readiness = new ProposalCatchUpReadiness[F]:
+                        override def assess(
+                            proposal: Proposal,
+                        ): F[Either[BootstrapCoordinatorFailure, ProposalCatchUpAssessment]] =
+                          ProposalCatchUpAssessment(
+                            voteReadiness =
+                              BootstrapVoteReadiness.Held(
+                                "forwardCatchUpUnavailable",
+                              ),
+                            controlBatch = None,
+                          ).asRight[BootstrapCoordinatorFailure].pure[F],
+                      currentInstant = clock.now,
+                    )
+                    assembledServices =
+                      services.copy(
+                        bootstrap =
+                          bootstrapServices.copy(diagnostics = bootstrapLifecycle),
+                      )
+                    consensus =
+                      HotStuffNodeRuntime.fromValidatedServices[F](
+                        bootstrapInput = validatedInput,
+                        services = assembledServices,
+                        diagnostics = Some(diagnostics),
+                        bootstrapLifecycle = bootstrapLifecycle.some,
+                      )
+                    gossipBootstrap <- TxGossipRuntimeBootstrap
+                      .fromTopology[F, HotStuffGossipArtifact](
+                        topology = topology,
+                        clock = clock,
+                        source = consensus.source,
+                        sink = consensus.sink,
+                        topicContracts = consensus.topicContracts,
+                        runtimePolicy = runtimePolicy,
+                        handshakePolicy = handshakePolicy,
+                      )
+                  yield HotStuffRuntimeBootstrap(
+                    topology = gossipBootstrap.topology,
+                    registry = gossipBootstrap.registry,
+                    authenticator = gossipBootstrap.authenticator,
+                    consensus = consensus,
+                    runtime = gossipBootstrap.runtime,
+                  ).asRight[String]
 
   private def renderPolicyViolation(
       rejection: HotStuffPolicyViolation,
@@ -488,3 +732,24 @@ object HotStuffRuntimeBootstrap:
     rejection.detail.fold(rejection.reason)(detail =>
       ss"${rejection.reason}: ${detail}",
     )
+
+  private def ensureBootstrapTrustRootFreshness(
+      trustRoot: BootstrapTrustRoot,
+      now: Instant,
+  ): Either[String, Unit] =
+    trustRoot match
+      case BootstrapTrustRoot.WeakSubjectivityAnchor(window, _, freshUntil)
+          if now.isAfter(freshUntil) =>
+        val freshness = freshUntil.toString
+        (
+          "weakSubjectivityAnchorExpired: " +
+            window.chainId.value +
+            "@" +
+            window.height.render +
+            "/" +
+            window.view.render +
+            ":" +
+            freshness
+        ).asLeft[Unit]
+      case _ =>
+        ().asRight[String]

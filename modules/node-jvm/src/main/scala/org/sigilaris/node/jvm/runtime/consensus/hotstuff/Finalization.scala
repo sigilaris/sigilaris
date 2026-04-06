@@ -177,38 +177,68 @@ object HotStuffFinalizedAnchorVerifier:
     val grandchild = suggestion.finalizedProof.grandchild
 
     for
-      anchorSetEither <- validatorSetLookup.validatorSetFor(anchor.window)
-      childSetEither  <- validatorSetLookup.validatorSetFor(child.window)
-      grandchildSetEither <- validatorSetLookup.validatorSetFor(
+      anchorProposalSetEither <- validatorSetLookup.validatorSetFor(anchor.window)
+      childProposalSetEither  <- validatorSetLookup.validatorSetFor(child.window)
+      grandchildProposalSetEither <- validatorSetLookup.validatorSetFor(
         grandchild.window,
       )
+      anchorQcSetEither <- validatorSetLookup.validatorSetFor(
+        anchor.justify.subject.window,
+      )
+      childQcSetEither <- validatorSetLookup.validatorSetFor(
+        child.justify.subject.window,
+      )
+      grandchildQcSetEither <- validatorSetLookup.validatorSetFor(
+        grandchild.justify.subject.window,
+      )
     yield for
-      anchorSet <- anchorSetEither.leftMap(
+      anchorProposalSet <- anchorProposalSetEither.leftMap(
         FinalizedAnchorVerificationFailure.fromValidation,
       )
-      childSet <- childSetEither.leftMap(
+      childProposalSet <- childProposalSetEither.leftMap(
         FinalizedAnchorVerificationFailure.fromValidation,
       )
-      grandchildSet <- grandchildSetEither.leftMap(
+      grandchildProposalSet <- grandchildProposalSetEither.leftMap(
+        FinalizedAnchorVerificationFailure.fromValidation,
+      )
+      anchorQcSet <- anchorQcSetEither.leftMap(
+        FinalizedAnchorVerificationFailure.fromValidation,
+      )
+      childQcSet <- childQcSetEither.leftMap(
+        FinalizedAnchorVerificationFailure.fromValidation,
+      )
+      grandchildQcSet <- grandchildQcSetEither.leftMap(
         FinalizedAnchorVerificationFailure.fromValidation,
       )
       _ <- HotStuffValidator
-        .validateQuorumCertificate(anchor.justify, anchorSet)
+        .validateQuorumCertificate(anchor.justify, anchorQcSet)
         .leftMap(FinalizedAnchorVerificationFailure.fromValidation)
       _ <- HotStuffValidator
-        .validateQuorumCertificate(child.justify, childSet)
+        .validateQuorumCertificate(child.justify, childQcSet)
         .leftMap(FinalizedAnchorVerificationFailure.fromValidation)
       _ <- HotStuffValidator
-        .validateQuorumCertificate(grandchild.justify, grandchildSet)
+        .validateQuorumCertificate(grandchild.justify, grandchildQcSet)
         .leftMap(FinalizedAnchorVerificationFailure.fromValidation)
       _ <- HotStuffValidator
-        .validateProposal(anchor, anchorSet)
+        .validateProposal(
+          anchor,
+          anchorProposalSet,
+          justifyValidatorSet = Some(anchorQcSet),
+        )
         .leftMap(FinalizedAnchorVerificationFailure.fromValidation)
       _ <- HotStuffValidator
-        .validateProposal(child, childSet)
+        .validateProposal(
+          child,
+          childProposalSet,
+          justifyValidatorSet = Some(childQcSet),
+        )
         .leftMap(FinalizedAnchorVerificationFailure.fromValidation)
       _ <- HotStuffValidator
-        .validateProposal(grandchild, grandchildSet)
+        .validateProposal(
+          grandchild,
+          grandchildProposalSet,
+          justifyValidatorSet = Some(grandchildQcSet),
+        )
         .leftMap(FinalizedAnchorVerificationFailure.fromValidation)
       _ <- ensure(
         proposalMatchesSubject(child.justify.subject, anchor),
@@ -491,8 +521,22 @@ object HotStuffBootstrapServicesRuntime:
       validatorSet: ValidatorSet,
       sink: InMemoryHotStuffArtifactSink[F],
   ): HotStuffBootstrapServices[F] =
-    inMemoryWithNodeStore(
-      validatorSet = validatorSet,
+    fromTrustRootWithNodeStore(
+      trustRoot = BootstrapTrustRoot.staticValidatorSet(validatorSet),
+      validatorSetInventory = Vector.empty[ValidatorSet],
+      sink = sink,
+      snapshotNodeStore = none[SnapshotNodeStore[F]],
+      diagnostics = new InMemoryBootstrapDiagnosticsSource(sink),
+    )
+
+  def fromTrustRoot[F[_]: Sync](
+      trustRoot: BootstrapTrustRoot,
+      validatorSetInventory: Vector[ValidatorSet],
+      sink: InMemoryHotStuffArtifactSink[F],
+  ): HotStuffBootstrapServices[F] =
+    fromTrustRootWithNodeStore(
+      trustRoot = trustRoot,
+      validatorSetInventory = validatorSetInventory,
       sink = sink,
       snapshotNodeStore = none[SnapshotNodeStore[F]],
       diagnostics = new InMemoryBootstrapDiagnosticsSource(sink),
@@ -504,10 +548,25 @@ object HotStuffBootstrapServicesRuntime:
       snapshotNodeStore: Option[SnapshotNodeStore[F]],
       diagnostics: BootstrapDiagnosticsSource[F],
   ): HotStuffBootstrapServices[F] =
-    val trustRoot = BootstrapTrustRoot.staticValidatorSet(validatorSet)
+    fromTrustRootWithNodeStore(
+      trustRoot = BootstrapTrustRoot.staticValidatorSet(validatorSet),
+      validatorSetInventory = Vector.empty[ValidatorSet],
+      sink = sink,
+      snapshotNodeStore = snapshotNodeStore,
+      diagnostics = diagnostics,
+    )
+
+  def fromTrustRootWithNodeStore[F[_]: Sync](
+      trustRoot: BootstrapTrustRoot,
+      validatorSetInventory: Vector[ValidatorSet],
+      sink: InMemoryHotStuffArtifactSink[F],
+      snapshotNodeStore: Option[SnapshotNodeStore[F]],
+      diagnostics: BootstrapDiagnosticsSource[F],
+  ): HotStuffBootstrapServices[F] =
     HotStuffBootstrapServices(
       trustRoot = trustRoot,
-      validatorSetLookup = ValidatorSetLookup.static[F](trustRoot),
+      validatorSetLookup =
+        ValidatorSetLookup.fromInventory[F](trustRoot, validatorSetInventory),
       finalizedAnchorSuggestions =
         new InMemoryFinalizedAnchorSuggestionService(sink),
       snapshotNodeFetch = snapshotNodeStore match
