@@ -1,7 +1,7 @@
 # 0008 - Multi-Node Follow-Up ADR Authoring Plan
 
 ## Status
-Phase 0 Complete; ADR Drafting Pending
+Phase 1 Draft Complete; Phase 2 Pending
 
 ## Created
 2026-04-06
@@ -26,7 +26,7 @@ Phase 0 Complete; ADR Drafting Pending
 ## Scope
 - `0003`~`0007` 이후 residual gap 을 ADR 후보로 inventory 하고, 문서 간 dependency order 를 고정한다.
 - 아래 ADR 후보의 초안 작성과 반복 갱신을 이 plan 의 직접 범위로 둔다.
-  - tentative `ADR-0022`: HotStuff Pacemaker And View-Change Baseline
+  - `ADR-0022`: HotStuff Pacemaker And View-Change Baseline
   - tentative `ADR-0023`: Validator-Set Rotation And Bootstrap Trust Roots
   - tentative `ADR-0024`: Static-Topology Peer Identity Binding And Session-Bound Capability Authorization
 - deferred candidate `ADR-0025`: Validator Signing Custody And Remote Signer Baseline
@@ -48,6 +48,7 @@ Phase 0 Complete; ADR Drafting Pending
 - ADR-0019: Canonical Block Header And Application-Neutral Block View
 - ADR-0020: Conflict-Free Block Scheduling With State References And Object-Centric Seams
 - ADR-0021: Snapshot Sync And Background Backfill From Best Finalized Suggestions
+- ADR-0022: HotStuff Pacemaker And View-Change Baseline
 - `docs/plans/0003-multiplexed-gossip-session-sync-plan.md`
 - `docs/plans/0004-hotstuff-consensus-without-threshold-signatures-plan.md`
 - `docs/plans/0005-canonical-block-structure-migration-plan.md`
@@ -71,6 +72,11 @@ Phase 0 Complete; ADR Drafting Pending
 - Phase 0 baseline decision 은 `ADR-0018` 을 current shipped deployment baseline 으로 간주하고 status 를 `Accepted` 로 올리는 것이다.
 - 이후 `ADR-0022`~`ADR-0024` 는 `ADR-0018` 을 뒤집지 않고 그 consequence/follow-up 영역을 확장하는 후속 ADR 로 위치시킨다.
 - static topology 자체를 버리거나 same-DC validator placement 전제를 근본적으로 바꾸려면, implementation plan 확장이 아니라 별도 superseding deployment ADR 로 처리한다.
+
+## Phase 1 Checkpoint Review
+- `ADR-0018` status 정리 결과는 pacemaker scope 를 넓히지 않는다. Phase 1 은 current accepted static-topology / same-DC deployment baseline 위의 consensus liveness / view-change contract 만 고정한다.
+- validator-set continuity, historical validator-set lookup, bootstrap trust root precedence 는 계속 Phase 2 `ADR-0023` 범위로 남는다. Phase 1 은 current active validator-set input 을 pacemaker 가 소비하는 contract 만 전제로 둔다.
+- `ADR-0021` bootstrap lifecycle 과 `ProposalCatchUpReadiness` / `BootstrapVoteReadiness` 동등 vote-hold baseline 은 그대로 유지한다. Phase 1 pacemaker draft 는 local observed view progression 과 quorum-participation eligibility 를 분리하고, bootstrap hold 를 우회하지 않는 방향으로 잠근다.
 
 ## Phase 0 Inventory Summary
 
@@ -122,6 +128,7 @@ Phase 0 Complete; ADR Drafting Pending
 
 ### Docs
 - 새 ADR 후보 문서 3개 또는 그에 준하는 split/merge 결과물
+- `docs/adr/0022-hotstuff-pacemaker-and-view-change-baseline.md`
 - `docs/adr/0016-multiplexed-gossip-session-sync.md`
 - `docs/adr/0017-hotstuff-consensus-without-threshold-signatures.md`
 - `docs/adr/0018-static-peer-topology-and-initial-hotstuff-deployment-baseline.md`
@@ -149,7 +156,7 @@ Phase 0 Complete; ADR Drafting Pending
 - pacemaker artifact 가 existing proposal/vote/QC family 와 어떤 관계를 가지는지 정한다.
 - bootstrap readiness / vote-hold / partial data sufficiency 와 pacemaker 의 상호작용을 정리한다.
 - `100ms` deployment target 과 session heartbeat/liveness, pacemaker timeout 의 관계를 다시 정리해, 서로 다른 timing domain 이 섞이지 않게 한다.
-- output 은 tentative `ADR-0022` 와 `ADR-0017` / plan `0004` follow-up section 정렬이다.
+- output 은 `ADR-0022` 와 `ADR-0017` / plan `0004` follow-up section 정렬이다.
 
 ### Phase 2: Validator-Set Rotation And Bootstrap Trust Roots ADR Draft
 - Phase 2 시작 전, Phase 1 pacemaker draft 가 validator-set continuity / finalized-proof verification 전제에 어떤 새 요구를 추가했는지 checkpoint review 를 수행한다.
@@ -218,11 +225,11 @@ Phase 0 Complete; ADR Drafting Pending
 - [x] `ADR-0018` status update 또는 explicit caveat 정리
 
 ### Phase 1: Pacemaker And View-Change ADR Draft
-- [ ] Phase 0 output 기준 Phase 1 scope checkpoint review
-- [ ] tentative pacemaker ADR 초안 작성
-- [ ] pacemaker artifact / timeout / new-view / leader rotation baseline 정리
-- [ ] Phase 1 draft 결과가 validator-set / trust-root scope 를 materially 바꾸면 inventory / dependency order 갱신
-- [ ] `ADR-0017` / plan `0004` follow-up 참조 업데이트
+- [x] Phase 0 output 기준 Phase 1 scope checkpoint review
+- [x] tentative pacemaker ADR 초안 작성
+- [x] pacemaker artifact / timeout / new-view / leader rotation baseline 정리
+- [x] Phase 1 draft 결과가 validator-set / trust-root scope 를 materially 바꾸면 inventory / dependency order 갱신
+- [x] `ADR-0017` / plan `0004` follow-up 참조 업데이트
 
 ### Phase 2: Validator-Set Rotation And Bootstrap Trust Roots ADR Draft
 - [ ] Phase 1 output 기준 Phase 2 scope checkpoint review
