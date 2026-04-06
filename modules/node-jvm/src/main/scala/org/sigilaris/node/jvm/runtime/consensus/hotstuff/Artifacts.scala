@@ -129,6 +129,9 @@ final case class QuorumCertificateSubject(
     blockId: BlockId,
 ) derives ByteEncoder
 
+object QuorumCertificateSubject:
+  given Eq[QuorumCertificateSubject] = Eq.fromUniversalEquals
+
 final case class UnsignedVote(
     window: HotStuffWindow,
     voter: ValidatorId,
