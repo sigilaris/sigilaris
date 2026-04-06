@@ -518,6 +518,7 @@ object HotStuffBootstrapHttpTransport:
           .build(),
       requestTimeout: Duration = DefaultRequestTimeout,
       maxConcurrentRequests: Int = DefaultMaxConcurrentRequests,
+      proposalCatchUpReadiness: Option[ProposalCatchUpReadiness[F]] = None,
   ): HotStuffBootstrapTransportServices[F] =
     require(
       requestTimeout.compareTo(Duration.ZERO) > 0,
@@ -661,6 +662,7 @@ object HotStuffBootstrapHttpTransport:
             peerBaseUris = peerBaseUris,
           )
       ,
+      proposalCatchUpReadiness = proposalCatchUpReadiness,
     )
 
   private def proposalPage[F[_]: Async](

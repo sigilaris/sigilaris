@@ -1,7 +1,7 @@
 # 0009 - Minimal Static Multi-Node Launch Readiness Plan
 
 ## Status
-Active; Phase 0-1 Complete
+Active; Phase 0-2 Complete
 
 ## Created
 2026-04-07
@@ -257,11 +257,11 @@ Active; Phase 0-1 Complete
 - [x] timeout recovery / wrong-window / equivocation regression test green
 
 ### Phase 2: Bootstrap Readiness Closure
-- [ ] placeholder `forwardCatchUpUnavailable` hold 제거
-- [ ] replayed/live proposal readiness consumer path 연결
-- [ ] tx sufficiency / body-view validation / vote eligibility advancement 연결
-- [ ] non-empty catch-up ready regression test green
-- [ ] hold reason / readiness diagnostics regression test green
+- [x] placeholder `forwardCatchUpUnavailable` hold 제거
+- [x] replayed/live proposal readiness consumer path 연결
+- [x] tx sufficiency / body-view validation / vote eligibility advancement 연결
+- [x] non-empty catch-up ready regression test green
+- [x] hold reason / readiness diagnostics regression test green
 
 ### Phase 3: Durable Historical Archive Backing
 - [ ] durable `HistoricalProposalArchive` backing 추가

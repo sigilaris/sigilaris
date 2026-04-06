@@ -1,6 +1,8 @@
 package org.sigilaris.node.jvm.runtime.consensus.hotstuff
 
+import java.nio.ByteBuffer
 import java.time.{Duration, Instant}
+import java.util.UUID
 import java.util.Locale
 
 import scala.jdk.CollectionConverters.*
@@ -11,9 +13,13 @@ import scodec.bits.ByteVector
 
 import com.typesafe.config.Config
 
+import org.sigilaris.core.application.scheduling.SchedulingClassification
+import org.sigilaris.core.codec.byte.ByteEncoder
 import org.sigilaris.core.crypto.{CryptoOps, KeyPair, PublicKey}
+import org.sigilaris.core.crypto.Hash
 import org.sigilaris.core.datatype.UInt256
 import org.sigilaris.core.util.SafeStringInterp.*
+import org.sigilaris.node.jvm.runtime.block.BlockQuery
 import org.sigilaris.node.jvm.runtime.gossip.*
 import org.sigilaris.node.jvm.runtime.gossip.tx.{
   TxGossipRuntime,
@@ -588,6 +594,38 @@ object HotStuffRuntimeBootstrap:
         Some(HotStuffPolicy.requestPolicy.maxRetryAttemptsPerWindow),
     )
 
+  def proposalControlIdempotencyKey(
+      proposal: Proposal,
+  ): String =
+    val bytes = proposal.proposalId.toUInt256.bytes.take(16).toArray
+    bytes(6) = ((bytes(6) & 0x0f) | 0x40).toByte
+    bytes(8) = ((bytes(8) & 0x3f) | 0x80).toByte
+    val buffer = ByteBuffer.wrap(bytes)
+    UUID(buffer.getLong(), buffer.getLong()).toString
+
+  @SuppressWarnings(Array("org.wartremover.warts.DefaultArguments"))
+  def proposalCatchUpReadinessFromBlockQuery[
+      F[_]: Sync,
+      TxRef: ByteEncoder: Hash,
+      ResultRef: ByteEncoder,
+      Event: ByteEncoder,
+  ](
+      validatorSet: ValidatorSet,
+      knownTxIds: F[Set[StableArtifactId]],
+      blockQuery: BlockQuery[F, TxRef, ResultRef, Event],
+      txPolicy: TxRuntimePolicy = DefaultRuntimePolicy,
+      idempotencyKeyFor: Proposal => String = proposalControlIdempotencyKey,
+  )(
+      classifyTx: TxRef => SchedulingClassification,
+  ): ProposalCatchUpReadiness[F] =
+    ProposalCatchUpReadiness.fromBlockQuery(
+      validatorSet = validatorSet,
+      knownTxIds = knownTxIds,
+      blockQuery = blockQuery,
+      txPolicy = txPolicy,
+      idempotencyKeyFor = idempotencyKeyFor,
+    )(classifyTx)
+
   @SuppressWarnings(Array("org.wartremover.warts.DefaultArguments"))
   def fromConfig[F[_]: Sync](
       config: Config,
@@ -692,6 +730,16 @@ object HotStuffRuntimeBootstrap:
                         HotStuffBootstrapTransportServices
                           .fromBootstrapServices(bootstrapServices),
                       )
+                    proposalCatchUpReadiness =
+                      transportServices.proposalCatchUpReadiness.getOrElse:
+                        // Empty catch-up can still complete without this seam,
+                        // but any replayed/live proposal must use an
+                        // application-owned readiness implementation because
+                        // tx inventory and block-view validation are outside
+                        // the application-neutral HotStuff bootstrap assembly.
+                        ProposalCatchUpReadiness.failure[F](
+                          "proposalCatchUpReadinessUnavailable",
+                        )
                     bootstrapLifecycle <- HotStuffBootstrapLifecycle.inMemory[F](
                       metadataStore = metadataStore,
                       nodeStore = nodeStore,
@@ -710,23 +758,7 @@ object HotStuffRuntimeBootstrap:
                           enabled = consensusConfig.historicalSyncEnabled,
                         ),
                       beforeCoordinatorBuild = None,
-                      // Phase 6 wires the lifecycle gate but does not yet connect
-                      // concrete replay/view validation into the shipped newcomer
-                      // runtime path. Nodes with no catch-up proposals can become
-                      // ready, but any actual replayed/live proposal keeps voting
-                      // held until a later phase installs the real readiness
-                      // pipeline.
-                      readiness = new ProposalCatchUpReadiness[F]:
-                        override def assess(
-                            proposal: Proposal,
-                        ): F[Either[BootstrapCoordinatorFailure, ProposalCatchUpAssessment]] =
-                          ProposalCatchUpAssessment(
-                            voteReadiness =
-                              BootstrapVoteReadiness.Held(
-                                "forwardCatchUpUnavailable",
-                              ),
-                            controlBatch = None,
-                          ).asRight[BootstrapCoordinatorFailure].pure[F],
+                      readiness = proposalCatchUpReadiness,
                       currentInstant = clock.now,
                     )
                     assembledServices =

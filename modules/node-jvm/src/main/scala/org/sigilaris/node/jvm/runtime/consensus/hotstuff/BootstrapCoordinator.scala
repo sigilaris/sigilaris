@@ -79,6 +79,39 @@ object ProposalCatchUpReadiness:
       ): F[Either[BootstrapCoordinatorFailure, ProposalCatchUpAssessment]] =
         assessment.asRight[BootstrapCoordinatorFailure].pure[F]
 
+  def ready[F[_]: Sync]: ProposalCatchUpReadiness[F] =
+    static(
+      ProposalCatchUpAssessment(
+        voteReadiness = BootstrapVoteReadiness.Ready,
+        controlBatch = None,
+      ),
+    )
+
+  @SuppressWarnings(Array("org.wartremover.warts.DefaultArguments"))
+  def held[F[_]: Sync](
+      reason: String,
+      controlBatch: Option[ControlBatch] = None,
+  ): ProposalCatchUpReadiness[F] =
+    static(
+      ProposalCatchUpAssessment(
+        voteReadiness = BootstrapVoteReadiness.Held(reason),
+        controlBatch = controlBatch,
+      ),
+    )
+
+  @SuppressWarnings(Array("org.wartremover.warts.DefaultArguments"))
+  def failure[F[_]: Sync](
+      reason: String,
+      detail: Option[String] = None,
+  ): ProposalCatchUpReadiness[F] =
+    new ProposalCatchUpReadiness[F]:
+      override def assess(
+          proposal: Proposal,
+      ): F[Either[BootstrapCoordinatorFailure, ProposalCatchUpAssessment]] =
+        BootstrapCoordinatorFailure(reason, detail)
+          .asLeft[ProposalCatchUpAssessment]
+          .pure[F]
+
   def fromBlockQuery[
       F[_]: Sync,
       TxRef: ByteEncoder: Hash,

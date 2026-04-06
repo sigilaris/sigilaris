@@ -223,7 +223,7 @@ Phase 8 Complete; ADR-0023/0024 Drafted; Rotation/Identity Follow-Up Scoped
 
 ## Residual Gaps After Phase 8
 - bootstrap coordinator 는 forward catch-up 결과를 runtime-owned materialization seam 에 기록하고, historical backfill worker 는 unique proposal archive ingestion baseline 을 갖췄지만, shipped runtime 이 그 materialized state 를 자동으로 tx anti-entropy replay / proposal validation retry / vote eligibility advancement 에 재주입하는 full consumer path 는 후속 작업으로 남아 있다.
-- shipped newcomer bootstrap assembly 는 remote snapshot/replay/backfill transport 와 materialization seam 까지 연결됐지만, assembled `ProposalCatchUpReadiness` 는 아직 placeholder `forwardCatchUpUnavailable` hold 를 사용한다. no-op catch-up 에서는 ready 로 전이되지만, replayed/live proposal 에 대한 concrete readiness consumer path 는 follow-up 이다.
+- shipped newcomer bootstrap assembly 의 placeholder `forwardCatchUpUnavailable` hold 는 plan `0009` Phase 2 follow-up 에서 제거되었다. 현재 residual gap 은 application-owned tx/body inventory 를 concrete launch harness/runtime assembly 에 일관되게 공급하는 operational path 쪽으로 좁혀졌다.
 - shipped bootstrap trust root 는 여전히 `HotStuffBootstrapConfig.validatorSet` 기반 static validator-set baseline 이다. operator checkpoint 나 weak-subjectivity anchor 의 semantic class는 ADR-0023 에서 drafted 됐지만 concrete runtime input은 아직 follow-up 이다.
 - `ValidatorSetLookup` seam 은 landed 되었지만 ADR-0023 이 정의한 historical validator-set rotation continuity 와 finalized-proof historical lookup runtime 은 아직 구현되지 않았다.
 - bootstrap transport 는 parent session open-state revalidation baseline 을 이미 사용하지만, ADR-0024 가 정의한 stronger transport-level peer credential binding 과 capability/token concretion 은 아직 follow-up 이다.

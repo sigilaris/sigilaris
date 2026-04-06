@@ -298,11 +298,13 @@ final case class HotStuffBootstrapServices[F[_]](
     diagnostics: BootstrapDiagnosticsSource[F],
 )
 
+@SuppressWarnings(Array("org.wartremover.warts.DefaultArguments"))
 final case class HotStuffBootstrapTransportServices[F[_]](
     finalizedAnchorSuggestions: FinalizedAnchorSuggestionService[F],
     snapshotNodeFetch: SnapshotNodeFetchService[F],
     proposalReplay: ProposalReplayService[F],
     historicalBackfill: HistoricalBackfillService[F],
+    proposalCatchUpReadiness: Option[ProposalCatchUpReadiness[F]] = None,
 )
 
 object HotStuffBootstrapTransportServices:
@@ -314,6 +316,7 @@ object HotStuffBootstrapTransportServices:
       snapshotNodeFetch = services.snapshotNodeFetch,
       proposalReplay = services.proposalReplay,
       historicalBackfill = services.historicalBackfill,
+      proposalCatchUpReadiness = None,
     )
 
 object HotStuffBootstrapServices:

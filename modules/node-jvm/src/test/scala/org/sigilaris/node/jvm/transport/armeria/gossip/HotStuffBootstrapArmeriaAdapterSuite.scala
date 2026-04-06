@@ -292,7 +292,9 @@ final class HotStuffBootstrapArmeriaAdapterSuite extends CatsEffectSuite:
               Map(
                 PeerIdentity.unsafe("node-b") -> serverB.baseUri,
                 PeerIdentity.unsafe("node-c") -> serverC.baseUri,
-              )
+              ),
+              proposalCatchUpReadiness =
+                Some(ProposalCatchUpReadiness.ready[IO]),
             )
           ),
         )
@@ -324,9 +326,9 @@ final class HotStuffBootstrapArmeriaAdapterSuite extends CatsEffectSuite:
         assertEquals(result.map(_.snapshot.fetchedNodeCount), Right(3L))
         assertEquals(
           result.map(_.forwardCatchUp.voteReadiness),
-          Right(BootstrapVoteReadiness.Held("forwardCatchUpUnavailable")),
+          Right(BootstrapVoteReadiness.Ready),
         )
-        assertEquals(diagnostics.phase, BootstrapPhase.ForwardCatchUp)
+        assertEquals(diagnostics.phase, BootstrapPhase.Ready)
         assertEquals(diagnostics.chains(chainId).pinnedAnchor, Some(anchor.snapshotAnchor))
         assertEquals(storedRoot, Some(graph.rootNode.node))
         assertEquals(storedLeft, Some(graph.leftNode.node))

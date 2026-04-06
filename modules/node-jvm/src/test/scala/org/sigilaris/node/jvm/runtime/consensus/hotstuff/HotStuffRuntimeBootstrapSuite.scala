@@ -10,16 +10,23 @@ import scodec.bits.ByteVector
 
 import com.typesafe.config.ConfigFactory
 
+import org.sigilaris.core.application.scheduling.{ConflictFootprint, SchedulingClassification}
+import org.sigilaris.core.codec.byte.ByteEncoder
 import org.sigilaris.core.crypto.{CryptoOps, KeyPair}
+import org.sigilaris.core.crypto.Hash
 import org.sigilaris.core.crypto.Hash.ops.*
-import org.sigilaris.core.datatype.UInt256
+import org.sigilaris.core.datatype.{UInt256, Utf8}
 import org.sigilaris.core.merkle.MerkleTrieNode
 import org.sigilaris.core.merkle.Nibbles.*
 import org.sigilaris.node.jvm.runtime.block.{
+  BlockBody,
   BlockHeader,
   BlockHeight,
   BlockId,
+  BlockRecord,
+  BlockStore,
   BlockTimestamp,
+  BlockView,
   BodyRoot,
   StateRoot,
 }
@@ -34,6 +41,10 @@ final class HotStuffRuntimeBootstrapSuite extends CatsEffectSuite:
     validatorKeys.indices.toVector.map(index =>
       ValidatorId.unsafe(s"validator-${index + 1}"),
     )
+  private final case class TestTx(
+      body: Utf8,
+  ) derives ByteEncoder
+  private given Hash[TestTx] = Hash.build
   private val historicalValidatorKeys = Vector.fill(4)(CryptoOps.generate())
   private val historicalValidatorSet = ValidatorSet.unsafe(
     historicalValidatorKeys.zipWithIndex.map: (keyPair, index) =>
@@ -439,6 +450,276 @@ final class HotStuffRuntimeBootstrapSuite extends CatsEffectSuite:
           HistoricalBackfillWorker.DisabledByPolicyReason,
         ),
       )
+
+  test("assembled bootstrap runtime fails non-empty catch-up without injected proposal readiness"):
+    val root =
+      MerkleTrieNode.branch(
+        ByteVector.empty.toNibbles,
+        MerkleTrieNode.Children.empty,
+      )
+    val rootHash = root.toHash
+    val anchor =
+      replayableSuggestion(
+        seed = "e1",
+        stateRoot = StateRoot(rootHash.toUInt256),
+        childTxs = Vector(TestTx(Utf8("tx-1"))),
+        grandchildTxs = Vector.empty,
+      )
+
+    for
+      clock <- TestClock.create(startedAt)
+      bootstrapEither <- HotStuffRuntimeBootstrap.fromTopology[IO](
+        topology = topology("node-a", Vector("node-b")),
+        consensusConfig = validatorConfig(),
+        clock = clock,
+        bootstrapTransport =
+          Some(
+            proposalTransport(
+              anchor = anchor,
+              replayed = Vector(anchor.finalizedProof.child),
+              snapshotRoot = rootHash -> root,
+              proposalCatchUpReadiness = None,
+            )
+          ),
+      )
+      bootstrap <- IO.fromEither(
+        bootstrapEither.leftMap(new IllegalArgumentException(_)),
+      )
+      result <- bootstrap.consensus.bootstrap(
+        chainId = chainId,
+        sessions =
+          Vector(
+            bootstrapSession(
+              peer = "node-b",
+              sessionId = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
+            ),
+          ),
+        startedAt = startedAt,
+        liveProposals = Vector.empty,
+      )
+    yield
+      assertEquals(
+        result.left.map(_.reason),
+        Left("proposalCatchUpReadinessUnavailable"),
+      )
+
+  test("assembled bootstrap runtime advances replay catch-up once injected readiness sees tx sufficiency"):
+    val root =
+      MerkleTrieNode.branch(
+        ByteVector.empty.toNibbles,
+        MerkleTrieNode.Children.empty,
+      )
+    val rootHash = root.toHash
+    val anchor =
+      replayableSuggestion(
+        seed = "e2",
+        stateRoot = StateRoot(rootHash.toUInt256),
+        childTxs = Vector(TestTx(Utf8("tx-1"))),
+        grandchildTxs = Vector(TestTx(Utf8("tx-2"))),
+      )
+    val child          = anchor.finalizedProof.child
+    val grandchild     = anchor.finalizedProof.grandchild
+    val childTx        = TestTx(Utf8("tx-1"))
+    val grandchildTx   = TestTx(Utf8("tx-2"))
+    val grandchildTxId = grandchild.txSet.txIds.head
+
+    for
+      knownTxIds <- Ref.of[IO, Set[StableArtifactId]](Set(child.txSet.txIds.head))
+      blockStore <- BlockStore.inMemory[IO, TestTx, Utf8, Utf8]
+      _ <- putProposalView(blockStore, child, Vector(childTx))
+      _ <- putProposalView(blockStore, grandchild, Vector(grandchildTx))
+      clock <- TestClock.create(startedAt)
+      bootstrapEither <- HotStuffRuntimeBootstrap.fromTopology[IO](
+        topology = topology("node-a", Vector("node-b")),
+        consensusConfig = validatorConfig(),
+        clock = clock,
+        bootstrapTransport =
+          Some(
+            proposalTransport(
+              anchor = anchor,
+              replayed = Vector(child, grandchild),
+              snapshotRoot = rootHash -> root,
+              proposalCatchUpReadiness =
+                Some(
+                  HotStuffRuntimeBootstrap
+                    .proposalCatchUpReadinessFromBlockQuery[IO, TestTx, Utf8, Utf8](
+                      validatorSet = validatorSet,
+                      knownTxIds = knownTxIds.get,
+                      blockQuery = blockStore,
+                    )(_ => schedulable()),
+                ),
+            )
+          ),
+      )
+      bootstrap <- IO.fromEither(
+        bootstrapEither.leftMap(new IllegalArgumentException(_)),
+      )
+      session =
+        bootstrapSession(
+          peer = "node-b",
+          sessionId = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
+        )
+      first <- bootstrap.consensus.bootstrap(
+        chainId = chainId,
+        sessions = Vector(session),
+        startedAt = startedAt,
+        liveProposals = Vector.empty,
+      )
+      voteWhileHeld <- bootstrap.consensus.emitVote(
+        voter = validatorIds.head,
+        proposal = grandchild,
+        ts = startedAt.plusSeconds(1L),
+      )
+      materializedWhileHeld <- IO.fromOption(
+        bootstrap.consensus.bootstrapLifecycle,
+      )(new IllegalStateException("missing bootstrap lifecycle"))
+        .flatMap(_.forwardStore.current(chainId))
+      _ <- knownTxIds.update(_ + grandchildTxId)
+      second <- bootstrap.consensus.bootstrap(
+        chainId = chainId,
+        sessions = Vector(session),
+        startedAt = startedAt.plusSeconds(2L),
+        liveProposals = Vector.empty,
+      )
+      voteAfterReady <- bootstrap.consensus.emitVote(
+        voter = validatorIds.head,
+        proposal = grandchild,
+        ts = startedAt.plusSeconds(3L),
+      )
+      diagnostics <- bootstrap.consensus.currentBootstrapDiagnostics
+    yield
+      assertEquals(
+        first.map(_.forwardCatchUp.applied.map(_.proposalId)),
+        Right(Vector(child.proposalId)),
+      )
+      assertEquals(
+        first.map(_.forwardCatchUp.queued.map(_.proposalId)),
+        Right(Vector(grandchild.proposalId)),
+      )
+      assertEquals(
+        first.map(_.forwardCatchUp.voteReadiness),
+        Right(BootstrapVoteReadiness.Held("missingTxPayload")),
+      )
+      assertEquals(voteWhileHeld.left.map(_.reason), Left("bootstrapVoteHeld"))
+      materializedWhileHeld match
+        case Some(materialized) =>
+          assertEquals(
+            materialized.controlBatches.flatMap(_.ops),
+            Vector(
+              ControlOp.SetKnownTx(chainId, grandchild.txSet.txIds),
+              ControlOp.RequestByIdTx(chainId, Vector(grandchildTxId)),
+            ),
+          )
+        case None =>
+          fail("expected materialized forward catch-up state")
+      assertEquals(
+        second.map(_.forwardCatchUp.applied.map(_.proposalId)),
+        Right(Vector(child.proposalId, grandchild.proposalId)),
+      )
+      assertEquals(
+        second.map(_.forwardCatchUp.voteReadiness),
+        Right(BootstrapVoteReadiness.Ready),
+      )
+      assert(voteAfterReady.isRight)
+      assertEquals(diagnostics.phase, BootstrapPhase.Ready)
+      assertEquals(
+        diagnostics.chains(chainId).voteReadiness,
+        BootstrapVoteReadiness.Ready,
+      )
+
+  test("assembled bootstrap runtime advances live catch-up once injected readiness sees the block view"):
+    val root =
+      MerkleTrieNode.branch(
+        ByteVector.empty.toNibbles,
+        MerkleTrieNode.Children.empty,
+      )
+    val rootHash = root.toHash
+    val anchor =
+      replayableSuggestion(
+        seed = "e3",
+        stateRoot = StateRoot(rootHash.toUInt256),
+        childTxs = Vector(TestTx(Utf8("tx-3"))),
+        grandchildTxs = Vector.empty,
+      )
+    val liveProposal = anchor.finalizedProof.child
+    val liveTx       = TestTx(Utf8("tx-3"))
+
+    for
+      knownTxIds <- Ref.of[IO, Set[StableArtifactId]](liveProposal.txSet.txIds.toSet)
+      blockStore <- BlockStore.inMemory[IO, TestTx, Utf8, Utf8]
+      clock <- TestClock.create(startedAt)
+      bootstrapEither <- HotStuffRuntimeBootstrap.fromTopology[IO](
+        topology = topology("node-a", Vector("node-b")),
+        consensusConfig = validatorConfig(),
+        clock = clock,
+        bootstrapTransport =
+          Some(
+            proposalTransport(
+              anchor = anchor,
+              replayed = Vector.empty,
+              snapshotRoot = rootHash -> root,
+              proposalCatchUpReadiness =
+                Some(
+                  HotStuffRuntimeBootstrap
+                    .proposalCatchUpReadinessFromBlockQuery[IO, TestTx, Utf8, Utf8](
+                      validatorSet = validatorSet,
+                      knownTxIds = knownTxIds.get,
+                      blockQuery = blockStore,
+                    )(_ => schedulable()),
+                ),
+            )
+          ),
+      )
+      bootstrap <- IO.fromEither(
+        bootstrapEither.leftMap(new IllegalArgumentException(_)),
+      )
+      session =
+        bootstrapSession(
+          peer = "node-b",
+          sessionId = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
+        )
+      first <- bootstrap.consensus.bootstrap(
+        chainId = chainId,
+        sessions = Vector(session),
+        startedAt = startedAt,
+        liveProposals = Vector(liveProposal),
+      )
+      voteWhileHeld <- bootstrap.consensus.emitVote(
+        voter = validatorIds.head,
+        proposal = liveProposal,
+        ts = startedAt.plusSeconds(1L),
+      )
+      _ <- putProposalView(blockStore, liveProposal, Vector(liveTx))
+      second <- bootstrap.consensus.bootstrap(
+        chainId = chainId,
+        sessions = Vector(session),
+        startedAt = startedAt.plusSeconds(2L),
+        liveProposals = Vector(liveProposal),
+      )
+      voteAfterReady <- bootstrap.consensus.emitVote(
+        voter = validatorIds.head,
+        proposal = liveProposal,
+        ts = startedAt.plusSeconds(3L),
+      )
+    yield
+      assertEquals(
+        first.map(_.forwardCatchUp.voteReadiness),
+        Right(BootstrapVoteReadiness.Held("proposalViewUnavailable")),
+      )
+      assertEquals(
+        first.map(_.forwardCatchUp.queued.map(_.proposalId)),
+        Right(Vector(liveProposal.proposalId)),
+      )
+      assertEquals(voteWhileHeld.left.map(_.reason), Left("bootstrapVoteHeld"))
+      assertEquals(
+        second.map(_.forwardCatchUp.voteReadiness),
+        Right(BootstrapVoteReadiness.Ready),
+      )
+      assertEquals(
+        second.map(_.forwardCatchUp.applied.map(_.proposalId)),
+        Right(Vector(liveProposal.proposalId)),
+      )
+      assert(voteAfterReady.isRight)
 
   test(
     "config loader parses trusted checkpoint roots and historical validator-set inventory",
@@ -1402,6 +1683,253 @@ final class HotStuffRuntimeBootstrapSuite extends CatsEffectSuite:
       timestamp =
         BlockTimestamp.unsafeFromEpochMillis(startedAt.toEpochMilli + height),
     )
+
+  private def validatorConfig(): HotStuffBootstrapConfig =
+    HotStuffBootstrapConfig(
+      role = LocalNodeRole.Validator,
+      validatorSet = validatorSet,
+      holders = validatorHolders(),
+      localKeys = Map(
+        validatorIds(0) -> validatorKeys(0),
+        validatorIds(1) -> validatorKeys(1),
+        validatorIds(2) -> validatorKeys(2),
+      ),
+    )
+
+  private def validatorHolders(): Vector[ValidatorKeyHolder] =
+    Vector(
+      ValidatorKeyHolder(
+        validatorIds(0),
+        PeerIdentity.unsafe("node-a"),
+        ValidatorKeyHolderStatus.Active,
+      ),
+      ValidatorKeyHolder(
+        validatorIds(1),
+        PeerIdentity.unsafe("node-a"),
+        ValidatorKeyHolderStatus.Active,
+      ),
+      ValidatorKeyHolder(
+        validatorIds(2),
+        PeerIdentity.unsafe("node-a"),
+        ValidatorKeyHolderStatus.Active,
+      ),
+      ValidatorKeyHolder(
+        validatorIds(3),
+        PeerIdentity.unsafe("node-b"),
+        ValidatorKeyHolderStatus.Active,
+      ),
+    )
+
+  private def topology(
+      localPeer: String,
+      peers: Vector[String],
+  ): StaticPeerTopology =
+    StaticPeerTopology
+      .parse(
+        localNodeIdentity = localPeer,
+        knownPeers = peers.toList,
+        directNeighbors = peers.toList,
+      )
+      .toOption
+      .get
+
+  private def bootstrapSession(
+      peer: String,
+      sessionId: String,
+  ): BootstrapSessionBinding =
+    BootstrapSessionBinding(
+      peer = PeerIdentity.unsafe(peer),
+      sessionId = DirectionalSessionId.parse(sessionId).toOption.get,
+    )
+
+  private def proposalTransport(
+      anchor: FinalizedAnchorSuggestion,
+      replayed: Vector[Proposal],
+      snapshotRoot: (MerkleTrieNode.MerkleHash, MerkleTrieNode),
+      proposalCatchUpReadiness: Option[ProposalCatchUpReadiness[IO]],
+  ): HotStuffBootstrapTransportServices[IO] =
+    val (rootHash, root) = snapshotRoot
+    HotStuffBootstrapTransportServices[IO](
+      finalizedAnchorSuggestions = new FinalizedAnchorSuggestionService[IO]:
+        override def bestFinalized(
+            session: BootstrapSessionBinding,
+            chainId: ChainId,
+        ): IO[Either[CanonicalRejection, Option[FinalizedAnchorSuggestion]]] =
+          IO.pure(Right(Some(anchor)))
+      ,
+      snapshotNodeFetch = new SnapshotNodeFetchService[IO]:
+        override def fetchNodes(
+            session: BootstrapSessionBinding,
+            chainId: ChainId,
+            stateRoot: StateRoot,
+            hashes: Vector[MerkleTrieNode.MerkleHash],
+        ): IO[Either[CanonicalRejection, Vector[SnapshotTrieNode]]] =
+          IO.pure(
+            Right(
+              hashes
+                .filter(_ === rootHash)
+                .map(_ => SnapshotTrieNode(rootHash, root)),
+            ),
+          )
+      ,
+      proposalReplay = new ProposalReplayService[IO]:
+        override def readNext(
+            session: BootstrapSessionBinding,
+            chainId: ChainId,
+            anchorBlockId: BlockId,
+            nextHeight: BlockHeight,
+            limit: Int,
+        ): IO[Either[CanonicalRejection, Vector[Proposal]]] =
+          IO.pure(
+            Right(
+              replayed
+                .filter(proposal =>
+                  Ordering[BlockHeight].gteq(
+                    proposal.block.height,
+                    nextHeight,
+                  ),
+                )
+                .sortBy(proposal =>
+                  (proposal.block.height, proposal.proposalId.toHexLower)
+                )
+                .take(limit.max(0)),
+            ),
+          )
+      ,
+      historicalBackfill = new HistoricalBackfillService[IO]:
+        override def readPrevious(
+            session: BootstrapSessionBinding,
+            chainId: ChainId,
+            beforeBlockId: BlockId,
+            beforeHeight: BlockHeight,
+            limit: Int,
+        ): IO[Either[CanonicalRejection, Vector[Proposal]]] =
+          IO.pure(Right(Vector.empty))
+      ,
+      proposalCatchUpReadiness = proposalCatchUpReadiness,
+    )
+
+  private def replayableSuggestion(
+      seed: String,
+      stateRoot: StateRoot,
+      childTxs: Vector[TestTx],
+      grandchildTxs: Vector[TestTx],
+  ): FinalizedAnchorSuggestion =
+    val anchor =
+      signedReplayProposal(
+        parent = Some(bootstrapQc().subject.blockId),
+        height = 1L,
+        proposerIndex = 0,
+        justify = bootstrapQc(),
+        stateRoot = stateRoot,
+        txs = Vector.empty,
+        bodyHexFallback = seed + "10",
+      )
+    val child =
+      signedReplayProposal(
+        parent = Some(anchor.targetBlockId),
+        height = 2L,
+        proposerIndex = 1,
+        justify = qcFor(anchor),
+        stateRoot = stateRoot,
+        txs = childTxs,
+        bodyHexFallback = seed + "20",
+      )
+    val grandchild =
+      signedReplayProposal(
+        parent = Some(child.targetBlockId),
+        height = 3L,
+        proposerIndex = 2,
+        justify = qcFor(child),
+        stateRoot = stateRoot,
+        txs = grandchildTxs,
+        bodyHexFallback = seed + "30",
+      )
+    FinalizedAnchorSuggestion(
+      proposal = anchor,
+      finalizedProof = FinalizedProof(child, grandchild),
+    )
+
+  private def signedReplayProposal(
+      parent: Option[BlockId],
+      height: Long,
+      proposerIndex: Int,
+      justify: QuorumCertificate,
+      stateRoot: StateRoot,
+      txs: Vector[TestTx],
+      bodyHexFallback: String,
+  ): Proposal =
+    val header =
+      txs match
+        case Vector() =>
+          block(
+            parent = parent,
+            height = height,
+            stateRoot = stateRoot,
+            bodyHex = bodyHexFallback,
+          )
+        case _ =>
+          val body     = blockBodyOf(txs)
+          val bodyRoot = BlockBody.computeBodyRoot(body).toOption.get
+          BlockHeader(
+            parent = parent,
+            height = BlockHeight.unsafeFromLong(height),
+            stateRoot = stateRoot,
+            bodyRoot = bodyRoot,
+            timestamp =
+              BlockTimestamp.unsafeFromEpochMillis(
+                startedAt.toEpochMilli + height,
+              ),
+          )
+    Proposal
+      .sign(
+        UnsignedProposal(
+          window = HotStuffWindow(chainId, height, height, validatorSet.hash),
+          proposer = validatorIds(proposerIndex),
+          targetBlockId = BlockHeader.computeId(header),
+          block = header,
+          txSet = ProposalTxSet.fromTxs(txs),
+          justify = justify,
+        ),
+        validatorKeys(proposerIndex),
+      )
+      .toOption
+      .get
+
+  private def putProposalView(
+      blockStore: BlockStore[IO, TestTx, Utf8, Utf8],
+      proposal: Proposal,
+      txs: Vector[TestTx],
+  ): IO[Unit] =
+    blockStore
+      .putView(
+        BlockView(
+          header = proposal.block,
+          body = blockBodyOf(txs),
+        ),
+      )
+      .value
+      .flatMap:
+        case Left(error)  => IO.raiseError(new IllegalStateException(error.reason))
+        case Right(_)     => IO.unit
+
+  private def blockBodyOf(
+      txs: Vector[TestTx],
+  ): BlockBody[TestTx, Utf8, Utf8] =
+    BlockBody(
+      txs
+        .map(tx =>
+          BlockRecord[TestTx, Utf8, Utf8](
+            tx = tx,
+            result = Option.empty[Utf8],
+            events = Vector.empty[Utf8],
+          ),
+        )
+        .toSet,
+    )
+
+  private def schedulable(): SchedulingClassification =
+    SchedulingClassification.Schedulable(ConflictFootprint.empty)
 
   private def validatorSetEntries(
       validatorSet: ValidatorSet,
