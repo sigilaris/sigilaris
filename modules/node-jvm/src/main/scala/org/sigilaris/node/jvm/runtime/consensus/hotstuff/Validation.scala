@@ -224,6 +224,7 @@ object HotStuffValidator:
   def validateProposal(
       proposal: Proposal,
       validatorSet: ValidatorSet,
+      justifyValidatorSet: Option[ValidatorSet] = None,
   ): Either[HotStuffValidationFailure, Unit] =
     for
       _ <- HotStuffValidationSupport.ensure(
@@ -259,10 +260,10 @@ object HotStuffValidator:
         "proposalIdMismatch",
         Some(proposal.proposalId.toHexLower),
       )
-      // Phase 1 fixes a static validator-set baseline. Validator-set rotation
-      // needs a follow-up seam so justify QC validation can use the historical
-      // set active at the justify height/view instead of the current one.
-      _ <- validateQuorumCertificate(proposal.justify, validatorSet)
+      _ <- validateQuorumCertificate(
+        proposal.justify,
+        justifyValidatorSet.getOrElse(validatorSet),
+      )
       _ <- HotStuffValidationSupport.ensure(
         proposal.justify.subject.window.chainId === proposal.window.chainId,
         "justifyChainMismatch",

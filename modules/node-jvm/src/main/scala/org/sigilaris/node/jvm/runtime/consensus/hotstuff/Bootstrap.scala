@@ -11,6 +11,8 @@ import org.sigilaris.node.jvm.runtime.gossip.{CanonicalRejection, ChainId, Direc
 
 sealed trait BootstrapTrustRoot:
   def validatorSet: ValidatorSet
+  def anchorWindow: Option[HotStuffWindow]
+  def weakSubjectivityFreshUntil: Option[Instant]
 
   final def validatorSetHash: ValidatorSetHash =
     validatorSet.hash
@@ -18,12 +20,57 @@ sealed trait BootstrapTrustRoot:
 object BootstrapTrustRoot:
   final case class StaticValidatorSet(
       validatorSet: ValidatorSet,
-  ) extends BootstrapTrustRoot
+  ) extends BootstrapTrustRoot:
+    override val anchorWindow: Option[HotStuffWindow] = None
+    override val weakSubjectivityFreshUntil: Option[Instant] = None
+
+  final case class TrustedCheckpoint(
+      window: HotStuffWindow,
+      validatorSet: ValidatorSet,
+  ) extends BootstrapTrustRoot:
+    override val anchorWindow: Option[HotStuffWindow] = Some(window)
+    override val weakSubjectivityFreshUntil: Option[Instant] = None
+
+  final case class WeakSubjectivityAnchor(
+      window: HotStuffWindow,
+      validatorSet: ValidatorSet,
+      freshUntil: Instant,
+  ) extends BootstrapTrustRoot:
+    override val anchorWindow: Option[HotStuffWindow] = Some(window)
+    override val weakSubjectivityFreshUntil: Option[Instant] = Some(freshUntil)
+
+  private def validateRootWindow(
+      label: String,
+      window: HotStuffWindow,
+      validatorSet: ValidatorSet,
+  ): Either[String, Unit] =
+    val windowHash   = window.validatorSetHash.toHexLower
+    val materialHash = validatorSet.hash.toHexLower
+    Either.cond(
+      window.validatorSetHash === validatorSet.hash,
+      (),
+      label + " validatorSetHash mismatch: window=" + windowHash + ", material=" + materialHash,
+    )
 
   def staticValidatorSet(
       validatorSet: ValidatorSet,
   ): BootstrapTrustRoot =
     StaticValidatorSet(validatorSet)
+
+  def trustedCheckpoint(
+      window: HotStuffWindow,
+      validatorSet: ValidatorSet,
+  ): Either[String, BootstrapTrustRoot] =
+    validateRootWindow("trustedCheckpoint", window, validatorSet)
+      .map(_ => new TrustedCheckpoint(window, validatorSet))
+
+  def weakSubjectivityAnchor(
+      window: HotStuffWindow,
+      validatorSet: ValidatorSet,
+      freshUntil: Instant,
+  ): Either[String, BootstrapTrustRoot] =
+    validateRootWindow("weakSubjectivityAnchor", window, validatorSet)
+      .map(_ => new WeakSubjectivityAnchor(window, validatorSet, freshUntil))
 
 trait ValidatorSetLookup[F[_]]:
   def trustRoot: BootstrapTrustRoot
@@ -36,6 +83,19 @@ object ValidatorSetLookup:
   def static[F[_]: Applicative](
       root: BootstrapTrustRoot,
   ): ValidatorSetLookup[F] =
+    fromInventory(root, Vector.empty)
+
+  def fromInventory[F[_]: Applicative](
+      root: BootstrapTrustRoot,
+      validatorSets: Iterable[ValidatorSet],
+  ): ValidatorSetLookup[F] =
+    val availableValidatorSets =
+      (Iterator.single(root.validatorSet) ++ validatorSets.iterator)
+        .foldLeft(Map.empty[ValidatorSetHash, ValidatorSet]):
+          case (acc, validatorSet) if acc.contains(validatorSet.hash) =>
+            acc
+          case (acc, validatorSet) =>
+            acc.updated(validatorSet.hash, validatorSet)
     new ValidatorSetLookup[F]:
       override val trustRoot: BootstrapTrustRoot = root
 
@@ -44,8 +104,8 @@ object ValidatorSetLookup:
       ): F[Either[HotStuffValidationFailure, ValidatorSet]] =
         Either
           .cond(
-            window.validatorSetHash === trustRoot.validatorSetHash,
-            trustRoot.validatorSet,
+            availableValidatorSets.contains(window.validatorSetHash),
+            availableValidatorSets(window.validatorSetHash),
             HotStuffValidationFailure(
               reason = "validatorSetUnavailable",
               detail = Some(window.validatorSetHash.toHexLower),
