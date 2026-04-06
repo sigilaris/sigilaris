@@ -392,9 +392,19 @@ object HotStuffBootstrapConfig:
             optionalConfig(policySection, "vote", "vote"),
             HotStuffGossipPolicy.default.vote,
           )
+          timeoutVote <- parseTopicPolicy(
+            optionalConfig(policySection, "timeout-vote", "timeoutVote"),
+            HotStuffGossipPolicy.default.timeoutVote,
+          )
+          newView <- parseTopicPolicy(
+            optionalConfig(policySection, "new-view", "newView"),
+            HotStuffGossipPolicy.default.newView,
+          )
         yield HotStuffGossipPolicy(
           proposal = proposal,
           vote = vote,
+          timeoutVote = timeoutVote,
+          newView = newView,
         )
 
   private def parseTopicPolicy(

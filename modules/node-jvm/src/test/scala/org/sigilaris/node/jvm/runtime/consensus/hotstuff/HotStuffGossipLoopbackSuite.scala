@@ -29,6 +29,8 @@ final class HotStuffGossipLoopbackSuite extends CatsEffectSuite:
   private val subscription = SessionSubscription.unsafe(
     ChainTopic(chainId, GossipTopic.consensusProposal),
     ChainTopic(chainId, GossipTopic.consensusVote),
+    ChainTopic(chainId, GossipTopic.consensusTimeoutVote),
+    ChainTopic(chainId, GossipTopic.consensusNewView),
   )
 
   test("consensus topics honor exact known-set, requestById, and QC assembly"):
@@ -146,6 +148,8 @@ final class HotStuffGossipLoopbackSuite extends CatsEffectSuite:
         ts = baseInstant,
       ).flatMap(unwrapPolicy)
       proposal = proposalPayload(proposalEvent)
+      timeoutWindow = HotStuffWindow(chainId, 2L, 1L, validatorSet.hash)
+      timeoutCertificate = timeoutCertificateFor(timeoutWindow, justify)
       _ <- a.consensus.emitVote(validatorSet.members(0).id, proposal, baseInstant.plusMillis(1)).flatMap(unwrapPolicy)
       polled <- a.gossip.pollEvents(sessionId)
       _ <- b.gossip.receiveEvents(sessionId, polled.toOption.get)
@@ -158,12 +162,144 @@ final class HotStuffGossipLoopbackSuite extends CatsEffectSuite:
         ts = baseInstant.plusMillis(10),
       )
       emitAuditVote <- b.consensus.emitVote(validatorSet.members.head.id, proposal, baseInstant.plusMillis(11))
+      emitAuditTimeoutVote <- b.consensus.emitTimeoutVote(
+        voter = validatorSet.members.head.id,
+        window = timeoutWindow,
+        highestKnownQc = justify,
+        ts = baseInstant.plusMillis(12),
+      )
+      emitAuditNewView <- b.consensus.emitNewView(
+        sender = validatorSet.members.head.id,
+        highestKnownQc = justify,
+        timeoutCertificate = timeoutCertificate,
+        ts = baseInstant.plusMillis(13),
+      )
       snapshot <- sinkSnapshot(b.consensus)
     yield
       assertEquals(emitAuditProposal.left.map(_.reason), Left("auditNodeCannotEmit"))
       assertEquals(emitAuditVote.left.map(_.reason), Left("auditNodeCannotEmit"))
+      assertEquals(emitAuditTimeoutVote.left.map(_.reason), Left("auditNodeCannotEmit"))
+      assertEquals(emitAuditNewView.left.map(_.reason), Left("auditNodeCannotEmit"))
       assert(snapshot.proposals.contains(proposal.proposalId))
       assert(snapshot.votes.nonEmpty)
+
+  test("timeout-vote and new-view exact-known request-by-id semantics match the proposal and vote baseline"):
+    val holders = Vector(
+      ValidatorKeyHolder(validatorSet.members(0).id, PeerIdentity.unsafe("node-a"), ValidatorKeyHolderStatus.Active),
+      ValidatorKeyHolder(validatorSet.members(1).id, PeerIdentity.unsafe("node-a"), ValidatorKeyHolderStatus.Active),
+      ValidatorKeyHolder(validatorSet.members(2).id, PeerIdentity.unsafe("node-a"), ValidatorKeyHolderStatus.Active),
+    )
+
+    for
+      a <- Harness.create("node-a", "node-b", LocalNodeRole.Validator, holders, Map(
+        validatorSet.members(0).id -> validatorKeys(0),
+        validatorSet.members(1).id -> validatorKeys(1),
+        validatorSet.members(2).id -> validatorKeys(2),
+      ))
+      b <- Harness.create("node-b", "node-a", LocalNodeRole.Audit, holders, Map.empty)
+      opened <- openOutbound(a, b)
+      sessionId = opened.proposal.sessionId
+      highestKnownQc = bootstrapQc()
+      timeoutWindow = HotStuffWindow(chainId, 2L, 1L, validatorSet.hash)
+      timeoutVote1Event <- a.consensus.emitTimeoutVote(
+        voter = validatorSet.members(0).id,
+        window = timeoutWindow,
+        highestKnownQc = highestKnownQc,
+        ts = baseInstant.plusMillis(1),
+      ).flatMap(unwrapPolicy)
+      timeoutVote2Event <- a.consensus.emitTimeoutVote(
+        voter = validatorSet.members(1).id,
+        window = timeoutWindow,
+        highestKnownQc = highestKnownQc,
+        ts = baseInstant.plusMillis(2),
+      ).flatMap(unwrapPolicy)
+      timeoutVote3Event <- a.consensus.emitTimeoutVote(
+        voter = validatorSet.members(2).id,
+        window = timeoutWindow,
+        highestKnownQc = highestKnownQc,
+        ts = baseInstant.plusMillis(3),
+      ).flatMap(unwrapPolicy)
+      timeoutVote1 = timeoutVotePayload(timeoutVote1Event)
+      timeoutVote2 = timeoutVotePayload(timeoutVote2Event)
+      timeoutVote3 = timeoutVotePayload(timeoutVote3Event)
+      timeoutCertificate = TimeoutCertificateAssembler
+        .assemble(
+          timeoutVote1.subject,
+          Vector(timeoutVote1, timeoutVote2, timeoutVote3),
+          validatorSet,
+        )
+        .toOption
+        .get
+      newViewEvent <- a.consensus.emitNewView(
+        sender = validatorSet.members(0).id,
+        highestKnownQc = highestKnownQc,
+        timeoutCertificate = timeoutCertificate,
+        ts = baseInstant.plusMillis(4),
+      ).flatMap(unwrapPolicy)
+      newView = newViewPayload(newViewEvent)
+      _ <- a.gossip.receiveControlBatch(
+        sessionId,
+        controlBatch(
+          "abababab-abab-4bab-8bab-ababababacac",
+          Vector(
+            ControlOp.SetKnownExact(
+              timeoutVoteScope(timeoutVote1),
+              Vector(HotStuffGossipArtifact.stableIdOf(HotStuffGossipArtifact.TimeoutVoteArtifact(timeoutVote1))),
+            ),
+            ControlOp.SetKnownExact(
+              newViewScope(newView),
+              Vector(HotStuffGossipArtifact.stableIdOf(HotStuffGossipArtifact.NewViewArtifact(newView))),
+            ),
+          ),
+        ),
+      )
+      firstPoll <- a.gossip.pollEvents(sessionId)
+      firstReceive <- b.gossip.receiveEvents(sessionId, firstPoll.toOption.get)
+      firstSnapshot <- sinkSnapshot(b.consensus)
+      requestKnown <- a.gossip.receiveControlBatch(
+        sessionId,
+        controlBatch(
+          "bcbcbcbc-bcbc-4cbc-8cbc-bcbcbcbcbcbc",
+          Vector(
+            ControlOp.RequestByIdExact(
+              timeoutVoteScope(timeoutVote1),
+              Vector(HotStuffGossipArtifact.stableIdOf(HotStuffGossipArtifact.TimeoutVoteArtifact(timeoutVote1))),
+            ),
+            ControlOp.RequestByIdExact(
+              newViewScope(newView),
+              Vector(HotStuffGossipArtifact.stableIdOf(HotStuffGossipArtifact.NewViewArtifact(newView))),
+            ),
+          ),
+        ),
+      )
+      secondPoll <- a.gossip.pollEvents(sessionId)
+      secondReceive <- b.gossip.receiveEvents(sessionId, secondPoll.toOption.get)
+      secondSnapshot <- sinkSnapshot(b.consensus)
+    yield
+      assertEquals(
+        firstReceive.toOption.get.applied.collect:
+          case event if event.topic == GossipTopic.consensusTimeoutVote => timeoutVotePayload(event).voter.value,
+        Vector("validator-2", "validator-3"),
+      )
+      assert(firstSnapshot.timeoutCertificates.isEmpty)
+      assert(firstSnapshot.newViews.isEmpty)
+      assertEquals(requestKnown, Right(ControlBatchOutcome.Applied))
+      assertEquals(
+        secondReceive.toOption.get.applied.collect:
+          case event if event.topic == GossipTopic.consensusTimeoutVote => timeoutVotePayload(event).timeoutVoteId,
+        Vector(timeoutVote1.timeoutVoteId),
+      )
+      assertEquals(
+        secondReceive.toOption.get.applied.collect:
+          case event if event.topic == GossipTopic.consensusNewView => newViewPayload(event).newViewId,
+        Vector(newView.newViewId),
+      )
+      assertEquals(
+        secondSnapshot.timeoutVotes.keySet,
+        Set(timeoutVote1.timeoutVoteId, timeoutVote2.timeoutVoteId, timeoutVote3.timeoutVoteId),
+      )
+      assert(secondSnapshot.timeoutCertificates.contains(timeoutVote1.subject))
+      assertEquals(secondSnapshot.newViews.keySet, Set(newView.newViewId))
 
   test("audit followers relay validated proposal and vote artifacts downstream without local signing"):
     val holders = Vector(
@@ -927,6 +1063,45 @@ final class HotStuffGossipLoopbackSuite extends CatsEffectSuite:
       .toOption
       .get
 
+  private def signedTimeoutVoteFor(
+      window: HotStuffWindow,
+      highestKnownQc: QuorumCertificate,
+      index: Int,
+  ): TimeoutVote =
+    TimeoutVote
+      .sign(
+        UnsignedTimeoutVote(
+          subject = TimeoutVoteSubject(
+            window = window,
+            highestKnownQc = highestKnownQc.subject,
+          ),
+          voter = validatorSet.members(index).id,
+        ),
+        validatorKeys(index),
+      )
+      .toOption
+      .get
+
+  private def timeoutCertificateFor(
+      window: HotStuffWindow,
+      highestKnownQc: QuorumCertificate,
+  ): TimeoutCertificate =
+    TimeoutCertificateAssembler
+      .assemble(
+        TimeoutVoteSubject(
+          window = window,
+          highestKnownQc = highestKnownQc.subject,
+        ),
+        Vector(
+          signedTimeoutVoteFor(window, highestKnownQc, 0),
+          signedTimeoutVoteFor(window, highestKnownQc, 1),
+          signedTimeoutVoteFor(window, highestKnownQc, 2),
+        ),
+        validatorSet,
+      )
+      .toOption
+      .get
+
   private def proposalScope(
       proposal: Proposal,
   ): ExactKnownSetScope =
@@ -945,6 +1120,24 @@ final class HotStuffGossipLoopbackSuite extends CatsEffectSuite:
       windowKey = HotStuffWindowKey.fromWindow(vote.window),
     )
 
+  private def timeoutVoteScope(
+      timeoutVote: TimeoutVote,
+  ): ExactKnownSetScope =
+    ExactKnownSetScope(
+      chainId = timeoutVote.subject.window.chainId,
+      topic = GossipTopic.consensusTimeoutVote,
+      windowKey = HotStuffWindowKey.fromWindow(timeoutVote.subject.window),
+    )
+
+  private def newViewScope(
+      newView: NewView,
+  ): ExactKnownSetScope =
+    ExactKnownSetScope(
+      chainId = newView.window.chainId,
+      topic = GossipTopic.consensusNewView,
+      windowKey = HotStuffWindowKey.fromWindow(newView.window),
+    )
+
   private def proposalPayload(
       event: GossipEvent[HotStuffGossipArtifact],
   ): Proposal =
@@ -958,6 +1151,22 @@ final class HotStuffGossipLoopbackSuite extends CatsEffectSuite:
     event.payload match
       case HotStuffGossipArtifact.VoteArtifact(vote) => vote
       case _ => throw new IllegalStateException("expected vote")
+
+  private def timeoutVotePayload(
+      event: GossipEvent[HotStuffGossipArtifact],
+  ): TimeoutVote =
+    event.payload match
+      case HotStuffGossipArtifact.TimeoutVoteArtifact(timeoutVote) =>
+        timeoutVote
+      case _ =>
+        throw new IllegalStateException("expected timeout vote")
+
+  private def newViewPayload(
+      event: GossipEvent[HotStuffGossipArtifact],
+  ): NewView =
+    event.payload match
+      case HotStuffGossipArtifact.NewViewArtifact(newView) => newView
+      case _ => throw new IllegalStateException("expected new-view")
 
   private def controlBatch(
       idempotencyKey: String,
@@ -1100,6 +1309,8 @@ final class HotStuffGossipLoopbackSuite extends CatsEffectSuite:
         TxContract,
         wrapHotStuff(HotStuffTopic.proposalContract(policy.proposal)),
         wrapHotStuff(HotStuffTopic.voteContract(policy.vote)),
+        wrapHotStuff(HotStuffTopic.timeoutVoteContract(policy.timeoutVote)),
+        wrapHotStuff(HotStuffTopic.newViewContract(policy.newView)),
       )
 
     private def wrapHotStuff(
@@ -1158,7 +1369,11 @@ final class HotStuffGossipLoopbackSuite extends CatsEffectSuite:
       append(
         chainId = artifact match
           case HotStuffGossipArtifact.ProposalArtifact(proposal) => proposal.window.chainId
-          case HotStuffGossipArtifact.VoteArtifact(vote)         => vote.window.chainId,
+          case HotStuffGossipArtifact.VoteArtifact(vote)         => vote.window.chainId
+          case HotStuffGossipArtifact.TimeoutVoteArtifact(timeoutVote) =>
+            timeoutVote.subject.window.chainId
+          case HotStuffGossipArtifact.NewViewArtifact(newView) =>
+            newView.window.chainId,
         topic = HotStuffGossipArtifact.topicOf(artifact),
         id = HotStuffGossipArtifact.stableIdOf(artifact),
         payload = MixedArtifact.Consensus(artifact),

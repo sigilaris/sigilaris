@@ -122,6 +122,20 @@ final class HotStuffRuntimeBootstrapSuite extends CatsEffectSuite:
          |      flushIntervalMs = 19
          |      deliveryPriority = 5
          |    }
+         |    timeout-vote {
+         |      exact-known-set-limit = 4100
+         |      request-by-id-limit = 333
+         |      max-batch-items = 23
+         |      flush-interval-ms = 29
+         |      delivery-priority = 6
+         |    }
+         |    newView {
+         |      exactKnownSetLimit = 2050
+         |      requestByIdLimit = 111
+         |      maxBatchItems = 13
+         |      flushIntervalMs = 31
+         |      deliveryPriority = 7
+         |    }
          |  }
          |}
          |""".stripMargin,
@@ -172,14 +186,30 @@ final class HotStuffRuntimeBootstrapSuite extends CatsEffectSuite:
         .contractFor(GossipTopic.consensusVote)
         .toOption
         .get
+      val timeoutVoteContract = bootstrap.consensus.topicContracts
+        .contractFor(GossipTopic.consensusTimeoutVote)
+        .toOption
+        .get
+      val newViewContract = bootstrap.consensus.topicContracts
+        .contractFor(GossipTopic.consensusNewView)
+        .toOption
+        .get
       assertEquals(bootstrap.consensus.gossipPolicy.proposal.maxBatchItems, 7)
       assertEquals(bootstrap.consensus.gossipPolicy.vote.deliveryPriority, 5)
+      assertEquals(bootstrap.consensus.gossipPolicy.timeoutVote.requestByIdLimit, 333)
+      assertEquals(bootstrap.consensus.gossipPolicy.newView.deliveryPriority, 7)
       assertEquals(proposalContract.exactKnownSetLimit, Some(300))
       assertEquals(proposalContract.requestByIdLimit, Some(96))
       assertEquals(proposalContract.deliveryPriority, 4)
       assertEquals(voteContract.exactKnownSetLimit, Some(4000))
       assertEquals(voteContract.requestByIdLimit, Some(321))
       assertEquals(voteContract.deliveryPriority, 5)
+      assertEquals(timeoutVoteContract.exactKnownSetLimit, Some(4100))
+      assertEquals(timeoutVoteContract.requestByIdLimit, Some(333))
+      assertEquals(timeoutVoteContract.deliveryPriority, 6)
+      assertEquals(newViewContract.exactKnownSetLimit, Some(2050))
+      assertEquals(newViewContract.requestByIdLimit, Some(111))
+      assertEquals(newViewContract.deliveryPriority, 7)
       assertEquals(
         outboundAllowed.map(_.acceptor),
         Right(PeerIdentity.unsafe("node-b")),

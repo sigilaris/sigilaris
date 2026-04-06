@@ -155,9 +155,11 @@ opaque type GossipTopic = String
 
 @SuppressWarnings(Array("org.wartremover.warts.Throw"))
 object GossipTopic:
-  val tx: GossipTopic                = "tx"
-  val consensusProposal: GossipTopic = "consensus.proposal"
-  val consensusVote: GossipTopic     = "consensus.vote"
+  val tx: GossipTopic                   = "tx"
+  val consensusProposal: GossipTopic    = "consensus.proposal"
+  val consensusVote: GossipTopic        = "consensus.vote"
+  val consensusTimeoutVote: GossipTopic = "consensus.timeout-vote"
+  val consensusNewView: GossipTopic     = "consensus.new-view"
 
   def parse(value: String): Either[String, GossipTopic] =
     GossipFieldValidation.validateTopic(value).map(_ => value)

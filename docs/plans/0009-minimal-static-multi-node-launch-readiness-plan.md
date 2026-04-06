@@ -1,7 +1,7 @@
 # 0009 - Minimal Static Multi-Node Launch Readiness Plan
 
 ## Status
-Active; Phase 0 Complete
+Active; Phase 0-1 Complete
 
 ## Created
 2026-04-07
@@ -250,11 +250,11 @@ Active; Phase 0 Complete
 - [x] companion protocol note 필요 여부 확정
 
 ### Phase 1: Pacemaker Runtime And Liveness Driver
-- [ ] timeout artifact runtime state / validation / accumulation 연결
-- [ ] pacemaker artifact dissemination path 연결
-- [ ] timer / backoff / jitter / leader activation 추가
-- [ ] bootstrap vote-hold 와 pacemaker interaction 고정
-- [ ] timeout recovery / wrong-window / equivocation regression test green
+- [x] timeout artifact runtime state / validation / accumulation 연결
+- [x] pacemaker artifact dissemination path 연결
+- [x] timer / backoff / jitter / leader activation 추가
+- [x] bootstrap vote-hold 와 pacemaker interaction 고정
+- [x] timeout recovery / wrong-window / equivocation regression test green
 
 ### Phase 2: Bootstrap Readiness Closure
 - [ ] placeholder `forwardCatchUpUnavailable` hold 제거

@@ -160,6 +160,21 @@ final class HotStuffRuntimeServiceSuite extends CatsEffectSuite:
           .contractFor(GossipTopic.consensusProposal)
           .isRight,
       )
+      assert(
+        runtime.topicContracts
+          .contractFor(GossipTopic.consensusVote)
+          .isRight,
+      )
+      assert(
+        runtime.topicContracts
+          .contractFor(GossipTopic.consensusTimeoutVote)
+          .isRight,
+      )
+      assert(
+        runtime.topicContracts
+          .contractFor(GossipTopic.consensusNewView)
+          .isRight,
+      )
       assertEquals(event.topic, GossipTopic.consensusProposal)
       assertEquals(
         published.map(_.topic),
@@ -342,6 +357,16 @@ final class HotStuffRuntimeServiceSuite extends CatsEffectSuite:
           .contractFor(GossipTopic.consensusVote)
           .isRight,
       )
+      assert(
+        bootstrap.consensus.topicContracts
+          .contractFor(GossipTopic.consensusTimeoutVote)
+          .isRight,
+      )
+      assert(
+        bootstrap.consensus.topicContracts
+          .contractFor(GossipTopic.consensusNewView)
+          .isRight,
+      )
       assert(bootstrap.consensus.inMemorySource.nonEmpty)
       assert(bootstrap.consensus.inMemorySink.nonEmpty)
       assert(bootstrap.consensus.bootstrapLifecycle.nonEmpty)
@@ -414,6 +439,10 @@ final class HotStuffRuntimeServiceSuite extends CatsEffectSuite:
           case HotStuffGossipArtifact.ProposalArtifact(proposal) =>
             proposal.window.chainId
           case HotStuffGossipArtifact.VoteArtifact(vote) => vote.window.chainId
+          case HotStuffGossipArtifact.TimeoutVoteArtifact(timeoutVote) =>
+            timeoutVote.subject.window.chainId
+          case HotStuffGossipArtifact.NewViewArtifact(newView) =>
+            newView.window.chainId
         val event =
           GossipEvent(
             chainId = chainId,

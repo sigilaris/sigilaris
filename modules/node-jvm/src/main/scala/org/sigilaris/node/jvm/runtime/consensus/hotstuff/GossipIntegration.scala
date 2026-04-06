@@ -27,6 +27,8 @@ import org.sigilaris.node.jvm.runtime.gossip.*
 enum HotStuffGossipArtifact:
   case ProposalArtifact(proposal: Proposal)
   case VoteArtifact(vote: Vote)
+  case TimeoutVoteArtifact(timeoutVote: TimeoutVote)
+  case NewViewArtifact(newView: NewView)
 
 object HotStuffGossipArtifact:
   def topicOf(
@@ -36,6 +38,9 @@ object HotStuffGossipArtifact:
       case HotStuffGossipArtifact.ProposalArtifact(_) =>
         GossipTopic.consensusProposal
       case HotStuffGossipArtifact.VoteArtifact(_) => GossipTopic.consensusVote
+      case HotStuffGossipArtifact.TimeoutVoteArtifact(_) =>
+        GossipTopic.consensusTimeoutVote
+      case HotStuffGossipArtifact.NewViewArtifact(_) => GossipTopic.consensusNewView
 
   def stableIdOf(
       artifact: HotStuffGossipArtifact,
@@ -47,6 +52,12 @@ object HotStuffGossipArtifact:
       case HotStuffGossipArtifact.VoteArtifact(vote) =>
         StableArtifactId.unsafeFromBytes:
           vote.voteId.toUInt256.bytes
+      case HotStuffGossipArtifact.TimeoutVoteArtifact(timeoutVote) =>
+        StableArtifactId.unsafeFromBytes:
+          timeoutVote.timeoutVoteId.toUInt256.bytes
+      case HotStuffGossipArtifact.NewViewArtifact(newView) =>
+        StableArtifactId.unsafeFromBytes:
+          newView.newViewId.toUInt256.bytes
 
   given ByteEncoder[HotStuffGossipArtifact] = artifact =>
     artifact match
@@ -54,6 +65,10 @@ object HotStuffGossipArtifact:
         ByteVector.fromByte(0x01.toByte) ++ proposal.toBytes
       case HotStuffGossipArtifact.VoteArtifact(vote) =>
         ByteVector.fromByte(0x02.toByte) ++ vote.toBytes
+      case HotStuffGossipArtifact.TimeoutVoteArtifact(timeoutVote) =>
+        ByteVector.fromByte(0x03.toByte) ++ timeoutVote.toBytes
+      case HotStuffGossipArtifact.NewViewArtifact(newView) =>
+        ByteVector.fromByte(0x04.toByte) ++ newView.toBytes
 
 final case class HotStuffTopicPolicy(
     exactKnownSetLimit: Int,
@@ -75,6 +90,8 @@ final case class HotStuffTopicPolicy(
 final case class HotStuffGossipPolicy(
     proposal: HotStuffTopicPolicy,
     vote: HotStuffTopicPolicy,
+    timeoutVote: HotStuffTopicPolicy,
+    newView: HotStuffTopicPolicy,
 )
 
 object HotStuffGossipPolicy:
@@ -96,10 +113,30 @@ object HotStuffGossipPolicy:
       deliveryPriority = 1,
     )
 
+  private val defaultTimeoutVotePolicy: HotStuffTopicPolicy =
+    HotStuffTopicPolicy(
+      exactKnownSetLimit = 2048,
+      requestByIdLimit = HotStuffPolicy.requestPolicy.maxVoteRequestIds,
+      maxBatchItems = 128,
+      flushInterval = Duration.ZERO,
+      deliveryPriority = 3,
+    )
+
+  private val defaultNewViewPolicy: HotStuffTopicPolicy =
+    HotStuffTopicPolicy(
+      exactKnownSetLimit = 1024,
+      requestByIdLimit = HotStuffPolicy.requestPolicy.maxVoteRequestIds,
+      maxBatchItems = 64,
+      flushInterval = Duration.ZERO,
+      deliveryPriority = 4,
+    )
+
   val default: HotStuffGossipPolicy =
     HotStuffGossipPolicy(
       proposal = defaultProposalPolicy,
       vote = defaultVotePolicy,
+      timeoutVote = defaultTimeoutVotePolicy,
+      newView = defaultNewViewPolicy,
     )
 
 object HotStuffWindowKey:
@@ -122,6 +159,19 @@ object HotStuffWindowKey:
       ).toBytes
 
 object HotStuffTopic:
+  private def scopeForWindow(
+      topic: GossipTopic,
+      chainId: ChainId,
+      window: HotStuffWindow,
+  ): Option[ExactKnownSetScope] =
+    Some(
+      ExactKnownSetScope(
+        chainId = chainId,
+        topic = topic,
+        windowKey = HotStuffWindowKey.fromWindow(window),
+      )
+    )
+
   def proposalContract(
       policy: HotStuffTopicPolicy,
   ): GossipTopicContract[HotStuffGossipArtifact] =
@@ -169,12 +219,7 @@ object HotStuffTopic:
       ]] =
         event.payload match
           case HotStuffGossipArtifact.ProposalArtifact(proposal) =>
-            Some:
-              ExactKnownSetScope(
-                chainId = proposal.window.chainId,
-                topic = topic,
-                windowKey = HotStuffWindowKey.fromWindow(proposal.window),
-              )
+            scopeForWindow(topic, proposal.window.chainId, proposal.window)
             .asRight[CanonicalRejection.ArtifactContractRejected]
           case _ =>
             CanonicalRejection
@@ -231,12 +276,124 @@ object HotStuffTopic:
       ]] =
         event.payload match
           case HotStuffGossipArtifact.VoteArtifact(vote) =>
-            Some:
-              ExactKnownSetScope(
-                chainId = vote.window.chainId,
-                topic = topic,
-                windowKey = HotStuffWindowKey.fromWindow(vote.window),
+            scopeForWindow(topic, vote.window.chainId, vote.window)
+            .asRight[CanonicalRejection.ArtifactContractRejected]
+          case _ =>
+            CanonicalRejection
+              .ArtifactContractRejected(
+                reason = "unexpectedTopicPayload",
+                detail = Some(topic.value),
               )
+              .asLeft[Option[ExactKnownSetScope]]
+
+  def timeoutVoteContract(
+      policy: HotStuffTopicPolicy,
+  ): GossipTopicContract[HotStuffGossipArtifact] =
+    new GossipTopicContract[HotStuffGossipArtifact]:
+      override val topic: GossipTopic = GossipTopic.consensusTimeoutVote
+      override val exactKnownSetLimit: Option[Int] = Some:
+        policy.exactKnownSetLimit
+      override val requestByIdLimit: Option[Int] = Some(policy.requestByIdLimit)
+      override val deliveryPriority: Int         = policy.deliveryPriority
+
+      override def producerQoS(
+          default: GossipProducerQoS,
+      ): GossipProducerQoS =
+        policy.producerQoS
+
+      override def validateArtifact(
+          event: GossipEvent[HotStuffGossipArtifact],
+      ): Either[CanonicalRejection.ArtifactContractRejected, Unit] =
+        event.payload match
+          case HotStuffGossipArtifact.TimeoutVoteArtifact(timeoutVote) =>
+            val expectedId = StableArtifactId.unsafeFromBytes:
+              timeoutVote.timeoutVoteId.toUInt256.bytes
+            Either.cond(
+              event.topic === topic &&
+                event.chainId === timeoutVote.subject.window.chainId &&
+                event.id === expectedId,
+              (),
+              CanonicalRejection.ArtifactContractRejected(
+                reason = "invalidConsensusTimeoutVoteEvent",
+                detail = Some(timeoutVote.timeoutVoteId.toHexLower),
+              ),
+            )
+          case _ =>
+            CanonicalRejection
+              .ArtifactContractRejected(
+                reason = "unexpectedTopicPayload",
+                detail = Some(topic.value),
+              )
+              .asLeft[Unit]
+
+      override def exactKnownScopeOf(
+          event: GossipEvent[HotStuffGossipArtifact],
+      ): Either[CanonicalRejection.ArtifactContractRejected, Option[
+        ExactKnownSetScope,
+      ]] =
+        event.payload match
+          case HotStuffGossipArtifact.TimeoutVoteArtifact(timeoutVote) =>
+            scopeForWindow(
+              topic,
+              timeoutVote.subject.window.chainId,
+              timeoutVote.subject.window,
+            ).asRight[CanonicalRejection.ArtifactContractRejected]
+          case _ =>
+            CanonicalRejection
+              .ArtifactContractRejected(
+                reason = "unexpectedTopicPayload",
+                detail = Some(topic.value),
+              )
+              .asLeft[Option[ExactKnownSetScope]]
+
+  def newViewContract(
+      policy: HotStuffTopicPolicy,
+  ): GossipTopicContract[HotStuffGossipArtifact] =
+    new GossipTopicContract[HotStuffGossipArtifact]:
+      override val topic: GossipTopic = GossipTopic.consensusNewView
+      override val exactKnownSetLimit: Option[Int] = Some:
+        policy.exactKnownSetLimit
+      override val requestByIdLimit: Option[Int] = Some(policy.requestByIdLimit)
+      override val deliveryPriority: Int         = policy.deliveryPriority
+
+      override def producerQoS(
+          default: GossipProducerQoS,
+      ): GossipProducerQoS =
+        policy.producerQoS
+
+      override def validateArtifact(
+          event: GossipEvent[HotStuffGossipArtifact],
+      ): Either[CanonicalRejection.ArtifactContractRejected, Unit] =
+        event.payload match
+          case HotStuffGossipArtifact.NewViewArtifact(newView) =>
+            val expectedId = StableArtifactId.unsafeFromBytes:
+              newView.newViewId.toUInt256.bytes
+            Either.cond(
+              event.topic === topic &&
+                event.chainId === newView.window.chainId &&
+                event.id === expectedId,
+              (),
+              CanonicalRejection.ArtifactContractRejected(
+                reason = "invalidConsensusNewViewEvent",
+                detail = Some(newView.newViewId.toHexLower),
+              ),
+            )
+          case _ =>
+            CanonicalRejection
+              .ArtifactContractRejected(
+                reason = "unexpectedTopicPayload",
+                detail = Some(topic.value),
+              )
+              .asLeft[Unit]
+
+      override def exactKnownScopeOf(
+          event: GossipEvent[HotStuffGossipArtifact],
+      ): Either[CanonicalRejection.ArtifactContractRejected, Option[
+        ExactKnownSetScope,
+      ]] =
+        event.payload match
+          case HotStuffGossipArtifact.NewViewArtifact(newView) =>
+            scopeForWindow(topic, newView.window.chainId, newView.window)
             .asRight[CanonicalRejection.ArtifactContractRejected]
           case _ =>
             CanonicalRejection
@@ -253,6 +410,8 @@ object HotStuffTopic:
     GossipTopicContractRegistry.of(
       proposalContract(policy.proposal),
       voteContract(policy.vote),
+      timeoutVoteContract(policy.timeoutVote),
+      newViewContract(policy.newView),
     )
 
 final case class InMemoryHotStuffSourceSnapshot(
@@ -263,6 +422,11 @@ final case class InMemoryHotStuffSinkSnapshot(
     proposals: Map[ProposalId, Proposal],
     votes: Map[VoteId, Vote],
     accumulator: VoteAccumulator,
+    timeoutVotes: Map[TimeoutVoteId, TimeoutVote],
+    timeoutAccumulator: TimeoutVoteAccumulator,
+    timeoutCertificates: Map[TimeoutVoteSubject, TimeoutCertificate],
+    newViews: Map[NewViewId, NewView],
+    newViewsBySenderWindow: Map[(HotStuffWindow, ValidatorId), NewView],
     qcs: Map[ProposalId, QuorumCertificate],
     finalization: Map[ChainId, FinalizationTrackerSnapshot],
     duplicates: Vector[GossipEvent[HotStuffGossipArtifact]],
@@ -274,6 +438,11 @@ object InMemoryHotStuffSinkSnapshot:
       proposals = Map.empty[ProposalId, Proposal],
       votes = Map.empty[VoteId, Vote],
       accumulator = VoteAccumulator.empty,
+      timeoutVotes = Map.empty[TimeoutVoteId, TimeoutVote],
+      timeoutAccumulator = TimeoutVoteAccumulator.empty,
+      timeoutCertificates = Map.empty[TimeoutVoteSubject, TimeoutCertificate],
+      newViews = Map.empty[NewViewId, NewView],
+      newViewsBySenderWindow = Map.empty[(HotStuffWindow, ValidatorId), NewView],
       qcs = Map.empty[ProposalId, QuorumCertificate],
       finalization = Map.empty[ChainId, FinalizationTrackerSnapshot],
       duplicates = Vector.empty[GossipEvent[HotStuffGossipArtifact]],
@@ -302,6 +471,10 @@ final class InMemoryHotStuffArtifactSource[F[_]: Sync] private (
           case HotStuffGossipArtifact.ProposalArtifact(proposal) =>
             proposal.window.chainId
           case HotStuffGossipArtifact.VoteArtifact(vote) => vote.window.chainId
+          case HotStuffGossipArtifact.TimeoutVoteArtifact(timeoutVote) =>
+            timeoutVote.subject.window.chainId
+          case HotStuffGossipArtifact.NewViewArtifact(newView) =>
+            newView.window.chainId
         val topic      = HotStuffGossipArtifact.topicOf(artifact)
         val chainTopic = ChainTopic(chainId, topic)
         val topicEvents = state.getOrElse(
@@ -424,6 +597,10 @@ final class InMemoryHotStuffArtifactSink[F[_]: Sync] private (
         applyProposalEvent(event, proposal)
       case HotStuffGossipArtifact.VoteArtifact(vote) =>
         applyVoteEvent(event, vote)
+      case HotStuffGossipArtifact.TimeoutVoteArtifact(timeoutVote) =>
+        applyTimeoutVoteEvent(event, timeoutVote)
+      case HotStuffGossipArtifact.NewViewArtifact(newView) =>
+        applyNewViewEvent(event, newView)
 
   private def applyProposalEvent(
       event: GossipEvent[HotStuffGossipArtifact],
@@ -551,6 +728,117 @@ final class InMemoryHotStuffArtifactSink[F[_]: Sync] private (
                   ).asRight[CanonicalRejection.ArtifactContractRejected]
       .flatMap(finalizeApply)
 
+  private def applyTimeoutVoteEvent(
+      event: GossipEvent[HotStuffGossipArtifact],
+      timeoutVote: TimeoutVote,
+  ): F[
+    Either[CanonicalRejection.ArtifactContractRejected, ArtifactApplyResult],
+  ] =
+    ref
+      .modify: snapshot =>
+        if snapshot.timeoutVotes.contains(timeoutVote.timeoutVoteId) then
+          snapshot.copy(duplicates = snapshot.duplicates :+ event) -> (
+            ArtifactApplyResult(applied = false, duplicate = true) -> Option
+              .empty[RelayEnvelope]
+          ).asRight[CanonicalRejection.ArtifactContractRejected]
+        else
+          HotStuffValidator.validateTimeoutVote(timeoutVote, validatorSet) match
+            case Left(error) =>
+              snapshot -> artifactRejected(error)
+                .asLeft[(ArtifactApplyResult, Option[RelayEnvelope])]
+            case Right(_) =>
+              snapshot.timeoutAccumulator.record(timeoutVote) match
+                case Left(error) =>
+                  snapshot -> artifactRejected(error)
+                    .asLeft[(ArtifactApplyResult, Option[RelayEnvelope])]
+                case Right((updatedAccumulator, _)) =>
+                  val updatedTimeoutVotes =
+                    snapshot.timeoutVotes.updated(
+                      timeoutVote.timeoutVoteId,
+                      timeoutVote,
+                    )
+                  val maybeTimeoutCertificate =
+                    assembleTimeoutCertificate(
+                      timeoutVote.subject,
+                      updatedAccumulator.votesFor(timeoutVote.subject),
+                    )
+                  val updatedTimeoutCertificates =
+                    maybeTimeoutCertificate.fold(snapshot.timeoutCertificates):
+                      timeoutCertificate =>
+                        snapshot.timeoutCertificates.updated(
+                          timeoutCertificate.subject,
+                          timeoutCertificate,
+                        )
+                  val relayArtifact =
+                    if relayPolicy.relayValidatedArtifacts then
+                      Some(event.payload -> event.ts)
+                    else Option.empty[RelayEnvelope]
+                  snapshot.copy(
+                    timeoutVotes = updatedTimeoutVotes,
+                    timeoutAccumulator = updatedAccumulator,
+                    timeoutCertificates = updatedTimeoutCertificates,
+                  ) -> (
+                    ArtifactApplyResult(
+                      applied = true,
+                      duplicate = false,
+                    ) -> relayArtifact
+                  ).asRight[CanonicalRejection.ArtifactContractRejected]
+      .flatMap(finalizeApply)
+
+  private def applyNewViewEvent(
+      event: GossipEvent[HotStuffGossipArtifact],
+      newView: NewView,
+  ): F[
+    Either[CanonicalRejection.ArtifactContractRejected, ArtifactApplyResult],
+  ] =
+    ref
+      .modify: snapshot =>
+        if snapshot.newViews.contains(newView.newViewId) then
+          snapshot.copy(duplicates = snapshot.duplicates :+ event) -> (
+            ArtifactApplyResult(applied = false, duplicate = true) -> Option
+              .empty[RelayEnvelope]
+          ).asRight[CanonicalRejection.ArtifactContractRejected]
+        else
+          val senderWindowKey = (newView.window, newView.sender)
+          snapshot.newViewsBySenderWindow.get(senderWindowKey) match
+            case Some(existing)
+                if existing.newViewId =!= newView.newViewId =>
+              snapshot -> CanonicalRejection
+                .ArtifactContractRejected(
+                  reason = "conflictingNewView",
+                  detail = Some(newView.sender.value),
+                )
+                .asLeft[(ArtifactApplyResult, Option[RelayEnvelope])]
+            case Some(_) =>
+              snapshot.copy(duplicates = snapshot.duplicates :+ event) -> (
+                ArtifactApplyResult(applied = false, duplicate = true) -> Option
+                  .empty[RelayEnvelope]
+              ).asRight[CanonicalRejection.ArtifactContractRejected]
+            case None =>
+              HotStuffValidator.validateNewView(newView, validatorSet) match
+                case Left(error) =>
+                  snapshot -> artifactRejected(error)
+                    .asLeft[(ArtifactApplyResult, Option[RelayEnvelope])]
+                case Right(_) =>
+                  val relayArtifact =
+                    if relayPolicy.relayValidatedArtifacts then
+                      Some(event.payload -> event.ts)
+                    else Option.empty[RelayEnvelope]
+                  snapshot.copy(
+                    newViews = snapshot.newViews.updated(newView.newViewId, newView),
+                    newViewsBySenderWindow =
+                      snapshot.newViewsBySenderWindow.updated(
+                        senderWindowKey,
+                        newView,
+                      ),
+                  ) -> (
+                    ArtifactApplyResult(
+                      applied = true,
+                      duplicate = false,
+                    ) -> relayArtifact
+                  ).asRight[CanonicalRejection.ArtifactContractRejected]
+      .flatMap(finalizeApply)
+
   private def finalizeApply(
       stored: Either[
         CanonicalRejection.ArtifactContractRejected,
@@ -582,6 +870,14 @@ final class InMemoryHotStuffArtifactSink[F[_]: Sync] private (
       votes: Vector[Vote],
   ): Option[QuorumCertificate] =
     QuorumCertificateAssembler
+      .assemble(subject, votes, validatorSet)
+      .toOption
+
+  private def assembleTimeoutCertificate(
+      subject: TimeoutVoteSubject,
+      votes: Vector[TimeoutVote],
+  ): Option[TimeoutCertificate] =
+    TimeoutCertificateAssembler
       .assemble(subject, votes, validatorSet)
       .toOption
 
@@ -791,6 +1087,21 @@ final case class HotStuffNodeRuntime[F[_]: Sync](
         case Right(timeoutVote) =>
           timeoutVote.asRight[HotStuffPolicyViolation].pure[F]
 
+  def emitTimeoutVote(
+      voter: ValidatorId,
+      window: HotStuffWindow,
+      highestKnownQc: QuorumCertificate,
+      ts: Instant,
+  ): F[Either[HotStuffPolicyViolation, GossipEvent[HotStuffGossipArtifact]]] =
+    signTimeoutVote(voter, window, highestKnownQc).flatMap:
+      case Left(rejection) =>
+        rejection.asLeft[GossipEvent[HotStuffGossipArtifact]].pure[F]
+      case Right(timeoutVote) =>
+        services.publisher.append(
+          HotStuffGossipArtifact.TimeoutVoteArtifact(timeoutVote),
+          ts,
+        ).map(_.asRight[HotStuffPolicyViolation])
+
   def signNewView(
       sender: ValidatorId,
       highestKnownQc: QuorumCertificate,
@@ -820,6 +1131,21 @@ final case class HotStuffNodeRuntime[F[_]: Sync](
           ).asLeft[NewView].pure[F]
         case Right(newView) =>
           newView.asRight[HotStuffPolicyViolation].pure[F]
+
+  def emitNewView(
+      sender: ValidatorId,
+      highestKnownQc: QuorumCertificate,
+      timeoutCertificate: TimeoutCertificate,
+      ts: Instant,
+  ): F[Either[HotStuffPolicyViolation, GossipEvent[HotStuffGossipArtifact]]] =
+    signNewView(sender, highestKnownQc, timeoutCertificate).flatMap:
+      case Left(rejection) =>
+        rejection.asLeft[GossipEvent[HotStuffGossipArtifact]].pure[F]
+      case Right(newView) =>
+        services.publisher.append(
+          HotStuffGossipArtifact.NewViewArtifact(newView),
+          ts,
+        ).map(_.asRight[HotStuffPolicyViolation])
 
   def emitProposalFromCandidates[
       TxRef: ByteEncoder: Hash,
