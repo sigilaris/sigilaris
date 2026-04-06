@@ -9,7 +9,7 @@ import munit.CatsEffectSuite
 
 import com.typesafe.config.ConfigFactory
 
-import org.sigilaris.core.crypto.CryptoOps
+import org.sigilaris.core.crypto.{CryptoOps, KeyPair}
 import org.sigilaris.core.datatype.UInt256
 import org.sigilaris.node.jvm.runtime.block.{
   BlockHeader,
@@ -29,6 +29,22 @@ final class HotStuffRuntimeBootstrapSuite extends CatsEffectSuite:
     validatorKeys.indices.toVector.map(index =>
       ValidatorId.unsafe(s"validator-${index + 1}"),
     )
+  private val historicalValidatorKeys = Vector.fill(4)(CryptoOps.generate())
+  private val historicalValidatorSet = ValidatorSet.unsafe(
+    historicalValidatorKeys.zipWithIndex.map: (keyPair, index) =>
+      ValidatorMember(
+        id = ValidatorId.unsafe(s"validator-hist-${index + 1}"),
+        publicKey = keyPair.publicKey,
+      ),
+  )
+  private val inventoryValidatorKeys = Vector.fill(4)(CryptoOps.generate())
+  private val inventoryValidatorSet = ValidatorSet.unsafe(
+    inventoryValidatorKeys.zipWithIndex.map: (keyPair, index) =>
+      ValidatorMember(
+        id = ValidatorId.unsafe(s"validator-inv-${index + 1}"),
+        publicKey = keyPair.publicKey,
+      ),
+  )
   private val subscription = SessionSubscription.unsafe(
     ChainTopic(chainId, GossipTopic.consensusProposal),
     ChainTopic(chainId, GossipTopic.consensusVote),
@@ -238,6 +254,172 @@ final class HotStuffRuntimeBootstrapSuite extends CatsEffectSuite:
       bootstrapEither.left.map(_.startsWith("unknown key holder validator:")),
       Left(true),
     )
+
+  test(
+    "config loader parses trusted checkpoint roots and historical validator-set inventory",
+  ):
+    val config = ConfigFactory.parseString(
+      s"""
+         |sigilaris.node.consensus.hotstuff {
+         |  local-role = "validator"
+         |  validators = [
+         |${validatorSetEntries(validatorSet, indent = "    ")}
+         |  ]
+         |  key-holders = [
+         |${keyHolderEntries(validatorIds, indent = "    ")}
+         |  ]
+         |  local-signers = [
+         |${localSignerEntries(validatorIds.take(3), validatorKeys.take(3), indent = "    ")}
+         |  ]
+         |  bootstrap-trust-root {
+         |    kind = "trusted-checkpoint"
+         |    chain-id = "${chainId.value}"
+         |    height = 9
+         |    view = 4
+         |    validator-set-hash = "${historicalValidatorSet.hash.toHexLower}"
+         |    validator-set = [
+         |${validatorSetEntries(historicalValidatorSet, indent = "      ")}
+         |    ]
+         |  }
+         |  historical-validator-sets = [
+         |    {
+         |      validator-set-hash = "${inventoryValidatorSet.hash.toHexLower}"
+         |      validators = [
+         |${validatorSetEntries(inventoryValidatorSet, indent = "        ")}
+         |      ]
+         |    }
+         |  ]
+         |}
+         |""".stripMargin,
+    )
+
+    val loaded = HotStuffBootstrapConfig.load(config)
+
+    assertEquals(
+      loaded.map(_.bootstrapTrustRoot.validatorSetHash),
+      Right(historicalValidatorSet.hash),
+    )
+    assertEquals(
+      loaded.map(_.validatorSetLookupInventory.map(_.hash).toSet),
+      Right(
+        Set(
+          historicalValidatorSet.hash,
+          inventoryValidatorSet.hash,
+          validatorSet.hash,
+        ),
+      ),
+    )
+
+  test(
+    "assembled bootstrap runtime wires trusted checkpoint roots and historical inventory into validator-set lookup",
+  ):
+    val config = ConfigFactory.parseString(
+      s"""
+         |sigilaris.node.gossip.peers {
+         |  local-node-identity = "node-a"
+         |  known-peers = ["node-b"]
+         |  direct-neighbors = ["node-b"]
+         |}
+         |
+         |sigilaris.node.consensus.hotstuff {
+         |  local-role = "validator"
+         |  validators = [
+         |${validatorSetEntries(validatorSet, indent = "    ")}
+         |  ]
+         |  key-holders = [
+         |${keyHolderEntries(validatorIds, indent = "    ")}
+         |  ]
+         |  local-signers = [
+         |${localSignerEntries(validatorIds.take(3), validatorKeys.take(3), indent = "    ")}
+         |  ]
+         |  bootstrap-trust-root {
+         |    kind = "trusted-checkpoint"
+         |    chain-id = "${chainId.value}"
+         |    height = 9
+         |    view = 4
+         |    validator-set = [
+         |${validatorSetEntries(historicalValidatorSet, indent = "      ")}
+         |    ]
+         |  }
+         |  historical-validator-sets = [
+         |    {
+         |      validators = [
+         |${validatorSetEntries(inventoryValidatorSet, indent = "        ")}
+         |      ]
+         |    }
+         |  ]
+         |}
+         |""".stripMargin,
+    )
+
+    for
+      clock           <- TestClock.create(startedAt)
+      bootstrapEither <- HotStuffRuntimeBootstrap.fromConfig[IO](config, clock)
+      bootstrap <- IO.fromEither(
+        bootstrapEither.leftMap(new IllegalArgumentException(_)),
+      )
+      rootLookup <- bootstrap.consensus.bootstrapServices.validatorSetLookup
+        .validatorSetFor(HotStuffWindow(chainId, 9L, 4L, historicalValidatorSet.hash))
+      historicalLookup <- bootstrap.consensus.bootstrapServices.validatorSetLookup
+        .validatorSetFor(HotStuffWindow(chainId, 6L, 2L, inventoryValidatorSet.hash))
+      currentLookup <- bootstrap.consensus.bootstrapServices.validatorSetLookup
+        .validatorSetFor(HotStuffWindow(chainId, 12L, 5L, validatorSet.hash))
+    yield
+      assert(
+        bootstrap.consensus.bootstrapTrustRoot.isInstanceOf[BootstrapTrustRoot.TrustedCheckpoint],
+      )
+      assertEquals(
+        bootstrap.consensus.bootstrapTrustRoot.validatorSetHash,
+        historicalValidatorSet.hash,
+      )
+      assertEquals(rootLookup.map(_.hash), Right(historicalValidatorSet.hash))
+      assertEquals(historicalLookup.map(_.hash), Right(inventoryValidatorSet.hash))
+      assertEquals(currentLookup.map(_.hash), Right(validatorSet.hash))
+
+  test(
+    "assembled bootstrap runtime rejects expired weak-subjectivity anchors",
+  ):
+    val config = ConfigFactory.parseString(
+      s"""
+         |sigilaris.node.gossip.peers {
+         |  local-node-identity = "node-a"
+         |  known-peers = ["node-b"]
+         |  direct-neighbors = ["node-b"]
+         |}
+         |
+         |sigilaris.node.consensus.hotstuff {
+         |  local-role = "validator"
+         |  validators = [
+         |${validatorSetEntries(validatorSet, indent = "    ")}
+         |  ]
+         |  key-holders = [
+         |${keyHolderEntries(validatorIds, indent = "    ")}
+         |  ]
+         |  local-signers = [
+         |${localSignerEntries(validatorIds.take(3), validatorKeys.take(3), indent = "    ")}
+         |  ]
+         |  bootstrap-trust-root {
+         |    kind = "weak-subjectivity-anchor"
+         |    chain-id = "${chainId.value}"
+         |    height = 9
+         |    view = 4
+         |    fresh-until = "2026-04-01T23:59:59Z"
+         |    validator-set = [
+         |${validatorSetEntries(historicalValidatorSet, indent = "      ")}
+         |    ]
+         |  }
+         |}
+         |""".stripMargin,
+    )
+
+    for
+      clock           <- TestClock.create(startedAt)
+      bootstrapEither <- HotStuffRuntimeBootstrap.fromConfig[IO](config, clock)
+    yield
+      assertEquals(
+        bootstrapEither.left.map(_.startsWith("weakSubjectivityAnchorExpired:")),
+        Left(true),
+      )
 
   test(
     "HotStuff bootstrap default runtime policy enables the same-window retry budget baseline",
@@ -924,3 +1106,35 @@ final class HotStuffRuntimeBootstrapSuite extends CatsEffectSuite:
       value: String,
   ): UInt256 =
     UInt256.fromHex(value).toOption.get
+
+  private def validatorSetEntries(
+      validatorSet: ValidatorSet,
+      indent: String,
+  ): String =
+    validatorSet.members
+      .map(member =>
+        s"""${indent}{ id = "${member.id.value}", public-key = "${member.publicKey.toBytes.toHex}" }""",
+      )
+      .mkString(",\n")
+
+  private def keyHolderEntries(
+      validatorIds: Vector[ValidatorId],
+      indent: String,
+  ): String =
+    validatorIds.zipWithIndex
+      .map: (validatorId, index) =>
+        val holder =
+          if index < 3 then "node-a"
+          else "node-b"
+        s"""${indent}{ validator-id = "${validatorId.value}", holder = "${holder}", status = "active" }"""
+      .mkString(",\n")
+
+  private def localSignerEntries(
+      validatorIds: Vector[ValidatorId],
+      keys: Vector[KeyPair],
+      indent: String,
+  ): String =
+    validatorIds.zip(keys)
+      .map: (validatorId, keyPair) =>
+        s"""${indent}{ validator-id = "${validatorId.value}", private-key = "${keyPair.privateKey.toHexLower}" }"""
+      .mkString(",\n")

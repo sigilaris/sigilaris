@@ -7,7 +7,7 @@ import cats.syntax.all.*
 import munit.CatsEffectSuite
 import scodec.bits.ByteVector
 
-import org.sigilaris.core.crypto.CryptoOps
+import org.sigilaris.core.crypto.{CryptoOps, KeyPair}
 import org.sigilaris.core.datatype.UInt256
 import org.sigilaris.node.jvm.runtime.block.{BlockHeader, BlockHeight, BlockTimestamp, BlockId, BodyRoot, StateRoot}
 import org.sigilaris.node.jvm.runtime.gossip.{ArtifactApplyResult, CanonicalRejection, ChainId, CursorToken, DirectionalSessionId, GossipClock, GossipEvent, GossipTopic, PeerIdentity}
@@ -25,8 +25,9 @@ final class HotStuffFinalizationSuite extends CatsEffectSuite:
         publicKey = keyPair.publicKey,
       )
   )
+  private val otherValidatorKeys = Vector.fill(4)(CryptoOps.generate())
   private val otherValidatorSet = ValidatorSet.unsafe(
-    Vector.fill(4)(CryptoOps.generate()).zipWithIndex.map: (keyPair, index) =>
+    otherValidatorKeys.zipWithIndex.map: (keyPair, index) =>
       ValidatorMember(
         id = ValidatorId.unsafe(s"validator-alt-${index + 1}"),
         publicKey = keyPair.publicKey,
@@ -158,6 +159,61 @@ final class HotStuffFinalizationSuite extends CatsEffectSuite:
       verified <- HotStuffFinalizedAnchorVerifier.verify(invalidSuggestion, lookup)
     yield
       assertEquals(verified.left.map(_.reason), Left("voteSignatureMismatch"))
+
+  test("finalized anchor verifier accepts a suggestion across a validator-set rotation boundary"):
+    val suggestion = rotatingThreeChain("22")
+    val checkpointRoot =
+      BootstrapTrustRoot
+        .trustedCheckpoint(
+          HotStuffWindow(chainId, 1L, 1L, validatorSet.hash),
+          validatorSet,
+        )
+        .toOption
+        .get
+    val lookup =
+      ValidatorSetLookup.fromInventory[IO](
+        checkpointRoot,
+        Vector(otherValidatorSet),
+      )
+
+    for
+      verified <- HotStuffFinalizedAnchorVerifier.verify(suggestion, lookup)
+    yield
+      assertEquals(
+        verified.map(_.proposal.proposalId),
+        Right(suggestion.proposal.proposalId),
+      )
+
+  test("finalized anchor verifier accepts reverse-direction rotation boundaries with the same lookup seam"):
+    val suggestion =
+      rotatingThreeChain(
+        seed = "23",
+        anchorValidatorSet = otherValidatorSet,
+        anchorKeys = otherValidatorKeys,
+        nextValidatorSet = validatorSet,
+        nextKeys = validatorKeys,
+      )
+    val checkpointRoot =
+      BootstrapTrustRoot
+        .trustedCheckpoint(
+          HotStuffWindow(chainId, 1L, 1L, otherValidatorSet.hash),
+          otherValidatorSet,
+        )
+        .toOption
+        .get
+    val lookup =
+      ValidatorSetLookup.fromInventory[IO](
+        checkpointRoot,
+        Vector(validatorSet),
+      )
+
+    for
+      verified <- HotStuffFinalizedAnchorVerifier.verify(suggestion, lookup)
+    yield
+      assertEquals(
+        verified.map(_.proposal.proposalId),
+        Right(suggestion.proposal.proposalId),
+      )
 
   test("selectHighestVerified surfaces a safety fault for conflicting same-height finalized anchors"):
     val suggestionA = threeChain("30", anchorProposerIndex = 0)
@@ -469,6 +525,19 @@ final class HotStuffFinalizationSuite extends CatsEffectSuite:
   private def qcFor(
       proposal: Proposal,
   ): QuorumCertificate =
+    qcForWithValidatorSet(proposal, validatorSet, validatorKeys)
+
+  private def quorumVotes(
+      window: HotStuffWindow,
+      proposalId: ProposalId,
+  ): Vector[Vote] =
+    quorumVotesWithValidatorSet(window, proposalId, validatorSet, validatorKeys)
+
+  private def qcForWithValidatorSet(
+      proposal: Proposal,
+      validatorSet: ValidatorSet,
+      keyPairs: Vector[KeyPair],
+  ): QuorumCertificate =
     QuorumCertificateAssembler
       .assemble(
         subject = QuorumCertificateSubject(
@@ -476,15 +545,23 @@ final class HotStuffFinalizationSuite extends CatsEffectSuite:
           proposalId = proposal.proposalId,
           blockId = proposal.targetBlockId,
         ),
-        votes = quorumVotes(proposal.window, proposal.proposalId),
+        votes =
+          quorumVotesWithValidatorSet(
+            proposal.window,
+            proposal.proposalId,
+            validatorSet,
+            keyPairs,
+          ),
         validatorSet = validatorSet,
       )
       .toOption
       .get
 
-  private def quorumVotes(
+  private def quorumVotesWithValidatorSet(
       window: HotStuffWindow,
       proposalId: ProposalId,
+      validatorSet: ValidatorSet,
+      keyPairs: Vector[KeyPair],
   ): Vector[Vote] =
     Vector(0, 1, 2).map: index =>
       Vote
@@ -494,10 +571,134 @@ final class HotStuffFinalizationSuite extends CatsEffectSuite:
             voter = validatorSet.members(index).id,
             targetProposalId = proposalId,
           ),
-          validatorKeys(index),
+          keyPairs(index),
         )
         .toOption
         .get
+
+  private def rotatingThreeChain(
+      seed: String,
+      chain: ChainId = chainId,
+      anchorHeightStart: Long = 1L,
+      anchorValidatorSet: ValidatorSet = validatorSet,
+      anchorKeys: Vector[KeyPair] = validatorKeys,
+      nextValidatorSet: ValidatorSet = otherValidatorSet,
+      nextKeys: Vector[KeyPair] = otherValidatorKeys,
+  ): FinalizedAnchorSuggestion =
+    val justifyHeight = anchorHeightStart - 1L
+    val bootstrapSubject = QuorumCertificateSubject(
+      window = HotStuffWindow(
+        chain,
+        justifyHeight,
+        justifyHeight,
+        anchorValidatorSet.hash,
+      ),
+      proposalId = ProposalId(hex(seed + "41")),
+      blockId = BlockId(hex(seed + "42")),
+    )
+    val bootstrapQc =
+      QuorumCertificateAssembler
+        .assemble(
+          bootstrapSubject,
+          quorumVotesWithValidatorSet(
+            bootstrapSubject.window,
+            bootstrapSubject.proposalId,
+            anchorValidatorSet,
+            anchorKeys,
+          ),
+          anchorValidatorSet,
+        )
+        .toOption
+        .get
+    val anchorBlock =
+      block(
+        parent = Some(bootstrapSubject.blockId),
+        height = anchorHeightStart,
+        rootHex = seed + "43",
+      )
+    val anchor =
+      Proposal
+        .sign(
+          UnsignedProposal(
+            window = HotStuffWindow(
+              chain,
+              anchorHeightStart,
+              anchorHeightStart,
+              anchorValidatorSet.hash,
+            ),
+            proposer = anchorValidatorSet.members(0).id,
+            targetBlockId = BlockHeader.computeId(anchorBlock),
+            block = anchorBlock,
+            txSet = ProposalTxSet.empty,
+            justify = bootstrapQc,
+          ),
+          anchorKeys(0),
+        )
+        .toOption
+        .get
+    val childQc = qcForWithValidatorSet(anchor, anchorValidatorSet, anchorKeys)
+    val childBlock =
+      block(
+        parent = Some(anchor.targetBlockId),
+        height = anchorHeightStart + 1L,
+        rootHex = seed + "44",
+      )
+    val child =
+      Proposal
+        .sign(
+          UnsignedProposal(
+            window = HotStuffWindow(
+              chain,
+              anchorHeightStart + 1L,
+              anchorHeightStart + 1L,
+              nextValidatorSet.hash,
+            ),
+            proposer = nextValidatorSet.members(0).id,
+            targetBlockId = BlockHeader.computeId(childBlock),
+            block = childBlock,
+            txSet = ProposalTxSet.empty,
+            justify = childQc,
+          ),
+          nextKeys(0),
+        )
+        .toOption
+        .get
+    val grandchildQc =
+      qcForWithValidatorSet(child, nextValidatorSet, nextKeys)
+    val grandchildBlock =
+      block(
+        parent = Some(child.targetBlockId),
+        height = anchorHeightStart + 2L,
+        rootHex = seed + "45",
+      )
+    val grandchild =
+      Proposal
+        .sign(
+          UnsignedProposal(
+            window = HotStuffWindow(
+              chain,
+              anchorHeightStart + 2L,
+              anchorHeightStart + 2L,
+              nextValidatorSet.hash,
+            ),
+            proposer = nextValidatorSet.members(1).id,
+            targetBlockId = BlockHeader.computeId(grandchildBlock),
+            block = grandchildBlock,
+            txSet = ProposalTxSet.empty,
+            justify = grandchildQc,
+          ),
+          nextKeys(1),
+        )
+        .toOption
+        .get
+
+    FinalizedAnchorSuggestion(
+      proposal = anchor,
+      finalizedProof = FinalizedProof(
+        child = child,
+        grandchild = grandchild,
+      ),
+    )
 
   private def hex(
       value: String,

@@ -46,6 +46,44 @@ final class HotStuffBootstrapContractsSuite extends CatsEffectSuite:
       assertEquals(matching.map(_.hash), Right(validatorSet.hash))
       assertEquals(missing.left.map(_.reason), Left("validatorSetUnavailable"))
 
+  test("inventory lookup resolves trusted-checkpoint and configured historical validator sets by hash"):
+    val checkpointRoot =
+      BootstrapTrustRoot
+        .trustedCheckpoint(
+          HotStuffWindow(chainId, 10L, 3L, otherValidatorSet.hash),
+          otherValidatorSet,
+        )
+        .toOption
+        .get
+    val lookup =
+      ValidatorSetLookup.fromInventory[IO](
+        checkpointRoot,
+        Vector(validatorSet),
+      )
+
+    for
+      checkpointSet <- lookup.validatorSetFor(
+        HotStuffWindow(chainId, 10L, 3L, otherValidatorSet.hash),
+      )
+      currentSet <- lookup.validatorSetFor(
+        HotStuffWindow(chainId, 11L, 4L, validatorSet.hash),
+      )
+    yield
+      assertEquals(checkpointSet.map(_.hash), Right(otherValidatorSet.hash))
+      assertEquals(currentSet.map(_.hash), Right(validatorSet.hash))
+
+  test("checkpoint trust-root construction rejects validator-set hash mismatch"):
+    val mismatched =
+      BootstrapTrustRoot.trustedCheckpoint(
+        HotStuffWindow(chainId, 7L, 2L, validatorSet.hash),
+        otherValidatorSet,
+      )
+
+    assertEquals(
+      mismatched.left.map(_.startsWith("trustedCheckpoint validatorSetHash mismatch")),
+      Left(true),
+    )
+
   test("static bootstrap services expose empty session-bound skeleton implementations"):
     val services = HotStuffBootstrapServices.static[IO](validatorSet)
 
