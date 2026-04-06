@@ -731,7 +731,7 @@ final case class HotStuffNodeRuntime[F[_]: Sync](
       justify: QuorumCertificate,
       ts: Instant,
   ): F[Either[HotStuffPolicyViolation, GossipEvent[HotStuffGossipArtifact]]] =
-    emitSigned(proposer): keyPair =>
+    withLocalSigner(proposer, window.chainId): keyPair =>
       Proposal.sign(
         UnsignedProposal(
           window = window,
@@ -744,15 +744,73 @@ final case class HotStuffNodeRuntime[F[_]: Sync](
         keyPair,
       ) match
         case Left(error) =>
-          Sync[F].raiseError[GossipEvent[HotStuffGossipArtifact]]:
-            new IllegalStateException(
+          HotStuffPolicyViolation(
+            reason = "proposalSigningFailed",
+            detail = Some(
               ss"${error.reason}:${error.detail.getOrElse("")}",
             )
+          ).asLeft[GossipEvent[HotStuffGossipArtifact]].pure[F]
         case Right(proposal) =>
           services.publisher.append(
             HotStuffGossipArtifact.ProposalArtifact(proposal),
             ts,
-          )
+          ).map(_.asRight[HotStuffPolicyViolation])
+
+  def signTimeoutVote(
+      voter: ValidatorId,
+      window: HotStuffWindow,
+      highestKnownQc: QuorumCertificate,
+  ): F[Either[HotStuffPolicyViolation, TimeoutVote]] =
+    withLocalSigner(voter, window.chainId): keyPair =>
+      TimeoutVote.sign(
+        UnsignedTimeoutVote(
+          subject = TimeoutVoteSubject(
+            window = window,
+            highestKnownQc = highestKnownQc.subject,
+          ),
+          voter = voter,
+        ),
+        keyPair,
+      ) match
+        case Left(error) =>
+          HotStuffPolicyViolation(
+            reason = "timeoutVoteSigningFailed",
+            detail = Some(
+              ss"${error.reason}:${error.detail.getOrElse("")}",
+            )
+          ).asLeft[TimeoutVote].pure[F]
+        case Right(timeoutVote) =>
+          timeoutVote.asRight[HotStuffPolicyViolation].pure[F]
+
+  def signNewView(
+      sender: ValidatorId,
+      highestKnownQc: QuorumCertificate,
+      timeoutCertificate: TimeoutCertificate,
+  ): F[Either[HotStuffPolicyViolation, NewView]] =
+    val nextWindow =
+      HotStuffPacemaker.nextWindowAfter(timeoutCertificate.subject.window)
+    val nextLeader =
+      HotStuffPacemaker.deterministicLeader(nextWindow, validatorSet)
+    withLocalSigner(sender, nextWindow.chainId): keyPair =>
+      NewView.sign(
+        UnsignedNewView(
+          window = nextWindow,
+          sender = sender,
+          nextLeader = nextLeader,
+          highestKnownQc = highestKnownQc,
+          timeoutCertificate = timeoutCertificate,
+        ),
+        keyPair,
+      ) match
+        case Left(error) =>
+          HotStuffPolicyViolation(
+            reason = "newViewSigningFailed",
+            detail = Some(
+              ss"${error.reason}:${error.detail.getOrElse("")}",
+            )
+          ).asLeft[NewView].pure[F]
+        case Right(newView) =>
+          newView.asRight[HotStuffPolicyViolation].pure[F]
 
   def emitProposalFromCandidates[
       TxRef: ByteEncoder: Hash,
@@ -841,37 +899,27 @@ final case class HotStuffNodeRuntime[F[_]: Sync](
       proposal: Proposal,
       ts: Instant,
   ): F[Either[HotStuffPolicyViolation, GossipEvent[HotStuffGossipArtifact]]] =
-    resolveSigner(voter) match
-      case Left(rejection) =>
-        rejection.asLeft[GossipEvent[HotStuffGossipArtifact]].pure[F]
-      case Right(keyPair) =>
-        ensureVoteReadiness(proposal.window.chainId).flatMap:
-          case Left(rejection) =>
-            rejection.asLeft[GossipEvent[HotStuffGossipArtifact]].pure[F]
-          case Right(_) =>
-            Vote.sign(
-              UnsignedVote(
-                window = proposal.window,
-                voter = voter,
-                targetProposalId = proposal.proposalId,
-              ),
-              keyPair,
-            ) match
-              case Left(error) =>
-                Sync[F].raiseError[
-                  Either[
-                    HotStuffPolicyViolation,
-                    GossipEvent[HotStuffGossipArtifact],
-                  ],
-                ]:
-                  new IllegalStateException(
-                    ss"${error.reason}:${error.detail.getOrElse("")}",
-                  )
-              case Right(vote) =>
-                services.publisher.append(
-                  HotStuffGossipArtifact.VoteArtifact(vote),
-                  ts,
-                ).map(_.asRight[HotStuffPolicyViolation])
+    withLocalSigner(voter, proposal.window.chainId): keyPair =>
+      Vote.sign(
+        UnsignedVote(
+          window = proposal.window,
+          voter = voter,
+          targetProposalId = proposal.proposalId,
+        ),
+        keyPair,
+      ) match
+        case Left(error) =>
+          HotStuffPolicyViolation(
+            reason = "voteSigningFailed",
+            detail = Some(
+              ss"${error.reason}:${error.detail.getOrElse("")}",
+            )
+          ).asLeft[GossipEvent[HotStuffGossipArtifact]].pure[F]
+        case Right(vote) =>
+          services.publisher.append(
+            HotStuffGossipArtifact.VoteArtifact(vote),
+            ts,
+          ).map(_.asRight[HotStuffPolicyViolation])
 
   def emitVoteForProposalView[
       TxRef: ByteEncoder: Hash,
@@ -901,16 +949,21 @@ final case class HotStuffNodeRuntime[F[_]: Sync](
           emitVote(voter, proposal, ts)
             .map(_.leftMap(HotStuffRuntimeRejection.Policy.apply))
 
-  private def emitSigned(
+  private def withLocalSigner[A](
       validatorId: ValidatorId,
+      chainId: ChainId,
   )(
-      f: KeyPair => F[GossipEvent[HotStuffGossipArtifact]],
-  ): F[Either[HotStuffPolicyViolation, GossipEvent[HotStuffGossipArtifact]]] =
+      f: KeyPair => F[Either[HotStuffPolicyViolation, A]],
+  ): F[Either[HotStuffPolicyViolation, A]] =
     resolveSigner(validatorId) match
       case Left(rejection) =>
-        rejection.asLeft[GossipEvent[HotStuffGossipArtifact]].pure[F]
+        rejection.asLeft[A].pure[F]
       case Right(keyPair) =>
-        f(keyPair).map(_.asRight[HotStuffPolicyViolation])
+        ensureQuorumParticipationReadiness(chainId).flatMap:
+          case Left(rejection) =>
+            rejection.asLeft[A].pure[F]
+          case Right(_) =>
+            f(keyPair)
 
   private def resolveSigner(
       validatorId: ValidatorId,
@@ -924,7 +977,7 @@ final case class HotStuffNodeRuntime[F[_]: Sync](
           ),
         )
 
-  private def ensureVoteReadiness(
+  private def ensureQuorumParticipationReadiness(
       chainId: ChainId,
   ): F[Either[HotStuffPolicyViolation, Unit]] =
     bootstrapLifecycle match
