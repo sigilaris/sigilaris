@@ -70,12 +70,50 @@ final class TxGossipArmeriaAdapterSuite extends CatsEffectSuite:
             livenessTimeoutMs = None,
             maxControlRetryIntervalMs = None,
           ).asJson.noSpaces,
+          authenticatedPeer = Some("node-z"),
         )
         rejection <- IO.fromEither(decode[RejectionWire](response.body).leftMap(new IllegalStateException(_)))
       yield
         assertEquals(response.status, 400)
         assertEquals(rejection.rejectionClass, "handshakeRejected")
         assertEquals(rejection.reason, "nonNeighborPeer")
+
+  test("session-open endpoint requires an authenticated peer header bound to the initiator"):
+    Harness.resource(baseInstant).use: harness =>
+      val proposal =
+        SessionOpenProposalWire(
+          sessionId = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+          peerCorrelationId = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
+          initiator = "node-b",
+          acceptor = "node-a",
+          subscriptions = Vector(ChainTopicWire(chainId.value, GossipTopic.tx.value)),
+          heartbeatIntervalMs = None,
+          livenessTimeoutMs = None,
+          maxControlRetryIntervalMs = None,
+        ).asJson.noSpaces
+
+      for
+        missingResponse <- harness.postJson(
+          "/gossip/session/open",
+          proposal,
+          authenticatedPeer = None,
+        )
+        missingRejection <- IO.fromEither(
+          decode[RejectionWire](missingResponse.body).leftMap(new IllegalStateException(_))
+        )
+        mismatchResponse <- harness.postJson(
+          "/gossip/session/open",
+          proposal.replace("\"initiator\":\"node-b\"", "\"initiator\":\"node-c\""),
+          authenticatedPeer = Some("node-b"),
+        )
+        mismatchRejection <- IO.fromEither(
+          decode[RejectionWire](mismatchResponse.body).leftMap(new IllegalStateException(_))
+        )
+      yield
+        assertEquals(missingResponse.status, 400)
+        assertEquals(missingRejection.reason, "missingAuthenticatedPeer")
+        assertEquals(mismatchResponse.status, 400)
+        assertEquals(mismatchRejection.reason, "authenticatedPeerMismatch")
 
   test("session-open endpoint rejects empty subscriptions"):
     Harness.resource(baseInstant).use: harness =>
@@ -199,6 +237,40 @@ final class TxGossipArmeriaAdapterSuite extends CatsEffectSuite:
         assertEquals(disconnectResponse.status, 400)
         assertEquals(disconnectRejection.rejectionClass, "handshakeRejected")
         assertEquals(disconnectRejection.reason, "invalidSessionId")
+
+  test("event, control, and disconnect endpoints require the authenticated session peer"):
+    Harness.resource(baseInstant).use: harness =>
+      for
+        sessionId <- harness.openOutboundLocally
+        eventResponse <- harness.postJson(
+          s"/gossip/events/${sessionId.value}",
+          EventRequestWire("poll").asJson.noSpaces,
+          authenticatedPeer = None,
+        )
+        eventLines <- decodeBinaryEvents[TestTx](eventResponse.bodyBytes)
+        controlResponse <- harness.postJson(
+          s"/gossip/control/${sessionId.value}",
+          ControlRequestWire("controlKeepAlive").asJson.noSpaces,
+          authenticatedPeer = Some("node-c"),
+        )
+        controlRejection <- IO.fromEither(
+          decode[RejectionWire](controlResponse.body).leftMap(new IllegalStateException(_))
+        )
+        disconnectResponse <- harness.postNoBody(
+          s"/gossip/session/${sessionId.value}/disconnect",
+          authenticatedPeer = Some("node-c"),
+        )
+        disconnectRejection <- IO.fromEither(
+          decode[RejectionWire](disconnectResponse.body).leftMap(new IllegalStateException(_))
+        )
+      yield
+        assertEquals(eventResponse.status, 200)
+        assertEquals(eventLines.map(_.kind), Vector("rejection"))
+        assertEquals(eventLines.flatMap(_.rejection).map(_.reason), Vector("missingAuthenticatedPeer"))
+        assertEquals(controlResponse.status, 400)
+        assertEquals(controlRejection.reason, "authenticatedPeerMismatch")
+        assertEquals(disconnectResponse.status, 400)
+        assertEquals(disconnectRejection.reason, "authenticatedPeerMismatch")
 
   test("event endpoint returns HTTP 200 with an in-stream rejection for malformed request bodies"):
     Harness.resource(baseInstant).use: harness =>
@@ -787,7 +859,11 @@ final class TxGossipArmeriaAdapterSuite extends CatsEffectSuite:
     for
       proposalEither <- from.runtime.startOutbound(PeerIdentity.unsafe(to.localNodeId), subscription)
       proposal <- IO.fromEither(proposalEither.leftMap(rejection => new IllegalStateException(rejection.reason)))
-      response <- to.postJson("/gossip/session/open", toProposalWire(proposal).asJson.noSpaces)
+      response <- to.postJson(
+        "/gossip/session/open",
+        toProposalWire(proposal).asJson.noSpaces,
+        authenticatedPeer = Some(from.localNodeId),
+      )
       ackWire <- IO.fromEither(decode[SessionOpenAckWire](response.body).leftMap(new IllegalStateException(_)))
       ack <- IO.fromEither(toAck(ackWire).leftMap(new IllegalArgumentException(_)))
       applyResult <- from.runtime.applyHandshakeAck(ack)
@@ -815,14 +891,25 @@ final class TxGossipArmeriaAdapterSuite extends CatsEffectSuite:
       clock: TestClock,
       baseUri: String,
   ):
-    def postJson(path: String, body: String): IO[Response] =
+    def postJson(
+        path: String,
+        body: String,
+        authenticatedPeer: Option[String] = Some(remoteNodeId),
+    ): IO[Response] =
       IO.blocking:
         val client = HttpClient.newHttpClient()
-        val request = HttpRequest
+        val builder = HttpRequest
           .newBuilder(URI.create(s"$baseUri$path"))
           .header("content-type", "application/json")
-          .POST(HttpRequest.BodyPublishers.ofString(body))
-          .build()
+        authenticatedPeer.foreach: value =>
+          builder.header(
+            GossipTransportAuth.AuthenticatedPeerHeaderName,
+            value,
+          )
+        val request =
+          builder
+            .POST(HttpRequest.BodyPublishers.ofString(body))
+            .build()
         val response = client.send(request, HttpResponse.BodyHandlers.ofByteArray())
         Response(
           response.statusCode(),
@@ -830,13 +917,23 @@ final class TxGossipArmeriaAdapterSuite extends CatsEffectSuite:
           response.headers().firstValue("content-type").toScala,
         )
 
-    def postNoBody(path: String): IO[Response] =
+    def postNoBody(
+        path: String,
+        authenticatedPeer: Option[String] = Some(remoteNodeId),
+    ): IO[Response] =
       IO.blocking:
         val client = HttpClient.newHttpClient()
-        val request = HttpRequest
+        val builder = HttpRequest
           .newBuilder(URI.create(s"$baseUri$path"))
-          .POST(HttpRequest.BodyPublishers.noBody())
-          .build()
+        authenticatedPeer.foreach: value =>
+          builder.header(
+            GossipTransportAuth.AuthenticatedPeerHeaderName,
+            value,
+          )
+        val request =
+          builder
+            .POST(HttpRequest.BodyPublishers.noBody())
+            .build()
         val response = client.send(request, HttpResponse.BodyHandlers.ofByteArray())
         Response(
           response.statusCode(),

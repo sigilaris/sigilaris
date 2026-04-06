@@ -164,7 +164,10 @@ final class HotStuffBootstrapArmeriaAdapterSuite extends CatsEffectSuite:
           )
         )
         session <- openOutboundViaHttp(client, server)
-        _ <- server.postNoBody(s"/gossip/session/${session.sessionId.value}/disconnect")
+        _ <- server.postNoBody(
+          s"/gossip/session/${session.sessionId.value}/disconnect",
+          authenticatedPeer = Some(client.localNodeId),
+        )
         result <- bootstrapTransport(server)
           .finalizedAnchorSuggestions
           .bestFinalized(session, chainId)
@@ -174,6 +177,52 @@ final class HotStuffBootstrapArmeriaAdapterSuite extends CatsEffectSuite:
             assertEquals(rejection.reason, "sessionNotOpen")
           case other =>
             fail("expected handshake rejection but saw " + other.toString)
+
+  test("bootstrap endpoints require a session-bound capability header"):
+    (
+      for
+        client <- Harness.resource(
+          startedAt,
+          localNodeId = "node-a",
+          knownPeers = List("node-b"),
+          directNeighbors = List("node-b"),
+        )
+        server <- Harness.resource(
+          startedAt,
+          localNodeId = "node-b",
+          knownPeers = List("node-a"),
+          directNeighbors = List("node-a"),
+        )
+      yield (client, server)
+    ).use: (client, server) =>
+      for
+        session <- openOutboundViaHttp(client, server)
+        missingResponse <- server.postNoBody(
+          s"/gossip/bootstrap/finalized/${session.sessionId.value}/${chainId.value}",
+          authenticatedPeer = Some(client.localNodeId),
+          bootstrapCapability = None,
+        )
+        missingRejection <- IO.fromEither(
+          decode[RejectionWire](missingResponse.body).leftMap(new IllegalStateException(_))
+        )
+        mismatchedResponse <- server.postNoBody(
+          s"/gossip/bootstrap/finalized/${session.sessionId.value}/${chainId.value}",
+          authenticatedPeer = Some(client.localNodeId),
+          bootstrapCapability = Some(
+            GossipTransportAuth.issueBootstrapCapability(
+              peer = PeerIdentity.unsafe("node-c"),
+              sessionId = session.sessionId,
+            )
+          ),
+        )
+        mismatchedRejection <- IO.fromEither(
+          decode[RejectionWire](mismatchedResponse.body).leftMap(new IllegalStateException(_))
+        )
+      yield
+        assertEquals(missingResponse.status, 400)
+        assertEquals(missingRejection.reason, "missingBootstrapCapability")
+        assertEquals(mismatchedResponse.status, 400)
+        assertEquals(mismatchedRejection.reason, "bootstrapCapabilityMismatch")
 
   test("assembled runtime bootstrap can sync a snapshot from remote HTTP bootstrap peers"):
     (
@@ -394,6 +443,7 @@ final class HotStuffBootstrapArmeriaAdapterSuite extends CatsEffectSuite:
             .parse("aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa")
             .toOption
             .get,
+        authenticatedPeer = PeerIdentity.unsafe("node-a"),
       )
 
     for
@@ -410,6 +460,21 @@ final class HotStuffBootstrapArmeriaAdapterSuite extends CatsEffectSuite:
       assertEquals(
         httpClient.recordedTimeouts,
         Vector(Some(Duration.ofMillis(250L))),
+      )
+      assertEquals(
+        httpClient.recordedHeaderValues(GossipTransportAuth.AuthenticatedPeerHeaderName),
+        Vector(Some("node-a")),
+      )
+      assertEquals(
+        httpClient.recordedHeaderValues(GossipTransportAuth.BootstrapCapabilityHeaderName),
+        Vector(
+          Some(
+            GossipTransportAuth.issueBootstrapCapability(
+              peer = PeerIdentity.unsafe("node-a"),
+              sessionId = session.sessionId,
+            )
+          )
+        ),
       )
 
   test("bootstrap http transport bounds concurrent outbound requests"):
@@ -487,6 +552,7 @@ final class HotStuffBootstrapArmeriaAdapterSuite extends CatsEffectSuite:
       response <- to.postJson(
         "/gossip/session/open",
         toProposalWire(proposal).asJson.noSpaces,
+        authenticatedPeer = Some(proposal.initiator.value),
       )
       ackWire <- IO.fromEither(
         decode[SessionOpenAckWire](response.body).leftMap(new IllegalStateException(_))
@@ -498,6 +564,7 @@ final class HotStuffBootstrapArmeriaAdapterSuite extends CatsEffectSuite:
       BootstrapSessionBinding(
         peer = PeerIdentity.unsafe(to.localNodeId),
         sessionId = proposal.sessionId,
+        authenticatedPeer = proposal.initiator,
       )
 
   private def openOutboundViaHttp(
@@ -515,6 +582,7 @@ final class HotStuffBootstrapArmeriaAdapterSuite extends CatsEffectSuite:
       response <- to.postJson(
         "/gossip/session/open",
         toProposalWire(proposal).asJson.noSpaces,
+        authenticatedPeer = Some(proposal.initiator.value),
       )
       ackWire <- IO.fromEither(
         decode[SessionOpenAckWire](response.body).leftMap(new IllegalStateException(_))
@@ -526,6 +594,7 @@ final class HotStuffBootstrapArmeriaAdapterSuite extends CatsEffectSuite:
       BootstrapSessionBinding(
         peer = PeerIdentity.unsafe(to.localNodeId),
         sessionId = proposal.sessionId,
+        authenticatedPeer = proposal.initiator,
       )
 
   private def toProposalWire(
@@ -861,24 +930,57 @@ final class HotStuffBootstrapArmeriaAdapterSuite extends CatsEffectSuite:
       nodeStore: SnapshotNodeStore[IO],
       baseUri: String,
   ):
-    def postJson(path: String, body: String): IO[Response] =
+    def postJson(
+        path: String,
+        body: String,
+        authenticatedPeer: Option[String] = None,
+        bootstrapCapability: Option[String] = None,
+    ): IO[Response] =
       IO.blocking:
         val client = HttpClient.newHttpClient()
-        val request = HttpRequest
+        val builder = HttpRequest
           .newBuilder(URI.create(s"$baseUri$path"))
           .header("content-type", "application/json")
-          .POST(HttpRequest.BodyPublishers.ofString(body))
-          .build()
+        authenticatedPeer.foreach: value =>
+          builder.header(
+            GossipTransportAuth.AuthenticatedPeerHeaderName,
+            value,
+          )
+        bootstrapCapability.foreach: value =>
+          builder.header(
+            GossipTransportAuth.BootstrapCapabilityHeaderName,
+            value,
+          )
+        val request =
+          builder
+            .POST(HttpRequest.BodyPublishers.ofString(body))
+            .build()
         val response = client.send(request, HttpResponse.BodyHandlers.ofString())
         Response(response.statusCode(), response.body())
 
-    def postNoBody(path: String): IO[Response] =
+    def postNoBody(
+        path: String,
+        authenticatedPeer: Option[String] = None,
+        bootstrapCapability: Option[String] = None,
+    ): IO[Response] =
       IO.blocking:
         val client = HttpClient.newHttpClient()
-        val request = HttpRequest
+        val builder = HttpRequest
           .newBuilder(URI.create(s"$baseUri$path"))
-          .POST(HttpRequest.BodyPublishers.noBody())
-          .build()
+        authenticatedPeer.foreach: value =>
+          builder.header(
+            GossipTransportAuth.AuthenticatedPeerHeaderName,
+            value,
+          )
+        bootstrapCapability.foreach: value =>
+          builder.header(
+            GossipTransportAuth.BootstrapCapabilityHeaderName,
+            value,
+          )
+        val request =
+          builder
+            .POST(HttpRequest.BodyPublishers.noBody())
+            .build()
         val response = client.send(request, HttpResponse.BodyHandlers.ofString())
         Response(response.statusCode(), response.body())
 
@@ -977,14 +1079,31 @@ final class HotStuffBootstrapArmeriaAdapterSuite extends CatsEffectSuite:
       localNodeId: String,
       baseUri: String,
   ):
-    def postJson(path: String, body: String): IO[Response] =
+    def postJson(
+        path: String,
+        body: String,
+        authenticatedPeer: Option[String] = None,
+        bootstrapCapability: Option[String] = None,
+    ): IO[Response] =
       IO.blocking:
         val client = HttpClient.newHttpClient()
-        val request = HttpRequest
+        val builder = HttpRequest
           .newBuilder(URI.create(s"$baseUri$path"))
           .header("content-type", "application/json")
-          .POST(HttpRequest.BodyPublishers.ofString(body))
-          .build()
+        authenticatedPeer.foreach: value =>
+          builder.header(
+            GossipTransportAuth.AuthenticatedPeerHeaderName,
+            value,
+          )
+        bootstrapCapability.foreach: value =>
+          builder.header(
+            GossipTransportAuth.BootstrapCapabilityHeaderName,
+            value,
+          )
+        val request =
+          builder
+            .POST(HttpRequest.BodyPublishers.ofString(body))
+            .build()
         val response = client.send(request, HttpResponse.BodyHandlers.ofString())
         Response(response.statusCode(), response.body())
 
@@ -1044,6 +1163,8 @@ final class HotStuffBootstrapArmeriaAdapterSuite extends CatsEffectSuite:
   private final class RecordingHttpClient private () extends HttpClient:
     private val timeouts =
       new java.util.concurrent.CopyOnWriteArrayList[Option[Duration]]()
+    private val requests =
+      new java.util.concurrent.CopyOnWriteArrayList[HttpRequest]()
     private val pendingResponses =
       new java.util.concurrent.LinkedBlockingQueue[
         CompletableFuture[HttpResponse[String]]
@@ -1089,6 +1210,13 @@ final class HotStuffBootstrapArmeriaAdapterSuite extends CatsEffectSuite:
 
     def recordedTimeouts: Vector[Option[Duration]] =
       timeouts.asScala.toVector
+
+    def recordedHeaderValues(
+        name: String,
+    ): Vector[Option[String]] =
+      requests.asScala.toVector.map: request =>
+        val values = request.headers().allValues(name).asScala.toVector
+        values.headOption
 
     def startedCount: Int =
       startedRef.get()
@@ -1148,6 +1276,7 @@ final class HotStuffBootstrapArmeriaAdapterSuite extends CatsEffectSuite:
     private def track(
         request: HttpRequest,
     ): CompletableFuture[HttpResponse[String]] =
+      requests.add(request)
       timeouts.add(
         if request.timeout().isPresent then request.timeout().get().some
         else none[Duration],

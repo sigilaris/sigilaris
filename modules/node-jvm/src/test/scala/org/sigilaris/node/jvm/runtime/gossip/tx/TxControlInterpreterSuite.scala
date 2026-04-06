@@ -449,6 +449,36 @@ final class TxControlInterpreterSuite extends CatsEffectSuite:
       assertEquals(before, Some(startedAt))
       assertEquals(after, Some(startedAt.plusSeconds(5)))
 
+  test("session peer authorization distinguishes ownership from open-session gating"):
+    val otherPeer = PeerIdentity.unsafe("node-c")
+
+    for
+      openingHarness <- Harness.create("node-a", startedAt)
+      openHarness <- Harness.create("node-a", startedAt)
+      openingSessionId <- startOutboundOpening(openingHarness)
+      openingAuthorized <- openingHarness.runtime.authorizeSessionPeer(
+        openingSessionId,
+        remotePeer,
+      )
+      openingOpenAuthorized <- openingHarness.runtime.authorizeOpenSessionForPeer(
+        openingSessionId,
+        remotePeer,
+      )
+      openSessionId <- openOutbound(openHarness)
+      mismatchedPeer <- openHarness.runtime.authorizeSessionPeer(
+        openSessionId,
+        otherPeer,
+      )
+      authorized <- openHarness.runtime.authorizeOpenSessionForPeer(
+        openSessionId,
+        remotePeer,
+      )
+    yield
+      assertEquals(openingAuthorized.map(_.sessionId), Right(openingSessionId))
+      assertEquals(openingOpenAuthorized.left.map(_.reason), Left("sessionNotOpen"))
+      assertEquals(mismatchedPeer.left.map(_.reason), Left("authenticatedPeerMismatch"))
+      assertEquals(authorized.map(_.sessionId), Right(openSessionId))
+
   private def openOutbound(
       harness: Harness,
   ): IO[DirectionalSessionId] =
