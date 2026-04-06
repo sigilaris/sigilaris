@@ -10,7 +10,6 @@ import scala.concurrent.duration.DurationInt
 import cats.effect.{IO, Resource}
 import cats.effect.kernel.Ref
 import cats.syntax.all.*
-import io.circe.{Encoder, Json}
 import io.circe.parser.decode
 import io.circe.syntax.*
 import munit.CatsEffectSuite
@@ -1203,16 +1202,3 @@ final class HotStuffBootstrapArmeriaAdapterSuite extends CatsEffectSuite:
   private object RecordingHttpClient:
     def apply(): RecordingHttpClient =
       new RecordingHttpClient()
-
-  private given Encoder[HotStuffGossipArtifact] =
-    Encoder.instance:
-      case HotStuffGossipArtifact.ProposalArtifact(proposal) =>
-        Json.obj(
-          "kind" -> Json.fromString("proposal"),
-          "id" -> Json.fromString(proposal.proposalId.toHexLower),
-        )
-      case HotStuffGossipArtifact.VoteArtifact(vote) =>
-        Json.obj(
-          "kind" -> Json.fromString("vote"),
-          "id" -> Json.fromString(vote.voteId.toHexLower),
-        )

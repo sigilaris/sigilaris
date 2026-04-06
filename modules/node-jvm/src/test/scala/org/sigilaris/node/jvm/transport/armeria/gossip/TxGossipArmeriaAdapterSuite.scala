@@ -1,9 +1,11 @@
 package org.sigilaris.node.jvm.transport.armeria.gossip
 
 import java.net.URI
+import java.nio.charset.StandardCharsets
 import java.net.http.{HttpClient, HttpRequest, HttpResponse}
 import java.time.{Duration, Instant}
 import java.util.Base64
+import scala.jdk.OptionConverters.*
 
 import cats.effect.{IO, Resource}
 import cats.effect.kernel.Ref
@@ -14,8 +16,10 @@ import io.circe.generic.semiauto.*
 import io.circe.parser.decode
 import io.circe.syntax.*
 import munit.CatsEffectSuite
+import scodec.bits.ByteVector
 
-import org.sigilaris.core.codec.byte.ByteEncoder
+import org.sigilaris.core.codec.byte.{ByteDecoder, ByteEncoder}
+import org.sigilaris.core.datatype.BigNat
 import org.sigilaris.core.crypto.Hash
 import org.sigilaris.core.datatype.Utf8
 import org.sigilaris.node.jvm.runtime.gossip.*
@@ -103,7 +107,7 @@ final class TxGossipArmeriaAdapterSuite extends CatsEffectSuite:
           s"/gossip/events/${sessionId.value}",
           EventRequestWire("poll").asJson.noSpaces,
         )
-        keepAliveLines <- decodeNdjson[EventEnvelopeWire[TestTx]](keepAliveResponse.body)
+        keepAliveLines <- decodeBinaryEvents[TestTx](keepAliveResponse.bodyBytes)
         controlAckResponse <- harness.postJson(
           s"/gossip/control/${sessionId.value}",
           ControlRequestWire("controlKeepAlive").asJson.noSpaces,
@@ -140,7 +144,7 @@ final class TxGossipArmeriaAdapterSuite extends CatsEffectSuite:
           s"/gossip/events/${sessionId.value}",
           EventRequestWire("poll").asJson.noSpaces,
         )
-        requestedLines <- decodeNdjson[EventEnvelopeWire[TestTx]](requestedResponse.body)
+        requestedLines <- decodeBinaryEvents[TestTx](requestedResponse.bodyBytes)
         wrongControlResponse <- harness.postJson(
           s"/gossip/control/${sessionId.value}",
           ControlRequestWire("eventKeepAlive").asJson.noSpaces,
@@ -150,9 +154,12 @@ final class TxGossipArmeriaAdapterSuite extends CatsEffectSuite:
           s"/gossip/events/${sessionId.value}",
           EventRequestWire("controlKeepAlive").asJson.noSpaces,
         )
-        wrongEventLines <- decodeNdjson[EventEnvelopeWire[TestTx]](wrongEventResponse.body)
+        wrongEventLines <- decodeBinaryEvents[TestTx](wrongEventResponse.bodyBytes)
       yield
         assertEquals(keepAliveResponse.status, 200)
+        assert(
+          keepAliveResponse.contentType.exists(_.startsWith(BinaryEventStreamCodec.MediaType))
+        )
         assertEquals(keepAliveLines.map(_.kind), Vector("keepAlive"))
         assertEquals(controlAckResponse.status, 200)
         assertEquals(controlAck.status, "ack")
@@ -171,7 +178,7 @@ final class TxGossipArmeriaAdapterSuite extends CatsEffectSuite:
           "/gossip/events/not-a-session-id",
           EventRequestWire("poll").asJson.noSpaces,
         )
-        eventLines <- decodeNdjson[EventEnvelopeWire[TestTx]](eventResponse.body)
+        eventLines <- decodeBinaryEvents[TestTx](eventResponse.bodyBytes)
         controlResponse <- harness.postJson(
           "/gossip/control/not-a-session-id",
           ControlRequestWire("controlKeepAlive").asJson.noSpaces,
@@ -201,12 +208,163 @@ final class TxGossipArmeriaAdapterSuite extends CatsEffectSuite:
           s"/gossip/events/${sessionId.value}",
           "{not-json}",
         )
-        lines <- decodeNdjson[EventEnvelopeWire[TestTx]](response.body)
+        lines <- decodeBinaryEvents[TestTx](response.bodyBytes)
       yield
         assertEquals(response.status, 200)
         assertEquals(lines.map(_.kind), Vector("rejection"))
         assertEquals(lines.flatMap(_.rejection).map(_.rejectionClass), Vector("handshakeRejected"))
         assertEquals(lines.flatMap(_.rejection).map(_.reason), Vector("invalidEventRequest"))
+
+  test("binary event stream codec round-trips event, keepAlive, and rejection envelopes"):
+    val cursor = CursorToken.issue(ByteVector.fromValidHex("01020304"))
+    val encodedEither = BinaryEventStreamCodec.encode(
+      Vector(
+        EventEnvelopeWire(
+          kind = "event",
+          sessionId = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+          event = Some(
+            EventWire(
+              chainId = chainId.value,
+              topic = GossipTopic.tx.value,
+              id = "deadbeef",
+              cursor = cursor.toBase64Url,
+              ts = baseInstant.toEpochMilli,
+              payload = TestTx("tx-body"),
+            ),
+          ),
+        ),
+        EventEnvelopeWire(
+          kind = "keepAlive",
+          sessionId = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
+          atEpochMs = Some(baseInstant.plusSeconds(1).toEpochMilli),
+        ),
+        EventEnvelopeWire(
+          kind = "rejection",
+          sessionId = "cccccccc-cccc-4ccc-8ccc-cccccccccccc",
+          rejection = Some(
+            RejectionWire(
+              rejectionClass = "handshakeRejected",
+              reason = "sessionNotOpen",
+              detail = Some("opening"),
+            ),
+          ),
+        ),
+      ),
+    )
+
+    val decodedEither = encodedEither.flatMap(BinaryEventStreamCodec.decode[TestTx])
+    assertIO(
+      IO.fromEither(decodedEither.leftMap(new IllegalStateException(_))),
+      Vector(
+        EventEnvelopeWire(
+          kind = "event",
+          sessionId = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+          event = Some(
+            EventWire(
+              chainId = chainId.value,
+              topic = GossipTopic.tx.value,
+              id = "deadbeef",
+              cursor = cursor.toBase64Url,
+              ts = baseInstant.toEpochMilli,
+              payload = TestTx("tx-body"),
+            ),
+          ),
+        ),
+        EventEnvelopeWire(
+          kind = "keepAlive",
+          sessionId = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
+          atEpochMs = Some(baseInstant.plusSeconds(1).toEpochMilli),
+        ),
+        EventEnvelopeWire(
+          kind = "rejection",
+          sessionId = "cccccccc-cccc-4ccc-8ccc-cccccccccccc",
+          rejection = Some(
+            RejectionWire(
+              rejectionClass = "handshakeRejected",
+              reason = "sessionNotOpen",
+              detail = Some("opening"),
+            ),
+          ),
+        ),
+      ),
+    )
+
+  test("binary event stream codec rejects truncated, oversize, unknown-version, and malformed payload frames"):
+    val keepAliveBytes = IO.fromEither(
+      BinaryEventStreamCodec
+        .encode(
+          Vector(
+            EventEnvelopeWire[TestTx](
+              kind = "keepAlive",
+              sessionId = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+              atEpochMs = Some(baseInstant.toEpochMilli),
+            ),
+          ),
+        )
+        .leftMap(new IllegalStateException(_)),
+    )
+    val eventBytes = IO.fromEither(
+      BinaryEventStreamCodec
+        .encode(
+          Vector(
+            EventEnvelopeWire(
+              kind = "event",
+              sessionId = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
+              event = Some(
+                EventWire(
+                  chainId = chainId.value,
+                  topic = GossipTopic.tx.value,
+                  id = "deadbeef",
+                  cursor = CursorToken.issue(ByteVector.fromValidHex("0909")).toBase64Url,
+                  ts = baseInstant.toEpochMilli,
+                  payload = TestTx("a"),
+                ),
+              ),
+            ),
+          ),
+        )
+        .leftMap(new IllegalStateException(_)),
+    )
+
+    (
+      for
+        keepAlive <- keepAliveBytes
+        event <- eventBytes
+        keepAliveOffset <- firstFrameBodyOffset(keepAlive)
+        truncatedError <- decodeBinaryFailure[TestTx](keepAlive.dropRight(1))
+        oversizeFrame =
+          ByteEncoder[BigNat]
+            .encode(
+              BigNat.unsafeFromLong(BinaryEventStreamCodec.MaxFrameSizeBytes + 1L),
+            )
+            .toArray ++ Array(BinaryEventStreamCodec.CurrentVersion)
+        oversizeError <- decodeBinaryFailure[TestTx](oversizeFrame)
+        hugeDeclaredFrame =
+          ByteEncoder[BigNat]
+            .encode(
+              BigNat.unsafeFromBigInt(BigInt(Long.MaxValue) + 1),
+            )
+            .toArray ++ Array(BinaryEventStreamCodec.CurrentVersion)
+        hugeDeclaredError <- decodeBinaryFailure[TestTx](hugeDeclaredFrame)
+        tamperedVersion = keepAlive.clone()
+        _ = tamperedVersion(keepAliveOffset) = 0x7f.toByte
+        unknownVersionError <- decodeBinaryFailure[TestTx](tamperedVersion)
+        malformedPayload = event.clone()
+        _ = malformedPayload(malformedPayload.length - 1) = 0xff.toByte
+        malformedPayloadError <- decodeBinaryFailure[TestTx](malformedPayload)
+      yield
+        assert(truncatedError.contains("truncated event frame"))
+        assertEquals(
+          oversizeError,
+          s"oversize event frame: declared=${BinaryEventStreamCodec.MaxFrameSizeBytes + 1L} max=${BinaryEventStreamCodec.MaxFrameSizeBytes}",
+        )
+        assertEquals(
+          hugeDeclaredError,
+          s"oversize event frame: declared=${BigInt(Long.MaxValue) + 1} max=${BinaryEventStreamCodec.MaxFrameSizeBytes}",
+        )
+        assertEquals(unknownVersionError, "unknown event envelope version: 127")
+        assertEquals(malformedPayloadError, "Invalid UTF-8 bytes")
+    )
 
   test("control endpoint returns a control-batch rejection for malformed request bodies"):
     Harness.resource(baseInstant).use: harness =>
@@ -298,7 +456,7 @@ final class TxGossipArmeriaAdapterSuite extends CatsEffectSuite:
           s"/gossip/events/${sessionId.value}",
           EventRequestWire("poll").asJson.noSpaces,
         )
-        polled <- decodeNdjson[EventEnvelopeWire[TestTx]](pollResponse.body)
+        polled <- decodeBinaryEvents[TestTx](pollResponse.bodyBytes)
         replayCursor = polled.flatMap(_.event).head.cursor
         latestCursor = polled.flatMap(_.event).last.cursor
         response <- harness.postJson(
@@ -346,7 +504,7 @@ final class TxGossipArmeriaAdapterSuite extends CatsEffectSuite:
           s"/gossip/events/${sessionId.value}",
           EventRequestWire("poll").asJson.noSpaces,
         )
-        replayed <- decodeNdjson[EventEnvelopeWire[TestTx]](replayResponse.body)
+        replayed <- decodeBinaryEvents[TestTx](replayResponse.bodyBytes)
       yield
         assertEquals(response.status, 200)
         assertEquals(body.status, "applied")
@@ -404,7 +562,7 @@ final class TxGossipArmeriaAdapterSuite extends CatsEffectSuite:
           s"/gossip/events/${bToA.proposal.sessionId.value}",
           EventRequestWire("poll").asJson.noSpaces,
         )
-        survivingLines <- decodeNdjson[EventEnvelopeWire[TestTx]](survivingPoll.body)
+        survivingLines <- decodeBinaryEvents[TestTx](survivingPoll.bodyBytes)
         survivingControl <- mesh.b.postJson(
           s"/gossip/control/${bToA.proposal.sessionId.value}",
           ControlRequestWire("controlKeepAlive").asJson.noSpaces,
@@ -476,7 +634,7 @@ final class TxGossipArmeriaAdapterSuite extends CatsEffectSuite:
           s"/gossip/events/${session2.value}",
           EventRequestWire("poll").asJson.noSpaces,
         )
-        pollLines <- decodeNdjson[EventEnvelopeWire[TestTx]](pollResponse.body)
+        pollLines <- decodeBinaryEvents[TestTx](pollResponse.bodyBytes)
         state <- harness.runtime.snapshotState
       yield
         assertEquals(filterResponse.status, 200)
@@ -505,7 +663,7 @@ final class TxGossipArmeriaAdapterSuite extends CatsEffectSuite:
           s"/gossip/events/${openSessionId.value}",
           EventRequestWire("poll").asJson.noSpaces,
         )
-        idleLines <- decodeNdjson[EventEnvelopeWire[TestTx]](idlePoll.body)
+        idleLines <- decodeBinaryEvents[TestTx](idlePoll.bodyBytes)
       yield
         assertEquals(
           timedOutState.engine.sessionById(openingSessionId).map(_.status),
@@ -527,7 +685,7 @@ final class TxGossipArmeriaAdapterSuite extends CatsEffectSuite:
           s"/gossip/events/${openingEventSession.value}",
           EventRequestWire("poll").asJson.noSpaces,
         )
-        eventLines <- decodeNdjson[EventEnvelopeWire[TestTx]](eventResponse.body)
+        eventLines <- decodeBinaryEvents[TestTx](eventResponse.bodyBytes)
         stateAfterEvent <- harness.runtime.snapshotState
         openingControlSession <- harness.startOutboundOpening
         controlResponse <- harness.postJson(
@@ -553,9 +711,31 @@ final class TxGossipArmeriaAdapterSuite extends CatsEffectSuite:
           Some(DirectionalSessionStatus.Closed),
         )
 
-  private def decodeNdjson[A: Decoder](body: String): IO[Vector[A]] =
-    body.linesIterator.toVector.filter(_.nonEmpty).traverse: line =>
-      IO.fromEither(decode[A](line).leftMap(new IllegalStateException(_)))
+  private def decodeBinaryEvents[A: ByteDecoder](
+      body: Array[Byte],
+  ): IO[Vector[EventEnvelopeWire[A]]] =
+    IO.fromEither(
+      BinaryEventStreamCodec
+        .decode[A](body)
+        .leftMap(new IllegalStateException(_)),
+    )
+
+  private def firstFrameBodyOffset(
+      bytes: Array[Byte],
+  ): IO[Int] =
+    IO.fromEither(
+      ByteDecoder[BigNat]
+        .decode(ByteVector.view(bytes))
+        .map(result => bytes.length - result.remainder.size.toInt)
+        .leftMap(failure => new IllegalStateException(failure.msg)),
+    )
+
+  private def decodeBinaryFailure[A: ByteDecoder](
+      body: Array[Byte],
+  ): IO[String] =
+    BinaryEventStreamCodec.decode[A](body) match
+      case Left(error)  => IO.pure(error)
+      case Right(value) => IO.raiseError(new IllegalStateException(value.toString))
 
   private def toProposalWire(
       proposal: SessionOpenProposal,
@@ -616,8 +796,11 @@ final class TxGossipArmeriaAdapterSuite extends CatsEffectSuite:
 
   private final case class Response(
       status: Int,
-      body: String,
-  )
+      bodyBytes: Array[Byte],
+      contentType: Option[String],
+  ):
+    def body: String =
+      String(bodyBytes, StandardCharsets.UTF_8)
 
   private final case class OpenedSession(
       proposal: SessionOpenProposal,
@@ -640,8 +823,12 @@ final class TxGossipArmeriaAdapterSuite extends CatsEffectSuite:
           .header("content-type", "application/json")
           .POST(HttpRequest.BodyPublishers.ofString(body))
           .build()
-        val response = client.send(request, HttpResponse.BodyHandlers.ofString())
-        Response(response.statusCode(), response.body())
+        val response = client.send(request, HttpResponse.BodyHandlers.ofByteArray())
+        Response(
+          response.statusCode(),
+          response.body(),
+          response.headers().firstValue("content-type").toScala,
+        )
 
     def postNoBody(path: String): IO[Response] =
       IO.blocking:
@@ -650,8 +837,12 @@ final class TxGossipArmeriaAdapterSuite extends CatsEffectSuite:
           .newBuilder(URI.create(s"$baseUri$path"))
           .POST(HttpRequest.BodyPublishers.noBody())
           .build()
-        val response = client.send(request, HttpResponse.BodyHandlers.ofString())
-        Response(response.statusCode(), response.body())
+        val response = client.send(request, HttpResponse.BodyHandlers.ofByteArray())
+        Response(
+          response.statusCode(),
+          response.body(),
+          response.headers().firstValue("content-type").toScala,
+        )
 
     def openOutboundLocally: IO[DirectionalSessionId] =
       openOutboundLocally()
@@ -759,5 +950,6 @@ final class TxGossipArmeriaAdapterSuite extends CatsEffectSuite:
     given Decoder[TestTx] = deriveDecoder
 
   private given ByteEncoder[TestTx] = ByteEncoder[Utf8].contramap(tx => Utf8(tx.body))
+  private given ByteDecoder[TestTx] = ByteDecoder[Utf8].map(value => TestTx(value.asString))
   private given Hash[TestTx] = Hash.build
   private given TxIdentity[TestTx] = TxIdentity.fromHash[TestTx]
