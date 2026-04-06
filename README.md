@@ -63,6 +63,12 @@ libraryDependencies ++= Seq(
 - State snapshot transport, remote body fetch, proof-serving, receipt/event sub-root expansion, and persisted block compatibility policy remain explicit follow-up work owned by ADR-0019 and `docs/plans/0005-canonical-block-structure-migration-plan.md`.
 - Pacemaker timeout vote / timeout certificate / new-view semantic baseline is now drafted in ADR-0022, while concrete runtime integration remains follow-up work in `docs/plans/0004-hotstuff-consensus-without-threshold-signatures-plan.md`.
 
+### Reference Launch Smoke
+- Run `sbt "testOnly org.sigilaris.node.jvm.runtime.consensus.hotstuff.HotStuffLaunchSmokeSuite"` to exercise the repo-local static multi-node launch harness.
+- The smoke gate proves a static 4-validator HotStuff cluster, timeout-driven leader turnover, newcomer/audit follower bootstrap readiness within the bounded retry window, and persisted historical archive reopen on a process-equivalent restart root.
+- The DR smoke path fences the old validator holder first, then restarts the same validator identity/key on the pre-provisioned audit node; the old holder must stay stopped, and the replacement node must keep the static peer graph and signer material preconfigured before restart.
+- Current limitations remain the static validator set, static peer topology, same-DC assumptions, and operator-managed restart/fencing flow; dynamic discovery, validator rotation, automatic failover, and remote signer/KMS integration are still follow-up work.
+
 ### Data Types
 Type-safe opaque types for blockchain primitives with built-in codec support.
 - **BigNat**: Arbitrary-precision natural numbers

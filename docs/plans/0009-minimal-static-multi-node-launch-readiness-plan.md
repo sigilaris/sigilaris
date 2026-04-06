@@ -1,7 +1,7 @@
 # 0009 - Minimal Static Multi-Node Launch Readiness Plan
 
 ## Status
-Active; Phase 0-4 Complete
+Complete; Phase 0-5 Complete
 
 ## Created
 2026-04-07
@@ -277,14 +277,14 @@ Active; Phase 0-4 Complete
 - [x] spoofing / stale capability / revoke regression test green
 
 ### Phase 5: Reference Launch Harness And End-To-End Verification
-- [ ] repo-local reference launch path 또는 동등 smoke harness 추가
-- [ ] 3-4 validator static cluster launch scenario 고정
-- [ ] newcomer 또는 audit follower join scenario 고정
-- [ ] same-validator identity relocation DR scenario 고정
-- [ ] contiguous height advancement `3`회 + timeout recovery `1`회 + newcomer ready bounded smoke gate green
-- [ ] audit/history follower restart 뒤 persisted historical archive 유지 smoke gate green
-- [ ] old-holder fence + key relocation + validator restart DR smoke gate green
-- [ ] minimal operator note / README wording 갱신
+- [x] repo-local reference launch path 또는 동등 smoke harness 추가
+- [x] 3-4 validator static cluster launch scenario 고정
+- [x] newcomer 또는 audit follower join scenario 고정
+- [x] same-validator identity relocation DR scenario 고정
+- [x] contiguous height advancement `3`회 + timeout recovery `1`회 + newcomer ready bounded smoke gate green
+- [x] audit/history follower restart 뒤 persisted historical archive 유지 smoke gate green
+- [x] old-holder fence + key relocation + validator restart DR smoke gate green
+- [x] minimal operator note / README wording 갱신
 
 ## Follow-Ups
 - validator-set rotation, trusted checkpoint bundle, weak-subjectivity freshness, historical validator-set lookup runtime 은 계속 `ADR-0023` / plan `0007` follow-up 으로 남긴다.
