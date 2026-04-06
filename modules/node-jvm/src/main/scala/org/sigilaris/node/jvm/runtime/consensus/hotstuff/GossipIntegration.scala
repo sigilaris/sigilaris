@@ -48,6 +48,13 @@ object HotStuffGossipArtifact:
         StableArtifactId.unsafeFromBytes:
           vote.voteId.toUInt256.bytes
 
+  given ByteEncoder[HotStuffGossipArtifact] = artifact =>
+    artifact match
+      case HotStuffGossipArtifact.ProposalArtifact(proposal) =>
+        ByteVector.fromByte(0x01.toByte) ++ proposal.toBytes
+      case HotStuffGossipArtifact.VoteArtifact(vote) =>
+        ByteVector.fromByte(0x02.toByte) ++ vote.toBytes
+
 final case class HotStuffTopicPolicy(
     exactKnownSetLimit: Int,
     requestByIdLimit: Int,

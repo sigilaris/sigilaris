@@ -690,7 +690,7 @@ object HotStuffBootstrapHttpTransport:
 object HotStuffGossipArmeriaAdapter:
   def endpoints[F[_]: Async](
       bootstrap: HotStuffRuntimeBootstrap[F],
-  )(using Encoder[HotStuffGossipArtifact]) =
+  )(using ByteEncoder[HotStuffGossipArtifact]) =
     TxGossipArmeriaAdapter.endpoints[F, HotStuffGossipArtifact](
       bootstrap.runtime,
     ) ++
