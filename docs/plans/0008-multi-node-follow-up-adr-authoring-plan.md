@@ -1,7 +1,7 @@
 # 0008 - Multi-Node Follow-Up ADR Authoring Plan
 
 ## Status
-Draft
+Phase 0 Complete; ADR Drafting Pending
 
 ## Created
 2026-04-06
@@ -13,7 +13,7 @@ Draft
 - `docs/plans/0003-multiplexed-gossip-session-sync-plan.md`부터 `docs/plans/0007-snapshot-sync-and-background-backfill-plan.md`까지의 shipped baseline으로, Sigilaris 는 static topology 위의 multi-node gossip/session sync, HotStuff artifact/QC, canonical `BlockHeader`, conflict-free block scheduling, snapshot sync + background backfill 기반을 이미 갖췄다.
 - 반면 현재 남아 있는 큰 공백은 구현 디테일보다는 장기 계약에 가깝다. 대표적으로 pacemaker/timeouts/new-view, validator-set rotation 과 bootstrap trust root, static-topology peer identity binding, session-bound bootstrap capability revoke 가 그렇다. validator signer custody / remote signer baseline 은 보안 hardening 가치가 있지만, 현재 shipped baseline 을 막는 immediate blocker 라기보다 deferred follow-up 후보에 가깝다.
 - 위 항목들은 각각 `ADR-0016`, `ADR-0017`, `ADR-0018`, `ADR-0021` 의 follow-up 으로 이미 암시돼 있지만, 아직 canonical decision 문서가 없거나 existing ADR 의 consequence/follow-up section 에만 남아 있다.
-- 특히 `ADR-0018` 은 current baseline 의 사실상 참조점처럼 사용되고 있지만 문서 status 는 아직 `Proposed` 다. 후속 ADR 이 그 위에 쌓이기 전에 이 status mismatch 를 정리하지 않으면, "이미 accepted 된 운영 baseline 위의 확장"인지 "아직 미확정 운영 가정 위의 초안"인지가 흐려질 수 있다.
+- 특히 `ADR-0018` 은 current baseline 의 사실상 참조점처럼 사용되고 있었지만 문서 status 는 `Proposed` 로 남아 있었다. Phase 0 는 이 mismatch 를 먼저 해소해, 후속 ADR 이 "이미 accepted 된 운영 baseline 위의 확장"인지 "아직 미확정 운영 가정 위의 초안"인지가 흐려지지 않게 만든다.
 - 이 상태에서 바로 implementation plan 을 추가로 쌓으면, runtime/transport/storage 경계보다 더 상위의 trust/liveness/authority contract 가 plan 안에서 임시로 고정될 위험이 있다.
 - 따라서 다음 단계의 핵심은 "남은 기능을 바로 전부 구현하는 것"이 아니라, multi-node 운영을 위해 장기 유지해야 할 정책을 ADR 로 먼저 잠그는 것이다.
 - 이 문서는 그 ADR 작성 순서와 범위를 관리하는 실행 문서다. 문서 작성이 진행되면서 candidate ADR 의 경계가 합쳐지거나 분리될 수 있고, 이 plan 역시 그에 맞춰 계속 업데이트되는 것을 전제로 한다.
@@ -66,6 +66,43 @@ Draft
 - 기존 ADR 을 대폭 수정할지 새 ADR 로 분리할지 애매한 항목은 기본적으로 새 ADR 로 분리하되, 기존 ADR 의 scope 를 뒤집지 않도록 consequence / follow-up linkage 로 연결한다.
 - implementation plan 이 ADR decision 을 임시로 대체하지 않도록, phase 별 output 은 가능한 한 "새 ADR 문서" 또는 "기존 문서 참조 업데이트" 단위로 정의한다.
 - 문서 작성 중 candidate scope 가 너무 커지면, 한 ADR 안에 억지로 넣지 말고 superseding/follow-up ADR 로 쪼갠다.
+
+## Phase 0 ADR-0018 Status Resolution
+- Phase 0 baseline decision 은 `ADR-0018` 을 current shipped deployment baseline 으로 간주하고 status 를 `Accepted` 로 올리는 것이다.
+- 이후 `ADR-0022`~`ADR-0024` 는 `ADR-0018` 을 뒤집지 않고 그 consequence/follow-up 영역을 확장하는 후속 ADR 로 위치시킨다.
+- static topology 자체를 버리거나 same-DC validator placement 전제를 근본적으로 바꾸려면, implementation plan 확장이 아니라 별도 superseding deployment ADR 로 처리한다.
+
+## Phase 0 Inventory Summary
+
+| Inventory Item | Phase 0 Classification | Owner Scope / Output | Primary Affected Docs | Dependency Note |
+| --- | --- | --- | --- | --- |
+| `ADR-0018` status mismatch (`Proposed` vs shipped reference baseline) | Existing ADR amendment | `ADR-0018` status 를 `Accepted` 로 정리하고, 후속 ADR 이 accepted deployment baseline 위에 쌓인다는 전제를 고정한다. | `ADR-0018`, `0008` | 선행 prerequisite 없음 |
+| pacemaker / timeout vote / timeout certificate / new-view / leader rotation / timing-domain separation | New ADR (`ADR-0022`) | chained HotStuff liveness artifact 와 pacemaker ownership 경계를 고정한다. | `ADR-0017`, `ADR-0018`, plan `0004` | `ADR-0018` status 정리 후 Phase 1 진입 |
+| validator-set rotation / validator-set continuity / bootstrap trust root / historical validator-set lookup | New ADR (`ADR-0023`) | authority continuity 와 finalized-proof verification trust model 을 고정한다. | `ADR-0018`, `ADR-0021`, 필요 시 `ADR-0019`, `ADR-0020`, plan `0007` | pacemaker draft 의 새 전제가 scope 를 바꾸지 않는지 checkpoint 후 진행 |
+| configured peer identity binding / session-bound bootstrap capability authorization / revoke cascade | New ADR (`ADR-0024`) | static topology 아래의 peer identity 와 bootstrap capability ownership 을 고정한다. | `ADR-0016`, `ADR-0021`, plans `0003`, `0007` | trust-root / authority continuity draft 결과를 review 한 뒤 진행 |
+| existing follow-up placeholder 와 shipped-vs-pending wording 정렬 | Existing ADR / plan amendments | 새 ADR landed 뒤 placeholder 문구를 concrete reference 로 치환한다. | `ADR-0016`, `ADR-0017`, `ADR-0018`, `ADR-0021`, plans `0003`, `0004`, `0007`, 필요 시 `README.md` | 각 ADR draft/acceptance 이후 순차 정렬 |
+| exact `validatorSetHash` byte derivation, timeout artifact wire shape, capability token format, HTTP path / JSON / protobuf schema | Protocol spec or implementation plan | low-level wire / storage / transport detail 로 남기고 ADR 은 semantic contract 만 고정한다. | follow-up spec, plans `0003`, `0004`, `0007` | 각 ADR 의 semantic 경계가 잠긴 뒤 후속 문서에서 고정 |
+| dynamic peer discovery / peer scoring / topology management / validator admission policy | Explicit defer | initial ADR tranche 밖의 deployment/discovery follow-up 으로 남긴다. | `ADR-0016`, `ADR-0018`, plans `0003`, `0007`, 필요 시 `README.md` | static topology baseline 을 당장 supersede 하지 않음 |
+| fee market / proposer fairness / distributed mempool policy | Explicit defer | current trust/liveness/authority tranche 밖의 economics/mempool follow-up 으로 남긴다. | 필요 시 `README.md`, future deployment or mempool plan | current ADR tranche blocker 아님 |
+| automatic audit-to-validator promotion / automatic cross-DC failover policy | Explicit defer | current operator-managed promotion baseline 을 유지하고, 자동화 계약은 별도 운영 ADR 로 분리한다. | `ADR-0018`, plan `0004` | `ADR-0023` 이 authority continuity 를 고정하더라도 자동 failover 까지 포함하지 않음 |
+| archive-grade historical sync / snapshot batching-compression / Merkle proof serving / remote body/proof fetch / durable archive compaction | Explicit defer | snapshot/archive optimization 후속 ADR 또는 implementation plan 으로 남긴다. | `ADR-0019`, `ADR-0021`, plans `0005`, `0007` | bootstrap baseline 위의 성능/serving 확장으로 취급 |
+| validator signing custody / KMS / HSM / remote signer baseline | Explicit defer; tentative `ADR-0025` | operator-managed raw key baseline 의 security-hardening follow-up 으로 남긴다. | `ADR-0018`, plan `0004` | multi-operator deployment, external validator participation, custody incident 가 re-open trigger |
+| application transaction-shape migration / dynamic-discovery schedulability follow-up | Existing `ADR-0020` follow-up, outside this tranche | multi-node trust/liveness ADR 이 아니라 application scheduling migration 으로 남긴다. | `ADR-0020`, plan `0006` | current tranche blocker 아님 |
+
+## Phase 0 Explicit Defer List
+- `Dynamic peer discovery`, `peer scoring`, `topology management`, `validator admission policy` 는 static topology baseline 을 supersede 하는 별도 deployment/discovery ADR 로 미룬다.
+- `Automatic audit-to-validator promotion`, `automatic cross-DC failover`, fully automated emergency operator policy 는 current operator-managed baseline 밖으로 둔다.
+- `Archive-grade historical sync`, `snapshot batching/compression`, `Merkle proof serving`, `remote body/proof fetch`, `durable archive compaction` 은 snapshot/archive optimization follow-up 으로 남긴다.
+- `Fee market`, `proposer fairness`, distributed mempool policy 는 current trust/liveness/authority tranche 와 분리한다.
+- `Validator signing custody`, `KMS/HSM`, `remote signer` 는 tentative `ADR-0025` security-hardening candidate 로 defer 한다.
+- `ADR-0020` application-specific scheduling extension 과 future dynamic-discovery transaction migration 은 current multi-node ADR tranche 의 mandatory output 으로 두지 않는다.
+
+## Phase 0 ADR-vs-Spec-vs-Plan Boundary Rules
+- `ADR-0022` 는 timeout/new-view/leader rotation/pacemaker ownership, bootstrap vote-hold interaction, session heartbeat 와 consensus timeout 의 timing-domain 분리를 고정한다. exact timeout constant, retry budget, serialization, transport path 는 follow-up spec 또는 implementation plan 이 소유한다.
+- `ADR-0023` 는 static-set baseline precedence, rotation continuity, bootstrap trust-root class, historical validator-set lookup responsibility, finalized-proof verification continuity 를 고정한다. exact `validatorSetHash` byte layout, checkpoint file format, storage index/schema, operator UX 는 follow-up spec 또는 implementation plan 으로 남긴다.
+- `ADR-0024` 는 configured `peerId` 와 authenticated counterparty identity binding, session-bound capability ownership, parent-session revoke/close cascade, runtime-vs-transport authorization ownership 을 고정한다. exact TLS/certificate mechanism, capability token encoding, HTTP header/path shape 는 follow-up spec 또는 implementation plan 이 소유한다.
+- protocol spec / implementation plan 은 exact wire encoding, JSON/protobuf schema, HTTP path, batching/concurrency default, retry/backoff numbers, persistence layout, adapter assembly 순서를 소유한다. 단, 해당 detail 이 long-lived trust/liveness/authority precedence 를 바꾸는 경우에만 ADR 로 승격한다.
+- existing ADR amendment 는 status correction, shipped-vs-follow-up wording 정렬, concrete cross-reference 보강까지로 제한한다. 기존 ADR 의 scope 자체를 뒤집어야 하면 amendment 대신 새 ADR 또는 superseding ADR 을 쓴다.
 
 ## Change Areas
 
@@ -173,12 +210,12 @@ Draft
 ## Checklist
 
 ### Phase 0: ADR Inventory And Boundary Lock
-- [ ] `0003`~`0007` / `ADR-0016`~`ADR-0021` residual gap inventory 정리
-- [ ] Phase 0 inventory 를 이 plan 본문에 inline summary 로 반영
-- [ ] tentative ADR tranche scope / order / dependency 확정
-- [ ] explicit defer list 작성
-- [ ] ADR-vs-spec-vs-plan 경계 규칙 문서화
-- [ ] `ADR-0018` status update 또는 explicit caveat 정리
+- [x] `0003`~`0007` / `ADR-0016`~`ADR-0021` residual gap inventory 정리
+- [x] Phase 0 inventory 를 이 plan 본문에 inline summary 로 반영
+- [x] tentative ADR tranche scope / order / dependency 확정
+- [x] explicit defer list 작성
+- [x] ADR-vs-spec-vs-plan 경계 규칙 문서화
+- [x] `ADR-0018` status update 또는 explicit caveat 정리
 
 ### Phase 1: Pacemaker And View-Change ADR Draft
 - [ ] Phase 0 output 기준 Phase 1 scope checkpoint review
