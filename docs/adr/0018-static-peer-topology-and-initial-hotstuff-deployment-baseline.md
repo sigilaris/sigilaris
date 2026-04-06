@@ -40,7 +40,7 @@ Accepted
    - 이는 deployment/performance target이지 gossip wire field나 consensus artifact field가 아니다.
    - 이 target은 same-DC validator placement, proposal/vote immediate flush, bounded block payload, 낮은 local validation overhead를 전제로 한다.
    - ADR-0016의 heartbeat/liveness 기본값은 transport/session liveness 값이며 위 `100ms` target과 직접 동일시해서는 안 된다.
-   - exact pacemaker timeout, timeout certificate, new-view pacing contract는 follow-up ADR 또는 protocol spec이 고정한다.
+   - exact pacemaker timeout, timeout certificate, new-view pacing contract는 ADR-0022 또는 follow-up protocol spec이 고정한다.
 
 ## Consequences
 - 초기 운영은 static config만으로 시작할 수 있어 peer discovery 구현을 뒤로 미룰 수 있다.
@@ -75,12 +75,15 @@ Accepted
 ## Follow-Up
 - static peer config schema와 loader wiring은 `docs/plans/0003-multiplexed-gossip-session-sync-plan.md`에서 구현한다.
 - validator/audit local role gating과 read-only audit follow path는 `docs/plans/0004-hotstuff-consensus-without-threshold-signatures-plan.md`에서 구현한다.
-- automatic audit-to-validator promotion이나 online validator-set reconfiguration이 필요해지면 별도 ADR을 작성한다.
+- pacemaker, timeout vote, new-view, `100ms` deployment target과 consensus timeout의 timing-domain separation baseline은 ADR-0022가 소유한다.
+- validator-set rotation continuity, bootstrap trust-root class, historical validator-set lookup baseline은 ADR-0023이 소유한다. 이 ADR의 operator-managed key relocation은 existing validator identity relocation baseline으로 남고, validator membership / ordering change 자체의 canonical continuity contract를 직접 고정하지는 않는다.
+- automatic audit-to-validator promotion이나 fully automated online validator-set reconfiguration policy가 필요해지면 별도 운영 ADR을 작성한다.
 - operator-managed raw key custody를 대체할 KMS/HSM/remote signer baseline이 필요해지면 별도 ADR을 작성한다.
-- `100ms` target을 실질적으로 보장하려면 pacemaker, timeout vote, new-view contract를 별도 follow-up ADR 또는 protocol spec으로 고정한다.
 
 ## References
 - [ADR-0016: Multiplexed Gossip Session Sync Substrate](0016-multiplexed-gossip-session-sync.md)
 - [ADR-0017: HotStuff Consensus Without Threshold Signatures](0017-hotstuff-consensus-without-threshold-signatures.md)
+- [ADR-0022: HotStuff Pacemaker And View-Change Baseline](0022-hotstuff-pacemaker-and-view-change-baseline.md)
+- [ADR-0023: Validator-Set Rotation And Bootstrap Trust Roots](0023-validator-set-rotation-and-bootstrap-trust-roots.md)
 - [0003 - Multiplexed Gossip Session Sync Plan](../plans/0003-multiplexed-gossip-session-sync-plan.md)
 - [0004 - HotStuff Consensus Without Threshold Signatures Plan](../plans/0004-hotstuff-consensus-without-threshold-signatures-plan.md)

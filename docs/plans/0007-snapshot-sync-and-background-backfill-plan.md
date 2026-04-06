@@ -1,19 +1,19 @@
 # 0007 - Snapshot Sync And Background Backfill Plan
 
 ## Status
-Phase 8 Complete
+Phase 8 Complete; ADR-0023 Drafted; Rotation/Trust-Root Runtime Follow-Up Pending
 
 ## Created
 2026-04-05
 
 ## Last Updated
-2026-04-05
+2026-04-06
 
 ## Background
 - 이 문서는 ADR-0021의 implementation plan 이다.
 - `2026-04-05` 기준 shipped HotStuff baseline 은 ADR-0017 / ADR-0019 아래에서 proposal/vote/QC artifact contract, canonical `BlockHeader`, header-first proposal path, canonical tx hash set carriage, bounded `requestById`, exact known-set sync 를 이미 갖고 있다. 이 중 `bounded requestById` 와 exact known-set sync baseline 은 ADR-0017 / plan 0004 가, canonical `BlockHeader` 와 `stateRoot` anchor baseline 은 ADR-0019 / plan 0005 가 소유한다.
-- 따라서 신규 노드 bootstrap 의 남은 핵심 문제는 "모르는 proposal 을 어떻게 받느냐" 자체보다, "어느 finalized anchor 를 믿고 state 를 복원할 것인가", "그 anchor state 를 어떻게 실제 local trie 로 재구성할 것인가", "그 뒤 frontier 와 historical history 를 어떤 우선순위로 따라잡을 것인가" 로 이동했다.
-- 현재 runtime 에는 아래 gap 이 남아 있다.
+- 따라서 plan 작성 시점 신규 노드 bootstrap 의 남은 핵심 문제는 "모르는 proposal 을 어떻게 받느냐" 자체보다, "어느 finalized anchor 를 믿고 state 를 복원할 것인가", "그 anchor state 를 어떻게 실제 local trie 로 재구성할 것인가", "그 뒤 frontier 와 historical history 를 어떤 우선순위로 따라잡을 것인가" 로 이동해 있었다.
+- 당시 runtime 에는 아래 gap 이 남아 있었다.
   - `best finalized block suggestion` bootstrap API 가 없다.
   - local HotStuff sink/source 는 proposal/vote/QC 를 저장하지만, best finalized anchor 와 그에 대응하는 self-contained `FinalizedAnchorSuggestion` 을 materialize 하는 explicit finalization tracker 가 없다.
   - `StorageLayout.state.snapshot` / `state.nodes` path 는 예약돼 있지만, snapshot metadata / trie-node persistence service 는 없다.
@@ -21,7 +21,7 @@ Phase 8 Complete
   - current proposal/vote fetch 는 same-window anti-entropy baseline 이라 bootstrap 시작점의 self-contained finalized anchor 검증을 직접 대체하지 않는다.
 - ADR-0021 은 bootstrap 을 `anchor discovery -> snapshot sync -> forward catch-up -> historical backfill` 네 단계로 고정했고, `FinalizedAnchorSuggestion = anchor proposal P0 + FinalizedProof(P1, P2)` semantic minimum, anchor pinning, self-contained bootstrap verification, background historical backfill baseline 을 이미 잠갔다.
 - current HotStuff bootstrap config 는 `HotStuffBootstrapConfig.validatorSet` 을 통해 static validator-set baseline 을 입력으로 요구하고, proposal validation 도 현재 validator set 기준 justify QC 검증을 사용한다.
-- 따라서 initial rollout 은 current static-validator-set baseline 위에서 bootstrap trust root 를 먼저 구현하고, future validator-set rotation / historical lookup seam 은 explicit abstraction 으로 남겨야 한다.
+- 따라서 initial rollout 은 current static-validator-set baseline 위에서 bootstrap trust root 를 먼저 구현했고, validator-set rotation / bootstrap trust-root semantic baseline 은 ADR-0023 으로 분리됐다. 이 plan 에 남는 일은 concrete runtime integration, checkpoint/root format, historical lookup materialization follow-up 이다.
 
 ## Goal
 - runtime-owned `best finalized block suggestion` service 를 추가해 신규 노드가 self-contained finalized anchor 를 발견하고 검증할 수 있게 한다.
@@ -43,7 +43,7 @@ Phase 8 Complete
 - HotStuff finality rule 자체를 새로 설계하거나 chained HotStuff baseline 을 바꾸지 않는다.
 - finalized-only gossip topic 을 새로 도입하지 않는다.
 - dynamic peer discovery, peer scoring, validator admission policy 는 이번 plan 의 범위에 넣지 않는다.
-- online validator-set reconfiguration protocol 의 최종 형식은 이번 plan 에서 완전히 구현하지 않는다. initial rollout 은 current static-validator-set baseline 을 재사용한다.
+- online validator-set reconfiguration protocol 의 최종 형식은 이번 plan 에서 완전히 구현하지 않는다. semantic authority baseline 은 ADR-0023 이 소유하고, initial rollout runtime 은 current static-validator-set baseline 을 재사용한다.
 - light-client proof, zk proof, Merkle proof compression, archive-grade accelerated historical sync 는 이번 plan 의 범위에 넣지 않는다.
 - pacemaker timeout/new-view wire contract, leader rotation policy 는 이번 plan 의 범위에 넣지 않는다.
 - post-anchor full block body transfer 를 baseline mandatory contract 로 만들지 않는다. existing proposal tx-set + tx anti-entropy + local replay seam 을 우선 사용한다.
@@ -54,6 +54,7 @@ Phase 8 Complete
 - ADR-0018: Static Peer Topology And Initial HotStuff Deployment Baseline
 - ADR-0019: Canonical Block Header And Application-Neutral Block View
 - ADR-0021: Snapshot Sync And Background Backfill From Best Finalized Suggestions
+- ADR-0023: Validator-Set Rotation And Bootstrap Trust Roots
 - `docs/plans/0003-multiplexed-gossip-session-sync-plan.md`
 - `docs/plans/0004-hotstuff-consensus-without-threshold-signatures-plan.md`
 - `docs/plans/0005-canonical-block-structure-migration-plan.md`
@@ -61,7 +62,7 @@ Phase 8 Complete
 - `README.md`
 
 ## Decisions To Lock Before Implementation
-- initial rollout 의 bootstrap trust root 는 current shipped static-validator-set baseline 위에서 시작한다. 즉 `HotStuffBootstrapConfig.validatorSet` 과 동등한 bootstrap material 이 mandatory input 이고, operator-supplied checkpoint 나 weak-subjectivity anchor 는 additive follow-up 으로 남길 수 있지만 validator-set authority 자체를 peer response 에서 배우지는 않는다.
+- shipped runtime 의 bootstrap trust root 는 current static-validator-set baseline 위에서 시작한다. 즉 `HotStuffBootstrapConfig.validatorSet` 과 동등한 bootstrap material 이 current mandatory input 이다. operator-supplied checkpoint, weak-subjectivity anchor, historical validator-set lookup 의 semantic baseline 은 ADR-0023 이 소유하고, 이 plan 은 concrete runtime integration 만 follow-up 으로 남긴다.
 - `FinalizedAnchorSuggestion` 의 semantic minimum 은 `proposal: P0` 와 `FinalizedProof(child: P1, grandchild: P2)` 로 고정한다. `P1`, `P2` 는 justify chain 상에서 각각 `P0`, `P1` 을 justify 하는 descendant proposal 이며, block id 둘 또는 proposal id 둘만으로는 baseline proof 로 충분하지 않다.
 - local finalized anchor derivation 은 proposal reception order 나 highest observed height 가 아니라 justify chain 기준 3-chain finality 를 canonical rule 로 사용한다.
 - `best finalized block suggestion` 은 runtime-owned bootstrap service 이고, bootstrap 시작 시점의 finalized anchor 검증은 self-contained suggestion response 만으로 시작할 수 있어야 한다.
@@ -73,7 +74,7 @@ Phase 8 Complete
 - gap window catch-up 은 anchor-forward-first contiguous apply 를 canonical merge rule 로 사용한다. fetch 는 batch/parallel 이어도 되지만, replay/apply/readiness advancement 는 `anchor.height + 1` 부터 current frontier 까지의 contiguous prefix 순서로만 전진한다. live arrival 이 replay frontier 앞을 뛰어넘으면 buffer/queue 하고, contiguous gap 이 닫힌 뒤 merge 한다.
 - bootstrap node 는 relay / fetch / replay 는 계속 수행할 수 있지만, proposal별 readiness 를 만족하기 전까지는 vote 를 emit 하지 않는다.
 - historical backfill 은 background / low-priority objective 이고 validator readiness 의 prerequisite 가 아니다.
-- current static-validator-set baseline 을 구현 출발점으로 사용하되, validator-set lookup abstraction 은 Phase 0 에서 surface 를 먼저 고정해 future rotation support 를 막지 않도록 한다.
+- current static-validator-set baseline 을 구현 출발점으로 사용하되, validator-set lookup abstraction 은 future rotation support 를 막지 않도록 유지한다. historical continuity semantics 자체는 ADR-0023 기준으로 읽는다.
 
 ## Change Areas
 
@@ -95,6 +96,7 @@ Phase 8 Complete
 
 ### Docs
 - `docs/adr/0021-snapshot-sync-and-background-backfill-from-best-finalized-suggestions.md`
+- `docs/adr/0023-validator-set-rotation-and-bootstrap-trust-roots.md`
 - `docs/plans/0007-snapshot-sync-and-background-backfill-plan.md`
 - 필요 시 `docs/plans/0003-multiplexed-gossip-session-sync-plan.md`
 - 필요 시 `docs/plans/0004-hotstuff-consensus-without-threshold-signatures-plan.md`
@@ -140,7 +142,7 @@ Phase 8 Complete
 ### Phase 5: Verification And Docs
 - unit / integration / loopback / transport-adapter test 를 green 상태로 맞춘다.
 - ADR-0021, plan 0003, plan 0004, plan 0007, README 용어를 정렬한다.
-- current static-validator-set bootstrap baseline 과 future rotation/backfill optimization residual gap 을 문서에 남긴다.
+- current static-validator-set bootstrap baseline 과 ADR-0023 이후에도 남는 runtime integration / backfill optimization residual gap 을 문서에 남긴다.
 
 ### Phase 6: Runtime Assembly And Bootstrap Activation
 - current landed bootstrap component 를 standalone unit/integration primitive 단계에서 멈추지 않고, shipped newcomer bootstrap assembly 경로에 실제로 조립한다.
@@ -218,8 +220,8 @@ Phase 8 Complete
 ## Residual Gaps After Phase 8
 - bootstrap coordinator 는 forward catch-up 결과를 runtime-owned materialization seam 에 기록하고, historical backfill worker 는 unique proposal archive ingestion baseline 을 갖췄지만, shipped runtime 이 그 materialized state 를 자동으로 tx anti-entropy replay / proposal validation retry / vote eligibility advancement 에 재주입하는 full consumer path 는 후속 작업으로 남아 있다.
 - shipped newcomer bootstrap assembly 는 remote snapshot/replay/backfill transport 와 materialization seam 까지 연결됐지만, assembled `ProposalCatchUpReadiness` 는 아직 placeholder `forwardCatchUpUnavailable` hold 를 사용한다. no-op catch-up 에서는 ready 로 전이되지만, replayed/live proposal 에 대한 concrete readiness consumer path 는 follow-up 이다.
-- shipped bootstrap trust root 는 여전히 `HotStuffBootstrapConfig.validatorSet` 기반 static validator-set baseline 이다. operator checkpoint 나 weak-subjectivity anchor 는 follow-up bootstrap material 로 남아 있다.
-- `ValidatorSetLookup` seam 은 landed 되었지만 historical validator-set rotation continuity 와 finalized-proof historical lookup 은 아직 구현되지 않았다.
+- shipped bootstrap trust root 는 여전히 `HotStuffBootstrapConfig.validatorSet` 기반 static validator-set baseline 이다. operator checkpoint 나 weak-subjectivity anchor 의 semantic class는 ADR-0023 에서 drafted 됐지만 concrete runtime input은 아직 follow-up 이다.
+- `ValidatorSetLookup` seam 은 landed 되었지만 ADR-0023 이 정의한 historical validator-set rotation continuity 와 finalized-proof historical lookup runtime 은 아직 구현되지 않았다.
 - historical backfill 은 low-priority background baseline 과 in-memory archive retention seam 까지 landed 되었고, durable storage backing, archive-grade acceleration, peer scoring, bandwidth shaping, explicit budget shaping, snapshot batching optimization 은 후속 작업으로 남아 있다.
 
 ## Checklist
@@ -286,7 +288,7 @@ Phase 8 Complete
 - [x] duplicate replay / ancestry mismatch / materialization regression test 추가
 
 ## Follow-Ups
-- `P1`: validator-set rotation 이 shipped baseline 으로 도입되면 bootstrap trust root 와 historical validator-set lookup contract 를 별도 ADR 또는 superseding plan 으로 확장한다.
+- `P1`: ADR-0023 semantic baseline 을 concrete checkpoint/root bundle, historical validator-set lookup runtime, bootstrap verification path 에 연결하는 implementation plan 을 별도로 확장한다.
 - `P2`: archive-grade accelerated historical backfill, snapshot compression, Merkle proof serving 은 별도 plan 또는 ADR 로 분리한다.
 - `P3`: full durable proposal/vote archive retention policy 와 compaction policy 는 별도 storage follow-up 으로 분리한다.
 - `P4`: production-grade peer scoring / bandwidth shaping / backpressure policy 는 gossip/deployment follow-up 으로 분리한다.

@@ -65,6 +65,7 @@ final case class FinalizedAnchorSuggestion(
    - 위 trust root 후보들은 서로 동등한 trust model 이 아니다. genesis config 는 static chain root 에 가깝고, operator checkpoint 는 운영자 신뢰를 추가로 요구하며, weak-subjectivity anchor 는 freshness/window assumption 을 전제로 한다.
    - peer 가 제시한 suggestion payload 자체는 validator-set authority 의 근거가 될 수 없다.
    - `FinalizedProof` 검증은 "peer 가 준 proof 가 self-authentic 하다" 가 아니라 "trusted bootstrap root 로부터 따라갈 수 있는 validator-set continuity 와 finality rule 을 만족한다" 는 뜻으로 해석한다.
+   - bootstrap trust-root class, precedence, historical validator-set lookup ownership 은 ADR-0023 이 소유한다.
 
 5. **bootstrap requester 는 live neighbor 전체에 `best finalized block suggestion` 을 fan-out 하고, local verification 을 통과한 candidate 중 `BlockHeader.height` 가 가장 높은 것을 anchor 로 선택한다.**
    - requester 는 validator neighbor 와 audit neighbor 를 구분하지 않는다. finalized suggestion 을 제공할 수 있는 authenticated live peer 라면 source 가 될 수 있다.
@@ -129,13 +130,14 @@ final case class FinalizedAnchorSuggestion(
 - bootstrap 중인 validator 는 gap window 동안 일부 proposal vote 를 보류할 수 있으므로, 운영 측면에서는 이미 ready 한 quorum 이 남아 있다는 가정이 필요하다.
 - snapshot trie fetch 는 content-addressed integrity 는 강하지만 withholding 에 대한 liveness policy 를 별도로 요구한다.
 - historical backfill 을 readiness 와 분리하므로 신규 validator 는 archive completeness 를 기다리지 않고 network 에 합류할 수 있다.
-- 대신 `FinalizedProof` wire encoding/transport optimization, bootstrap trust root contract, validator-set continuity derivation, snapshot node batching/rate-limit, proposal replay budget 같은 follow-up spec 이 더 필요해진다.
+- 대신 `FinalizedProof` wire encoding/transport optimization, concrete checkpoint/root bundle shape, runtime historical validator-set lookup integration, snapshot node batching/rate-limit, proposal replay budget 같은 follow-up spec 이 더 필요해진다.
 - conflicting valid finalized suggestion 을 explicit safety fault 로 surface 하므로, bootstrap path 가 consensus safety anomaly 를 조용히 삼키지 않게 된다.
 
 ## Implementation Status
 - `2026-04-05` 기준 shipped JVM baseline 은 runtime-owned `FinalizedAnchorSuggestion` discovery/verification, snapshot metadata + trie persistence seam, anchor-pinned bootstrap coordinator, tx-aware forward catch-up vote-hold gating, low-priority historical backfill worker, 그리고 관련 diagnostics/test coverage 까지 landed 했다.
 - shipped bootstrap trust root 는 현재 `HotStuffBootstrapConfig.validatorSet` 과 동등한 static validator-set baseline 이다.
-- validator-set rotation continuity, historical validator-set lookup, operator checkpoint / weak-subjectivity bootstrap material, archive-grade accelerated backfill, peer scoring/bandwidth shaping 은 여전히 follow-up 범위다.
+- validator-set rotation continuity, trust-root class/precedence, historical validator-set lookup semantic baseline 은 ADR-0023 에서 drafted 됐지만, runtime integration 은 아직 follow-up 이다.
+- operator checkpoint / weak-subjectivity bootstrap material concrete format, archive-grade accelerated backfill, peer scoring/bandwidth shaping 은 여전히 follow-up 범위다.
 
 ## Rejected Alternatives
 1. **가장 높다고 주장된 block/header 를 proof 없이 anchor 로 채택한다**
@@ -166,8 +168,8 @@ final case class FinalizedAnchorSuggestion(
 - concrete implementation sequence 는 `docs/plans/0007-snapshot-sync-and-background-backfill-plan.md` 에서 추적한다.
 - **Phase 1 / blocking**
   - 이 ADR 에서 고정한 `FinalizedProof(child, grandchild)` semantic minimum 을 기준으로, anchor proposal `P0` 와 proof bundle(`P1`, `P2`)을 `best finalized block suggestion` response 에 어떻게 encode / batch / inline 할지 wire contract 를 별도 spec 또는 implementation plan 에서 고정한다.
-  - trusted bootstrap root 형식과 validator-set continuity derivation rule 을 고정해 initial bootstrap paradox 를 해소한다.
-  - historical validator-set lookup seam 을 마련해 과거 finalized evidence 검증 시 current validator set 가정에 의존하지 않도록 한다.
+  - trusted bootstrap root class / precedence 와 validator-set continuity semantic baseline 은 ADR-0023 이 소유한다. plan `0007` 은 concrete checkpoint/root bundle format 과 runtime integration 만 follow-up 으로 남긴다.
+  - historical validator-set lookup seam 의 semantic ownership 은 ADR-0023 이 가진다. plan `0007` 은 과거 finalized evidence 검증 시 current validator set 가정에 의존하지 않도록 concrete runtime/store seam 을 follow-up 한다.
   - `best finalized block suggestion`, snapshot trie node fetch, proposal replay/backfill, historical backfill 의 concrete runtime/service interface 와 rejection class 를 implementation plan 에서 구체화한다. 이때 bootstrap 시작 시점의 finalized anchor 검증은 self-contained suggestion response 만으로 시작할 수 있어야 하고, normal proposal/vote fetch plane 은 그 이후 catch-up 단계에서 재사용한다.
 - **Phase 2 / baseline-hardening**
   - anchor discovery retry/backoff, no-candidate diagnostics, bootstrap pause/resume policy 를 implementation plan 에서 구체화한다.
@@ -181,6 +183,7 @@ final case class FinalizedAnchorSuggestion(
 - [ADR-0018: Static Peer Topology And Initial HotStuff Deployment Baseline](0018-static-peer-topology-and-initial-hotstuff-deployment-baseline.md)
 - [ADR-0019: Canonical Block Header And Application-Neutral Block View](0019-canonical-block-header-and-application-neutral-block-view.md)
 - [ADR-0020: Conflict-Free Block Scheduling With State References And Object-Centric Seams](0020-conflict-free-block-scheduling-with-state-references-and-object-centric-seams.md)
+- [ADR-0023: Validator-Set Rotation And Bootstrap Trust Roots](0023-validator-set-rotation-and-bootstrap-trust-roots.md)
 - [0003 - Multiplexed Gossip Session Sync Plan](../plans/0003-multiplexed-gossip-session-sync-plan.md)
 - [0004 - HotStuff Consensus Without Threshold Signatures Plan](../plans/0004-hotstuff-consensus-without-threshold-signatures-plan.md)
 - [0005 - Canonical Block Structure Migration Plan](../plans/0005-canonical-block-structure-migration-plan.md)
