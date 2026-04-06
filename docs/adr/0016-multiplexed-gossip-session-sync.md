@@ -13,10 +13,10 @@ Accepted
 - 따라서 이 ADR은 transport-neutral gossip/session substrate만 고정하고, consensus-specific artifact contract는 별도 ADR이 소유한다. HotStuff non-threshold-signature baseline은 ADR-0017이 담당한다.
 - 초기 deployment topology와 node role 운영 baseline은 ADR-0018이 소유한다. 이 ADR은 peer discovery나 validator admission policy 자체를 고정하지 않고, gossip substrate가 그 위에서 동작할 수 있는 transport/runtime contract만 다룬다.
 - 현재 `docs/plans/0002-sigilaris-node-jvm-extraction-plan.md`는 multi-node networking을 범위 밖으로 두고 있으므로, 이 ADR은 현재 extraction plan의 즉시 구현 범위를 넓히는 문서가 아니라 후속 networking 설계를 고정하기 위한 정책 문서다.
-- `2026-04-01` 기준 `sigilaris-node-jvm`에는 tx-topic gossip/session baseline이 landed 되었고, negotiated liveness wiring, pre-open reject-and-close, static peer config bootstrap, topic-neutral producer polling/QoS seam, half-open re-handshake, reconnect filter reset까지 HTTP baseline에 반영되었다. snapshot/backfill, production auth binding, consensus topic semantics는 여전히 follow-up 범위다.
+- `2026-04-06` 기준 `sigilaris-node-jvm`에는 tx-topic gossip/session baseline, negotiated liveness wiring, pre-open reject-and-close, static peer config bootstrap, topic-neutral producer polling/QoS seam, half-open re-handshake, reconnect filter reset, session-bound bootstrap transport consumer까지 HTTP baseline에 반영되었다. static-topology peer identity binding / session-bound capability authorization semantic baseline은 ADR-0024에서 drafted 되었고, exact transport credential binding과 추가 consensus topic semantics는 여전히 follow-up 범위다.
 
 ## Decision
-이 절의 규칙은 `sigilaris-node-jvm`의 shipped tx-topic HTTP baseline과 follow-up topic/runtime work 모두에 적용되는 normative policy다. 현재 구현은 tx-topic anti-entropy와 static peer topology baseline을 제공하지만, snapshot/backfill, production-grade peer authentication binding, consensus topic semantics는 여전히 follow-up 범위다.
+이 절의 규칙은 `sigilaris-node-jvm`의 shipped tx-topic HTTP baseline과 follow-up topic/runtime work 모두에 적용되는 normative policy다. 현재 구현은 tx-topic anti-entropy, static peer topology baseline, session-bound bootstrap consumer path를 제공한다. static-topology peer identity binding / session-bound capability authorization semantic baseline은 ADR-0024가 소유하고, exact transport credential binding과 추가 consensus topic semantics는 여전히 follow-up 범위다.
 
 1. **Peer synchronization은 endpoint-per-type RPC가 아니라 session-based anti-entropy protocol로 정의한다.**
    - canonical 모델은 방향성을 가진 "peer session"이며, session은 한 producer에서 한 consumer로 향하는 delta 전송 흐름과 그에 대한 known-set 교환, replay/backfill, heartbeat를 포함한다.
@@ -102,6 +102,7 @@ Accepted
    - snapshot/backfill endpoint가 존재하더라도 transport가 storage를 직접 조회하지 않고 runtime/downstream service contract를 호출해 수행한다.
    - backfill/snapshot 기능을 구현하는 경우, 그 path는 directional session과 동일한 peer authentication policy를 따라야 하고, replay를 제공하는 producer가 소유한 directional session id에 바인딩되어야 한다.
    - backfill request는 parent directional session id를 명시적으로 참조해야 하며, consumer는 기존 session state에서 그 값을 얻어 사용한다.
+   - configured `PeerIdentity` 와 authenticated counterparty identity binding, session-bound child capability ownership, parent-session revoke/close cascade semantic baseline은 ADR-0024가 소유한다.
    - directional session id에서 파생한 capability/token을 쓰는 경우의 exact construction은 follow-up spec이 고정한다. experimental implementation의 최소 contract는 peer가 그 capability가 parent session과 peer authentication context에 바인딩되어 있음을 검증할 수 있어야 하고, parent session lifetime을 넘겨 재사용될 수 없게 만드는 것이다.
    - parent directional session이 종료되거나 revoke 되면 그 session에 종속된 snapshot/backfill capability도 더 이상 새 데이터를 승인하지 않도록 무효화되어야 하고, in-flight backfill은 runtime이 termination을 관측한 시점 이후 abort 또는 explicit re-authentication으로 전환되어야 한다.
 
@@ -126,7 +127,7 @@ Accepted
    - 이후 WebSocket, HTTP/2 stream, QUIC 등 full-duplex transport가 필요해져도 protocol model 자체는 바꾸지 않는다.
 
 ## Security Considerations
-- peer authentication model은 mandatory이며, 구체적인 TLS/application-level binding 방식은 follow-up spec이 고정한다.
+- peer authentication model은 mandatory이며, static-topology baseline 아래의 configured-peer/session-bound capability ownership은 ADR-0024가 고정한다. 구체적인 TLS/application-level binding 방식은 follow-up spec이 고정한다.
 - malicious peer의 과도한 replay 요청, oversized known-set/control batch, reconnect flood는 rate limiting과 admission policy로 방어해야 한다.
 - session hijacking 방지를 위해 session-open, control path, backfill path는 동일한 peer authentication context 아래에 묶여야 한다.
 - topic-specific validation rule이 아직 experimental이면 production deployment에서는 해당 topic contract의 support 여부를 명시적으로 관리해야 한다.
@@ -168,7 +169,7 @@ Accepted
 - `P3`: static peer topology, validator/audit node role, initial 100ms deployment target은 ADR-0018이 소유한다.
 - `P4`: HotStuff consensus implementation plan은 `docs/plans/0004-hotstuff-consensus-without-threshold-signatures-plan.md`에서 관리한다.
 - `P5`: `transport.armeria`용 SSE/NDJSON adapter 초안과, full-duplex transport로 전환할 때 재사용할 serialization envelope를 설계한다.
-- `P6`: snapshot/backfill contract, nack semantics의 상세 rule, peer authentication model은 별도 follow-up ADR 또는 protocol spec에서 구체화한다.
+- `P6`: static-topology peer identity binding, session-bound bootstrap capability authorization, parent-session revoke cascade semantic baseline은 ADR-0024가 소유한다. snapshot/backfill contract, nack semantics의 상세 rule, exact transport credential / capability encoding은 별도 protocol spec 또는 implementation plan에서 구체화한다.
 
 ## References
 - [ADR-0009: Blockchain Application Architecture](0009-blockchain-application-architecture.md)
@@ -176,7 +177,10 @@ Accepted
 - [ADR-0015: JVM Node Bundle Boundary And Packaging](0015-jvm-node-bundle-boundary-and-packaging.md)
 - [ADR-0017: HotStuff Consensus Without Threshold Signatures](0017-hotstuff-consensus-without-threshold-signatures.md)
 - [ADR-0018: Static Peer Topology And Initial HotStuff Deployment Baseline](0018-static-peer-topology-and-initial-hotstuff-deployment-baseline.md)
+- [ADR-0021: Snapshot Sync And Background Backfill From Best Finalized Suggestions](0021-snapshot-sync-and-background-backfill-from-best-finalized-suggestions.md)
+- [ADR-0024: Static-Topology Peer Identity Binding And Session-Bound Capability Authorization](0024-static-topology-peer-identity-binding-and-session-bound-capability-authorization.md)
 - [0002 - Sigilaris Node JVM Extraction](../plans/0002-sigilaris-node-jvm-extraction-plan.md)
 - [0003 - Multiplexed Gossip Session Sync Plan](../plans/0003-multiplexed-gossip-session-sync-plan.md)
 - [0004 - HotStuff Consensus Without Threshold Signatures Plan](../plans/0004-hotstuff-consensus-without-threshold-signatures-plan.md)
+- [0007 - Snapshot Sync And Background Backfill Plan](../plans/0007-snapshot-sync-and-background-backfill-plan.md)
 - [README](../../README.md)

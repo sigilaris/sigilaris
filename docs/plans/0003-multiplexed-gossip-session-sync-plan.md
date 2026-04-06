@@ -1,13 +1,13 @@
 # 0003 - Multiplexed Gossip Session Sync Plan
 
 ## Status
-Phase 3A Complete; Tx HTTP Baseline And Substrate Hardening Landed
+Phase 3A Complete; ADR-0024 Drafted; Identity-Binding Runtime Follow-Up Pending
 
 ## Created
 2026-03-28
 
 ## Last Updated
-2026-04-01
+2026-04-06
 
 ## Background
 - 이 문서는 `ADR-0016` Follow-Up `P1`에 해당하는 구현 plan 이다.
@@ -15,13 +15,14 @@ Phase 3A Complete; Tx HTTP Baseline And Substrate Hardening Landed
 - 이전 초안은 gossip substrate와 consensus artifact semantics를 한 문서에 함께 담고 있었지만, 장기 정책은 ADR-0017과 별도 consensus plan으로 분리했다.
 - 따라서 이 문서는 `sigilaris-node-jvm` 안에 runtime-owned gossip/session substrate를 도입하는 작업만 다루고, HotStuff proposal/vote/QC semantics는 이 plan의 범위 밖에 둔다.
 - initial deployment baseline은 static peer topology와 static neighbor list를 `application.conf` 또는 동등한 JVM config source에서 읽어 오는 방식으로 출발할 수 있다. 이 운영 baseline은 ADR-0018이 소유한다.
-- 현재 `sigilaris-node-jvm`은 `runtime`, `transport.armeria`, `storage` seam만 제공하며, 실제 gossip/session sync runtime과 transport adapter는 아직 없다.
+- plan 작성 시점에는 `sigilaris-node-jvm`이 `runtime`, `transport.armeria`, `storage` seam만 제공했고, 실제 gossip/session sync runtime과 transport adapter는 아직 없었다.
 - `docs/plans/0002-sigilaris-node-jvm-extraction-plan.md`는 multi-node networking을 명시적으로 범위 밖에 두었으므로, 새 networking 구현은 별도 plan으로 단계와 gate를 관리해야 한다.
 - `2026-04-01` 문서-구현 대조 리뷰에서 Phase 3 shipped baseline은 compile/test 기준으로 green 이지만, negotiated liveness wiring, pre-open reject-and-close 의 end-to-end enforcement, `tx.flushIntervalMs` timer ownership, static peer config bootstrap wiring, generic topic seam hardening에 갭이 확인되었다.
 - 위 리뷰는 landed runtime model, Armeria request path, bootstrap wiring, test coverage를 이 문서의 checklist / acceptance criteria 와 대조하는 방식으로 수행했다.
 - Phase 3A scope 는 위 confirmed gap closure 외에도 Armeria parity hardening 항목으로 `half-open -> open` recovery re-handshake 와 reconnect 후 filter state reset 의 end-to-end verification을 포함한다.
 - 기존 Phase 0-3 checklist 는 처음 landed slice 를 기록하고, 위 implementation-review gap closure 와 추가 Armeria parity hardening 은 이 문서의 Phase 3A 에서 별도로 추적한다.
 - `2026-04-01` Phase 3A gap closure implementation 이 landed 되면서 negotiated liveness/opening timeout wiring, pre-open reject-and-close, producer-local batching clock, static peer config bootstrap, topic-neutral producer seam, half-open re-handshake, reconnect filter reset, 그리고 대응 regression test 가 모두 compile/test 기준으로 green 상태가 되었다.
+- `2026-04-06` 기준 static-topology peer identity binding, session-bound bootstrap capability authorization, parent-session revoke cascade semantic baseline 은 ADR-0024 로 분리됐다. 이 plan 에 남는 일은 exact transport credential binding, capability/token encoding, stronger production auth mechanism 같은 concrete runtime/transport follow-up 이다.
 
 ## Goal
 - `sigilaris-node-jvm` 안에 runtime-owned gossip/session sync substrate를 도입한다.
@@ -45,7 +46,7 @@ Phase 3A Complete; Tx HTTP Baseline And Substrate Hardening Landed
 - peer discovery, peer scoring, topology management, validator admission policy는 이번 plan에 넣지 않는다.
 - WebSocket, HTTP/2 stream, QUIC 같은 full-duplex transport는 이번 plan에서 구현하지 않는다.
 - rate limiting, admission throttling, malicious peer flood 방어 정책은 deployment/adapter policy 로 두고 이번 plan의 구현 범위에 넣지 않는다.
-- snapshot/backfill capability format, parent-session capability revocation, production-grade peer authentication binding 방식은 이번 plan에서 최종 고정하지 않는다.
+- snapshot/backfill capability format, parent-session capability revocation, production-grade peer authentication binding의 semantic baseline 은 ADR-0024 가 소유한다. 이 plan 에서는 exact transport credential / token mechanism 을 최종 고정하지 않는다.
 - open session registry 자체를 프로세스 재시작 후 복구하는 기능은 이번 plan의 완료 조건으로 두지 않는다.
 
 ## Related ADRs And Docs
@@ -55,8 +56,11 @@ Phase 3A Complete; Tx HTTP Baseline And Substrate Hardening Landed
 - ADR-0016: Multiplexed Gossip Session Sync Substrate
 - ADR-0017: HotStuff Consensus Without Threshold Signatures
 - ADR-0018: Static Peer Topology And Initial HotStuff Deployment Baseline
+- ADR-0021: Snapshot Sync And Background Backfill From Best Finalized Suggestions
+- ADR-0024: Static-Topology Peer Identity Binding And Session-Bound Capability Authorization
 - `docs/plans/0002-sigilaris-node-jvm-extraction-plan.md`
 - `docs/plans/0004-hotstuff-consensus-without-threshold-signatures-plan.md`
+- `docs/plans/0007-snapshot-sync-and-background-backfill-plan.md`
 - `docs/plans/plan-template.md`
 - `README.md`
 
@@ -66,7 +70,7 @@ Phase 3A Complete; Tx HTTP Baseline And Substrate Hardening Landed
 - runtime은 topic-specific semantic을 직접 소유하지 않고, generic topic contract seam을 통해 topic owner 구현을 연결한다.
 - simultaneous-open detection key는 concrete auth binding과 분리된 runtime-owned `PeerIdentity` placeholder 또는 동등한 authenticated peer identity abstraction으로 모델링한다.
 - initial deployment에서는 static peer registry와 direct neighbor list를 `application.conf` 또는 동등한 config source에서 읽어 온다. dynamic discovery는 baseline shipped scope에 넣지 않는다.
-- 위 static peer config는 최소한 local node identity, known peer identities, direct neighbor set을 제공해야 하며 `PeerIdentity` placeholder는 이 config 또는 그 위의 auth abstraction과 일관되게 매핑되어야 한다.
+- 위 static peer config는 최소한 local node identity, known peer identities, direct neighbor set을 제공해야 하며 `PeerIdentity` placeholder는 이 config 또는 그 위의 auth abstraction과 일관되게 매핑되어야 한다. configured peer identity 와 authenticated counterparty/session-bound capability semantic ownership 은 ADR-0024 기준으로 읽는다.
 - heartbeat/keepalive 는 transport-local ping 이 아니라 runtime-owned typed protocol message 로 모델링한다. producer-side keepalive 는 event-stream message family에, consumer-side keepalive 는 control-channel message family에 속한다.
 - `transport.armeria.gossip`는 Armeria request/response, SSE 또는 NDJSON framing, connection lifecycle만 담당하고 `storage.swaydb` 같은 concrete storage package를 직접 import 하지 않는다.
 - seam validation baseline은 `runtime.gossip.tx -> runtime.gossip`, `transport.armeria.gossip -> runtime.gossip`만 허용하고, `runtime.gossip -X-> transport.armeria.gossip`, `transport.armeria.gossip -X-> storage.*` 직접 의존은 금지한다.
@@ -104,6 +108,7 @@ Phase 3A Complete; Tx HTTP Baseline And Substrate Hardening Landed
 - `setCursor` 는 consumer 가 producer 에게 자신의 durable consumed checkpoint 를 알리는 ack-like state mutation 이고, `nack` 는 durable cursor 를 전진시키지 않는 transient replay request marker 이다.
 - `nack` 의 baseline semantic 은 live session 안에서 same handshake context 를 유지한 채 cursor-based replay 를 다시 요청하는 것이다. `requestById` 는 stable id 기준 hole-filling 요청이고 `nack` 를 대체하지 않는다.
 - control retry horizon은 negotiated `maxControlRetryInterval`의 최소 2배 이상 최대 10배 이하로 고정한다.
+- configured peer identity binding, session-bound child capability ownership, parent-session revoke cascade semantic baseline 은 ADR-0024 가 소유한다. 이 plan 은 `authorizeOpenSession` 또는 동등 runtime check 와 concrete transport enforcement 를 구현 단위로 다룬다.
 - directional session lifecycle 구현 범위는 `opening -> open`, `opening -> closed|dead`, `open -> closed|dead` 전이를 포함한다.
 - peer relationship lifecycle 구현 범위는 shared peer correlation id 아래에서 `open -> half-open`, `half-open -> open`, `half-open -> closed|dead` 전이를 포함한다.
 - `half-open -> open` recovery baseline 은 dead direction 이 기존 peer correlation id 아래에서 session-open proposal/ack 를 다시 완료하는 full re-handshake 경로로 고정한다.
@@ -137,6 +142,8 @@ Phase 3A Complete; Tx HTTP Baseline And Substrate Hardening Landed
 - `docs/plans/0003-multiplexed-gossip-session-sync-plan.md`
 - `docs/adr/0016-multiplexed-gossip-session-sync.md`
 - `docs/adr/0017-hotstuff-consensus-without-threshold-signatures.md`
+- `docs/adr/0021-snapshot-sync-and-background-backfill-from-best-finalized-suggestions.md`
+- `docs/adr/0024-static-topology-peer-identity-binding-and-session-bound-capability-authorization.md`
 - 필요 시 `README.md`의 networking 관련 설명 보강
 
 ## Implementation Phases
@@ -306,4 +313,4 @@ Phase 3A Complete; Tx HTTP Baseline And Substrate Hardening Landed
 ## Follow-Ups
 - `docs/plans/0004-hotstuff-consensus-without-threshold-signatures-plan.md`에서 HotStuff proposal/vote/QC integration을 진행한다.
 - correctness-sensitive topic을 위한 exact known-set, range-set, IBLT/GCS, window key model은 topic owner plan이 고정한다.
-- snapshot/backfill capability, parent-session revoke, peer authentication binding 구체화는 별도 ADR 또는 protocol spec으로 넘긴다.
+- snapshot/backfill capability, parent-session revoke, peer authentication binding의 semantic baseline 은 ADR-0024 가 소유한다. exact transport credential binding, capability/token encoding, stronger production auth mechanism 은 별도 protocol spec 또는 implementation plan으로 넘긴다.

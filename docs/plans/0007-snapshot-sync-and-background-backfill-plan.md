@@ -1,7 +1,7 @@
 # 0007 - Snapshot Sync And Background Backfill Plan
 
 ## Status
-Phase 8 Complete; ADR-0023 Drafted; Rotation/Trust-Root Runtime Follow-Up Pending
+Phase 8 Complete; ADR-0023/0024 Drafted; Rotation/Identity Runtime Follow-Up Pending
 
 ## Created
 2026-04-05
@@ -21,7 +21,7 @@ Phase 8 Complete; ADR-0023 Drafted; Rotation/Trust-Root Runtime Follow-Up Pendin
   - current proposal/vote fetch 는 same-window anti-entropy baseline 이라 bootstrap 시작점의 self-contained finalized anchor 검증을 직접 대체하지 않는다.
 - ADR-0021 은 bootstrap 을 `anchor discovery -> snapshot sync -> forward catch-up -> historical backfill` 네 단계로 고정했고, `FinalizedAnchorSuggestion = anchor proposal P0 + FinalizedProof(P1, P2)` semantic minimum, anchor pinning, self-contained bootstrap verification, background historical backfill baseline 을 이미 잠갔다.
 - current HotStuff bootstrap config 는 `HotStuffBootstrapConfig.validatorSet` 을 통해 static validator-set baseline 을 입력으로 요구하고, proposal validation 도 현재 validator set 기준 justify QC 검증을 사용한다.
-- 따라서 initial rollout 은 current static-validator-set baseline 위에서 bootstrap trust root 를 먼저 구현했고, validator-set rotation / bootstrap trust-root semantic baseline 은 ADR-0023 으로 분리됐다. 이 plan 에 남는 일은 concrete runtime integration, checkpoint/root format, historical lookup materialization follow-up 이다.
+- 따라서 initial rollout 은 current static-validator-set baseline 위에서 bootstrap trust root 를 먼저 구현했고, validator-set rotation / bootstrap trust-root semantic baseline 은 ADR-0023 으로 분리됐다. 또 session-bound bootstrap capability authorization, configured peer identity binding, parent-session revoke cascade semantic baseline 은 ADR-0024 로 분리됐다. 이 plan 에 남는 일은 concrete runtime integration, checkpoint/root format, historical lookup materialization, stronger auth binding follow-up 이다.
 
 ## Goal
 - runtime-owned `best finalized block suggestion` service 를 추가해 신규 노드가 self-contained finalized anchor 를 발견하고 검증할 수 있게 한다.
@@ -55,6 +55,7 @@ Phase 8 Complete; ADR-0023 Drafted; Rotation/Trust-Root Runtime Follow-Up Pendin
 - ADR-0019: Canonical Block Header And Application-Neutral Block View
 - ADR-0021: Snapshot Sync And Background Backfill From Best Finalized Suggestions
 - ADR-0023: Validator-Set Rotation And Bootstrap Trust Roots
+- ADR-0024: Static-Topology Peer Identity Binding And Session-Bound Capability Authorization
 - `docs/plans/0003-multiplexed-gossip-session-sync-plan.md`
 - `docs/plans/0004-hotstuff-consensus-without-threshold-signatures-plan.md`
 - `docs/plans/0005-canonical-block-structure-migration-plan.md`
@@ -66,6 +67,7 @@ Phase 8 Complete; ADR-0023 Drafted; Rotation/Trust-Root Runtime Follow-Up Pendin
 - `FinalizedAnchorSuggestion` 의 semantic minimum 은 `proposal: P0` 와 `FinalizedProof(child: P1, grandchild: P2)` 로 고정한다. `P1`, `P2` 는 justify chain 상에서 각각 `P0`, `P1` 을 justify 하는 descendant proposal 이며, block id 둘 또는 proposal id 둘만으로는 baseline proof 로 충분하지 않다.
 - local finalized anchor derivation 은 proposal reception order 나 highest observed height 가 아니라 justify chain 기준 3-chain finality 를 canonical rule 로 사용한다.
 - `best finalized block suggestion` 은 runtime-owned bootstrap service 이고, bootstrap 시작 시점의 finalized anchor 검증은 self-contained suggestion response 만으로 시작할 수 있어야 한다.
+- configured peer identity binding, session-bound bootstrap capability authorization, parent-session revoke cascade semantic baseline 은 ADR-0024 가 소유한다. 이 plan 은 shipped gossip/runtime 의 open-session authorization seam 을 concrete bootstrap transport path 에 연결하는 것만 follow-up 으로 남긴다.
 - snapshot sync 의 verification unit 은 Merkle trie node hash 다. batching, transport framing, peer mixing 은 허용되지만 admissibility 는 언제나 content-addressed hash verification 으로 판정한다.
 - snapshot trie node transport 는 existing proposal/vote `requestById` control op 를 재사용하지 않고, ADR-0021 이 요구한 session-bound bootstrap service family 로 분리한다. 다만 ownership, auth binding, rejection family 는 existing gossip substrate seam 을 재사용한다.
 - snapshot metadata 와 trie node persistence baseline 은 `StorageLayout.state.snapshot` / `StorageLayout.state.nodes` 를 사용한다. `BlockStore` / `BlockQuery` 는 block header/body query seam 으로 유지하고 snapshot state store 를 implicit 하게 대체하지 않는다.
@@ -97,6 +99,7 @@ Phase 8 Complete; ADR-0023 Drafted; Rotation/Trust-Root Runtime Follow-Up Pendin
 ### Docs
 - `docs/adr/0021-snapshot-sync-and-background-backfill-from-best-finalized-suggestions.md`
 - `docs/adr/0023-validator-set-rotation-and-bootstrap-trust-roots.md`
+- `docs/adr/0024-static-topology-peer-identity-binding-and-session-bound-capability-authorization.md`
 - `docs/plans/0007-snapshot-sync-and-background-backfill-plan.md`
 - 필요 시 `docs/plans/0003-multiplexed-gossip-session-sync-plan.md`
 - 필요 시 `docs/plans/0004-hotstuff-consensus-without-threshold-signatures-plan.md`
@@ -189,6 +192,7 @@ Phase 8 Complete; ADR-0023 Drafted; Rotation/Trust-Root Runtime Follow-Up Pendin
 - bootstrap start 시점에 self-contained proof 가 없으면 verification 이 normal artifact plane 가용성에 의존하게 된다. suggestion response 의 self-contained baseline 과 테스트로 막는다.
 - forward catch-up 이 current proposal stream 과 historical replay 를 중복 적용하거나 순서를 틀리면 readiness bug 가 생길 수 있다. explicit coordinator state machine 과 replay/stream merge regression test 로 완화한다.
 - Phase 7 에서 bootstrap service family 를 transport adapter 에 노출할 때 auth binding, session revoke propagation, request budgeting 이 느슨하면 unauthenticated snapshot/replay request 나 replay amplification surface 가 생길 수 있다. directional session identity 재검증, parent-session revoke cascade, canonical rejection, per-session budget test 로 잠근다.
+- stronger transport-level peer credential binding 이 끝까지 placeholder 상태로 남으면 configured peer identity와 HTTP caller identity가 drift 할 수 있다. ADR-0024 semantic baseline 을 기준으로 runtime authorization seam 을 유지하고, exact credential binding은 plan `0003` 또는 follow-up spec에서 별도 확장한다.
 - Phase 8 에서 replay/backfill contract 를 height-only filtering 에서 anchor ancestry semantics 로 tighten 할 때 기존 caller 가 넓은 superset 반환을 암묵적으로 기대하면 compatibility regression 이 생길 수 있다. contract 를 trait/test 에서 명시적으로 재고정하고, ancestry mismatch / duplicate replay regression suite 로 전환을 보호한다.
 
 ## Acceptance Criteria
@@ -222,6 +226,7 @@ Phase 8 Complete; ADR-0023 Drafted; Rotation/Trust-Root Runtime Follow-Up Pendin
 - shipped newcomer bootstrap assembly 는 remote snapshot/replay/backfill transport 와 materialization seam 까지 연결됐지만, assembled `ProposalCatchUpReadiness` 는 아직 placeholder `forwardCatchUpUnavailable` hold 를 사용한다. no-op catch-up 에서는 ready 로 전이되지만, replayed/live proposal 에 대한 concrete readiness consumer path 는 follow-up 이다.
 - shipped bootstrap trust root 는 여전히 `HotStuffBootstrapConfig.validatorSet` 기반 static validator-set baseline 이다. operator checkpoint 나 weak-subjectivity anchor 의 semantic class는 ADR-0023 에서 drafted 됐지만 concrete runtime input은 아직 follow-up 이다.
 - `ValidatorSetLookup` seam 은 landed 되었지만 ADR-0023 이 정의한 historical validator-set rotation continuity 와 finalized-proof historical lookup runtime 은 아직 구현되지 않았다.
+- bootstrap transport 는 parent session open-state revalidation baseline 을 이미 사용하지만, ADR-0024 가 정의한 stronger transport-level peer credential binding 과 capability/token concretion 은 아직 follow-up 이다.
 - historical backfill 은 low-priority background baseline 과 in-memory archive retention seam 까지 landed 되었고, durable storage backing, archive-grade acceleration, peer scoring, bandwidth shaping, explicit budget shaping, snapshot batching optimization 은 후속 작업으로 남아 있다.
 
 ## Checklist

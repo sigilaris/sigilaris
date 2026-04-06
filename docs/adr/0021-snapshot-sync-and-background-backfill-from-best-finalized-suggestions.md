@@ -30,6 +30,7 @@ Accepted
    - 이 API 는 "proposal 을 finalized 만 따로 읽는 API" 가 아니다.
    - 새 API 의 목적은 bootstrap 시작 시점에 각 neighbor 가 현재 locally known finalized frontier 중 무엇을 anchor 후보로 추천하는지 묻는 것이다.
    - request 는 ADR-0016 directional session 및 동일 peer authentication context 에 바인딩되는 runtime-owned service call 이다.
+   - static-topology baseline 아래의 configured peer identity binding 과 session-bound child capability ownership 은 ADR-0024 가 소유한다.
    - transport adapter 는 이 service 를 노출할 수 있지만, storage 를 직접 조회하는 transport-owned shortcut 으로 구현해서는 안 된다.
 
 3. **`best finalized block suggestion` response 는 "주장" 이 아니라 local verification 이 가능한 anchor bundle 이어야 한다.**
@@ -115,6 +116,7 @@ final case class FinalizedAnchorSuggestion(
     - historical backfill
     - 위 서비스들은 모두 ADR-0016 directional session 과 동일 peer authentication context 아래에 묶여야 한다.
     - parent directional session 이 종료되거나 revoke 되면 그 session 에 종속된 bootstrap capability 도 더 이상 새 data 를 승인해서는 안 된다.
+    - configured peer identity binding, session-bound capability ownership, parent-session revoke cascade semantic baseline 은 ADR-0024 가 소유한다.
 
 12. **shipped tx-set-carrying proposal baseline 은 post-anchor body availability 의 기본 seam 으로 사용한다.**
     - `Proposal` 이 canonical tx hash set 을 sign-bytes 와 identity input 에 포함하므로, malicious relay 가 anchor 이후 proposal membership 를 임의로 바꾸는 공격을 body fetch seam 밖에서 허용하지 않는다.
@@ -137,6 +139,7 @@ final case class FinalizedAnchorSuggestion(
 - `2026-04-05` 기준 shipped JVM baseline 은 runtime-owned `FinalizedAnchorSuggestion` discovery/verification, snapshot metadata + trie persistence seam, anchor-pinned bootstrap coordinator, tx-aware forward catch-up vote-hold gating, low-priority historical backfill worker, 그리고 관련 diagnostics/test coverage 까지 landed 했다.
 - shipped bootstrap trust root 는 현재 `HotStuffBootstrapConfig.validatorSet` 과 동등한 static validator-set baseline 이다.
 - validator-set rotation continuity, trust-root class/precedence, historical validator-set lookup semantic baseline 은 ADR-0023 에서 drafted 됐지만, runtime integration 은 아직 follow-up 이다.
+- session-bound bootstrap capability authorization, configured peer identity binding, parent-session revoke cascade semantic baseline 은 ADR-0024 에서 drafted 됐고, shipped transport 는 parent session open-state revalidation path 를 이미 사용한다.
 - operator checkpoint / weak-subjectivity bootstrap material concrete format, archive-grade accelerated backfill, peer scoring/bandwidth shaping 은 여전히 follow-up 범위다.
 
 ## Rejected Alternatives
@@ -170,6 +173,7 @@ final case class FinalizedAnchorSuggestion(
   - 이 ADR 에서 고정한 `FinalizedProof(child, grandchild)` semantic minimum 을 기준으로, anchor proposal `P0` 와 proof bundle(`P1`, `P2`)을 `best finalized block suggestion` response 에 어떻게 encode / batch / inline 할지 wire contract 를 별도 spec 또는 implementation plan 에서 고정한다.
   - trusted bootstrap root class / precedence 와 validator-set continuity semantic baseline 은 ADR-0023 이 소유한다. plan `0007` 은 concrete checkpoint/root bundle format 과 runtime integration 만 follow-up 으로 남긴다.
   - historical validator-set lookup seam 의 semantic ownership 은 ADR-0023 이 가진다. plan `0007` 은 과거 finalized evidence 검증 시 current validator set 가정에 의존하지 않도록 concrete runtime/store seam 을 follow-up 한다.
+  - configured peer identity binding, session-bound bootstrap capability authorization, parent-session revoke cascade semantic baseline 은 ADR-0024 가 소유한다. plan `0007` 은 concrete transport/runtime enforcement 와 diagnostics 만 follow-up 으로 남긴다.
   - `best finalized block suggestion`, snapshot trie node fetch, proposal replay/backfill, historical backfill 의 concrete runtime/service interface 와 rejection class 를 implementation plan 에서 구체화한다. 이때 bootstrap 시작 시점의 finalized anchor 검증은 self-contained suggestion response 만으로 시작할 수 있어야 하고, normal proposal/vote fetch plane 은 그 이후 catch-up 단계에서 재사용한다.
 - **Phase 2 / baseline-hardening**
   - anchor discovery retry/backoff, no-candidate diagnostics, bootstrap pause/resume policy 를 implementation plan 에서 구체화한다.
@@ -184,6 +188,7 @@ final case class FinalizedAnchorSuggestion(
 - [ADR-0019: Canonical Block Header And Application-Neutral Block View](0019-canonical-block-header-and-application-neutral-block-view.md)
 - [ADR-0020: Conflict-Free Block Scheduling With State References And Object-Centric Seams](0020-conflict-free-block-scheduling-with-state-references-and-object-centric-seams.md)
 - [ADR-0023: Validator-Set Rotation And Bootstrap Trust Roots](0023-validator-set-rotation-and-bootstrap-trust-roots.md)
+- [ADR-0024: Static-Topology Peer Identity Binding And Session-Bound Capability Authorization](0024-static-topology-peer-identity-binding-and-session-bound-capability-authorization.md)
 - [0003 - Multiplexed Gossip Session Sync Plan](../plans/0003-multiplexed-gossip-session-sync-plan.md)
 - [0004 - HotStuff Consensus Without Threshold Signatures Plan](../plans/0004-hotstuff-consensus-without-threshold-signatures-plan.md)
 - [0005 - Canonical Block Structure Migration Plan](../plans/0005-canonical-block-structure-migration-plan.md)
