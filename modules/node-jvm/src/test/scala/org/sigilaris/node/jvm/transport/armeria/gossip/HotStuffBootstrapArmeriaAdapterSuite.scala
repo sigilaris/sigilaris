@@ -3,6 +3,7 @@ package org.sigilaris.node.jvm.transport.armeria.gossip
 import java.nio.file.{Files, Path}
 import java.net.URI
 import java.net.http.{HttpClient, HttpRequest, HttpResponse}
+import java.nio.charset.StandardCharsets
 import java.time.{Duration, Instant}
 import java.util.Optional
 import java.util.concurrent.CompletableFuture
@@ -60,6 +61,68 @@ final class HotStuffBootstrapArmeriaAdapterSuite extends CatsEffectSuite:
     if Files.exists(path) then
       Using.resource(Files.walk(path)): stream =>
         stream.iterator.asScala.toList.reverse.foreach(Files.deleteIfExists)
+
+  private def transportAuthFor(
+      localNodeId: String,
+      knownPeers: List[String],
+  ): StaticPeerTransportAuth =
+    StaticPeerTransportAuth.testing(
+      StaticPeerTopology
+        .parse(
+          localNodeIdentity = localNodeId,
+          knownPeers = knownPeers,
+          directNeighbors = knownPeers,
+        )
+        .toOption
+        .get,
+    )
+
+  private def signedTransportProof(
+      transportAuth: StaticPeerTransportAuth,
+      authenticatedPeer: String,
+      path: String,
+      body: String,
+  ): String =
+    GossipTransportAuth
+      .issueTransportProof(
+        transportAuth = transportAuth,
+        authenticatedPeer = PeerIdentity.unsafe(authenticatedPeer),
+        httpMethod = "POST",
+        requestPath = path,
+        requestBodyBytes = body.getBytes(StandardCharsets.UTF_8),
+      )
+      .orElse(
+        GossipTransportAuth.issueTransportProof(
+          transportAuth = transportAuthFor(authenticatedPeer, List.empty),
+          authenticatedPeer = PeerIdentity.unsafe(authenticatedPeer),
+          httpMethod = "POST",
+          requestPath = path,
+          requestBodyBytes = body.getBytes(StandardCharsets.UTF_8),
+        ),
+      )
+      .toOption
+      .get
+
+  private def bootstrapCapability(
+      transportAuth: StaticPeerTransportAuth,
+      authenticatedPeer: String,
+      targetPeer: String,
+      sessionId: DirectionalSessionId,
+      path: String,
+      body: String,
+  ): String =
+    GossipTransportAuth
+      .issueBootstrapCapability(
+        transportAuth = transportAuth,
+        authenticatedPeer = PeerIdentity.unsafe(authenticatedPeer),
+        targetPeer = PeerIdentity.unsafe(targetPeer),
+        sessionId = sessionId,
+        httpMethod = "POST",
+        requestPath = path,
+        requestBodyBytes = body.getBytes(StandardCharsets.UTF_8),
+      )
+      .toOption
+      .get
 
   test("bootstrap transport serves finalized suggestion, snapshot nodes, replay, and backfill on an open session"):
     (
@@ -214,8 +277,10 @@ final class HotStuffBootstrapArmeriaAdapterSuite extends CatsEffectSuite:
     ).use: (client, server) =>
       for
         session <- openOutboundViaHttp(client, server)
+        requestPath =
+          s"/gossip/bootstrap/finalized/${session.sessionId.value}/${chainId.value}"
         missingResponse <- server.postNoBody(
-          s"/gossip/bootstrap/finalized/${session.sessionId.value}/${chainId.value}",
+          requestPath,
           authenticatedPeer = Some(client.localNodeId),
           bootstrapCapability = None,
         )
@@ -223,13 +288,17 @@ final class HotStuffBootstrapArmeriaAdapterSuite extends CatsEffectSuite:
           decode[RejectionWire](missingResponse.body).leftMap(new IllegalStateException(_))
         )
         mismatchedResponse <- server.postNoBody(
-          s"/gossip/bootstrap/finalized/${session.sessionId.value}/${chainId.value}",
+          requestPath,
           authenticatedPeer = Some(client.localNodeId),
           bootstrapCapability = Some(
-            GossipTransportAuth.issueBootstrapCapability(
-              peer = PeerIdentity.unsafe("node-c"),
+            bootstrapCapability(
+              transportAuth = server.transportAuth,
+              authenticatedPeer = client.localNodeId,
+              targetPeer = "node-c",
               sessionId = session.sessionId,
-            )
+              path = requestPath,
+              body = "",
+            ),
           ),
         )
         mismatchedRejection <- IO.fromEither(
@@ -304,6 +373,7 @@ final class HotStuffBootstrapArmeriaAdapterSuite extends CatsEffectSuite:
         bootstrapResult <- HotStuffRuntimeBootstrap
           .fromTopology[IO](
             topology = topology,
+            transportAuth = StaticPeerTransportAuth.testing(topology),
             consensusConfig = consensusConfig,
             clock = requesterClock,
             storageLayout = requesterLayout,
@@ -313,6 +383,7 @@ final class HotStuffBootstrapArmeriaAdapterSuite extends CatsEffectSuite:
                   PeerIdentity.unsafe("node-b") -> serverB.baseUri,
                   PeerIdentity.unsafe("node-c") -> serverC.baseUri,
                 ),
+                transportAuth = StaticPeerTransportAuth.testing(topology),
                 proposalCatchUpReadiness =
                   Some(ProposalCatchUpReadiness.ready[IO]),
               )
@@ -422,12 +493,14 @@ final class HotStuffBootstrapArmeriaAdapterSuite extends CatsEffectSuite:
         response <- HotStuffRuntimeBootstrap
           .fromTopology[IO](
             topology = topology,
+            transportAuth = StaticPeerTransportAuth.testing(topology),
             consensusConfig = consensusConfig,
             clock = requesterClock,
             storageLayout = requesterLayout,
             bootstrapTransport = Some(
               HotStuffBootstrapHttpTransport.services[IO](
-                Map(PeerIdentity.unsafe("node-b") -> remote.baseUri)
+                Map(PeerIdentity.unsafe("node-b") -> remote.baseUri),
+                transportAuth = StaticPeerTransportAuth.testing(topology),
               )
             ),
           )
@@ -451,7 +524,8 @@ final class HotStuffBootstrapArmeriaAdapterSuite extends CatsEffectSuite:
                   session <- openOutboundViaHttp(client.runtime, requesterServer)
                   transport =
                     HotStuffBootstrapHttpTransport.services[IO](
-                      Map(PeerIdentity.unsafe("node-a") -> requesterServer.baseUri)
+                      Map(PeerIdentity.unsafe("node-a") -> requesterServer.baseUri),
+                      transportAuth = requesterServer.transportAuth,
                     )
                   suggestion <- transport.finalizedAnchorSuggestions.bestFinalized(session, chainId)
                   nodes <- transport.snapshotNodeFetch.fetchNodes(
@@ -487,6 +561,10 @@ final class HotStuffBootstrapArmeriaAdapterSuite extends CatsEffectSuite:
       result <- HotStuffBootstrapHttpTransport
         .services[IO](
           peerBaseUris = Map(session.peer -> "http://bootstrap.test"),
+          transportAuth = transportAuthFor(
+            localNodeId = session.authenticatedPeer.value,
+            knownPeers = List(session.peer.value),
+          ),
           httpClient = httpClient,
           requestTimeout = Duration.ofMillis(250L),
         )
@@ -506,10 +584,15 @@ final class HotStuffBootstrapArmeriaAdapterSuite extends CatsEffectSuite:
         httpClient.recordedHeaderValues(GossipTransportAuth.BootstrapCapabilityHeaderName),
         Vector(
           Some(
-            GossipTransportAuth.issueBootstrapCapability(
-              peer = PeerIdentity.unsafe("node-a"),
+            bootstrapCapability(
+              transportAuth = transportAuthFor("node-a", List("node-b")),
+              authenticatedPeer = "node-a",
+              targetPeer = "node-b",
               sessionId = session.sessionId,
-            )
+              path =
+                s"/gossip/bootstrap/finalized/${session.sessionId.value}/${chainId.value}",
+              body = "",
+            ),
           )
         ),
       )
@@ -524,10 +607,16 @@ final class HotStuffBootstrapArmeriaAdapterSuite extends CatsEffectSuite:
             .parse("bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb")
             .toOption
             .get,
+        authenticatedPeer = PeerIdentity.unsafe("node-a"),
       )
     val transport =
       HotStuffBootstrapHttpTransport.services[IO](
         peerBaseUris = Map(session.peer -> "http://bootstrap.test"),
+        transportAuth =
+          transportAuthFor(
+            localNodeId = session.authenticatedPeer.value,
+            knownPeers = List(session.peer.value),
+          ),
         httpClient = httpClient,
         maxConcurrentRequests = 1,
       )
@@ -565,7 +654,8 @@ final class HotStuffBootstrapArmeriaAdapterSuite extends CatsEffectSuite:
       server: Harness,
   ): HotStuffBootstrapTransportServices[IO] =
     HotStuffBootstrapHttpTransport.services[IO](
-      Map(PeerIdentity.unsafe(server.localNodeId) -> server.baseUri)
+      Map(PeerIdentity.unsafe(server.localNodeId) -> server.baseUri),
+      transportAuth = server.transportAuth,
     )
 
   private def openOutboundViaHttp(
@@ -961,6 +1051,7 @@ final class HotStuffBootstrapArmeriaAdapterSuite extends CatsEffectSuite:
 
   private final case class Harness(
       localNodeId: String,
+      transportAuth: StaticPeerTransportAuth,
       runtime: TxGossipRuntime[IO, HotStuffGossipArtifact],
       source: InMemoryHotStuffArtifactSource[IO],
       sink: InMemoryHotStuffArtifactSink[IO],
@@ -971,6 +1062,8 @@ final class HotStuffBootstrapArmeriaAdapterSuite extends CatsEffectSuite:
         path: String,
         body: String,
         authenticatedPeer: Option[String] = None,
+        transportProof: Option[String] = None,
+        autoSignTransportProof: Boolean = true,
         bootstrapCapability: Option[String] = None,
     ): IO[Response] =
       IO.blocking:
@@ -978,9 +1071,26 @@ final class HotStuffBootstrapArmeriaAdapterSuite extends CatsEffectSuite:
         val builder = HttpRequest
           .newBuilder(URI.create(s"$baseUri$path"))
           .header("content-type", "application/json")
+        val resolvedProof =
+          transportProof.orElse:
+            authenticatedPeer
+              .filter(_ => autoSignTransportProof)
+              .map(peer =>
+                signedTransportProof(
+                  transportAuth = transportAuth,
+                  authenticatedPeer = peer,
+                  path = path,
+                  body = body,
+                ),
+              )
         authenticatedPeer.foreach: value =>
           builder.header(
             GossipTransportAuth.AuthenticatedPeerHeaderName,
+            value,
+          )
+        resolvedProof.foreach: value =>
+          builder.header(
+            GossipTransportAuth.TransportProofHeaderName,
             value,
           )
         bootstrapCapability.foreach: value =>
@@ -998,15 +1108,34 @@ final class HotStuffBootstrapArmeriaAdapterSuite extends CatsEffectSuite:
     def postNoBody(
         path: String,
         authenticatedPeer: Option[String] = None,
+        transportProof: Option[String] = None,
+        autoSignTransportProof: Boolean = true,
         bootstrapCapability: Option[String] = None,
     ): IO[Response] =
       IO.blocking:
         val client = HttpClient.newHttpClient()
         val builder = HttpRequest
           .newBuilder(URI.create(s"$baseUri$path"))
+        val resolvedProof =
+          transportProof.orElse:
+            authenticatedPeer
+              .filter(_ => autoSignTransportProof)
+              .map(peer =>
+                signedTransportProof(
+                  transportAuth = transportAuth,
+                  authenticatedPeer = peer,
+                  path = path,
+                  body = "",
+                ),
+              )
         authenticatedPeer.foreach: value =>
           builder.header(
             GossipTransportAuth.AuthenticatedPeerHeaderName,
+            value,
+          )
+        resolvedProof.foreach: value =>
+          builder.header(
+            GossipTransportAuth.TransportProofHeaderName,
             value,
           )
         bootstrapCapability.foreach: value =>
@@ -1063,6 +1192,7 @@ final class HotStuffBootstrapArmeriaAdapterSuite extends CatsEffectSuite:
           )
         )
         registry = StaticPeerRegistry(topology)
+        transportAuth = StaticPeerTransportAuth.testing(topology)
         authenticator = StaticPeerAuthenticator[IO](registry)
         clock <- Resource.eval(TestClock.create(start))
         given GossipClock[IO] = clock
@@ -1097,14 +1227,16 @@ final class HotStuffBootstrapArmeriaAdapterSuite extends CatsEffectSuite:
           )
         server <- ArmeriaServer.resource[IO](
           ArmeriaServerConfig(port = 0),
-          TxGossipArmeriaAdapter.endpoints[IO, HotStuffGossipArtifact](runtime) ++
+          TxGossipArmeriaAdapter.endpoints[IO, HotStuffGossipArtifact](runtime, transportAuth) ++
             HotStuffBootstrapArmeriaAdapter.endpoints[IO, HotStuffGossipArtifact](
               sessionRuntime = runtime,
               bootstrapServices = bootstrapServices,
+              transportAuth = transportAuth,
             ),
         )
       yield Harness(
         localNodeId = localNodeId,
+        transportAuth = transportAuth,
         runtime = runtime,
         source = source,
         sink = sink,
@@ -1114,12 +1246,15 @@ final class HotStuffBootstrapArmeriaAdapterSuite extends CatsEffectSuite:
 
   private final case class RuntimeServer(
       localNodeId: String,
+      transportAuth: StaticPeerTransportAuth,
       baseUri: String,
   ):
     def postJson(
         path: String,
         body: String,
         authenticatedPeer: Option[String] = None,
+        transportProof: Option[String] = None,
+        autoSignTransportProof: Boolean = true,
         bootstrapCapability: Option[String] = None,
     ): IO[Response] =
       IO.blocking:
@@ -1127,9 +1262,26 @@ final class HotStuffBootstrapArmeriaAdapterSuite extends CatsEffectSuite:
         val builder = HttpRequest
           .newBuilder(URI.create(s"$baseUri$path"))
           .header("content-type", "application/json")
+        val resolvedProof =
+          transportProof.orElse:
+            authenticatedPeer
+              .filter(_ => autoSignTransportProof)
+              .map(peer =>
+                signedTransportProof(
+                  transportAuth = transportAuth,
+                  authenticatedPeer = peer,
+                  path = path,
+                  body = body,
+                ),
+              )
         authenticatedPeer.foreach: value =>
           builder.header(
             GossipTransportAuth.AuthenticatedPeerHeaderName,
+            value,
+          )
+        resolvedProof.foreach: value =>
+          builder.header(
+            GossipTransportAuth.TransportProofHeaderName,
             value,
           )
         bootstrapCapability.foreach: value =>
@@ -1156,6 +1308,7 @@ final class HotStuffBootstrapArmeriaAdapterSuite extends CatsEffectSuite:
         .map: server =>
           RuntimeServer(
             localNodeId = bootstrap.topology.localNodeIdentity.value,
+            transportAuth = bootstrap.transportAuth,
             baseUri = s"http://127.0.0.1:${server.activeLocalPort()}",
           )
 

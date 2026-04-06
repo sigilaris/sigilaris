@@ -32,6 +32,48 @@ final class TxGossipArmeriaAdapterSuite extends CatsEffectSuite:
   private val subscription = SessionSubscription.unsafe(ChainTopic(chainId, GossipTopic.tx))
   private val baseInstant = Instant.parse("2026-04-01T00:00:00Z")
 
+  private def testingTransportAuth(
+      localNodeId: String,
+      knownPeers: List[String],
+  ): StaticPeerTransportAuth =
+    StaticPeerTransportAuth.testing(
+      StaticPeerTopology
+        .parse(
+          localNodeIdentity = localNodeId,
+          knownPeers = knownPeers,
+          directNeighbors = knownPeers,
+        )
+        .toOption
+        .get,
+    )
+
+  private def signedTransportProof(
+      transportAuth: StaticPeerTransportAuth,
+      authenticatedPeer: String,
+      path: String,
+      body: String,
+  ): String =
+    val peer = PeerIdentity.unsafe(authenticatedPeer)
+    GossipTransportAuth
+      .issueTransportProof(
+        transportAuth = transportAuth,
+        authenticatedPeer = peer,
+        httpMethod = "POST",
+        requestPath = path,
+        requestBodyBytes = body.getBytes(StandardCharsets.UTF_8),
+      )
+      .orElse(
+        GossipTransportAuth.issueTransportProof(
+          transportAuth = testingTransportAuth(authenticatedPeer, List.empty),
+          authenticatedPeer = peer,
+          httpMethod = "POST",
+          requestPath = path,
+          requestBodyBytes = body.getBytes(StandardCharsets.UTF_8),
+        ),
+      )
+      .toOption
+      .get
+
   test("session-open endpoint accepts a direct neighbor and returns a handshake ack"):
     Harness.resource(baseInstant).use: harness =>
       for
@@ -76,7 +118,7 @@ final class TxGossipArmeriaAdapterSuite extends CatsEffectSuite:
       yield
         assertEquals(response.status, 400)
         assertEquals(rejection.rejectionClass, "handshakeRejected")
-        assertEquals(rejection.reason, "nonNeighborPeer")
+        assertEquals(rejection.reason, "unknownAuthenticatedPeer")
 
   test("session-open endpoint requires an authenticated peer header bound to the initiator"):
     Harness.resource(baseInstant).use: harness =>
@@ -268,9 +310,9 @@ final class TxGossipArmeriaAdapterSuite extends CatsEffectSuite:
         assertEquals(eventLines.map(_.kind), Vector("rejection"))
         assertEquals(eventLines.flatMap(_.rejection).map(_.reason), Vector("missingAuthenticatedPeer"))
         assertEquals(controlResponse.status, 400)
-        assertEquals(controlRejection.reason, "authenticatedPeerMismatch")
+        assertEquals(controlRejection.reason, "unknownAuthenticatedPeer")
         assertEquals(disconnectResponse.status, 400)
-        assertEquals(disconnectRejection.reason, "authenticatedPeerMismatch")
+        assertEquals(disconnectRejection.reason, "unknownAuthenticatedPeer")
 
   test("event endpoint returns HTTP 200 with an in-stream rejection for malformed request bodies"):
     Harness.resource(baseInstant).use: harness =>
@@ -886,6 +928,7 @@ final class TxGossipArmeriaAdapterSuite extends CatsEffectSuite:
   private final case class Harness(
       localNodeId: String,
       remoteNodeId: String,
+      transportAuth: StaticPeerTransportAuth,
       runtime: TxGossipRuntime[IO, TestTx],
       source: InMemoryTxArtifactSource[IO, TestTx],
       clock: TestClock,
@@ -895,15 +938,33 @@ final class TxGossipArmeriaAdapterSuite extends CatsEffectSuite:
         path: String,
         body: String,
         authenticatedPeer: Option[String] = Some(remoteNodeId),
+        transportProof: Option[String] = None,
+        autoSignTransportProof: Boolean = true,
     ): IO[Response] =
       IO.blocking:
         val client = HttpClient.newHttpClient()
         val builder = HttpRequest
           .newBuilder(URI.create(s"$baseUri$path"))
           .header("content-type", "application/json")
+        val resolvedProof =
+          transportProof.orElse:
+            authenticatedPeer
+              .filter(_ => autoSignTransportProof)
+              .map: peer =>
+                signedTransportProof(
+                  transportAuth = transportAuth,
+                  authenticatedPeer = peer,
+                  path = path,
+                  body = body,
+                )
         authenticatedPeer.foreach: value =>
           builder.header(
             GossipTransportAuth.AuthenticatedPeerHeaderName,
+            value,
+          )
+        resolvedProof.foreach: value =>
+          builder.header(
+            GossipTransportAuth.TransportProofHeaderName,
             value,
           )
         val request =
@@ -920,14 +981,32 @@ final class TxGossipArmeriaAdapterSuite extends CatsEffectSuite:
     def postNoBody(
         path: String,
         authenticatedPeer: Option[String] = Some(remoteNodeId),
+        transportProof: Option[String] = None,
+        autoSignTransportProof: Boolean = true,
     ): IO[Response] =
       IO.blocking:
         val client = HttpClient.newHttpClient()
         val builder = HttpRequest
           .newBuilder(URI.create(s"$baseUri$path"))
+        val resolvedProof =
+          transportProof.orElse:
+            authenticatedPeer
+              .filter(_ => autoSignTransportProof)
+              .map: peer =>
+                signedTransportProof(
+                  transportAuth = transportAuth,
+                  authenticatedPeer = peer,
+                  path = path,
+                  body = "",
+                )
         authenticatedPeer.foreach: value =>
           builder.header(
             GossipTransportAuth.AuthenticatedPeerHeaderName,
+            value,
+          )
+        resolvedProof.foreach: value =>
+          builder.header(
+            GossipTransportAuth.TransportProofHeaderName,
             value,
           )
         val request =
@@ -1003,6 +1082,7 @@ final class TxGossipArmeriaAdapterSuite extends CatsEffectSuite:
           )
         )
         registry = StaticPeerRegistry(topology)
+        transportAuth = testingTransportAuth(localNodeId, List(remoteNodeId))
         authenticator = StaticPeerAuthenticator[IO](registry)
         clock <- Resource.eval(TestClock.create(start))
         given GossipClock[IO] = clock
@@ -1019,11 +1099,12 @@ final class TxGossipArmeriaAdapterSuite extends CatsEffectSuite:
         )
         server <- ArmeriaServer.resource[IO](
           ArmeriaServerConfig(port = 0),
-          TxGossipArmeriaAdapter.endpoints[IO, TestTx](runtime),
+          TxGossipArmeriaAdapter.endpoints[IO, TestTx](runtime, transportAuth),
         )
       yield Harness(
         localNodeId = localNodeId,
         remoteNodeId = remoteNodeId,
+        transportAuth = transportAuth,
         runtime = runtime,
         source = source,
         clock = clock,

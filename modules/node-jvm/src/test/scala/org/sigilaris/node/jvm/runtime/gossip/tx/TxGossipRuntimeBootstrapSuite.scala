@@ -2,12 +2,14 @@ package org.sigilaris.node.jvm.runtime.gossip.tx
 
 import java.time.Instant
 
+import scala.util.Try
+
 import cats.effect.IO
 import cats.effect.kernel.Ref
 import cats.syntax.all.*
 import munit.CatsEffectSuite
 
-import com.typesafe.config.ConfigFactory
+import com.typesafe.config.{Config, ConfigFactory}
 
 import org.sigilaris.core.codec.byte.ByteEncoder
 import org.sigilaris.core.crypto.Hash
@@ -19,6 +21,30 @@ final class TxGossipRuntimeBootstrapSuite extends CatsEffectSuite:
   private val chainId = ChainId.unsafe("chain-main")
   private val subscription = SessionSubscription.unsafe(ChainTopic(chainId, GossipTopic.tx))
   private val startedAt = Instant.parse("2026-04-01T00:00:00Z")
+
+  private def withTestTransportPeerSecrets(
+      config: Config,
+  ): Config =
+    Try(StaticPeerTopologyConfig.load(config)).toOption match
+      case Some(Right(topology)) =>
+        val peerSecrets =
+          (topology.knownPeers + topology.localNodeIdentity).toVector
+            .sortBy(_.value)
+            .map(peer =>
+              s"""    "${peer.value}" = "sigilaris-test-secret:${peer.value}"""",
+            )
+            .mkString("\n")
+        ConfigFactory
+          .parseString(
+            s"""
+               |sigilaris.node.gossip.peers.transport-auth.peer-secrets {
+               |$peerSecrets
+               |}
+               |""".stripMargin,
+          )
+          .withFallback(config)
+      case _ =>
+        config
 
   test("config loader builds runtime bootstrap and wires neighbor admission through the runtime"):
     val config = ConfigFactory.parseString(
@@ -37,7 +63,7 @@ final class TxGossipRuntimeBootstrapSuite extends CatsEffectSuite:
       source <- InMemoryTxArtifactSource.create[IO, TestTx]
       sink <- InMemoryTxArtifactSink.create[IO, TestTx]
       bootstrapEither <- TxGossipRuntimeBootstrap.fromConfig[IO, TestTx](
-        config = config,
+        config = withTestTransportPeerSecrets(config),
         clock = clock,
         source = source,
         sink = sink,

@@ -585,6 +585,7 @@ final case class HotStuffRuntimeBootstrap[F[_]](
     topology: StaticPeerTopology,
     registry: StaticPeerRegistry,
     authenticator: StaticPeerAuthenticator[F],
+    transportAuth: StaticPeerTransportAuth,
     consensus: HotStuffNodeRuntime[F],
     runtime: TxGossipRuntime[F, HotStuffGossipArtifact],
 ):
@@ -666,19 +667,25 @@ object HotStuffRuntimeBootstrap:
         case (_, Left(error)) =>
           Resource.pure(error.asLeft[HotStuffRuntimeBootstrap[F]])
         case (Right(topology), Right(consensusConfig)) =>
-          fromTopology(
-            topology = topology,
-            consensusConfig = consensusConfig,
-            clock = clock,
-            runtimePolicy = runtimePolicy,
-            handshakePolicy = handshakePolicy,
-            bootstrapTransport = bootstrapTransport,
-            storageLayout = storageLayout,
-          )
+          StaticPeerTransportAuthConfig.load(config, topology, peerConfigPath) match
+            case Left(error) =>
+              Resource.pure(error.asLeft[HotStuffRuntimeBootstrap[F]])
+            case Right(transportAuth) =>
+              fromTopology(
+                topology = topology,
+                transportAuth = transportAuth,
+                consensusConfig = consensusConfig,
+                clock = clock,
+                runtimePolicy = runtimePolicy,
+                handshakePolicy = handshakePolicy,
+                bootstrapTransport = bootstrapTransport,
+                storageLayout = storageLayout,
+              )
 
   @SuppressWarnings(Array("org.wartremover.warts.DefaultArguments"))
   def fromTopology[F[_]: Async: LiftIO](
       topology: StaticPeerTopology,
+      transportAuth: StaticPeerTransportAuth,
       consensusConfig: HotStuffBootstrapConfig,
       clock: GossipClock[F],
       runtimePolicy: TxRuntimePolicy = DefaultRuntimePolicy,
@@ -797,6 +804,7 @@ object HotStuffRuntimeBootstrap:
                               gossipBootstrap <- TxGossipRuntimeBootstrap
                                 .fromTopology[F, HotStuffGossipArtifact](
                                   topology = topology,
+                                  transportAuth = transportAuth,
                                   clock = clock,
                                   source = consensus.source,
                                   sink = consensus.sink,
@@ -808,6 +816,7 @@ object HotStuffRuntimeBootstrap:
                               topology = gossipBootstrap.topology,
                               registry = gossipBootstrap.registry,
                               authenticator = gossipBootstrap.authenticator,
+                              transportAuth = gossipBootstrap.transportAuth,
                               consensus = consensus,
                               runtime = gossipBootstrap.runtime,
                             ).asRight[String]

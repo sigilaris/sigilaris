@@ -1,5 +1,6 @@
 package org.sigilaris.node.jvm.transport.armeria.gossip
 
+import java.nio.charset.StandardCharsets
 import java.time.Duration
 import java.util.Base64
 import scala.util.Try
@@ -521,25 +522,34 @@ object BinaryEventStreamCodec:
 object TxGossipArmeriaAdapter:
   def endpoints[F[_]: Async, A: ByteEncoder](
       runtime: TxGossipRuntime[F, A],
+      transportAuth: StaticPeerTransportAuth,
   ): List[ServerEndpoint[Any, F]] =
     List(
-      sessionOpenEndpoint(runtime),
-      eventStreamEndpoint(runtime),
-      controlEndpoint(runtime),
-      disconnectEndpoint(runtime),
+      sessionOpenEndpoint(runtime, transportAuth),
+      eventStreamEndpoint(runtime, transportAuth),
+      controlEndpoint(runtime, transportAuth),
+      disconnectEndpoint(runtime, transportAuth),
     )
 
   private def sessionOpenEndpoint[F[_]: Async, A](
       runtime: TxGossipRuntime[F, A],
+      transportAuth: StaticPeerTransportAuth,
   ): ServerEndpoint[Any, F] =
     endpoint.post
       .in("gossip" / "session" / "open")
       .in(header[Option[String]](GossipTransportAuth.AuthenticatedPeerHeaderName))
+      .in(header[Option[String]](GossipTransportAuth.TransportProofHeaderName))
       .in(stringBody)
       .errorOut(stringBody)
       .out(stringBody)
-      .serverLogic: (authenticatedPeerRaw, raw) =>
-        parseAuthenticatedPeer(authenticatedPeerRaw) match
+      .serverLogic: (authenticatedPeerRaw, transportProofRaw, raw) =>
+        authenticateRequest(
+          transportAuth = transportAuth,
+          authenticatedPeerRaw = authenticatedPeerRaw,
+          transportProofRaw = transportProofRaw,
+          requestPath = "/gossip/session/open",
+          requestBody = raw,
+        ) match
           case Left(rejection) =>
             Async[F].pure(renderRejection(rejection).asLeft[String])
           case Right(authenticatedPeer) =>
@@ -567,36 +577,56 @@ object TxGossipArmeriaAdapter:
 
   private def eventStreamEndpoint[F[_]: Async, A: ByteEncoder](
       runtime: TxGossipRuntime[F, A],
+      transportAuth: StaticPeerTransportAuth,
   ): ServerEndpoint[Any, F] =
     endpoint.post
       .in("gossip" / "events" / path[String]("sessionId"))
       .in(header[Option[String]](GossipTransportAuth.AuthenticatedPeerHeaderName))
+      .in(header[Option[String]](GossipTransportAuth.TransportProofHeaderName))
       .in(stringBody)
       .out(byteArrayBody)
-      .serverLogicSuccess: (sessionIdRaw, authenticatedPeerRaw, raw) =>
-        handleEventRequest(runtime, authenticatedPeerRaw, sessionIdRaw, raw)
+      .serverLogicSuccess: (sessionIdRaw, authenticatedPeerRaw, transportProofRaw, raw) =>
+        handleEventRequest(
+          runtime = runtime,
+          transportAuth = transportAuth,
+          authenticatedPeerRaw = authenticatedPeerRaw,
+          transportProofRaw = transportProofRaw,
+          sessionIdRaw = sessionIdRaw,
+          raw = raw,
+        )
 
   private def controlEndpoint[F[_]: Async, A](
       runtime: TxGossipRuntime[F, A],
+      transportAuth: StaticPeerTransportAuth,
   ): ServerEndpoint[Any, F] =
     endpoint.post
       .in("gossip" / "control" / path[String]("sessionId"))
       .in(header[Option[String]](GossipTransportAuth.AuthenticatedPeerHeaderName))
+      .in(header[Option[String]](GossipTransportAuth.TransportProofHeaderName))
       .in(stringBody)
       .errorOut(stringBody)
       .out(stringBody)
-      .serverLogic: (sessionIdRaw, authenticatedPeerRaw, raw) =>
-        handleControlRequest(runtime, authenticatedPeerRaw, sessionIdRaw, raw)
+      .serverLogic: (sessionIdRaw, authenticatedPeerRaw, transportProofRaw, raw) =>
+        handleControlRequest(
+          runtime = runtime,
+          transportAuth = transportAuth,
+          authenticatedPeerRaw = authenticatedPeerRaw,
+          transportProofRaw = transportProofRaw,
+          sessionIdRaw = sessionIdRaw,
+          raw = raw,
+        )
 
   private def disconnectEndpoint[F[_]: Async, A](
       runtime: TxGossipRuntime[F, A],
+      transportAuth: StaticPeerTransportAuth,
   ): ServerEndpoint[Any, F] =
     endpoint.post
       .in("gossip" / "session" / path[String]("sessionId") / "disconnect")
       .in(header[Option[String]](GossipTransportAuth.AuthenticatedPeerHeaderName))
+      .in(header[Option[String]](GossipTransportAuth.TransportProofHeaderName))
       .errorOut(stringBody)
       .out(stringBody)
-      .serverLogic: (sessionIdRaw, authenticatedPeerRaw) =>
+      .serverLogic: (sessionIdRaw, authenticatedPeerRaw, transportProofRaw) =>
         DirectionalSessionId.parse(sessionIdRaw) match
           case Left(error) =>
             Async[F].pure(
@@ -604,7 +634,13 @@ object TxGossipArmeriaAdapter:
                 .asLeft[String],
             )
           case Right(sessionId) =>
-            parseAuthenticatedPeer(authenticatedPeerRaw) match
+            authenticateRequest(
+              transportAuth = transportAuth,
+              authenticatedPeerRaw = authenticatedPeerRaw,
+              transportProofRaw = transportProofRaw,
+              requestPath = s"/gossip/session/${sessionIdRaw}/disconnect",
+              requestBody = "",
+            ) match
               case Left(rejection) =>
                 Async[F].pure(renderRejection(rejection).asLeft[String])
               case Right(authenticatedPeer) =>
@@ -620,7 +656,9 @@ object TxGossipArmeriaAdapter:
 
   private def handleEventRequest[F[_]: Async, A: ByteEncoder](
       runtime: TxGossipRuntime[F, A],
+      transportAuth: StaticPeerTransportAuth,
       authenticatedPeerRaw: Option[String],
+      transportProofRaw: Option[String],
       sessionIdRaw: String,
       raw: String,
   ): F[Array[Byte]] =
@@ -635,7 +673,13 @@ object TxGossipArmeriaAdapter:
           ),
         ).pure[F]
       case Right(sessionId) =>
-        parseAuthenticatedPeer(authenticatedPeerRaw) match
+        authenticateRequest(
+          transportAuth = transportAuth,
+          authenticatedPeerRaw = authenticatedPeerRaw,
+          transportProofRaw = transportProofRaw,
+          requestPath = s"/gossip/events/${sessionIdRaw}",
+          requestBody = raw,
+        ) match
           case Left(rendered) =>
             BinaryEventStreamCodec.encodeBinary(
               Vector(eventRejection(sessionId.value, rendered)),
@@ -716,7 +760,9 @@ object TxGossipArmeriaAdapter:
 
   private def handleControlRequest[F[_]: Async, A](
       runtime: TxGossipRuntime[F, A],
+      transportAuth: StaticPeerTransportAuth,
       authenticatedPeerRaw: Option[String],
+      transportProofRaw: Option[String],
       sessionIdRaw: String,
       raw: String,
   ): F[Either[String, String]] =
@@ -726,7 +772,13 @@ object TxGossipArmeriaAdapter:
           .asLeft[String]
           .pure[F]
       case Right(sessionId) =>
-        parseAuthenticatedPeer(authenticatedPeerRaw) match
+        authenticateRequest(
+          transportAuth = transportAuth,
+          authenticatedPeerRaw = authenticatedPeerRaw,
+          transportProofRaw = transportProofRaw,
+          requestPath = s"/gossip/control/${sessionIdRaw}",
+          requestBody = raw,
+        ) match
           case Left(rendered) =>
             Async[F].pure(renderRejection(rendered).asLeft[String])
           case Right(authenticatedPeer) =>
@@ -830,18 +882,21 @@ object TxGossipArmeriaAdapter:
         ),
       )
 
-  private def parseAuthenticatedPeer(
-      raw: Option[String],
+  private def authenticateRequest(
+      transportAuth: StaticPeerTransportAuth,
+      authenticatedPeerRaw: Option[String],
+      transportProofRaw: Option[String],
+      requestPath: String,
+      requestBody: String,
   ): Either[CanonicalRejection.HandshakeRejected, PeerIdentity] =
-    raw.toRight(
-      handshakeRejected(
-        "missingAuthenticatedPeer",
-        GossipTransportAuth.AuthenticatedPeerHeaderName,
-      ),
-    ).flatMap: value =>
-      GossipTransportAuth
-        .parseAuthenticatedPeer(value)
-        .leftMap(handshakeRejected("invalidAuthenticatedPeer", _))
+    GossipTransportAuth.authenticateRequest(
+      transportAuth = transportAuth,
+      authenticatedPeerRaw = authenticatedPeerRaw,
+      transportProofRaw = transportProofRaw,
+      httpMethod = "POST",
+      requestPath = requestPath,
+      requestBodyBytes = requestBody.getBytes(StandardCharsets.UTF_8),
+    )
 
   private def toProposal(
       wire: SessionOpenProposalWire,

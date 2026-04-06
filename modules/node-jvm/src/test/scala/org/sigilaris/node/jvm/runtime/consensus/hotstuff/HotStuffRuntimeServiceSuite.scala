@@ -321,6 +321,7 @@ final class HotStuffRuntimeServiceSuite extends CatsEffectSuite:
       HotStuffRuntimeBootstrap
         .fromTopology[IO](
           topology = topology,
+          transportAuth = StaticPeerTransportAuth.testing(topology),
           consensusConfig = config,
           clock = GossipClock.constant[IO](startedAt),
           storageLayout = storageLayout,

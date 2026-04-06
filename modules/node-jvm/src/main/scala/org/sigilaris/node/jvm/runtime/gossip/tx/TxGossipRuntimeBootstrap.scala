@@ -11,6 +11,7 @@ final case class TxGossipBootstrap[F[_], A](
     topology: StaticPeerTopology,
     registry: StaticPeerRegistry,
     authenticator: StaticPeerAuthenticator[F],
+    transportAuth: StaticPeerTransportAuth,
     runtime: TxGossipRuntime[F, A],
 )
 
@@ -30,18 +31,24 @@ object TxGossipRuntimeBootstrap:
       case Left(error) =>
         Sync[F].pure(error.asLeft[TxGossipBootstrap[F, A]])
       case Right(topology) =>
-        fromTopology(
-          topology = topology,
-          clock = clock,
-          source = source,
-          sink = sink,
-          topicContracts = topicContracts,
-          runtimePolicy = runtimePolicy,
-          handshakePolicy = handshakePolicy,
-        ).map(_.asRight[String])
+        StaticPeerTransportAuthConfig.load(config, topology, configPath) match
+          case Left(error) =>
+            Sync[F].pure(error.asLeft[TxGossipBootstrap[F, A]])
+          case Right(transportAuth) =>
+            fromTopology(
+              topology = topology,
+              transportAuth = transportAuth,
+              clock = clock,
+              source = source,
+              sink = sink,
+              topicContracts = topicContracts,
+              runtimePolicy = runtimePolicy,
+              handshakePolicy = handshakePolicy,
+            ).map(_.asRight[String])
 
   def fromTopology[F[_]: Sync, A](
       topology: StaticPeerTopology,
+      transportAuth: StaticPeerTransportAuth,
       clock: GossipClock[F],
       source: GossipArtifactSource[F, A],
       sink: GossipArtifactSink[F, A],
@@ -64,6 +71,7 @@ object TxGossipRuntimeBootstrap:
           topology = topology,
           registry = registry,
           authenticator = authenticator,
+          transportAuth = transportAuth,
           runtime = TxGossipRuntime.withPolicy[F, A](
             peerAuthenticator = authenticator,
             clock = clock,

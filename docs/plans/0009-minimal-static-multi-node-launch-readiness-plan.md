@@ -1,7 +1,7 @@
 # 0009 - Minimal Static Multi-Node Launch Readiness Plan
 
 ## Status
-Active; Phase 0-3 Complete
+Active; Phase 0-4 Complete
 
 ## Created
 2026-04-07
@@ -270,11 +270,11 @@ Active; Phase 0-3 Complete
 - [x] storage open failure / write failure diagnostics or failure policy 고정
 
 ### Phase 4: Concrete Peer Credential Binding And Bootstrap Capability Hardening
-- [ ] claimed peer header 신뢰 제거 및 authenticated principal binding 추가
-- [ ] bootstrap capability unforgeable projection 으로 교체
-- [ ] session revoke / principal mismatch / stale replay rejection 연결
-- [ ] gossip + bootstrap transport auth policy 정렬
-- [ ] spoofing / stale capability / revoke regression test green
+- [x] claimed peer header 신뢰 제거 및 authenticated principal binding 추가
+- [x] bootstrap capability unforgeable projection 으로 교체
+- [x] session revoke / principal mismatch / stale replay rejection 연결
+- [x] gossip + bootstrap transport auth policy 정렬
+- [x] spoofing / stale capability / revoke regression test green
 
 ### Phase 5: Reference Launch Harness And End-To-End Verification
 - [ ] repo-local reference launch path 또는 동등 smoke harness 추가

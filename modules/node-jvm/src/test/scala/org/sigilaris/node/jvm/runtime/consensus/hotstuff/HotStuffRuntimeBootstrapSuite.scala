@@ -5,6 +5,7 @@ import java.time.Instant
 import java.util.concurrent.ConcurrentLinkedQueue
 
 import scala.jdk.CollectionConverters.*
+import scala.util.Try
 import scala.util.Using
 
 import cats.effect.IO
@@ -14,7 +15,7 @@ import cats.syntax.all.*
 import munit.CatsEffectSuite
 import scodec.bits.ByteVector
 
-import com.typesafe.config.ConfigFactory
+import com.typesafe.config.{Config, ConfigFactory}
 
 import org.sigilaris.core.application.scheduling.{ConflictFootprint, SchedulingClassification}
 import org.sigilaris.core.codec.byte.ByteEncoder
@@ -74,6 +75,30 @@ final class HotStuffRuntimeBootstrapSuite extends CatsEffectSuite:
     ChainTopic(chainId, GossipTopic.consensusProposal),
     ChainTopic(chainId, GossipTopic.consensusVote),
   )
+
+  private def withTestTransportPeerSecrets(
+      config: Config,
+  ): Config =
+    Try(StaticPeerTopologyConfig.load(config)).toOption match
+      case Some(Right(topology)) =>
+        val peerSecrets =
+          (topology.knownPeers + topology.localNodeIdentity).toVector
+            .sortBy(_.value)
+            .map(peer =>
+              s"""    "${peer.value}" = "sigilaris-test-secret:${peer.value}"""",
+            )
+            .mkString("\n")
+        ConfigFactory
+          .parseString(
+            s"""
+               |sigilaris.node.gossip.peers.transport-auth.peer-secrets {
+               |$peerSecrets
+               |}
+               |""".stripMargin,
+          )
+          .withFallback(config)
+      case _ =>
+        config
 
   test(
     "config loader builds HotStuff bootstrap and wires runtime services into the gossip graph",
@@ -247,6 +272,9 @@ final class HotStuffRuntimeBootstrapSuite extends CatsEffectSuite:
         bootstrapEither <- HotStuffRuntimeBootstrap
           .fromTopology[IO](
             topology = topology("node-a", Vector("node-b")),
+            transportAuth = StaticPeerTransportAuth.testing(
+              topology("node-a", Vector("node-b")),
+            ),
             consensusConfig = validatorConfig(),
             clock = clock,
             storageLayout = layout,
@@ -294,7 +322,7 @@ final class HotStuffRuntimeBootstrapSuite extends CatsEffectSuite:
       clock <- TestClock.create(startedAt)
       bootstrapEither <- HotStuffRuntimeBootstrap
         .fromConfig[IO](
-          config,
+          withTestTransportPeerSecrets(config),
           clock,
           storageLayout = freshStorageLayout,
         )
@@ -334,7 +362,7 @@ final class HotStuffRuntimeBootstrapSuite extends CatsEffectSuite:
       clock <- TestClock.create(startedAt)
       bootstrapEither <- HotStuffRuntimeBootstrap
         .fromConfig[IO](
-          config,
+          withTestTransportPeerSecrets(config),
           clock,
           storageLayout = freshStorageLayout,
         )
@@ -918,7 +946,7 @@ final class HotStuffRuntimeBootstrapSuite extends CatsEffectSuite:
       clock <- TestClock.create(startedAt)
       bootstrapEither <- HotStuffRuntimeBootstrap
         .fromConfig[IO](
-          config,
+          withTestTransportPeerSecrets(config),
           clock,
           storageLayout = freshStorageLayout,
         )
@@ -1474,7 +1502,7 @@ final class HotStuffRuntimeBootstrapSuite extends CatsEffectSuite:
       clock <- TestClock.create(startedAt)
       bootstrapEither <- HotStuffRuntimeBootstrap
         .fromConfig[IO](
-          config,
+          withTestTransportPeerSecrets(config),
           clock,
           storageLayout = freshStorageLayout,
         )
@@ -1511,7 +1539,7 @@ final class HotStuffRuntimeBootstrapSuite extends CatsEffectSuite:
       clock <- TestClock.create(startedAt)
       bootstrapEither <- HotStuffRuntimeBootstrap
         .fromConfig[IO](
-          config,
+          withTestTransportPeerSecrets(config),
           clock,
           storageLayout = freshStorageLayout,
         )
@@ -1839,7 +1867,7 @@ final class HotStuffRuntimeBootstrapSuite extends CatsEffectSuite:
   ): IO[HotStuffRuntimeBootstrap[IO]] =
     allocateBootstrap(
       HotStuffRuntimeBootstrap.fromConfig[IO](
-        config = config,
+        config = withTestTransportPeerSecrets(config),
         clock = clock,
         storageLayout = storageLayout,
       ),
@@ -1856,6 +1884,7 @@ final class HotStuffRuntimeBootstrapSuite extends CatsEffectSuite:
     allocateBootstrap(
       HotStuffRuntimeBootstrap.fromTopology[IO](
         topology = topology,
+        transportAuth = StaticPeerTransportAuth.testing(topology),
         consensusConfig = consensusConfig,
         clock = clock,
         bootstrapTransport = bootstrapTransport,
