@@ -1,13 +1,13 @@
 # 0004 - HotStuff Consensus Without Threshold Signatures Plan
 
 ## Status
-Phase 3A Complete; Pacemaker Follow-Up Pending
+Phase 3A Complete; ADR-0022 Drafted; Pacemaker Runtime Follow-Up Pending
 
 ## Created
 2026-03-29
 
 ## Last Updated
-2026-04-04
+2026-04-06
 
 ## Background
 - 이 문서는 ADR-0017의 implementation plan 이다.
@@ -18,7 +18,7 @@ Phase 3A Complete; Pacemaker Follow-Up Pending
 - `2026-04-02` 문서-구현 대조 리뷰 기준으로 artifact model, validation, topic contract, in-memory loopback baseline, concrete JVM bootstrap wiring, explicit bootstrap/service seam, audit follower relay, same-window retry budget enforcement, vote exact-known regression lock, dependency boundary test, shipped-baseline 문서 정렬이 compile/test 기준으로 landed 되었다.
 - `2026-04-04` 기준 HotStuff proposal path는 ADR-0019 canonical `BlockHeader`와 header-only `BlockId` contract를 소비하지만, `ProposalId` / `VoteId` / validator-set window ownership baseline은 그대로 유지한다.
 - 위 리뷰는 `docs/plans/0004-hotstuff-consensus-without-threshold-signatures-plan.md`, `docs/adr/0017-hotstuff-consensus-without-threshold-signatures.md`, `README.md`, `org.sigilaris.node.jvm.runtime.consensus.hotstuff` 구현, HotStuff test suite 를 대조하는 방식으로 수행했다.
-- 기존 Phase 0-3 checklist 는 landed HotStuff artifact/runtime slice 를 기록했고, Phase 3A 는 concrete bootstrap/service closure 와 dependency/doc alignment 를 마무리했다. 남은 residual work 는 pacemaker timeout/new-view 계열 follow-up 으로 한정한다.
+- 기존 Phase 0-3 checklist 는 landed HotStuff artifact/runtime slice 를 기록했고, Phase 3A 는 concrete bootstrap/service closure 와 dependency/doc alignment 를 마무리했다. `2026-04-06` 기준 pacemaker / view-change semantic baseline 은 ADR-0022 초안으로 분리되었고, 이 plan 의 남은 residual work 는 그 runtime integration follow-up 으로 한정한다.
 
 ## Goal
 - `sigilaris-node-jvm` 안에 HotStuff non-threshold-signature consensus runtime을 도입한다.
@@ -37,7 +37,7 @@ Phase 3A Complete; Pacemaker Follow-Up Pending
 - BLS threshold signature, aggregate signature 기반 QC는 이번 plan의 범위에 넣지 않는다.
 - 다른 consensus 알고리즘(PBFT, Tendermint, Narwhal/Bullshark 등)은 이번 plan의 범위에 넣지 않는다.
 - peer discovery, peer scoring, topology management는 이번 plan에 넣지 않는다.
-- pacemaker timeout vote, timeout certificate, new-view wire contract의 최종 형식은 이번 plan에서 완전히 고정하지 않는다. 필요한 seam과 placeholder는 둘 수 있지만 상세 wire contract는 follow-up ADR이 소유한다.
+- pacemaker timeout vote, timeout certificate, new-view wire contract의 최종 형식은 이번 plan에서 완전히 고정하지 않는다. 필요한 seam과 placeholder는 둘 수 있지만 상세 wire contract는 ADR-0022와 그 후속 spec 이 소유한다.
 - audit node의 automatic runtime promotion, automatic cross-DC failover, online validator-set reconfiguration protocol은 이번 plan에 넣지 않는다.
 - state execution engine, application reducer semantics, block contents 자체의 application-specific meaning은 이 plan의 직접 범위가 아니다.
 
@@ -48,6 +48,7 @@ Phase 3A Complete; Pacemaker Follow-Up Pending
 - ADR-0017: HotStuff Consensus Without Threshold Signatures
 - ADR-0018: Static Peer Topology And Initial HotStuff Deployment Baseline
 - ADR-0019: Canonical Block Header And Application-Neutral Block View
+- ADR-0022: HotStuff Pacemaker And View-Change Baseline
 - `docs/plans/0003-multiplexed-gossip-session-sync-plan.md`
 - `docs/plans/0005-canonical-block-structure-migration-plan.md`
 - `docs/plans/plan-template.md`
@@ -74,7 +75,7 @@ Phase 3A Complete; Pacemaker Follow-Up Pending
 - initial deployment target block production interval은 `100ms`다. 이는 batching/QoS/pacing budget을 제약하지만, exact pacemaker wire contract를 대신하지 않는다.
 - quorum rule은 active validator set의 `n - floor((n - 1) / 3)` vote 로 고정한다. `n = 3f + 1` 배치에서는 이는 `2f + 1`과 같다.
 - equivocation detection key는 baseline으로 `(chainId, validatorId, height, view)` 기준으로 모델링한다. 같은 key에서 서로 다른 target `ProposalId`가 관찰되면 equivocation으로 판정한다.
-- pacemaker timeout/new-view는 placeholder seam만 둘 수 있고, production wire contract는 follow-up ADR 없이는 shipped contract 로 고정하지 않는다.
+- pacemaker timeout/new-view는 placeholder seam만 둘 수 있고, production wire contract는 ADR-0022 및 후속 spec 없이는 shipped contract 로 고정하지 않는다.
 - consensus runtime은 gossip substrate의 generic rejection class 위에 topic-local reason을 얹을 수 있지만, transport-neutral projection은 ADR-0016 rejection family를 따른다.
 
 ## Change Areas
@@ -241,6 +242,6 @@ Phase 3A Complete; Pacemaker Follow-Up Pending
 - static peer topology, same-DC validator placement, emergency promotion baseline은 ADR-0018이 소유한다.
 - canonical block header/body contract, application-neutral `BlockView`, `BlockStore` query/storage seam, residual body sync follow-up 은 ADR-0019와 `docs/plans/0005-canonical-block-structure-migration-plan.md`에서 추적한다.
 - operator-managed raw key custody를 대체할 KMS/HSM/remote signer baseline은 별도 ADR로 분리한다.
-- timeout vote, timeout certificate, new-view wire contract, leader rotation policy는 별도 ADR 또는 follow-up plan으로 분리한다.
+- timeout vote, timeout certificate, new-view wire contract, leader rotation policy의 semantic baseline은 ADR-0022가 소유한다. 이 plan 은 concrete runtime integration 과 test/backlog follow-up 만 남긴다.
 - validator-set commitment derivation의 exact byte contract는 follow-up spec으로 고정한다.
 - aggregate signature 또는 threshold signature 기반 최적화가 필요해지면 별도 ADR에서 baseline을 supersede 한다.

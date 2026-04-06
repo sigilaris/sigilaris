@@ -76,17 +76,17 @@ Accepted
    - 이는 initial deployment/performance target이지 wire field나 consensus envelope field가 아니다.
    - consensus runtime은 위 target을 만족할 수 있도록 proposal/vote immediate flush와 bounded local processing budget을 가정할 수 있다.
    - ADR-0016의 heartbeat/liveness 기본값은 transport/session liveness 값이며, 위 `100ms` cadence target과 직접 동일시해서는 안 된다.
-   - exact pacemaker timeout, timeout certificate, new-view pacing contract는 별도 follow-up 문서가 고정한다.
+   - exact pacemaker timeout, timeout certificate, new-view pacing contract는 ADR-0022와 그 후속 spec / implementation plan 이 고정한다.
 
 11. **QoS와 scheduling은 gossip substrate 위에서 consensus artifact를 우선시해야 한다.**
    - proposal/vote delivery는 `tx` backlog에 막혀서는 안 된다.
    - fixed even/odd time window처럼 proposal과 vote를 교대로만 전송하는 방식은 implementation-local optimization일 수 있지만, HotStuff correctness/liveness contract로 고정해서는 안 된다.
    - runtime은 proposal과 vote를 immediate flush 또는 동등한 high-priority lane으로 다룰 수 있어야 한다.
 
-12. **pacemaker, timeout vote, new-view wire contract는 follow-up으로 분리한다.**
+12. **pacemaker, timeout vote, new-view wire contract는 ADR-0022로 분리한다.**
    - baseline HotStuff artifact contract는 proposal, vote, QC와 그 identity/sign-bytes ownership을 먼저 고정한다.
-   - timeout vote, timeout certificate, new-view aggregation, leader rotation policy의 exact wire contract는 별도 follow-up ADR 또는 plan에서 구체화한다.
-   - 그 전까지 implementation은 pacemaker artifact를 out-of-band local contract로 두거나 experimental internal contract로만 사용해야 한다.
+   - timeout vote, timeout certificate, new-view aggregation, leader rotation policy의 exact wire contract는 ADR-0022와 그 후속 spec / implementation plan 에서 구체화한다.
+   - ADR-0022 acceptance 및 concrete runtime integration 전까지 implementation은 pacemaker artifact를 out-of-band local contract로 두거나 experimental internal contract로만 사용해야 한다.
 
 ## Consequences
 - gossip/session substrate는 ADR-0016 아래에서 안정적으로 유지하면서, HotStuff artifact semantics만 별도로 진화시킬 수 있다.
@@ -113,13 +113,13 @@ Accepted
 
 4. **처음부터 timeout/new-view까지 전부 고정한다**
    - 장기적으로는 필요하지만, 현재는 proposal/vote/QC identity와 gossip integration contract를 먼저 고정하는 편이 낫다.
-   - pacemaker wire contract는 follow-up 문서로 분리하는 것이 구현 순서상도 더 현실적이다.
+   - pacemaker wire contract는 ADR-0022로 분리하는 것이 구현 순서상도 더 현실적이다.
 
 ## Follow-Up
-- HotStuff proposal/vote/QC runtime, concrete bootstrap/service seam, audit relay, dependency boundary test는 landed baseline이고, 후속 구현 계획은 `docs/plans/0004-hotstuff-consensus-without-threshold-signatures-plan.md`에서 pacemaker/timeouts/new-view 잔여 작업 위주로 관리한다.
+- HotStuff proposal/vote/QC runtime, concrete bootstrap/service seam, audit relay, dependency boundary test는 landed baseline이다. pacemaker / timeout vote / timeout certificate / new-view / leader rotation semantic baseline 은 ADR-0022가 소유하고, `docs/plans/0004-hotstuff-consensus-without-threshold-signatures-plan.md`는 그 구현 follow-up 을 관리한다.
 - `2026-04-04` 기준 shipped baseline proposal artifact는 ADR-0019 header-first contract를 유지하면서 canonical tx hash set을 함께 운반한다.
 - canonical block header/body contract와 application-neutral block view follow-up은 ADR-0019와 `docs/plans/0005-canonical-block-structure-migration-plan.md`가 소유한다.
-- timeout vote, timeout certificate, new-view wire contract, pacemaker policy는 별도 ADR 또는 follow-up section에서 구체화한다.
+- timeout vote, timeout certificate, new-view wire contract, pacemaker policy는 ADR-0022와 그 후속 spec / implementation plan 에서 구체화한다.
 - canonical deterministic encoding의 exact byte layout과 signer identity canonicalization rule은 implementation 전에 protocol spec 또는 추가 ADR로 고정한다.
 - validator set commitment의 exact derivation contract는 follow-up spec에서 고정한다.
 - static peer topology, validator/audit deployment role, emergency promotion baseline은 ADR-0018이 소유한다.
@@ -129,6 +129,7 @@ Accepted
 - [ADR-0016: Multiplexed Gossip Session Sync Substrate](0016-multiplexed-gossip-session-sync.md)
 - [ADR-0018: Static Peer Topology And Initial HotStuff Deployment Baseline](0018-static-peer-topology-and-initial-hotstuff-deployment-baseline.md)
 - [ADR-0019: Canonical Block Header And Application-Neutral Block View](0019-canonical-block-header-and-application-neutral-block-view.md)
+- [ADR-0022: HotStuff Pacemaker And View-Change Baseline](0022-hotstuff-pacemaker-and-view-change-baseline.md)
 - [0003 - Multiplexed Gossip Session Sync Plan](../plans/0003-multiplexed-gossip-session-sync-plan.md)
 - [0004 - HotStuff Consensus Without Threshold Signatures Plan](../plans/0004-hotstuff-consensus-without-threshold-signatures-plan.md)
 - [0005 - Canonical Block Structure Migration Plan](../plans/0005-canonical-block-structure-migration-plan.md)

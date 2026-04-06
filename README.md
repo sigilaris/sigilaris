@@ -60,7 +60,7 @@ libraryDependencies ++= Seq(
 - Canonical block modeling now lives under `org.sigilaris.node.jvm.runtime.block`, with `BlockHeader` / `BlockBody` / `BlockView`, header-only `BlockId`, deterministic `bodyRoot` verification, and a consensus-neutral `BlockStore` query/storage seam for split header/body lookup.
 - Import-rule tests keep `org.sigilaris.node.jvm.runtime.gossip` free of direct consensus/HotStuff imports and prevent `org.sigilaris.node.jvm.runtime.consensus.hotstuff` from importing transport implementations or the current concrete storage packages (`org.sigilaris.node.jvm.storage.memory`, `org.sigilaris.node.jvm.storage.swaydb`) directly.
 - State snapshot transport, remote body fetch, proof-serving, receipt/event sub-root expansion, and persisted block compatibility policy remain explicit follow-up work owned by ADR-0019 and `docs/plans/0005-canonical-block-structure-migration-plan.md`.
-- Pacemaker timeout vote / timeout certificate / new-view wire contracts remain follow-up work owned by ADR-0017 and `docs/plans/0004-hotstuff-consensus-without-threshold-signatures-plan.md`.
+- Pacemaker timeout vote / timeout certificate / new-view semantic baseline is now drafted in ADR-0022, while concrete runtime integration remains follow-up work in `docs/plans/0004-hotstuff-consensus-without-threshold-signatures-plan.md`.
 
 ### Data Types
 Type-safe opaque types for blockchain primitives with built-in codec support.
