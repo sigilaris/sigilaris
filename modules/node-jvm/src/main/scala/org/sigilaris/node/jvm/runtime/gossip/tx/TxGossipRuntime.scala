@@ -80,6 +80,15 @@ final class TxGossipRuntime[F[_]: Sync, A](
     policy: TxRuntimePolicy,
     cascadeStrategy: TxCascadeStrategy[A],
 ):
+  private def authenticatedPeerMismatch(
+      expected: PeerIdentity,
+      actual: PeerIdentity,
+  ): CanonicalRejection.HandshakeRejected =
+    handshakeRejected(
+      "authenticatedPeerMismatch",
+      "expected=" + expected.value + " actual=" + actual.value,
+    )
+
   private def expireState(
       state: TxGossipRuntimeState,
       now: Instant,
@@ -188,20 +197,40 @@ final class TxGossipRuntime[F[_]: Sync, A](
   def handleInboundProposal(
       proposal: SessionOpenProposal,
   ): F[InboundHandshakeResult] =
+    handleInboundProposalFromPeer(
+      proposal = proposal,
+      authenticatedPeer = proposal.initiator,
+    )
+
+  def handleInboundProposalFromPeer(
+      proposal: SessionOpenProposal,
+      authenticatedPeer: PeerIdentity,
+  ): F[InboundHandshakeResult] =
     handleInboundProposalConfigured(
       proposal,
+      authenticatedPeer,
       TxSessionNegotiationOverrides.default,
     )
 
   def handleInboundProposalConfigured(
       proposal: SessionOpenProposal,
+      authenticatedPeer: PeerIdentity,
       negotiationOverrides: TxSessionNegotiationOverrides,
   ): F[InboundHandshakeResult] =
     peerAuthenticator
-      .authenticate(proposal.initiator)
+      .authenticate(authenticatedPeer)
       .flatMap:
         case Left(rejection) =>
           InboundHandshakeResult.Rejected(rejection).pure[F]
+        case Right(boundPeer) if boundPeer =!= proposal.initiator =>
+          InboundHandshakeResult
+            .Rejected(
+              authenticatedPeerMismatch(
+                expected = proposal.initiator,
+                actual = boundPeer,
+              ),
+            )
+            .pure[F]
         case Right(_) =>
           clock.now.flatMap: now =>
             stateStore.modify: state =>
@@ -225,6 +254,23 @@ final class TxGossipRuntime[F[_]: Sync, A](
                 engine = updatedEngine,
                 outboundSessions = updatedSessions,
               ) -> result
+
+  private def sessionOwnedByPeer(
+      state: TxGossipRuntimeState,
+      sessionId: DirectionalSessionId,
+      authenticatedPeer: PeerIdentity,
+  ): Either[CanonicalRejection.HandshakeRejected, DirectionalSession] =
+    state.engine.sessionById(sessionId) match
+      case None =>
+        handshakeRejected("unknownSession", sessionId.value)
+          .asLeft[DirectionalSession]
+      case Some(session) if session.peer =!= authenticatedPeer =>
+        authenticatedPeerMismatch(
+          expected = session.peer,
+          actual = authenticatedPeer,
+        ).asLeft[DirectionalSession]
+      case Some(session) =>
+        session.asRight[CanonicalRejection.HandshakeRejected]
 
   def applyHandshakeAck(
       ack: SessionOpenAck,
@@ -316,6 +362,40 @@ final class TxGossipRuntime[F[_]: Sync, A](
                 updatedState ->
                   session.asRight[CanonicalRejection.HandshakeRejected],
             )
+
+  def authorizeSessionPeer(
+      sessionId: DirectionalSessionId,
+      authenticatedPeer: PeerIdentity,
+  ): F[Either[CanonicalRejection.HandshakeRejected, DirectionalSession]] =
+    clock.now.flatMap: now =>
+      stateStore.modify: state =>
+        val currentState = expireState(state, now)
+        currentState ->
+          sessionOwnedByPeer(currentState, sessionId, authenticatedPeer)
+
+  def authorizeOpenSessionForPeer(
+      sessionId: DirectionalSessionId,
+      authenticatedPeer: PeerIdentity,
+  ): F[Either[CanonicalRejection.HandshakeRejected, DirectionalSession]] =
+    clock.now.flatMap: now =>
+      stateStore.modify: state =>
+        val currentState = expireState(state, now)
+        sessionOwnedByPeer(currentState, sessionId, authenticatedPeer).fold(
+          rejection => currentState -> rejection.asLeft[DirectionalSession],
+          session =>
+            if session.status =!= DirectionalSessionStatus.Open then
+              currentState ->
+                handshakeRejected("sessionNotOpen", sessionId.value)
+                  .asLeft[DirectionalSession]
+            else
+              touchSessionActivity(currentState, sessionId, now).fold(
+                rejection =>
+                  currentState -> rejection.asLeft[DirectionalSession],
+                updatedState =>
+                  updatedState ->
+                    session.asRight[CanonicalRejection.HandshakeRejected],
+              ),
+        )
 
   def receiveControlBatch(
       sessionId: DirectionalSessionId,

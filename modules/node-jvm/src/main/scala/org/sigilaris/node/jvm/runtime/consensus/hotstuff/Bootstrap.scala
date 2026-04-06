@@ -167,7 +167,15 @@ final case class SnapshotTrieNode(
 final case class BootstrapSessionBinding(
     peer: PeerIdentity,
     sessionId: DirectionalSessionId,
+    authenticatedPeer: PeerIdentity,
 )
+
+object BootstrapSessionBinding:
+  def apply(
+      peer: PeerIdentity,
+      sessionId: DirectionalSessionId,
+  ): BootstrapSessionBinding =
+    new BootstrapSessionBinding(peer, sessionId, peer)
 
 trait FinalizedAnchorSuggestionService[F[_]]:
   def bestFinalized(
