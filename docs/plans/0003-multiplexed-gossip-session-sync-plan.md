@@ -1,7 +1,7 @@
 # 0003 - Multiplexed Gossip Session Sync Plan
 
 ## Status
-Phase 3A Complete; ADR-0024 Drafted; Identity-Binding Follow-Up Scoped
+Phase 3A Complete; ADR-0024 Drafted; Identity-Binding And Binary-Wire Follow-Ups Scoped
 
 ## Created
 2026-03-28
@@ -22,7 +22,7 @@ Phase 3A Complete; ADR-0024 Drafted; Identity-Binding Follow-Up Scoped
 - Phase 3A scope 는 위 confirmed gap closure 외에도 Armeria parity hardening 항목으로 `half-open -> open` recovery re-handshake 와 reconnect 후 filter state reset 의 end-to-end verification을 포함한다.
 - 기존 Phase 0-3 checklist 는 처음 landed slice 를 기록하고, 위 implementation-review gap closure 와 추가 Armeria parity hardening 은 이 문서의 Phase 3A 에서 별도로 추적한다.
 - `2026-04-01` Phase 3A gap closure implementation 이 landed 되면서 negotiated liveness/opening timeout wiring, pre-open reject-and-close, producer-local batching clock, static peer config bootstrap, topic-neutral producer seam, half-open re-handshake, reconnect filter reset, 그리고 대응 regression test 가 모두 compile/test 기준으로 green 상태가 되었다.
-- `2026-04-06` 기준 static-topology peer identity binding, session-bound bootstrap capability authorization, parent-session revoke cascade semantic baseline 은 ADR-0024 로 분리됐다. 이 plan 에 남는 일은 exact transport credential binding, capability/token encoding, stronger production auth mechanism 같은 concrete runtime/transport follow-up 이다.
+- `2026-04-06` 기준 static-topology peer identity binding, session-bound bootstrap capability authorization, parent-session revoke cascade semantic baseline 은 ADR-0024 로 분리됐다. 이 plan 에 남는 일은 exact transport credential binding, capability/token encoding, stronger production auth mechanism 같은 concrete runtime/transport follow-up 과 peer-facing event stream operational protocol 을 binary 로 전환하는 wire follow-up 이다.
 
 ## Goal
 - `sigilaris-node-jvm` 안에 runtime-owned gossip/session sync substrate를 도입한다.
@@ -47,6 +47,7 @@ Phase 3A Complete; ADR-0024 Drafted; Identity-Binding Follow-Up Scoped
 - WebSocket, HTTP/2 stream, QUIC 같은 full-duplex transport는 이번 plan에서 구현하지 않는다.
 - rate limiting, admission throttling, malicious peer flood 방어 정책은 deployment/adapter policy 로 두고 이번 plan의 구현 범위에 넣지 않는다.
 - snapshot/backfill capability format, parent-session capability revocation, production-grade peer authentication binding의 semantic baseline 은 ADR-0024 가 소유한다. 이 plan 에서는 exact transport credential / token mechanism 을 최종 고정하지 않는다.
+- binary wire follow-up 이 activated 되더라도 session-open / control family 전체를 즉시 binary-only 로 재작성하는 것을 완료 조건으로 두지 않는다. binary-only 전환 대상은 peer-facing event stream 이고, NDJSON text projection 이 남더라도 debug/tooling/manual inspection surface 에 한정한다.
 - open session registry 자체를 프로세스 재시작 후 복구하는 기능은 이번 plan의 완료 조건으로 두지 않는다.
 
 ## Related ADRs And Docs
@@ -72,7 +73,7 @@ Phase 3A Complete; ADR-0024 Drafted; Identity-Binding Follow-Up Scoped
 - initial deployment에서는 static peer registry와 direct neighbor list를 `application.conf` 또는 동등한 config source에서 읽어 온다. dynamic discovery는 baseline shipped scope에 넣지 않는다.
 - 위 static peer config는 최소한 local node identity, known peer identities, direct neighbor set을 제공해야 하며 `PeerIdentity` placeholder는 이 config 또는 그 위의 auth abstraction과 일관되게 매핑되어야 한다. configured peer identity 와 authenticated counterparty/session-bound capability semantic ownership 은 ADR-0024 기준으로 읽는다.
 - heartbeat/keepalive 는 transport-local ping 이 아니라 runtime-owned typed protocol message 로 모델링한다. producer-side keepalive 는 event-stream message family에, consumer-side keepalive 는 control-channel message family에 속한다.
-- `transport.armeria.gossip`는 Armeria request/response, SSE 또는 NDJSON framing, connection lifecycle만 담당하고 `storage.swaydb` 같은 concrete storage package를 직접 import 하지 않는다.
+- `transport.armeria.gossip`는 Armeria request/response, current baseline NDJSON event framing, follow-up binary operational framing, optional debug/tooling text projection 같은 transport projection, connection lifecycle만 담당하고 `storage.swaydb` 같은 concrete storage package를 직접 import 하지 않는다.
 - seam validation baseline은 `runtime.gossip.tx -> runtime.gossip`, `transport.armeria.gossip -> runtime.gossip`만 허용하고, `runtime.gossip -X-> transport.armeria.gossip`, `transport.armeria.gossip -X-> storage.*` 직접 의존은 금지한다.
 - baseline transport는 HTTP-friendly adapter로 시작한다. directional session 하나는 session-open handshake resource, event stream resource, control resource로 매핑한다. concrete path shape는 Phase 0에서 고정하되 protocol model은 transport-neutral 로 유지한다.
 - session-open handshake model은 최소한 peer correlation id, chain/topic subscription, `heartbeatInterval`, `livenessTimeout`, `maxControlRetryInterval`을 포함한다. chain/topic subscription baseline은 session lifetime 동안 immutable 하며 mid-session 변경은 reject 한다.
@@ -87,6 +88,11 @@ Phase 3A Complete; ADR-0024 Drafted; Identity-Binding Follow-Up Scoped
 - 위 handshake negotiation validation failure 는 canonical `handshakeRejected` rejection class 로 투영한다.
 - `CursorToken`은 runtime-issued opaque token으로 유지하고 explicit version prefix를 내부에 포함한다. text transport에서는 base64url without padding 문자열로만 canonical encoding 한다.
 - runtime model은 binary 또는 opaque value를 유지하고, stable `id`의 lowercase hex 및 `CursorToken`의 base64url without padding 같은 text transport canonical encoding은 `transport.armeria.gossip` adapter가 적용한다.
+- `Phase 3B` landed 이후 peer-facing event stream operational protocol 은 binary-only 로 고정한다. NDJSON text projection 이 남더라도 debug/tooling/manual inspection surface 로만 둔다.
+- binary event stream follow-up 을 구현할 때 frame 은 explicit versioned envelope 와 bounded length-prefixed framing 을 사용한다. length field 는 existing `BigNat` codec 또는 동등 canonical length codec 을 재사용한다.
+- binary event stream cutover 는 mixed-version NDJSON/binary negotiation 또는 runtime fallback 을 요구하지 않는다. same-cluster peer compatibility 는 startup/config gate 또는 explicit handshake reject 로 강제한다.
+- binary event stream follow-up 은 text/base64 projection overhead 제거와 peer operational path 단순화를 위한 transport concern 으로만 다룬다. stable id, cursor, rejection semantics, replay/resume contract 의 semantic owner 는 계속 runtime model 이다.
+- binary event stream follow-up 이 field-by-field byte layout, normative frame example, negotiation header/path grammar 같은 low-level detail 때문에 plan 본문을 과도하게 키우면 companion protocol spec 을 분리하되, scope / rollout gate / compatibility policy 는 이 plan 이 계속 소유한다.
 - 초기 correctness baseline은 `tx` topic end-to-end 구현이다.
 - baseline supported tx filter family는 Bloom filter 로 고정한다. 다른 filter family는 unsupported kind rejection 으로 처리하고 후속 단계에서 확장한다.
 - baseline Bloom filter payload 는 최소한 `bitset`, `numHashes`, `hashFamilyId` 를 포함한다. parameter negotiation 은 handshake 가 아니라 `setFilter` payload 가 소유한다. 같은 topic/session 에서 새 `setFilter` 는 이전 filter state 를 replace 하고 merge 하지 않는다. reconnect 시 filter state 는 carry-over 하지 않고 새 control state 로 다시 설정한다.
@@ -205,6 +211,15 @@ Phase 3A Complete; ADR-0024 Drafted; Identity-Binding Follow-Up Scoped
 - reconnect 로 새 directional session 이 열릴 때 이전 session 의 `setFilter` state 가 Armeria path 에서 carry-over 되지 않고, 새 session control state 에서 다시 설정되도록 harden 한다.
 - README / ADR / plan 텍스트를 shipped tx baseline, 남아 있는 substrate-hardening work, consensus follow-up dependency 기준으로 다시 정렬한다.
 
+### Phase 3B: P2 Binary Event-Stream Wire Follow-Up
+- current NDJSON event stream baseline 을 peer-facing operational protocol 에서 대체하고, throughput/overhead 개선을 위해 binary event-stream transport projection 을 canonical path 로 승격한다.
+- binary path 는 runtime-owned `GossipEvent` / cursor / rejection model 을 바꾸지 않고, event stream serialization 과 framing 만 교체한다. session-open handshake 와 control batch family 는 기존 HTTP/JSON baseline 을 유지한다.
+- peer event stream compatibility matrix 는 binary media type 하나로 고정한다. mixed-version NDJSON/binary negotiation 또는 runtime fallback 은 두지 않고, pre-cutover NDJSON peer path 는 debug/tooling surface 또는 decommission 대상이다.
+- binary event envelope 는 explicit version field 또는 동등한 forward-compatibility marker 를 포함해야 하며, stable id / cursor / timestamps / typed payload projection 을 lossless 하게 운반해야 한다.
+- stream framing 은 bounded length-prefixed frame 으로 고정하고, length codec 은 `BigNat` 또는 동등 canonical codec 을 사용한다. truncated frame, oversize frame, unknown version, malformed envelope 는 explicit reject/close path 로 투영한다.
+- Armeria adapter 는 binary path 가 existing shipped semantic baseline 과 같은 session/replay/resume semantics 를 유지하도록 shared projection fixture 또는 golden parity corpus 를 사용한다.
+- byte layout table, field ordering rule, normative frame example, media type parameter, negotiation header/path grammar 가 plan 본문에 비해 과도하게 상세해지면 companion protocol spec 을 추가하되, 이 Phase 3B 가 rollout gate 와 compatibility policy 를 계속 소유한다.
+
 ## Test Plan
 - Phase 1 Success: pure unit test로 UUID format validation, lexicographic tie-break, simultaneous-open loser close/retry, heartbeat/liveness negotiation default/range, `livenessTimeout >= 3 * heartbeatInterval`, `maxControlRetryInterval` default/echo/shorten 규칙, immutable subscription baseline을 검증한다.
 - Phase 1 Success: pure unit test로 simultaneous-open detection key가 `PeerIdentity` placeholder 또는 동등 authenticated peer identity abstraction 기준으로 모델링되는지를 검증한다.
@@ -229,6 +244,11 @@ Phase 3A Complete; ADR-0024 Drafted; Identity-Binding Follow-Up Scoped
 - Phase 3A Success (검증 대상: `3A-5`, 완료 체크: `3A-12`): seam test로 `tx` 외 topic stub 이 topic-neutral producer session state / polling / QoS hook 을 재사용할 수 있고, 추가 topic support 를 위해 `tx` runtime 내부를 다시 소유할 필요가 없는지를 검증한다.
 - Phase 3A Success (검증 대상: `3A-6`, 완료 체크: `3A-13`): Armeria integration test로 dead direction 이 기존 peer correlation id 아래 fresh session id 로 full re-handshake 를 완료해 `half-open -> open` recovery 를 달성하고, surviving direction 의 stream/control path 가 recovery 중 유지되는지를 검증한다.
 - Phase 3A Success (검증 대상: `3A-7`, 완료 체크: `3A-14`): Armeria integration test로 reconnect 뒤 새 session 의 filter state 가 비어 있고 이전 session 의 `setFilter` state 가 carry-over 되지 않으며, 새 control batch 로만 다시 설정되는지를 검증한다.
+- Phase 3B Success (검증 대상: `3B-1`, 완료 체크: `3B-4`): codec unit test로 binary envelope encode/decode 가 stable id, cursor, payload discriminator, timestamp projection 을 lossless 하게 round-trip 하고, length prefix 경계가 deterministic 하게 직렬화되는지를 검증한다.
+- Phase 3B Success (검증 대상: `3B-2`, 완료 체크: `3B-5`): Armeria integration test로 peer-facing event stream 이 binary-only operational protocol 로 노출되고, pre-cutover NDJSON peer endpoint 는 제거되거나 debug/tooling surface 로만 남는지를 검증한다.
+- Phase 3B Success (검증 대상: `3B-3`, 완료 체크: `3B-6`): parity regression test로 same session/replay/resume/duplicate-dedupe 시나리오가 binary projection 에서 pre-Phase-3B semantic baseline 과 동일한 runtime outcome 을 만드는지를 검증한다.
+- Phase 3B Failure (검증 대상: `3B-4`, 완료 체크: `3B-7`): stream decoder test와 Armeria failure test로 truncated frame, oversize frame, unknown envelope version, malformed payload 가 silent drop 되지 않고 explicit reject/close 로 처리되는지를 검증한다.
+- Phase 3B Success (검증 대상: `3B-5`, 완료 체크: `3B-8`): docs review 로 binary-only operational policy, optional debug/tooling NDJSON surface, optional companion spec reference 가 README / ADR / plan 텍스트에 일관되게 반영되는지를 검증한다.
 
 ## Risks And Mitigations
 - gossip substrate와 topic semantics가 다시 섞이면 follow-up consensus plan과 경계가 무너질 수 있다. generic topic contract seam과 문서 링크로 ownership 을 분리한다.
@@ -237,6 +257,9 @@ Phase 3A Complete; ADR-0024 Drafted; Identity-Binding Follow-Up Scoped
 - control batch partial apply 버그는 peer state divergence 로 이어질 수 있다. pure atomic apply interpreter 와 failure injection test 로 막는다.
 - `requestById`가 unbounded fetch로 새어 나가면 DoS surface가 커질 수 있다. topic별 명시적 상한과 rejection test로 bounded contract를 강제한다.
 - peer authentication 이 선택 사항처럼 새어 나가면 session hijacking 위험이 커진다. runtime contract 에서는 mandatory 로 두고, 미구현 구간은 테스트 전용 fixture 로만 허용한다.
+- optional debug/tooling NDJSON projection 이 binary operational protocol 과 드리프트할 수 있다. shared decode fixture 와 semantic-baseline regression 으로 debug surface 를 protocol-owner path 와 느슨하게 정렬하되, peer compatibility matrix 에서는 제외한다.
+- length-prefixed binary framing 은 corrupted input 에서 메모리 증폭 위험이 있다. early size cap, truncated-frame reject, decoder failure test 로 bounded parsing contract 를 강제한다.
+- pre-cutover peer 가 binary-only cluster 에 실수로 합류하면 silent decode failure 나 stalled stream 으로 이어질 수 있다. startup/config compatibility gate 와 explicit handshake reject policy 로 mixed-version join 을 막는다.
 
 ## Acceptance Criteria
 1. `sigilaris-node-jvm` 에 runtime-owned gossip/session package 가 추가되고, directional session lifecycle, composite cursor, control batch, rejection model 이 compile/test 로 고정된다.
@@ -251,6 +274,10 @@ Phase 3A Complete; ADR-0024 Drafted; Identity-Binding Follow-Up Scoped
 10. generic topic seam 이 surface-only abstraction 이 아니라 topic-neutral producer session state / polling / QoS hook 을 제공하는 reusable substrate seam 으로 강화된다.
 11. `half-open -> open` recovery 가 shipped HTTP baseline 에서 existing peer correlation id 아래 full re-handshake 로 동작하고, surviving direction 의 stream/control path 는 recovery 중 유지된다.
 12. reconnect 뒤 새 directional session 의 filter state 가 shipped HTTP baseline 에서 empty control state 로 시작하고, 이전 session 의 `setFilter` state 를 carry-over 하지 않는다.
+13. Phase 3B 후 peer-facing event stream operational protocol 은 binary-only 로 고정되고, runtime-owned `GossipEvent` / cursor / rejection public model 과 session-open/control semantic baseline 은 바뀌지 않는다. NDJSON 가 남더라도 debug/tooling surface 에 한정된다.
+14. binary event stream 은 versioned envelope 와 bounded length-prefixed framing 을 사용하고, malformed/truncated/oversize/unknown-version input 을 explicit reject/close 로 처리한다.
+15. same session/replay/resume/dedupe outcome 이 binary projection 에서 pre-Phase-3B semantic baseline 대비 parity regression test 로 고정된다.
+16. binary wire detail 이 plan 본문을 과도하게 키우면 companion protocol spec 이 연결되지만, rollout gate 와 compatibility policy 는 이 plan 에 남는다.
 
 ## Checklist
 
@@ -310,9 +337,19 @@ Phase 3A Complete; ADR-0024 Drafted; Identity-Binding Follow-Up Scoped
 - [x] `3A-14` reconnect filter reset Armeria regression test green
 - [x] `3A-15` README / ADR / plan wording refresh
 
+### Phase 3B: P2 Binary Event-Stream Wire Follow-Up
+- [ ] `3B-1` binary media type / binary-only cutover / non-negotiated compatibility policy lock
+- [ ] `3B-2` versioned binary event envelope 와 `BigNat`-based length-prefixed frame codec 추가
+- [ ] `3B-3` Armeria event-stream binary projection 및 binary-only operational cutover wiring 추가
+- [ ] `3B-4` frame size cap, truncated-frame reject, malformed-version reject guard 추가
+- [ ] `3B-5` binary operational-protocol cutover integration regression test green
+- [ ] `3B-6` semantic-baseline preservation regression test green
+- [ ] `3B-7` decoder failure / malformed frame rejection test green
+- [ ] `3B-8` README / ADR / plan wording refresh 및 필요 시 companion protocol spec 연결
+
 ## Follow-Ups
 - `P1`: configured `PeerIdentity` 와 concrete transport credential subject 간 매핑은 이 plan 의 gossip/session admission seam 에서 follow-up 한다. mutual TLS, application credential, equivalent auth principal 중 어떤 형태를 쓰든 ADR-0024 가 정의한 canonical peer principal 을 보존해야 한다.
-- `P2`: current NDJSON event stream baseline 은 유지하되, throughput/overhead 개선이 필요해지면 event stream 은 byte-codec 기반 binary envelope follow-up 을 받는다. 우선 후보는 `application/octet-stream` 또는 동등 binary media type 위의 length-prefixed frame 이며, `BigNat` length codec 을 framing에 재사용할 수 있다. 이 작업은 exact wire/spec follow-up 이지 별도 ADR 대상은 아니다.
+- `P2`: current NDJSON event stream baseline 을 peer-facing operational path 에서 대체하고, event stream 은 byte-codec 기반 binary envelope 를 canonical protocol 로 승격한다. 우선 후보는 `application/octet-stream` 또는 동등 binary media type 위의 length-prefixed frame 이며, `BigNat` length codec 을 framing에 재사용한다. NDJSON text projection 이 남더라도 debug/tooling surface 에 한정한다. 이 작업은 exact wire/spec follow-up 이지 별도 ADR 대상은 아니며, 구현 gate 는 이 plan 의 `Phase 3B` 가 소유한다.
 - `P3`: session-bound child capability 를 transport surface 에 투영해야 하면 capability token/header/path/query shape 와 re-auth handshake payload 는 이 plan 또는 별도 protocol spec 에서 고정한다.
 - `P4`: bootstrap service family 가 consumer 로 쓰는 concrete authorization / disconnect diagnostics 는 plan `0007` 과 함께 정렬하되, runtime-owned authorization seam ownership 은 이 plan 이 유지한다.
 - `P5`: HotStuff proposal/vote/QC 및 pacemaker artifact integration 은 plan `0004` 가 소유한다. correctness-sensitive topic의 exact known-set, range-set, IBLT/GCS, window key model은 각 topic owner plan이 고정한다.
