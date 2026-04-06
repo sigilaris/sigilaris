@@ -534,58 +534,69 @@ object TxGossipArmeriaAdapter:
   ): ServerEndpoint[Any, F] =
     endpoint.post
       .in("gossip" / "session" / "open")
+      .in(header[Option[String]](GossipTransportAuth.AuthenticatedPeerHeaderName))
       .in(stringBody)
       .errorOut(stringBody)
       .out(stringBody)
-      .serverLogic: raw =>
-        decodeOrHandshakeReject[SessionOpenProposalWire](
-          raw,
-          "invalidSessionOpenProposal",
-        ) match
-          case Left(rendered) =>
-            Async[F].pure(rendered.asLeft[String])
-          case Right(wire) =>
-            toProposal(wire) match
-              case Left(rejection) =>
-                Async[F].pure(renderRejection(rejection).asLeft[String])
-              case Right(proposal) =>
-                runtime
-                  .handleInboundProposal(proposal)
-                  .map:
-                    case accepted: InboundHandshakeResult.Accepted =>
-                      toAckWire(accepted.ack).asJson.noSpaces.asRight[String]
-                    case rejected: InboundHandshakeResult.Rejected =>
-                      renderRejection(rejected.rejection).asLeft[String]
+      .serverLogic: (authenticatedPeerRaw, raw) =>
+        parseAuthenticatedPeer(authenticatedPeerRaw) match
+          case Left(rejection) =>
+            Async[F].pure(renderRejection(rejection).asLeft[String])
+          case Right(authenticatedPeer) =>
+            decodeOrHandshakeReject[SessionOpenProposalWire](
+              raw,
+              "invalidSessionOpenProposal",
+            ) match
+              case Left(rendered) =>
+                Async[F].pure(rendered.asLeft[String])
+              case Right(wire) =>
+                toProposal(wire) match
+                  case Left(rejection) =>
+                    Async[F].pure(renderRejection(rejection).asLeft[String])
+                  case Right(proposal) =>
+                    runtime
+                      .handleInboundProposalFromPeer(
+                        proposal = proposal,
+                        authenticatedPeer = authenticatedPeer,
+                      )
+                      .map:
+                        case accepted: InboundHandshakeResult.Accepted =>
+                          toAckWire(accepted.ack).asJson.noSpaces.asRight[String]
+                        case rejected: InboundHandshakeResult.Rejected =>
+                          renderRejection(rejected.rejection).asLeft[String]
 
   private def eventStreamEndpoint[F[_]: Async, A: ByteEncoder](
       runtime: TxGossipRuntime[F, A],
   ): ServerEndpoint[Any, F] =
     endpoint.post
       .in("gossip" / "events" / path[String]("sessionId"))
+      .in(header[Option[String]](GossipTransportAuth.AuthenticatedPeerHeaderName))
       .in(stringBody)
       .out(byteArrayBody)
-      .serverLogicSuccess: (sessionIdRaw, raw) =>
-        handleEventRequest(runtime, sessionIdRaw, raw)
+      .serverLogicSuccess: (sessionIdRaw, authenticatedPeerRaw, raw) =>
+        handleEventRequest(runtime, authenticatedPeerRaw, sessionIdRaw, raw)
 
   private def controlEndpoint[F[_]: Async, A](
       runtime: TxGossipRuntime[F, A],
   ): ServerEndpoint[Any, F] =
     endpoint.post
       .in("gossip" / "control" / path[String]("sessionId"))
+      .in(header[Option[String]](GossipTransportAuth.AuthenticatedPeerHeaderName))
       .in(stringBody)
       .errorOut(stringBody)
       .out(stringBody)
-      .serverLogic: (sessionIdRaw, raw) =>
-        handleControlRequest(runtime, sessionIdRaw, raw)
+      .serverLogic: (sessionIdRaw, authenticatedPeerRaw, raw) =>
+        handleControlRequest(runtime, authenticatedPeerRaw, sessionIdRaw, raw)
 
   private def disconnectEndpoint[F[_]: Async, A](
       runtime: TxGossipRuntime[F, A],
   ): ServerEndpoint[Any, F] =
     endpoint.post
       .in("gossip" / "session" / path[String]("sessionId") / "disconnect")
+      .in(header[Option[String]](GossipTransportAuth.AuthenticatedPeerHeaderName))
       .errorOut(stringBody)
       .out(stringBody)
-      .serverLogic: sessionIdRaw =>
+      .serverLogic: (sessionIdRaw, authenticatedPeerRaw) =>
         DirectionalSessionId.parse(sessionIdRaw) match
           case Left(error) =>
             Async[F].pure(
@@ -593,12 +604,23 @@ object TxGossipArmeriaAdapter:
                 .asLeft[String],
             )
           case Right(sessionId) =>
-            runtime
-              .markSessionDead(sessionId)
-              .map(_.leftMap(renderRejection).map(_ => "ok"))
+            parseAuthenticatedPeer(authenticatedPeerRaw) match
+              case Left(rejection) =>
+                Async[F].pure(renderRejection(rejection).asLeft[String])
+              case Right(authenticatedPeer) =>
+                runtime
+                  .authorizeSessionPeer(sessionId, authenticatedPeer)
+                  .flatMap:
+                    case Left(rejection) =>
+                      renderRejection(rejection).asLeft[String].pure[F]
+                    case Right(_) =>
+                      runtime
+                        .markSessionDead(sessionId)
+                        .map(_.leftMap(renderRejection).map(_ => "ok"))
 
   private def handleEventRequest[F[_]: Async, A: ByteEncoder](
       runtime: TxGossipRuntime[F, A],
+      authenticatedPeerRaw: Option[String],
       sessionIdRaw: String,
       raw: String,
   ): F[Array[Byte]] =
@@ -613,75 +635,88 @@ object TxGossipArmeriaAdapter:
           ),
         ).pure[F]
       case Right(sessionId) =>
-        decodeOrRejectionEvent[EventRequestWire](
-          sessionId,
-          raw,
-          "invalidEventRequest",
-        ) match
+        parseAuthenticatedPeer(authenticatedPeerRaw) match
           case Left(rendered) =>
-            Async[F].pure(rendered)
-          case Right(request) =>
-            request.kind match
-              case "poll" =>
-                runtime
-                  .pollEvents(sessionId)
-                  .flatMap:
-                    case Left(rejection) =>
-                      BinaryEventStreamCodec.encodeBinary(
-                        Vector(eventRejection(sessionId.value, rejection)),
-                      ).pure[F]
-                    case Right(messages) if messages.nonEmpty =>
-                      BinaryEventStreamCodec.encodeBinary(
-                        messages.map(toBinaryEventEnvelope(sessionId, _)),
-                      ).pure[F]
-                    case Right(_) =>
-                      runtime
-                        .eventKeepAlive(sessionId)
-                        .map:
-                          case Left(rejection) =>
-                            BinaryEventStreamCodec.encodeBinary(
-                              Vector(eventRejection(sessionId.value, rejection)),
-                            )
-                          case Right(message) =>
-                            BinaryEventStreamCodec.encodeBinary(
-                              Vector(toBinaryEventEnvelope(sessionId, message)),
-                            )
-              case "eventKeepAlive" =>
-                runtime
-                  .eventKeepAlive(sessionId)
-                  .map:
-                    case Left(rejection) =>
-                      BinaryEventStreamCodec.encodeBinary(
-                        Vector(eventRejection(sessionId.value, rejection)),
-                      )
-                    case Right(message) =>
-                      BinaryEventStreamCodec.encodeBinary(
-                        Vector(toBinaryEventEnvelope(sessionId, message)),
-                      )
-              case "controlKeepAlive" =>
+            BinaryEventStreamCodec.encodeBinary(
+              Vector(eventRejection(sessionId.value, rendered)),
+            ).pure[F]
+          case Right(authenticatedPeer) =>
+            runtime.authorizeSessionPeer(sessionId, authenticatedPeer).flatMap:
+              case Left(rejection) =>
                 BinaryEventStreamCodec.encodeBinary(
-                  Vector(
-                    eventRejection(
-                      sessionId.value,
-                      controlRejected(
-                        "wrongChannelMessageKind",
-                        "controlKeepAlive",
-                      ),
-                    ),
-                  ),
+                  Vector(eventRejection(sessionId.value, rejection)),
                 ).pure[F]
-              case other =>
-                BinaryEventStreamCodec.encodeBinary(
-                  Vector(
-                    eventRejection(
-                      sessionId.value,
-                      handshakeRejected("unknownEventRequestKind", other),
-                    ),
-                  ),
-                ).pure[F]
+              case Right(_) =>
+                decodeOrRejectionEvent[EventRequestWire](
+                  sessionId,
+                  raw,
+                  "invalidEventRequest",
+                ) match
+                  case Left(rendered) =>
+                    Async[F].pure(rendered)
+                  case Right(request) =>
+                    request.kind match
+                      case "poll" =>
+                        runtime
+                          .pollEvents(sessionId)
+                          .flatMap:
+                            case Left(rejection) =>
+                              BinaryEventStreamCodec.encodeBinary(
+                                Vector(eventRejection(sessionId.value, rejection)),
+                              ).pure[F]
+                            case Right(messages) if messages.nonEmpty =>
+                              BinaryEventStreamCodec.encodeBinary(
+                                messages.map(toBinaryEventEnvelope(sessionId, _)),
+                              ).pure[F]
+                            case Right(_) =>
+                              runtime
+                                .eventKeepAlive(sessionId)
+                                .map:
+                                  case Left(rejection) =>
+                                    BinaryEventStreamCodec.encodeBinary(
+                                      Vector(eventRejection(sessionId.value, rejection)),
+                                    )
+                                  case Right(message) =>
+                                    BinaryEventStreamCodec.encodeBinary(
+                                      Vector(toBinaryEventEnvelope(sessionId, message)),
+                                    )
+                      case "eventKeepAlive" =>
+                        runtime
+                          .eventKeepAlive(sessionId)
+                          .map:
+                            case Left(rejection) =>
+                              BinaryEventStreamCodec.encodeBinary(
+                                Vector(eventRejection(sessionId.value, rejection)),
+                              )
+                            case Right(message) =>
+                              BinaryEventStreamCodec.encodeBinary(
+                                Vector(toBinaryEventEnvelope(sessionId, message)),
+                              )
+                      case "controlKeepAlive" =>
+                        BinaryEventStreamCodec.encodeBinary(
+                          Vector(
+                            eventRejection(
+                              sessionId.value,
+                              controlRejected(
+                                "wrongChannelMessageKind",
+                                "controlKeepAlive",
+                              ),
+                            ),
+                          ),
+                        ).pure[F]
+                      case other =>
+                        BinaryEventStreamCodec.encodeBinary(
+                          Vector(
+                            eventRejection(
+                              sessionId.value,
+                              handshakeRejected("unknownEventRequestKind", other),
+                            ),
+                          ),
+                        ).pure[F]
 
   private def handleControlRequest[F[_]: Async, A](
       runtime: TxGossipRuntime[F, A],
+      authenticatedPeerRaw: Option[String],
       sessionIdRaw: String,
       raw: String,
   ): F[Either[String, String]] =
@@ -691,70 +726,78 @@ object TxGossipArmeriaAdapter:
           .asLeft[String]
           .pure[F]
       case Right(sessionId) =>
-        decodeOrControlReject[ControlRequestWire](
-          raw,
-          "invalidControlRequest",
-        ) match
+        parseAuthenticatedPeer(authenticatedPeerRaw) match
           case Left(rendered) =>
-            Async[F].pure(rendered.asLeft[String])
-          case Right(request) =>
-            request.kind match
-              case "batch" =>
-                request.batch match
-                  case None =>
-                    renderRejection(
-                      controlRejected("missingControlBatch", "batch"),
-                    ).asLeft[String].pure[F]
-                  case Some(batchWire) =>
-                    toControlBatch(batchWire) match
-                      case Left(rejection) =>
-                        renderRejection(rejection).asLeft[String].pure[F]
-                      case Right(batch) =>
+            Async[F].pure(renderRejection(rendered).asLeft[String])
+          case Right(authenticatedPeer) =>
+            runtime.authorizeSessionPeer(sessionId, authenticatedPeer).flatMap:
+              case Left(rejection) =>
+                renderRejection(rejection).asLeft[String].pure[F]
+              case Right(_) =>
+                decodeOrControlReject[ControlRequestWire](
+                  raw,
+                  "invalidControlRequest",
+                ) match
+                  case Left(rendered) =>
+                    Async[F].pure(rendered.asLeft[String])
+                  case Right(request) =>
+                    request.kind match
+                      case "batch" =>
+                        request.batch match
+                          case None =>
+                            renderRejection(
+                              controlRejected("missingControlBatch", "batch"),
+                            ).asLeft[String].pure[F]
+                          case Some(batchWire) =>
+                            toControlBatch(batchWire) match
+                              case Left(rejection) =>
+                                renderRejection(rejection).asLeft[String].pure[F]
+                              case Right(batch) =>
+                                runtime
+                                  .receiveControlBatch(sessionId, batch)
+                                  .map:
+                                    case Left(rejection) =>
+                                      renderRejection(rejection).asLeft[String]
+                                    case Right(ControlBatchOutcome.Applied) =>
+                                      ControlResponseWire(
+                                        status = "applied",
+                                        sessionId = Some(sessionId.value),
+                                        deduplicated = Some(false),
+                                      ).asJson.noSpaces.asRight[String]
+                                    case Right(ControlBatchOutcome.Deduplicated) =>
+                                      ControlResponseWire(
+                                        status = "deduplicated",
+                                        sessionId = Some(sessionId.value),
+                                        deduplicated = Some(true),
+                                      ).asJson.noSpaces.asRight[String]
+                      case "controlKeepAlive" =>
                         runtime
-                          .receiveControlBatch(sessionId, batch)
+                          .controlKeepAlive(sessionId)
                           .map:
                             case Left(rejection) =>
                               renderRejection(rejection).asLeft[String]
-                            case Right(ControlBatchOutcome.Applied) =>
+                            case Right(ControlChannelMessage.Ack(ackSessionId, _)) =>
                               ControlResponseWire(
-                                status = "applied",
-                                sessionId = Some(sessionId.value),
-                                deduplicated = Some(false),
+                                status = "ack",
+                                sessionId = Some(ackSessionId.value),
                               ).asJson.noSpaces.asRight[String]
-                            case Right(ControlBatchOutcome.Deduplicated) =>
+                            case Right(_) =>
                               ControlResponseWire(
-                                status = "deduplicated",
+                                status = "ack",
                                 sessionId = Some(sessionId.value),
-                                deduplicated = Some(true),
                               ).asJson.noSpaces.asRight[String]
-              case "controlKeepAlive" =>
-                runtime
-                  .controlKeepAlive(sessionId)
-                  .map:
-                    case Left(rejection) =>
-                      renderRejection(rejection).asLeft[String]
-                    case Right(ControlChannelMessage.Ack(ackSessionId, _)) =>
-                      ControlResponseWire(
-                        status = "ack",
-                        sessionId = Some(ackSessionId.value),
-                      ).asJson.noSpaces.asRight[String]
-                    case Right(_) =>
-                      ControlResponseWire(
-                        status = "ack",
-                        sessionId = Some(sessionId.value),
-                      ).asJson.noSpaces.asRight[String]
-              case "eventKeepAlive" =>
-                Async[F].pure(
-                  renderRejection(
-                    controlRejected("wrongChannelMessageKind", "eventKeepAlive"),
-                  ).asLeft[String],
-                )
-              case other =>
-                Async[F].pure(
-                  renderRejection(
-                    controlRejected("unknownControlRequestKind", other),
-                  ).asLeft[String],
-                )
+                      case "eventKeepAlive" =>
+                        Async[F].pure(
+                          renderRejection(
+                            controlRejected("wrongChannelMessageKind", "eventKeepAlive"),
+                          ).asLeft[String],
+                        )
+                      case other =>
+                        Async[F].pure(
+                          renderRejection(
+                            controlRejected("unknownControlRequestKind", other),
+                          ).asLeft[String],
+                        )
 
   private def decodeOrHandshakeReject[A: Decoder](
       raw: String,
@@ -786,6 +829,19 @@ object TxGossipArmeriaAdapter:
           ),
         ),
       )
+
+  private def parseAuthenticatedPeer(
+      raw: Option[String],
+  ): Either[CanonicalRejection.HandshakeRejected, PeerIdentity] =
+    raw.toRight(
+      handshakeRejected(
+        "missingAuthenticatedPeer",
+        GossipTransportAuth.AuthenticatedPeerHeaderName,
+      ),
+    ).flatMap: value =>
+      GossipTransportAuth
+        .parseAuthenticatedPeer(value)
+        .leftMap(handshakeRejected("invalidAuthenticatedPeer", _))
 
   private def toProposal(
       wire: SessionOpenProposalWire,
