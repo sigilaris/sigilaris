@@ -216,6 +216,492 @@ final class HotStuffValidationSuite extends FunSuite:
 
     assertEquals(result.left.map(_.reason), Left("duplicateValidatorVote"))
 
+  test("timeout vote and new-view signatures validate with deterministic leader rotation"):
+    val proposal = signedProposal()
+    val timeoutVoteA =
+      signedTimeoutVoteFor(
+        proposal.window,
+        proposal.justify,
+        voterIndex = 0,
+      )
+    val timeoutVoteB =
+      signedTimeoutVoteFor(
+        proposal.window,
+        proposal.justify,
+        voterIndex = 1,
+      )
+    val timeoutVoteC =
+      signedTimeoutVoteFor(
+        proposal.window,
+        proposal.justify,
+        voterIndex = 2,
+      )
+    val timeoutCertificate =
+      TimeoutCertificateAssembler
+        .assemble(
+          timeoutVoteA.subject,
+          Vector(timeoutVoteA, timeoutVoteB, timeoutVoteC),
+          validatorSet,
+        )
+        .toOption
+        .get
+    val nextWindow =
+      HotStuffPacemaker.nextWindowAfter(timeoutCertificate.subject.window)
+    val expectedLeader =
+      HotStuffPacemaker.deterministicLeader(nextWindow, validatorSet)
+    val newView =
+      NewView
+        .sign(
+          UnsignedNewView(
+            window = nextWindow,
+            sender = validatorSet.members.head.id,
+            nextLeader = expectedLeader,
+            highestKnownQc = proposal.justify,
+            timeoutCertificate = timeoutCertificate,
+          ),
+          validatorKeys.head,
+        )
+        .toOption
+        .get
+
+    assertEquals(
+      HotStuffValidator.validateTimeoutVote(timeoutVoteA, validatorSet),
+      Right(()),
+    )
+    assertEquals(
+      HotStuffValidator.validateTimeoutCertificate(
+        timeoutCertificate,
+        validatorSet,
+      ),
+      Right(()),
+    )
+    assertEquals(HotStuffValidator.validateNewView(newView, validatorSet), Right(()))
+    assertEquals(newView.nextLeader, expectedLeader)
+
+  test("new-view sign bytes stay stable across quorum and timeout certificate duplicate ordering"):
+    val proposal = signedProposal()
+    val qcVoteA =
+      signedVoteFor(
+        proposal.justify.subject.window,
+        proposal.justify.subject.proposalId,
+        voterIndex = 0,
+      )
+    val qcVoteB =
+      signedVoteFor(
+        proposal.justify.subject.window,
+        proposal.justify.subject.proposalId,
+        voterIndex = 1,
+      )
+    val qcVoteC =
+      signedVoteFor(
+        proposal.justify.subject.window,
+        proposal.justify.subject.proposalId,
+        voterIndex = 2,
+      )
+    val qcDuplicateLow =
+      qcVoteA.copy(voteId = VoteId(hex("01")))
+    val qcDuplicateHigh =
+      qcVoteA.copy(voteId = VoteId(hex("ff")))
+    val timeoutVoteA =
+      signedTimeoutVoteFor(
+        proposal.window,
+        proposal.justify,
+        voterIndex = 0,
+      )
+    val timeoutVoteB =
+      signedTimeoutVoteFor(
+        proposal.window,
+        proposal.justify,
+        voterIndex = 1,
+      )
+    val timeoutVoteC =
+      signedTimeoutVoteFor(
+        proposal.window,
+        proposal.justify,
+        voterIndex = 2,
+      )
+    val timeoutDuplicateLow =
+      timeoutVoteA.copy(timeoutVoteId = TimeoutVoteId(hex("01")))
+    val timeoutDuplicateHigh =
+      timeoutVoteA.copy(timeoutVoteId = TimeoutVoteId(hex("ff")))
+    val nextWindow =
+      HotStuffPacemaker.nextWindowAfter(proposal.window)
+    val nextLeader =
+      HotStuffPacemaker.deterministicLeader(nextWindow, validatorSet)
+    val unsignedA =
+      UnsignedNewView(
+        window = nextWindow,
+        sender = validatorSet.members.head.id,
+        nextLeader = nextLeader,
+        highestKnownQc = QuorumCertificate(
+          proposal.justify.subject,
+          Vector(qcDuplicateHigh, qcVoteC, qcVoteB, qcDuplicateLow),
+        ),
+        timeoutCertificate = TimeoutCertificate(
+          TimeoutVoteSubject(
+            window = proposal.window,
+            highestKnownQc = proposal.justify.subject,
+          ),
+          Vector(
+            timeoutDuplicateHigh,
+            timeoutVoteC,
+            timeoutVoteB,
+            timeoutDuplicateLow,
+          ),
+        ),
+      )
+    val unsignedB =
+      unsignedA.copy(
+        highestKnownQc = QuorumCertificate(
+          proposal.justify.subject,
+          Vector(qcVoteB, qcDuplicateLow, qcDuplicateHigh, qcVoteC),
+        ),
+        timeoutCertificate = TimeoutCertificate(
+          TimeoutVoteSubject(
+            window = proposal.window,
+            highestKnownQc = proposal.justify.subject,
+          ),
+          Vector(
+            timeoutVoteB,
+            timeoutDuplicateLow,
+            timeoutDuplicateHigh,
+            timeoutVoteC,
+          ),
+        ),
+      )
+
+    assertEquals(NewView.signBytes(unsignedA), NewView.signBytes(unsignedB))
+
+  test("timeout vote accumulator deduplicates exact duplicates and rejects timeout equivocation"):
+    val proposal = signedProposal()
+    val timeoutVote =
+      signedTimeoutVoteFor(
+        proposal.window,
+        proposal.justify,
+        voterIndex = 0,
+      )
+    val equivocated =
+      TimeoutVote
+        .sign(
+          UnsignedTimeoutVote(
+            subject = TimeoutVoteSubject(
+              window = proposal.window,
+              highestKnownQc =
+                proposal.justify.subject.copy(
+                  proposalId = ProposalId(hex("ac")),
+                  blockId = BlockId(hex("ad")),
+                ),
+            ),
+            voter = validatorSet.members.head.id,
+          ),
+          validatorKeys.head,
+        )
+        .toOption
+        .get
+
+    val first = TimeoutVoteAccumulator.empty.record(timeoutVote)
+    val second = first.toOption.get._1.record(timeoutVote)
+    val third = first.toOption.get._1.record(equivocated)
+
+    assertEquals(first.map(_._2), Right(TimeoutVoteRecordOutcome.Applied))
+    assertEquals(second.map(_._2), Right(TimeoutVoteRecordOutcome.Duplicate))
+    assertEquals(third.left.map(_.reason), Left("timeoutEquivocationDetected"))
+
+  test("new-view validation rejects wrong next leader and mismatched highest qc proof"):
+    val proposal = signedProposal()
+    val timeoutCertificate =
+      TimeoutCertificateAssembler
+        .assemble(
+          TimeoutVoteSubject(
+            window = proposal.window,
+            highestKnownQc = proposal.justify.subject,
+          ),
+          Vector(
+            signedTimeoutVoteFor(proposal.window, proposal.justify, 0),
+            signedTimeoutVoteFor(proposal.window, proposal.justify, 1),
+            signedTimeoutVoteFor(proposal.window, proposal.justify, 2),
+          ),
+          validatorSet,
+        )
+        .toOption
+        .get
+    val nextWindow =
+      HotStuffPacemaker.nextWindowAfter(timeoutCertificate.subject.window)
+    val wrongLeaderNewView =
+      NewView
+        .sign(
+          UnsignedNewView(
+            window = nextWindow,
+            sender = validatorSet.members.head.id,
+            nextLeader = validatorSet.members.last.id,
+            highestKnownQc = proposal.justify,
+            timeoutCertificate = timeoutCertificate,
+          ),
+          validatorKeys.head,
+        )
+        .toOption
+        .get
+    val mismatchedSubject = proposal.justify.subject.copy(
+      proposalId = ProposalId(hex("ba")),
+      blockId = BlockId(hex("bb")),
+    )
+    val mismatchedHighestQc =
+      QuorumCertificateAssembler
+        .assemble(
+          subject = mismatchedSubject,
+          votes = Vector(
+            signedVoteFor(mismatchedSubject.window, mismatchedSubject.proposalId, 0),
+            signedVoteFor(mismatchedSubject.window, mismatchedSubject.proposalId, 1),
+            signedVoteFor(mismatchedSubject.window, mismatchedSubject.proposalId, 2),
+          ),
+          validatorSet = validatorSet,
+        )
+        .toOption
+        .get
+    val mismatchedNewView =
+      NewView
+        .sign(
+          UnsignedNewView(
+            window = nextWindow,
+            sender = validatorSet.members.head.id,
+            nextLeader =
+              HotStuffPacemaker.deterministicLeader(nextWindow, validatorSet),
+            highestKnownQc = mismatchedHighestQc,
+            timeoutCertificate = timeoutCertificate,
+          ),
+          validatorKeys.head,
+        )
+        .toOption
+        .get
+
+    assertEquals(
+      HotStuffValidator.validateNewView(wrongLeaderNewView, validatorSet).left.map(_.reason),
+      Left("newViewLeaderMismatch"),
+    )
+    assertEquals(
+      HotStuffValidator.validateNewView(mismatchedNewView, validatorSet).left.map(_.reason),
+      Left("newViewHighestQcMismatch"),
+    )
+
+  test("timeout certificate validation rejects insufficient quorum, duplicate validators, and unknown timeout voters"):
+    val proposal = signedProposal()
+    val subject = TimeoutVoteSubject(
+      window = proposal.window,
+      highestKnownQc = proposal.justify.subject,
+    )
+    val timeoutVoteA = signedTimeoutVoteFor(proposal.window, proposal.justify, 0)
+    val timeoutVoteB = signedTimeoutVoteFor(proposal.window, proposal.justify, 1)
+    val timeoutVoteC = signedTimeoutVoteFor(proposal.window, proposal.justify, 2)
+    val duplicateValidator =
+      timeoutVoteA.copy(timeoutVoteId = TimeoutVoteId(hex("ce")))
+    val unknownTimeoutVoter =
+      TimeoutVote
+        .sign(
+          UnsignedTimeoutVote(
+            subject = subject,
+            voter = ValidatorId.unsafe("validator-unknown"),
+          ),
+          validatorKeys.head,
+        )
+        .toOption
+        .get
+
+    assertEquals(
+      HotStuffValidator
+        .validateTimeoutCertificate(
+          TimeoutCertificate(subject, Vector(timeoutVoteA, timeoutVoteB)),
+          validatorSet,
+        )
+        .left
+        .map(_.reason),
+      Left("insufficientTimeoutQuorum"),
+    )
+    assertEquals(
+      HotStuffValidator
+        .validateTimeoutCertificate(
+          TimeoutCertificate(
+            subject,
+            Vector(timeoutVoteA, duplicateValidator, timeoutVoteB, timeoutVoteC),
+          ),
+          validatorSet,
+        )
+        .left
+        .map(_.reason),
+      Left("duplicateValidatorTimeoutVote"),
+    )
+    assertEquals(
+      HotStuffValidator
+        .validateTimeoutCertificate(
+          TimeoutCertificate(
+            subject,
+            Vector(timeoutVoteA, timeoutVoteB, unknownTimeoutVoter),
+          ),
+          validatorSet,
+        )
+        .left
+        .map(_.reason),
+      Left("unknownTimeoutVoter"),
+    )
+
+  test("timeout vote validation rejects highest qc from the same height and view"):
+    val proposal = signedProposal()
+    val timeoutVote =
+      TimeoutVote
+        .sign(
+          UnsignedTimeoutVote(
+            subject = TimeoutVoteSubject(
+              window = proposal.window,
+              highestKnownQc = proposal.justify.subject.copy(window = proposal.window),
+            ),
+            voter = validatorSet.members.head.id,
+          ),
+          validatorKeys.head,
+        )
+        .toOption
+        .get
+
+    assertEquals(
+      HotStuffValidator.validateTimeoutVote(timeoutVote, validatorSet).left.map(_.reason),
+      Left("timeoutVoteHighestQcWindowMismatch"),
+    )
+
+  test("new-view validation rejects unknown sender and mismatched height"):
+    val proposal = signedProposal()
+    val timeoutCertificate =
+      TimeoutCertificateAssembler
+        .assemble(
+          TimeoutVoteSubject(
+            window = proposal.window,
+            highestKnownQc = proposal.justify.subject,
+          ),
+          Vector(
+            signedTimeoutVoteFor(proposal.window, proposal.justify, 0),
+            signedTimeoutVoteFor(proposal.window, proposal.justify, 1),
+            signedTimeoutVoteFor(proposal.window, proposal.justify, 2),
+          ),
+          validatorSet,
+        )
+        .toOption
+        .get
+    val nextWindow =
+      HotStuffPacemaker.nextWindowAfter(timeoutCertificate.subject.window)
+    val unknownSenderNewView =
+      NewView
+        .sign(
+          UnsignedNewView(
+            window = nextWindow,
+            sender = ValidatorId.unsafe("validator-unknown"),
+            nextLeader =
+              HotStuffPacemaker.deterministicLeader(nextWindow, validatorSet),
+            highestKnownQc = proposal.justify,
+            timeoutCertificate = timeoutCertificate,
+          ),
+          validatorKeys.head,
+        )
+        .toOption
+        .get
+    val wrongHeightWindow =
+      nextWindow.copy(height = nextWindow.height.next)
+    val wrongHeightNewView =
+      NewView
+        .sign(
+          UnsignedNewView(
+            window = wrongHeightWindow,
+            sender = validatorSet.members.head.id,
+            nextLeader =
+              HotStuffPacemaker.deterministicLeader(wrongHeightWindow, validatorSet),
+            highestKnownQc = proposal.justify,
+            timeoutCertificate = timeoutCertificate,
+          ),
+          validatorKeys.head,
+        )
+        .toOption
+        .get
+
+    assertEquals(
+      HotStuffValidator.validateNewView(unknownSenderNewView, validatorSet).left.map(_.reason),
+      Left("unknownNewViewSender"),
+    )
+    assertEquals(
+      HotStuffValidator.validateNewView(wrongHeightNewView, validatorSet).left.map(_.reason),
+      Left("newViewWindowMismatch"),
+    )
+
+  test("single-validator timeout certificate and new-view validate"):
+    val singleKey = CryptoOps.generate()
+    val singleId = ValidatorId.unsafe("validator-single")
+    val singleSet = ValidatorSet.unsafe(
+      Vector(
+        ValidatorMember(
+          id = singleId,
+          publicKey = singleKey.publicKey,
+        ),
+      ),
+    )
+    val qcWindow = HotStuffWindow(chainId, 0L, 0L, singleSet.hash)
+    val qcSubject = QuorumCertificateSubject(
+      window = qcWindow,
+      proposalId = ProposalId(hex("d1")),
+      blockId = BlockId(hex("d2")),
+    )
+    val qc =
+      QuorumCertificateAssembler
+        .assemble(
+          qcSubject,
+          Vector(
+            Vote
+              .sign(
+                UnsignedVote(qcWindow, singleId, qcSubject.proposalId),
+                singleKey,
+              )
+              .toOption
+              .get,
+          ),
+          singleSet,
+        )
+        .toOption
+        .get
+    val timeoutWindow = HotStuffWindow(chainId, 1L, 1L, singleSet.hash)
+    val timeoutVote =
+      TimeoutVote
+        .sign(
+          UnsignedTimeoutVote(
+            subject = TimeoutVoteSubject(
+              window = timeoutWindow,
+              highestKnownQc = qc.subject,
+            ),
+            voter = singleId,
+          ),
+          singleKey,
+        )
+        .toOption
+        .get
+    val timeoutCertificate =
+      TimeoutCertificateAssembler
+        .assemble(timeoutVote.subject, Vector(timeoutVote), singleSet)
+        .toOption
+        .get
+    val nextWindow =
+      HotStuffPacemaker.nextWindowAfter(timeoutCertificate.subject.window)
+    val newView =
+      NewView
+        .sign(
+          UnsignedNewView(
+            window = nextWindow,
+            sender = singleId,
+            nextLeader = HotStuffPacemaker.deterministicLeader(nextWindow, singleSet),
+            highestKnownQc = qc,
+            timeoutCertificate = timeoutCertificate,
+          ),
+          singleKey,
+        )
+        .toOption
+        .get
+
+    assertEquals(singleSet.quorumSize, 1)
+    assertEquals(HotStuffValidator.validateTimeoutCertificate(timeoutCertificate, singleSet), Right(()))
+    assertEquals(HotStuffValidator.validateNewView(newView, singleSet), Right(()))
+
   test("vote accumulator returns only votes matching the requested window and proposal"):
     val proposal = signedProposal()
     val voteA = signedVote(proposal, voterIndex = 1)
@@ -843,6 +1329,25 @@ final class HotStuffValidationSuite extends FunSuite:
           window = window,
           voter = validatorSet.members(voterIndex).id,
           targetProposalId = proposalId,
+        ),
+        validatorKeys(voterIndex),
+      )
+      .toOption
+      .get
+
+  private def signedTimeoutVoteFor(
+      window: HotStuffWindow,
+      highestKnownQc: QuorumCertificate,
+      voterIndex: Int,
+  ): TimeoutVote =
+    TimeoutVote
+      .sign(
+        UnsignedTimeoutVote(
+          subject = TimeoutVoteSubject(
+            window = window,
+            highestKnownQc = highestKnownQc.subject,
+          ),
+          voter = validatorSet.members(voterIndex).id,
         ),
         validatorKeys(voterIndex),
       )

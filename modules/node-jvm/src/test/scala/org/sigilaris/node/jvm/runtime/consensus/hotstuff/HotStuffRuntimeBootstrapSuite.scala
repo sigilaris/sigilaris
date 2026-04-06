@@ -350,6 +350,82 @@ final class HotStuffRuntimeBootstrapSuite extends CatsEffectSuite:
       assertEquals(metadata, None)
       assertEquals(nodeMissing, None)
 
+  test("assembled bootstrap runtime gates proposal emission and pacemaker artifacts once bootstrap hold becomes active"):
+    val config = ConfigFactory.parseString(
+      s"""
+         |sigilaris.node.gossip.peers {
+         |  local-node-identity = "node-a"
+         |  known-peers = ["node-b"]
+         |  direct-neighbors = ["node-b"]
+         |}
+         |
+         |sigilaris.node.consensus.hotstuff {
+         |  local-role = "validator"
+         |  validators = [
+         |    { id = "${validatorIds(0).value}", public-key = "${validatorKeys(0).publicKey.toBytes.toHex}" },
+         |    { id = "${validatorIds(1).value}", public-key = "${validatorKeys(1).publicKey.toBytes.toHex}" },
+         |    { id = "${validatorIds(2).value}", public-key = "${validatorKeys(2).publicKey.toBytes.toHex}" },
+         |    { id = "${validatorIds(3).value}", public-key = "${validatorKeys(3).publicKey.toBytes.toHex}" }
+         |  ]
+         |  key-holders = [
+         |    { validator-id = "${validatorIds(0).value}", holder = "node-a", status = "active" },
+         |    { validator-id = "${validatorIds(1).value}", holder = "node-a", status = "active" },
+         |    { validator-id = "${validatorIds(2).value}", holder = "node-a", status = "active" },
+         |    { validator-id = "${validatorIds(3).value}", holder = "node-b", status = "active" }
+         |  ]
+         |  local-signers = [
+         |    { validator-id = "${validatorIds(0).value}", private-key = "${validatorKeys(0).privateKey.toHexLower}" },
+         |    { validator-id = "${validatorIds(1).value}", private-key = "${validatorKeys(1).privateKey.toHexLower}" },
+         |    { validator-id = "${validatorIds(2).value}", private-key = "${validatorKeys(2).privateKey.toHexLower}" }
+         |  ]
+         |}
+         |""".stripMargin,
+    )
+
+    for
+      clock <- TestClock.create(startedAt)
+      bootstrapEither <- HotStuffRuntimeBootstrap.fromConfig[IO](config, clock)
+      bootstrap <- IO.fromEither(
+        bootstrapEither.leftMap(new IllegalArgumentException(_)),
+      )
+      _ <- bootstrap.consensus.bootstrap(
+        chainId = chainId,
+        sessions = Vector.empty,
+        startedAt = startedAt,
+        liveProposals = Vector.empty,
+      )
+      proposalAttempt <- bootstrap.consensus.emitProposal(
+        proposer = validatorIds.head,
+        block = BlockHeader(
+          parent = Some(bootstrapQc().subject.blockId),
+          height = BlockHeight.unsafeFromLong(2L),
+          stateRoot = StateRoot(hex("95")),
+          bodyRoot = BodyRoot(hex("95")),
+          timestamp = BlockTimestamp.unsafeFromEpochMillis(startedAt.toEpochMilli),
+        ),
+        txSet = ProposalTxSet.empty,
+        window = HotStuffWindow(chainId, 2L, 1L, validatorSet.hash),
+        justify = bootstrapQc(),
+        ts = startedAt.plusSeconds(1L),
+      )
+      timeoutVoteAttempt <- bootstrap.consensus.signTimeoutVote(
+        voter = validatorIds.head,
+        window = HotStuffWindow(chainId, 2L, 1L, validatorSet.hash),
+        highestKnownQc = bootstrapQc(),
+      )
+      newViewAttempt <- bootstrap.consensus.signNewView(
+        sender = validatorIds.head,
+        highestKnownQc = bootstrapQc(),
+        timeoutCertificate = timeoutCertificateFor(
+          window = HotStuffWindow(chainId, 2L, 1L, validatorSet.hash),
+          highestKnownQc = bootstrapQc(),
+        ),
+      )
+    yield
+      assertEquals(proposalAttempt.left.map(_.reason), Left("bootstrapVoteHeld"))
+      assertEquals(timeoutVoteAttempt.left.map(_.reason), Left("bootstrapVoteHeld"))
+      assertEquals(newViewAttempt.left.map(_.reason), Left("bootstrapVoteHeld"))
+
   test("assembled validator runtime does not gate votes before bootstrap activation starts"):
     val config = ConfigFactory.parseString(
       s"""
@@ -394,6 +470,68 @@ final class HotStuffRuntimeBootstrapSuite extends CatsEffectSuite:
     yield
       assert(bootstrap.consensus.bootstrapLifecycle.nonEmpty)
       assert(voteAttempt.isRight)
+
+  test("assembled validator runtime can sign pacemaker artifacts before bootstrap activation starts"):
+    val config = ConfigFactory.parseString(
+      s"""
+         |sigilaris.node.gossip.peers {
+         |  local-node-identity = "node-a"
+         |  known-peers = ["node-b"]
+         |  direct-neighbors = ["node-b"]
+         |}
+         |
+         |sigilaris.node.consensus.hotstuff {
+         |  local-role = "validator"
+         |  validators = [
+         |    { id = "${validatorIds(0).value}", public-key = "${validatorKeys(0).publicKey.toBytes.toHex}" },
+         |    { id = "${validatorIds(1).value}", public-key = "${validatorKeys(1).publicKey.toBytes.toHex}" },
+         |    { id = "${validatorIds(2).value}", public-key = "${validatorKeys(2).publicKey.toBytes.toHex}" },
+         |    { id = "${validatorIds(3).value}", public-key = "${validatorKeys(3).publicKey.toBytes.toHex}" }
+         |  ]
+         |  key-holders = [
+         |    { validator-id = "${validatorIds(0).value}", holder = "node-a", status = "active" },
+         |    { validator-id = "${validatorIds(1).value}", holder = "node-a", status = "active" },
+         |    { validator-id = "${validatorIds(2).value}", holder = "node-a", status = "active" },
+         |    { validator-id = "${validatorIds(3).value}", holder = "node-b", status = "active" }
+         |  ]
+         |  local-signers = [
+         |    { validator-id = "${validatorIds(0).value}", private-key = "${validatorKeys(0).privateKey.toHexLower}" },
+         |    { validator-id = "${validatorIds(1).value}", private-key = "${validatorKeys(1).privateKey.toHexLower}" },
+         |    { validator-id = "${validatorIds(2).value}", private-key = "${validatorKeys(2).privateKey.toHexLower}" }
+         |  ]
+         |}
+         |""".stripMargin,
+    )
+
+    for
+      clock <- TestClock.create(startedAt)
+      bootstrapEither <- HotStuffRuntimeBootstrap.fromConfig[IO](config, clock)
+      bootstrap <- IO.fromEither(
+        bootstrapEither.leftMap(new IllegalArgumentException(_)),
+      )
+      timeoutVoteAttempt <- bootstrap.consensus.signTimeoutVote(
+        voter = validatorIds.head,
+        window = HotStuffWindow(chainId, 2L, 1L, validatorSet.hash),
+        highestKnownQc = bootstrapQc(),
+      )
+      timeoutVote <- IO.fromEither(
+        timeoutVoteAttempt.leftMap(rejection => new IllegalStateException(rejection.reason)),
+      )
+      newViewAttempt <- bootstrap.consensus.signNewView(
+        sender = validatorIds.head,
+        highestKnownQc = bootstrapQc(),
+        timeoutCertificate = timeoutCertificateFor(
+          window = HotStuffWindow(chainId, 2L, 1L, validatorSet.hash),
+          highestKnownQc = bootstrapQc(),
+        ),
+      )
+      newView <- IO.fromEither(
+        newViewAttempt.leftMap(rejection => new IllegalStateException(rejection.reason)),
+      )
+    yield
+      assert(bootstrap.consensus.bootstrapLifecycle.nonEmpty)
+      assertEquals(HotStuffValidator.validateTimeoutVote(timeoutVote, validatorSet), Right(()))
+      assertEquals(HotStuffValidator.validateNewView(newView, validatorSet), Right(()))
 
   test("assembled validator runtime keeps signer failures ahead of the bootstrap vote gate"):
     val config = ConfigFactory.parseString(
@@ -444,6 +582,70 @@ final class HotStuffRuntimeBootstrapSuite extends CatsEffectSuite:
       assert(bootstrap.consensus.bootstrapLifecycle.nonEmpty)
       assertEquals(
         voteAttempt.left.map(_.reason),
+        Left("localValidatorKeyUnavailable"),
+      )
+
+  test("assembled validator runtime keeps pacemaker signer failures ahead of the bootstrap gate"):
+    val config = ConfigFactory.parseString(
+      s"""
+         |sigilaris.node.gossip.peers {
+         |  local-node-identity = "node-a"
+         |  known-peers = ["node-b"]
+         |  direct-neighbors = ["node-b"]
+         |}
+         |
+         |sigilaris.node.consensus.hotstuff {
+         |  local-role = "validator"
+         |  validators = [
+         |    { id = "${validatorIds(0).value}", public-key = "${validatorKeys(0).publicKey.toBytes.toHex}" },
+         |    { id = "${validatorIds(1).value}", public-key = "${validatorKeys(1).publicKey.toBytes.toHex}" },
+         |    { id = "${validatorIds(2).value}", public-key = "${validatorKeys(2).publicKey.toBytes.toHex}" },
+         |    { id = "${validatorIds(3).value}", public-key = "${validatorKeys(3).publicKey.toBytes.toHex}" }
+         |  ]
+         |  key-holders = [
+         |    { validator-id = "${validatorIds(0).value}", holder = "node-a", status = "active" },
+         |    { validator-id = "${validatorIds(1).value}", holder = "node-a", status = "active" },
+         |    { validator-id = "${validatorIds(2).value}", holder = "node-a", status = "active" },
+         |    { validator-id = "${validatorIds(3).value}", holder = "node-b", status = "active" }
+         |  ]
+         |  local-signers = [
+         |    { validator-id = "${validatorIds(0).value}", private-key = "${validatorKeys(0).privateKey.toHexLower}" }
+         |  ]
+         |}
+         |""".stripMargin,
+    )
+
+    for
+      clock <- TestClock.create(startedAt)
+      bootstrapEither <- HotStuffRuntimeBootstrap.fromConfig[IO](config, clock)
+      bootstrap <- IO.fromEither(bootstrapEither.leftMap(new IllegalArgumentException(_)))
+      _ <- bootstrap.consensus.bootstrap(
+        chainId = chainId,
+        sessions = Vector.empty,
+        startedAt = startedAt,
+        liveProposals = Vector.empty,
+      )
+      timeoutVoteAttempt <- bootstrap.consensus.signTimeoutVote(
+        voter = validatorIds(1),
+        window = HotStuffWindow(chainId, 2L, 1L, validatorSet.hash),
+        highestKnownQc = bootstrapQc(),
+      )
+      newViewAttempt <- bootstrap.consensus.signNewView(
+        sender = validatorIds(1),
+        highestKnownQc = bootstrapQc(),
+        timeoutCertificate = timeoutCertificateFor(
+          window = HotStuffWindow(chainId, 2L, 1L, validatorSet.hash),
+          highestKnownQc = bootstrapQc(),
+        ),
+      )
+    yield
+      assert(bootstrap.consensus.bootstrapLifecycle.nonEmpty)
+      assertEquals(
+        timeoutVoteAttempt.left.map(_.reason),
+        Left("localValidatorKeyUnavailable"),
+      )
+      assertEquals(
+        newViewAttempt.left.map(_.reason),
         Left("localValidatorKeyUnavailable"),
       )
 
@@ -675,6 +877,45 @@ final class HotStuffRuntimeBootstrapSuite extends CatsEffectSuite:
       .sign(
         UnsignedVote(window, validatorIds(index), proposalId),
         validatorKeys(index),
+      )
+      .toOption
+      .get
+
+  private def signedTimeoutVoteFor(
+      window: HotStuffWindow,
+      highestKnownQc: QuorumCertificate,
+      index: Int,
+  ): TimeoutVote =
+    TimeoutVote
+      .sign(
+        UnsignedTimeoutVote(
+          subject = TimeoutVoteSubject(
+            window = window,
+            highestKnownQc = highestKnownQc.subject,
+          ),
+          voter = validatorIds(index),
+        ),
+        validatorKeys(index),
+      )
+      .toOption
+      .get
+
+  private def timeoutCertificateFor(
+      window: HotStuffWindow,
+      highestKnownQc: QuorumCertificate,
+  ): TimeoutCertificate =
+    TimeoutCertificateAssembler
+      .assemble(
+        TimeoutVoteSubject(
+          window = window,
+          highestKnownQc = highestKnownQc.subject,
+        ),
+        Vector(
+          signedTimeoutVoteFor(window, highestKnownQc, 0),
+          signedTimeoutVoteFor(window, highestKnownQc, 1),
+          signedTimeoutVoteFor(window, highestKnownQc, 2),
+        ),
+        validatorSet,
       )
       .toOption
       .get
