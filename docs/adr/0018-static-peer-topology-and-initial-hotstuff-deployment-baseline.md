@@ -1,7 +1,7 @@
 # ADR-0018: Static Peer Topology And Initial HotStuff Deployment Baseline
 
 ## Status
-Proposed
+Accepted
 
 ## Context
 - ADR-0016은 transport-neutral gossip/session substrate를 고정하고, ADR-0017은 HotStuff non-threshold-signature artifact semantics를 고정한다.
@@ -9,6 +9,7 @@ Proposed
 - 현재 시점의 요구는 dynamic peer discovery ecosystem보다, 제한된 수의 노드를 예측 가능한 topology 아래에서 빠르게 운영하는 것이다.
 - 또한 HotStuff validator를 같은 데이터센터 안에 모아 낮은 latency를 확보하고, 일부 read-only node를 다른 데이터센터에 둬서 장애 시 운영자가 role을 바꿔 대응하는 형태가 초기 운영 모델로 더 현실적이다.
 - 이 운영 baseline은 gossip substrate 자체의 wire contract나 HotStuff artifact identity와는 다른 관심사이므로 별도 ADR로 고정하는 편이 낫다.
+- `2026-04-06` 기준 이 문서가 정의한 static peer config bootstrap, validator/audit role 분리, same-DC validator placement, operator-managed key relocation baseline 은 이미 `0003`, `0004`, `0007`, `ADR-0021` 에서 current shipped reference baseline 으로 소비되고 있다.
 
 ## Decision
 1. **초기 node registry와 direct-neighbor topology는 static config로 관리한다.**
