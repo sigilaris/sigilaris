@@ -2,12 +2,18 @@ package org.sigilaris.node.jvm.runtime.consensus.hotstuff
 
 import java.time.Instant
 
-import cats.Applicative
-import cats.effect.kernel.{Ref, Sync}
+import cats.{Applicative, Monad}
+import cats.effect.{IO, LiftIO, Ref}
+import cats.effect.kernel.{Async, Deferred, Sync}
+import cats.effect.std.Semaphore
 import cats.syntax.all.*
+import scodec.bits.ByteVector
 
+import org.sigilaris.core.codec.byte.{ByteDecoder, ByteEncoder, DecodeResult}
+import org.sigilaris.core.failure.DecodeFailure
 import org.sigilaris.node.jvm.runtime.block.BlockHeight
 import org.sigilaris.node.jvm.runtime.gossip.{ChainId, ControlBatch}
+import org.sigilaris.node.jvm.storage.swaydb.{Bag, StorageLayout, SwayStores}
 
 final case class ForwardCatchUpMaterialization(
     chainId: ChainId,
@@ -70,6 +76,8 @@ final case class HistoricalArchiveEntry(
 )
 
 trait HistoricalProposalArchive[F[_]]:
+  def close: F[Unit]
+
   def list(
       chainId: ChainId,
   ): F[Vector[HistoricalArchiveEntry]]
@@ -92,8 +100,113 @@ trait HistoricalProposalArchive[F[_]]:
   ): F[Int]
 
 object HistoricalProposalArchive:
+  private val SchemaVersionV1: Byte = 0x01.toByte
+  private val ListPageSize: Int     = 256
+  private val RecoveredStoredAt     = Instant.EPOCH
+  private val ScanStartProposalId =
+    ProposalId(
+      org.sigilaris.core.datatype.UInt256.unsafeFromBigIntUnsigned(BigInt(0)),
+    )
+
+  private final case class HistoricalArchiveKey(
+      chainId: ChainId,
+      proposalId: ProposalId,
+  ) derives ByteEncoder,
+        ByteDecoder
+
+  private final case class HistoricalArchiveMetadata(
+      source: HistoricalArchiveSource,
+      storedAt: Instant,
+  )
+
+  private final case class HistoricalArchiveScanState(
+      cursor: HistoricalArchiveKey,
+      offset: Int,
+      acc: Vector[(HistoricalArchiveKey, ByteVector)],
+  )
+
+  private final case class SharedHistoricalArchiveStore(
+      store: org.sigilaris.node.jvm.storage.StoreIndex[
+        IO,
+        HistoricalArchiveKey,
+        ByteVector,
+      ],
+      release: IO[Unit],
+      refCount: Int,
+  )
+
+  private final case class SharedHistoricalArchiveHandle(
+      store: org.sigilaris.node.jvm.storage.StoreIndex[
+        IO,
+        HistoricalArchiveKey,
+        ByteVector,
+      ],
+      release: IO[Unit],
+      isCurrent: IO[Boolean],
+  )
+
+  private final case class SharedHistoricalArchiveOpening(
+      token: Long,
+      gate: Deferred[IO, Either[Throwable, Unit]],
+  )
+
+  private sealed trait SharedHistoricalArchiveSlot
+  private object SharedHistoricalArchiveSlot:
+    final case class Opening(
+        state: SharedHistoricalArchiveOpening,
+    ) extends SharedHistoricalArchiveSlot
+    final case class Open(
+        store: SharedHistoricalArchiveStore,
+    ) extends SharedHistoricalArchiveSlot
+    final case class Releasing(
+        gate: Deferred[IO, Unit],
+    ) extends SharedHistoricalArchiveSlot
+
+  private sealed trait SharedHistoricalArchiveAcquire
+  private object SharedHistoricalArchiveAcquire:
+    final case class Reuse(
+        handle: SharedHistoricalArchiveHandle,
+    ) extends SharedHistoricalArchiveAcquire
+    final case class AwaitOpening(
+        state: SharedHistoricalArchiveOpening,
+    ) extends SharedHistoricalArchiveAcquire
+    final case class AwaitRelease(
+        gate: Deferred[IO, Unit],
+    ) extends SharedHistoricalArchiveAcquire
+    final case class Create(
+        state: SharedHistoricalArchiveOpening,
+    ) extends SharedHistoricalArchiveAcquire
+
+  private sealed trait SharedHistoricalArchiveInstall
+  private object SharedHistoricalArchiveInstall:
+    final case class Installed(
+        handle: SharedHistoricalArchiveHandle,
+        signalReady: IO[Unit],
+    ) extends SharedHistoricalArchiveInstall
+    final case class DisposeAndReuse(
+        dispose: IO[Unit],
+        handle: SharedHistoricalArchiveHandle,
+        signalReady: IO[Unit],
+    ) extends SharedHistoricalArchiveInstall
+    final case class DisposeAndAwait(
+        dispose: IO[Unit],
+        gate: Deferred[IO, Unit],
+        signalReady: IO[Unit],
+    ) extends SharedHistoricalArchiveInstall
+    final case class DisposeOnly(
+        dispose: IO[Unit],
+        signalReady: IO[Unit],
+    ) extends SharedHistoricalArchiveInstall
+
+  private given ByteEncoder[ByteVector] = (value: ByteVector) => value
+  private given ByteDecoder[ByteVector] = bytes =>
+    DecodeResult(bytes, ByteVector.empty).asRight[DecodeFailure]
+
   def noop[F[_]: Applicative]: HistoricalProposalArchive[F] =
     new HistoricalProposalArchive[F]:
+      override def close: F[Unit] =
+        Applicative[F].unit
+
       override def list(
           chainId: ChainId,
       ): F[Vector[HistoricalArchiveEntry]] =
@@ -124,6 +237,9 @@ object HistoricalProposalArchive:
       .of[F, Map[ChainId, Vector[HistoricalArchiveEntry]]](Map.empty)
       .map: ref =>
         new HistoricalProposalArchive[F]:
+          override def close: F[Unit] =
+            Sync[F].unit
+
           override def list(
               chainId: ChainId,
           ): F[Vector[HistoricalArchiveEntry]] =
@@ -168,3 +284,535 @@ object HistoricalProposalArchive:
               val retained =
                 existing.filterNot(entry => idsToRemove.contains(entry.proposal.proposalId))
               current.updated(chainId, retained) -> (existing.size - retained.size)
+
+  def swaydb[F[_]: Async: LiftIO](
+      layout: StorageLayout,
+  ): F[HistoricalProposalArchive[F]] =
+    given Bag.Async[IO] = Bag.global
+    val archiveDir = layout.state.historicalArchive
+    for
+      sharedStore <- LiftIO[F].liftIO(
+        SharedHistoricalArchiveStores.acquire(archiveDir),
+      )
+      metadataRef <- Ref.of[F, Map[HistoricalArchiveKey, HistoricalArchiveMetadata]](Map.empty)
+      closedRef   <- Ref.of[F, Boolean](false)
+      lifecycleLock <- Semaphore[F](1)
+    yield
+      new HistoricalProposalArchive[F]:
+            private def ensureOpen: F[Unit] =
+              closedRef.get.flatMap: closed =>
+                if closed then Async[F].raiseError[Unit](archiveFailure("historicalArchiveClosed"))
+                else
+                  LiftIO[F]
+                    .liftIO(sharedStore.isCurrent)
+                    .flatMap: current =>
+                      if current then Async[F].unit
+                      else
+                        closedRef.set(true) *>
+                          Async[F].raiseError[Unit](
+                            archiveFailure("historicalArchiveClosed"),
+                          )
+
+            override def close: F[Unit] =
+              lifecycleLock.permit.use { _ =>
+                closedRef
+                  .modify(closed => true -> !closed)
+                  .flatMap: shouldRelease =>
+                    if shouldRelease then LiftIO[F].liftIO(sharedStore.release)
+                    else Async[F].unit
+              }
+
+            override def list(
+                chainId: ChainId,
+            ): F[Vector[HistoricalArchiveEntry]] =
+              lifecycleLock.permit.use { _ =>
+                for
+                  _        <- ensureOpen
+                  metadata <- metadataRef.get
+                  stored <- LiftIO[F].liftIO:
+                    listEntries(sharedStore.store, chainId)
+                  decoded <- stored.traverse: (key, bytes) =>
+                    Async[F].fromEither:
+                      decodeStoredProposal(bytes).map: proposal =>
+                        val recovered =
+                          metadata.getOrElse(
+                            key,
+                            HistoricalArchiveMetadata(
+                              source = HistoricalArchiveSource.ArchiveSync,
+                              storedAt = RecoveredStoredAt,
+                            ),
+                          )
+                        HistoricalArchiveEntry(
+                          proposal = proposal,
+                          source = recovered.source,
+                          storedAt = recovered.storedAt,
+                        )
+                yield
+                  decoded.sortBy: entry =>
+                    (
+                      entry.proposal.window.height,
+                      entry.proposal.window.view,
+                      entry.proposal.proposalId.toHexLower,
+                    )
+              }
+
+            override def contains(
+                chainId: ChainId,
+                proposalId: ProposalId,
+            ): F[Boolean] =
+              lifecycleLock.permit.use { _ =>
+                ensureOpen *> LiftIO[F].liftIO:
+                  sharedStore.store
+                    .get(HistoricalArchiveKey(chainId, proposalId))
+                    .value
+                    .flatMap:
+                      case Left(error) =>
+                        failIo[Boolean]("historicalArchiveCorruptOrIncompatible: " + error.msg)
+                      case Right(None) =>
+                        IO.pure(false)
+                      case Right(Some(bytes)) =>
+                        IO.fromEither(decodeStoredProposal(bytes)).as(true)
+              }
+
+            override def putAll(
+                chainId: ChainId,
+                proposals: Vector[Proposal],
+                source: HistoricalArchiveSource,
+                storedAt: Instant,
+            ): F[Vector[ProposalId]] =
+              lifecycleLock.permit.use { _ =>
+                for
+                  _ <- ensureOpen
+                  writeResult <- LiftIO[F].liftIO:
+                    proposals
+                      .foldLeftM(
+                        (
+                          Vector.empty[ProposalId],
+                          Set.empty[ProposalId],
+                          Vector.empty[(HistoricalArchiveKey, HistoricalArchiveMetadata)],
+                        )
+                      ):
+                        case ((written, seen, metadataUpdates), proposal) =>
+                          if seen.contains(proposal.proposalId) then
+                            IO.pure((written, seen, metadataUpdates))
+                          else
+                            val key =
+                              HistoricalArchiveKey(
+                                chainId = chainId,
+                                proposalId = proposal.proposalId,
+                              )
+                            sharedStore.store.get(key).value.flatMap:
+                              case Left(error) =>
+                                failIo[
+                                  (
+                                      Vector[ProposalId],
+                                      Set[ProposalId],
+                                      Vector[(HistoricalArchiveKey, HistoricalArchiveMetadata)],
+                                  )
+                                ]("historicalArchiveCorruptOrIncompatible: " + error.msg)
+                              case Right(Some(bytes)) =>
+                                IO.fromEither(decodeStoredProposal(bytes)).as(
+                                  (written, seen + proposal.proposalId, metadataUpdates),
+                                )
+                              case Right(None) =>
+                                sharedStore.store.put(key, encodeStoredProposal(proposal)).as(
+                                  (
+                                    written :+ proposal.proposalId,
+                                    seen + proposal.proposalId,
+                                    metadataUpdates :+ (
+                                      key -> HistoricalArchiveMetadata(source, storedAt)
+                                    ),
+                                  ),
+                                )
+                  _ <- metadataRef.update(_ ++ writeResult._3)
+                yield writeResult._1
+              }
+
+            override def removeAll(
+                chainId: ChainId,
+                proposalIds: Vector[ProposalId],
+            ): F[Int] =
+              val dedupedIds = proposalIds.distinct
+              lifecycleLock.permit.use { _ =>
+                for
+                  _ <- ensureOpen
+                  removed <- LiftIO[F].liftIO:
+                    dedupedIds
+                      .traverse: proposalId =>
+                        val key = HistoricalArchiveKey(chainId, proposalId)
+                        sharedStore.store.get(key).value.flatMap:
+                          case Left(error) =>
+                            failIo[Boolean](
+                              "historicalArchiveCorruptOrIncompatible: " + error.msg,
+                            )
+                          case Right(None) =>
+                            IO.pure(false)
+                          case Right(Some(bytes)) =>
+                            IO
+                              .fromEither(decodeStoredProposal(bytes))
+                              .flatMap(_ => sharedStore.store.remove(key).as(true))
+                      .map(_.count(identity))
+                  _ <- metadataRef.update: current =>
+                    dedupedIds.foldLeft(current): (acc, proposalId) =>
+                      acc - HistoricalArchiveKey(chainId, proposalId)
+                yield removed
+              }
+
+  private[node] def resetSharedStoresForTesting: IO[Unit] =
+    SharedHistoricalArchiveStores.reset
+
+  private def listEntries(
+      store: org.sigilaris.node.jvm.storage.StoreIndex[
+        IO,
+        HistoricalArchiveKey,
+        ByteVector,
+      ],
+      chainId: ChainId,
+  ): IO[Vector[(HistoricalArchiveKey, ByteVector)]] =
+    type ScanStep = Either[
+      HistoricalArchiveScanState,
+      Vector[(HistoricalArchiveKey, ByteVector)],
+    ]
+    Monad[IO].tailRecM(
+      HistoricalArchiveScanState(
+        cursor =
+          HistoricalArchiveKey(
+            chainId = chainId,
+            proposalId = ScanStartProposalId,
+          ),
+        offset = 0,
+        acc = Vector.empty[(HistoricalArchiveKey, ByteVector)],
+      ),
+    ): state =>
+      store
+        .from(state.cursor, state.offset, ListPageSize)
+        .value
+        .flatMap:
+          case Left(error) =>
+            failIo[ScanStep](
+              "historicalArchiveCorruptOrIncompatible: " + error.msg,
+            )
+          case Right(page) =>
+            val sameChain =
+              page.iterator
+                .takeWhile(_._1.chainId === chainId)
+                .toVector
+            val updated            = state.acc ++ sameChain
+            val crossedChainBounds = sameChain.sizeCompare(page) < 0
+            val pageShort          = page.sizeCompare(ListPageSize) < 0
+            sameChain.lastOption match
+              case None =>
+                IO.pure(Right[HistoricalArchiveScanState, Vector[(HistoricalArchiveKey, ByteVector)]](updated))
+              case Some((lastKey, _)) if crossedChainBounds || pageShort =>
+                IO.pure(Right[HistoricalArchiveScanState, Vector[(HistoricalArchiveKey, ByteVector)]](updated))
+              case Some((lastKey, _)) =>
+                IO.pure(
+                  Left[
+                    HistoricalArchiveScanState,
+                    Vector[(HistoricalArchiveKey, ByteVector)],
+                  ](
+                    HistoricalArchiveScanState(
+                      cursor = lastKey,
+                      offset = 1,
+                      acc = updated,
+                    ),
+                  ),
+                )
+
+  private def encodeStoredProposal(
+      proposal: Proposal,
+  ): ByteVector =
+    ByteVector(SchemaVersionV1) ++ ByteEncoder[Proposal].encode(proposal)
+
+  private def decodeStoredProposal(
+      bytes: ByteVector,
+  ): Either[Throwable, Proposal] =
+    bytes.headOption match
+      case None =>
+        archiveFailure("historicalArchiveCorruptOrIncompatible: emptyRecord").asLeft[Proposal]
+      case Some(version) if version =!= SchemaVersionV1 =>
+        archiveFailure(
+          "historicalArchiveUnknownSchemaVersion: 0x" + renderByteHex(version),
+        ).asLeft[Proposal]
+      case Some(_) =>
+        ByteDecoder[Proposal]
+          .decode(bytes.drop(1))
+          .leftMap(error =>
+            archiveFailure(
+              "historicalArchiveCorruptOrIncompatible: " + error.msg,
+            ),
+          )
+          .flatMap: decoded =>
+            Either.cond(
+              decoded.remainder.isEmpty,
+              decoded.value,
+              archiveFailure("historicalArchiveCorruptOrIncompatible: decoded value has remainder"),
+            )
+
+  private def archiveFailure(
+      message: String,
+  ): Throwable =
+    new IllegalStateException(message)
+
+  private def failIo[A](
+      message: String,
+  ): IO[A] =
+    IO.raiseError[A](archiveFailure(message))
+
+  private def renderByteHex(
+      value: Byte,
+  ): String =
+    val alphabet = "0123456789abcdef"
+    val unsigned = value.toInt & 0xff
+    String.valueOf(Array(alphabet.charAt(unsigned >>> 4), alphabet.charAt(unsigned & 0x0f)))
+
+  @SuppressWarnings(
+    Array(
+      "org.wartremover.warts.Var",
+      "org.wartremover.warts.MutableDataStructures",
+    ),
+  )
+  private object SharedHistoricalArchiveStores:
+    private var stores: Map[java.nio.file.Path, SharedHistoricalArchiveSlot] = Map.empty
+    private var generation: Long                                             = 0L
+    private var nextOpeningToken: Long                                       = 0L
+
+    @SuppressWarnings(Array("org.wartremover.warts.Recursion"))
+    def acquire(
+        archiveDir: java.nio.file.Path,
+    )(using Bag.Async[IO]): IO[SharedHistoricalArchiveHandle] =
+      Deferred[IO, Either[Throwable, Unit]].flatMap: openingGate =>
+        synchronizedLookup(archiveDir, openingGate) match
+          case SharedHistoricalArchiveAcquire.Reuse(handle) =>
+            IO.pure(handle)
+          case SharedHistoricalArchiveAcquire.AwaitOpening(opening) =>
+            opening.gate.get.flatMap(IO.fromEither) *> acquire(archiveDir)
+          case SharedHistoricalArchiveAcquire.AwaitRelease(gate) =>
+            gate.get *> acquire(archiveDir)
+          case SharedHistoricalArchiveAcquire.Create(opening) =>
+            SwayStores
+              .storeIndex[HistoricalArchiveKey, ByteVector](archiveDir)
+              .allocated
+              .attempt
+              .flatMap:
+                case Left(error) =>
+                  synchronizedOpenFailure(archiveDir, opening, error).flatMap:
+                    case true =>
+                      IO.raiseError[SharedHistoricalArchiveHandle](error)
+                    case false => acquire(archiveDir)
+                case Right((store, release)) =>
+                  synchronizedInstall(
+                    archiveDir = archiveDir,
+                    store = store,
+                    release = release,
+                    opening = opening,
+                  ).flatMap:
+                    case SharedHistoricalArchiveInstall.Installed(
+                          handle,
+                          signalReady,
+                        ) =>
+                      signalReady.as(handle)
+                    case SharedHistoricalArchiveInstall.DisposeAndReuse(
+                          dispose,
+                          handle,
+                          signalReady,
+                        ) =>
+                      dispose *> signalReady.as(handle)
+                    case SharedHistoricalArchiveInstall.DisposeAndAwait(
+                          dispose,
+                          gate,
+                          signalReady,
+                        ) =>
+                      dispose *> signalReady *> gate.get *> acquire(archiveDir)
+                    case SharedHistoricalArchiveInstall.DisposeOnly(
+                          dispose,
+                          signalReady,
+                        ) =>
+                      dispose *> signalReady *> acquire(archiveDir)
+
+    private def synchronizedLookup(
+        archiveDir: java.nio.file.Path,
+        openingGate: Deferred[IO, Either[Throwable, Unit]],
+    ): SharedHistoricalArchiveAcquire =
+      this.synchronized:
+        stores.get(archiveDir) match
+          case Some(SharedHistoricalArchiveSlot.Open(current)) =>
+            val retained = current.copy(refCount = current.refCount + 1)
+            stores = stores.updated(
+              archiveDir,
+              SharedHistoricalArchiveSlot.Open(retained),
+            )
+            SharedHistoricalArchiveAcquire.Reuse(
+              handleFor(archiveDir, retained),
+            )
+          case Some(SharedHistoricalArchiveSlot.Opening(opening)) =>
+            SharedHistoricalArchiveAcquire.AwaitOpening(opening)
+          case Some(SharedHistoricalArchiveSlot.Releasing(gate)) =>
+            SharedHistoricalArchiveAcquire.AwaitRelease(gate)
+          case None =>
+            val opening =
+              SharedHistoricalArchiveOpening(
+                token = allocateOpeningToken(),
+                gate = openingGate,
+              )
+            stores = stores.updated(
+              archiveDir,
+              SharedHistoricalArchiveSlot.Opening(opening),
+            )
+            SharedHistoricalArchiveAcquire.Create(opening)
+
+    private def synchronizedInstall(
+        archiveDir: java.nio.file.Path,
+        store: org.sigilaris.node.jvm.storage.StoreIndex[
+          IO,
+          HistoricalArchiveKey,
+          ByteVector,
+        ],
+        release: IO[Unit],
+        opening: SharedHistoricalArchiveOpening,
+    ): IO[SharedHistoricalArchiveInstall] =
+      this.synchronized:
+        val notifyReady =
+          opening.gate.complete(Right[Throwable, Unit](())).attempt.void
+        stores.get(archiveDir) match
+          case Some(SharedHistoricalArchiveSlot.Opening(currentOpening))
+              if currentOpening.token == opening.token =>
+            val retained =
+              SharedHistoricalArchiveStore(
+                store = store,
+                release = release,
+                refCount = 1,
+              )
+            stores = stores.updated(
+              archiveDir,
+              SharedHistoricalArchiveSlot.Open(retained),
+            )
+            SharedHistoricalArchiveInstall
+              .Installed(
+                handleFor(archiveDir, retained),
+                signalReady = notifyReady,
+              )
+              .pure[IO]
+          case Some(SharedHistoricalArchiveSlot.Open(current)) =>
+            val retained = current.copy(refCount = current.refCount + 1)
+            stores = stores.updated(
+              archiveDir,
+              SharedHistoricalArchiveSlot.Open(retained),
+            )
+            SharedHistoricalArchiveInstall
+              .DisposeAndReuse(
+                dispose = release,
+                handle = handleFor(archiveDir, retained),
+                signalReady = notifyReady,
+              )
+              .pure[IO]
+          case Some(SharedHistoricalArchiveSlot.Opening(_)) =>
+            SharedHistoricalArchiveInstall
+              .DisposeOnly(
+                dispose = release,
+                signalReady = notifyReady,
+              )
+              .pure[IO]
+          case Some(SharedHistoricalArchiveSlot.Releasing(gate)) =>
+            SharedHistoricalArchiveInstall
+              .DisposeAndAwait(
+                dispose = release,
+                gate = gate,
+                signalReady = notifyReady,
+              )
+              .pure[IO]
+          case None =>
+            SharedHistoricalArchiveInstall
+              .DisposeOnly(
+                dispose = release,
+                signalReady = notifyReady,
+              )
+              .pure[IO]
+
+    private def synchronizedOpenFailure(
+        archiveDir: java.nio.file.Path,
+        opening: SharedHistoricalArchiveOpening,
+        error: Throwable,
+    ): IO[Boolean] =
+      this.synchronized:
+        stores.get(archiveDir) match
+          case Some(SharedHistoricalArchiveSlot.Opening(currentOpening))
+              if currentOpening.token == opening.token =>
+            stores = stores - archiveDir
+            opening.gate.complete(Left[Throwable, Unit](error)).attempt.as(true)
+          case _ =>
+            opening.gate.complete(Right[Throwable, Unit](())).attempt.as(false)
+
+    @SuppressWarnings(Array("org.wartremover.warts.Recursion"))
+    private def releaseFor(
+        archiveDir: java.nio.file.Path,
+    ): IO[Unit] =
+      Deferred[IO, Unit].flatMap: closedGate =>
+        this.synchronized:
+          stores.get(archiveDir) match
+            case Some(SharedHistoricalArchiveSlot.Opening(opening)) =>
+              opening.gate.get.flatMap(IO.fromEither) *> releaseFor(archiveDir)
+            case Some(SharedHistoricalArchiveSlot.Open(current))
+                if current.refCount > 1 =>
+              stores = stores.updated(
+                archiveDir,
+                SharedHistoricalArchiveSlot.Open(
+                  current.copy(refCount = current.refCount - 1),
+                ),
+              )
+              IO.unit
+            case Some(SharedHistoricalArchiveSlot.Open(current)) =>
+              stores = stores.updated(
+                archiveDir,
+                SharedHistoricalArchiveSlot.Releasing(closedGate),
+              )
+              current.release.guarantee:
+                IO.delay:
+                  this.synchronized:
+                    stores.get(archiveDir) match
+                      case Some(SharedHistoricalArchiveSlot.Releasing(_)) =>
+                        stores = stores - archiveDir
+                      case _ =>
+                        ()
+                *> closedGate.complete(()).void
+            case Some(SharedHistoricalArchiveSlot.Releasing(existing)) =>
+              existing.get
+            case None =>
+              IO.unit
+
+    private def handleFor(
+        archiveDir: java.nio.file.Path,
+        current: SharedHistoricalArchiveStore,
+    ): SharedHistoricalArchiveHandle =
+      val generationSnapshot = currentGeneration
+      SharedHistoricalArchiveHandle(
+        store = current.store,
+        release = releaseFor(archiveDir),
+        isCurrent = IO.delay:
+          this.synchronized:
+            generation == generationSnapshot,
+      )
+
+    def reset: IO[Unit] =
+      this.synchronized:
+        val outstanding = stores.values.toVector
+        generation = generation + 1L
+        stores = Map.empty
+        outstanding.traverse_ { slot =>
+          slot match
+            case SharedHistoricalArchiveSlot.Opening(gate) =>
+              gate.gate.get.attempt.void
+            case SharedHistoricalArchiveSlot.Open(current) =>
+              current.release.attempt.void
+            case SharedHistoricalArchiveSlot.Releasing(gate) =>
+              gate.get
+        }
+
+    private def currentGeneration: Long =
+      this.synchronized:
+        generation
+
+    private def allocateOpeningToken(): Long =
+      val token = nextOpeningToken
+      nextOpeningToken = nextOpeningToken + 1L
+      token

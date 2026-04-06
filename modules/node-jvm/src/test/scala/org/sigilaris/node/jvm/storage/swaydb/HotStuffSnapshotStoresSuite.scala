@@ -107,6 +107,10 @@ final class HotStuffSnapshotStoresSuite extends CatsEffectSuite:
           yield
             assertEquals(layout.state.snapshot, root.resolve("state").resolve("snapshot"))
             assertEquals(layout.state.nodes, root.resolve("state").resolve("nodes"))
+            assertEquals(
+              layout.state.historicalArchive,
+              root.resolve("state").resolve("historical-archive"),
+            )
             assertEquals(loadedMetadata, Some(metadataOtherAnchor))
             assertEquals(loadedOriginal, Some(metadataUpdated))
             assertEquals(loadedOther, Some(metadataOtherAnchor))

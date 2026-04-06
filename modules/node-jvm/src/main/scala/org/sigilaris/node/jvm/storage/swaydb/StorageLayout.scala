@@ -15,7 +15,7 @@ object StorageLayout:
   final case class Block(bestHeader: Path, bodies: Path)
   final case class Transaction(immutable: Path, meta: Path)
   final case class Batch(immutable: Path, pending: Path, committed: Path)
-  final case class State(snapshot: Path, nodes: Path)
+  final case class State(snapshot: Path, nodes: Path, historicalArchive: Path)
   final case class Event(index: Path)
 
   def fromRoot(root: Path): StorageLayout =
@@ -30,7 +30,11 @@ object StorageLayout:
       block = Block(blockRoot.resolve("best"), blockRoot.resolve("body")),
       transaction = Transaction(txRoot.resolve("immutable"), txRoot.resolve("meta")),
       batch = Batch(batchRoot.resolve("immutable"), batchRoot.resolve("pending"), batchRoot.resolve("committed")),
-      state = State(stateRoot.resolve("snapshot"), stateRoot.resolve("nodes")),
+      state = State(
+        stateRoot.resolve("snapshot"),
+        stateRoot.resolve("nodes"),
+        stateRoot.resolve("historical-archive"),
+      ),
       event = Event(eventRoot.resolve("index")),
     )
 

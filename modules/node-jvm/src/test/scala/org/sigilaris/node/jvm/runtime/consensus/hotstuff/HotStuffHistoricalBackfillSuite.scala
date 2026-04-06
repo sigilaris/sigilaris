@@ -320,6 +320,9 @@ final class HotStuffHistoricalBackfillSuite extends CatsEffectSuite:
       archiveRelease <- Deferred[IO, Unit]
       innerArchive <- HistoricalProposalArchive.inMemory[IO]
       archive = new HistoricalProposalArchive[IO]:
+        override def close: IO[Unit] =
+          IO.unit
+
         override def list(
             chainId: ChainId,
         ): IO[Vector[HistoricalArchiveEntry]] =

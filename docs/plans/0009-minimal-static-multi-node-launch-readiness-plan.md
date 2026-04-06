@@ -1,7 +1,7 @@
 # 0009 - Minimal Static Multi-Node Launch Readiness Plan
 
 ## Status
-Active; Phase 0-2 Complete
+Active; Phase 0-3 Complete
 
 ## Created
 2026-04-07
@@ -264,10 +264,10 @@ Active; Phase 0-2 Complete
 - [x] hold reason / readiness diagnostics regression test green
 
 ### Phase 3: Durable Historical Archive Backing
-- [ ] durable `HistoricalProposalArchive` backing 추가
-- [ ] shipped bootstrap assembly 의 `HistoricalProposalArchive.inMemory` 제거
-- [ ] archive reopen / restart persistence / dedupe regression test green
-- [ ] storage open failure / write failure diagnostics or failure policy 고정
+- [x] durable `HistoricalProposalArchive` backing 추가
+- [x] shipped bootstrap assembly 의 `HistoricalProposalArchive.inMemory` 제거
+- [x] archive reopen / restart persistence / dedupe regression test green
+- [x] storage open failure / write failure diagnostics or failure policy 고정
 
 ### Phase 4: Concrete Peer Credential Binding And Bootstrap Capability Hardening
 - [ ] claimed peer header 신뢰 제거 및 authenticated principal binding 추가

@@ -1,5 +1,6 @@
 package org.sigilaris.node.jvm.transport.armeria.gossip
 
+import java.nio.file.{Files, Path}
 import java.net.URI
 import java.net.http.{HttpClient, HttpRequest, HttpResponse}
 import java.time.{Duration, Instant}
@@ -7,6 +8,7 @@ import java.util.Optional
 import java.util.concurrent.CompletableFuture
 
 import scala.concurrent.duration.DurationInt
+import scala.util.Using
 import cats.effect.{IO, Resource}
 import cats.effect.kernel.Ref
 import cats.syntax.all.*
@@ -25,6 +27,7 @@ import org.sigilaris.node.jvm.runtime.block.{BlockHeader, BlockHeight, BlockId, 
 import org.sigilaris.node.jvm.runtime.consensus.hotstuff.*
 import org.sigilaris.node.jvm.runtime.gossip.*
 import org.sigilaris.node.jvm.runtime.gossip.tx.*
+import org.sigilaris.node.jvm.storage.swaydb.StorageLayout
 import org.sigilaris.node.jvm.transport.armeria.{ArmeriaServer, ArmeriaServerConfig}
 
 final class HotStuffBootstrapArmeriaAdapterSuite extends CatsEffectSuite:
@@ -43,6 +46,20 @@ final class HotStuffBootstrapArmeriaAdapterSuite extends CatsEffectSuite:
     ChainTopic(chainId, GossipTopic.consensusProposal),
     ChainTopic(chainId, GossipTopic.consensusVote),
   )
+
+  private def storageLayoutResource: Resource[IO, StorageLayout] =
+    Resource
+      .make(IO.blocking(Files.createTempDirectory("sigilaris-bootstrap-http-storage"))) { root =>
+        IO.blocking(deleteRecursively(root))
+      }
+      .map(StorageLayout.fromRoot)
+
+  private def deleteRecursively(
+      path: Path,
+  ): Unit =
+    if Files.exists(path) then
+      Using.resource(Files.walk(path)): stream =>
+        stream.iterator.asScala.toList.reverse.foreach(Files.deleteIfExists)
 
   test("bootstrap transport serves finalized suggestion, snapshot nodes, replay, and backfill on an open session"):
     (
@@ -228,6 +245,7 @@ final class HotStuffBootstrapArmeriaAdapterSuite extends CatsEffectSuite:
     (
       for
         requesterClock <- Resource.eval(TestClock.create(startedAt))
+        requesterLayout <- storageLayoutResource
         serverB <- Harness.resource(
           startedAt,
           localNodeId = "node-b",
@@ -240,8 +258,8 @@ final class HotStuffBootstrapArmeriaAdapterSuite extends CatsEffectSuite:
           knownPeers = List("node-a"),
           directNeighbors = List("node-a"),
         )
-      yield (requesterClock, serverB, serverC)
-    ).use: (requesterClock, serverB, serverC) =>
+      yield (requesterClock, requesterLayout, serverB, serverC)
+    ).use: (requesterClock, requesterLayout, serverB, serverC) =>
       val graph = snapshotGraph("30")
       val anchor =
         finalizedSuggestion(
@@ -283,44 +301,52 @@ final class HotStuffBootstrapArmeriaAdapterSuite extends CatsEffectSuite:
             anchor.finalizedProof.grandchild,
           )
         )
-        requesterEither <- HotStuffRuntimeBootstrap.fromTopology[IO](
-          topology = topology,
-          consensusConfig = consensusConfig,
-          clock = requesterClock,
-          bootstrapTransport = Some(
-            HotStuffBootstrapHttpTransport.services[IO](
-              Map(
-                PeerIdentity.unsafe("node-b") -> serverB.baseUri,
-                PeerIdentity.unsafe("node-c") -> serverC.baseUri,
-              ),
-              proposalCatchUpReadiness =
-                Some(ProposalCatchUpReadiness.ready[IO]),
-            )
-          ),
-        )
-        requester <- IO.fromEither(requesterEither.leftMap(new IllegalArgumentException(_)))
-        sessionB <- openOutboundViaHttp(requester.runtime, serverB)
-        sessionC <- openOutboundViaHttp(requester.runtime, serverC)
-        result <- requester.consensus.bootstrap(
-          chainId = chainId,
-          sessions = Vector(sessionB, sessionC),
-          startedAt = startedAt,
-          liveProposals = Vector.empty,
-        )
-        diagnostics <- requester.consensus.currentBootstrapDiagnostics
-        storedRoot <- IO.fromOption(
-          requester.consensus.bootstrapLifecycle.flatMap(_.nodeStore.some),
-        )(new IllegalStateException("missingBootstrapLifecycle"))
-          .flatMap(_.get(graph.rootHash))
-        storedLeft <- IO.fromOption(
-          requester.consensus.bootstrapLifecycle.flatMap(_.nodeStore.some),
-        )(new IllegalStateException("missingBootstrapLifecycle"))
-          .flatMap(_.get(graph.leftHash))
-        storedRight <- IO.fromOption(
-          requester.consensus.bootstrapLifecycle.flatMap(_.nodeStore.some),
-        )(new IllegalStateException("missingBootstrapLifecycle"))
-          .flatMap(_.get(graph.rightHash))
+        bootstrapResult <- HotStuffRuntimeBootstrap
+          .fromTopology[IO](
+            topology = topology,
+            consensusConfig = consensusConfig,
+            clock = requesterClock,
+            storageLayout = requesterLayout,
+            bootstrapTransport = Some(
+              HotStuffBootstrapHttpTransport.services[IO](
+                Map(
+                  PeerIdentity.unsafe("node-b") -> serverB.baseUri,
+                  PeerIdentity.unsafe("node-c") -> serverC.baseUri,
+                ),
+                proposalCatchUpReadiness =
+                  Some(ProposalCatchUpReadiness.ready[IO]),
+              )
+            ),
+          )
+          .use: requesterEither =>
+            for
+              requester <- IO.fromEither(
+                requesterEither.leftMap(new IllegalArgumentException(_)),
+              )
+              sessionB <- openOutboundViaHttp(requester.runtime, serverB)
+              sessionC <- openOutboundViaHttp(requester.runtime, serverC)
+              result <- requester.consensus.bootstrap(
+                chainId = chainId,
+                sessions = Vector(sessionB, sessionC),
+                startedAt = startedAt,
+                liveProposals = Vector.empty,
+              )
+              diagnostics <- requester.consensus.currentBootstrapDiagnostics
+              storedRoot <- IO.fromOption(
+                requester.consensus.bootstrapLifecycle.flatMap(_.nodeStore.some),
+              )(new IllegalStateException("missingBootstrapLifecycle"))
+                .flatMap(_.get(graph.rootHash))
+              storedLeft <- IO.fromOption(
+                requester.consensus.bootstrapLifecycle.flatMap(_.nodeStore.some),
+              )(new IllegalStateException("missingBootstrapLifecycle"))
+                .flatMap(_.get(graph.leftHash))
+              storedRight <- IO.fromOption(
+                requester.consensus.bootstrapLifecycle.flatMap(_.nodeStore.some),
+              )(new IllegalStateException("missingBootstrapLifecycle"))
+                .flatMap(_.get(graph.rightHash))
+            yield (result, diagnostics, storedRoot, storedLeft, storedRight)
       yield
+        val (result, diagnostics, storedRoot, storedLeft, storedRight) = bootstrapResult
         assertEquals(result.map(_.anchor), Right(anchor))
         assertEquals(result.map(_.snapshot.metadata.status), Right(SnapshotStatus.Complete))
         assertEquals(result.map(_.snapshot.fetchedNodeCount), Right(3L))
@@ -338,6 +364,7 @@ final class HotStuffBootstrapArmeriaAdapterSuite extends CatsEffectSuite:
     (
       for
         requesterClock <- Resource.eval(TestClock.create(startedAt))
+        requesterLayout <- storageLayoutResource
         remote <- Harness.resource(
           startedAt,
           localNodeId = "node-b",
@@ -350,8 +377,8 @@ final class HotStuffBootstrapArmeriaAdapterSuite extends CatsEffectSuite:
           knownPeers = List("node-a"),
           directNeighbors = List("node-a"),
         )
-      yield (requesterClock, remote, client)
-    ).use: (requesterClock, remote, client) =>
+      yield (requesterClock, requesterLayout, remote, client)
+    ).use: (requesterClock, requesterLayout, remote, client) =>
       val remoteGraph = snapshotGraph("40")
       val remoteAnchor =
         finalizedSuggestion(
@@ -392,41 +419,49 @@ final class HotStuffBootstrapArmeriaAdapterSuite extends CatsEffectSuite:
             remoteAnchor.finalizedProof.grandchild,
           )
         )
-        requesterEither <- HotStuffRuntimeBootstrap.fromTopology[IO](
-          topology = topology,
-          consensusConfig = consensusConfig,
-          clock = requesterClock,
-          bootstrapTransport = Some(
-            HotStuffBootstrapHttpTransport.services[IO](
-              Map(PeerIdentity.unsafe("node-b") -> remote.baseUri)
-            )
-          ),
-        )
-        requester <- IO.fromEither(requesterEither.leftMap(new IllegalArgumentException(_)))
-        _ <- seedRuntimeBootstrapLocal(
-          requester,
-          proposals = Vector(
-            localAnchor.proposal,
-            localAnchor.finalizedProof.child,
-            localAnchor.finalizedProof.grandchild,
-          ),
-          snapshotNodes = Vector(localGraph.rootNode, localGraph.leftNode, localGraph.rightNode),
-        )
-        response <- RuntimeServer.resource(requester).use: requesterServer =>
-          for
-            session <- openOutboundViaHttp(client.runtime, requesterServer)
-            transport =
+        response <- HotStuffRuntimeBootstrap
+          .fromTopology[IO](
+            topology = topology,
+            consensusConfig = consensusConfig,
+            clock = requesterClock,
+            storageLayout = requesterLayout,
+            bootstrapTransport = Some(
               HotStuffBootstrapHttpTransport.services[IO](
-                Map(PeerIdentity.unsafe("node-a") -> requesterServer.baseUri)
+                Map(PeerIdentity.unsafe("node-b") -> remote.baseUri)
               )
-            suggestion <- transport.finalizedAnchorSuggestions.bestFinalized(session, chainId)
-            nodes <- transport.snapshotNodeFetch.fetchNodes(
-              session = session,
-              chainId = chainId,
-              stateRoot = localAnchor.stateRoot,
-              hashes = Vector(localGraph.rootHash),
-            )
-          yield suggestion -> nodes
+            ),
+          )
+          .use: requesterEither =>
+            for
+              requester <- IO.fromEither(
+                requesterEither.leftMap(new IllegalArgumentException(_)),
+              )
+              _ <- seedRuntimeBootstrapLocal(
+                requester,
+                proposals = Vector(
+                  localAnchor.proposal,
+                  localAnchor.finalizedProof.child,
+                  localAnchor.finalizedProof.grandchild,
+                ),
+                snapshotNodes =
+                  Vector(localGraph.rootNode, localGraph.leftNode, localGraph.rightNode),
+              )
+              response <- RuntimeServer.resource(requester).use: requesterServer =>
+                for
+                  session <- openOutboundViaHttp(client.runtime, requesterServer)
+                  transport =
+                    HotStuffBootstrapHttpTransport.services[IO](
+                      Map(PeerIdentity.unsafe("node-a") -> requesterServer.baseUri)
+                    )
+                  suggestion <- transport.finalizedAnchorSuggestions.bestFinalized(session, chainId)
+                  nodes <- transport.snapshotNodeFetch.fetchNodes(
+                    session = session,
+                    chainId = chainId,
+                    stateRoot = localAnchor.stateRoot,
+                    hashes = Vector(localGraph.rootHash),
+                  )
+                yield suggestion -> nodes
+            yield response
       yield
         assertEquals(response._1, Right(Some(localAnchor)))
         assertEquals(response._2.map(_.map(_.hash)), Right(Vector(localGraph.rootHash)))

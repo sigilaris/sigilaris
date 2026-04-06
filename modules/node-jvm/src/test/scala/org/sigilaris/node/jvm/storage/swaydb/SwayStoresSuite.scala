@@ -65,3 +65,7 @@ final class SwayStoresSuite extends CatsEffectSuite:
       val layout = StorageLayout.fromRoot(root)
       assertEquals(layout.block.bestHeader, root.resolve("block").resolve("best"))
       assertEquals(layout.state.nodes, root.resolve("state").resolve("nodes"))
+      assertEquals(
+        layout.state.historicalArchive,
+        root.resolve("state").resolve("historical-archive"),
+      )

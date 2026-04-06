@@ -1,8 +1,12 @@
 package org.sigilaris.node.jvm.runtime.consensus.hotstuff
 
+import java.nio.file.{Files, Path}
 import java.time.Instant
 
-import cats.effect.IO
+import scala.jdk.CollectionConverters.*
+import scala.util.Using
+
+import cats.effect.{IO, Resource}
 import cats.effect.kernel.Ref
 import cats.syntax.all.*
 import munit.CatsEffectSuite
@@ -18,6 +22,7 @@ import org.sigilaris.node.jvm.runtime.block.{
   StateRoot,
 }
 import org.sigilaris.node.jvm.runtime.gossip.*
+import org.sigilaris.node.jvm.storage.swaydb.StorageLayout
 
 final class HotStuffRuntimeServiceSuite extends CatsEffectSuite:
 
@@ -312,68 +317,72 @@ final class HotStuffRuntimeServiceSuite extends CatsEffectSuite:
         ),
       )
 
-    for
-      bootstrapEither <- HotStuffRuntimeBootstrap.fromTopology[IO](
-        topology = topology,
-        consensusConfig = config,
-        clock = GossipClock.constant[IO](startedAt),
-      )
-      bootstrap <- IO.fromEither(
-        bootstrapEither.leftMap(new IllegalArgumentException(_)),
-      )
-    yield
-      assertEquals(
-        bootstrap.consensus.bootstrapInput.localPeer,
-        topology.localNodeIdentity,
-      )
-      assertEquals(
-        bootstrap.consensus.bootstrapInput.role,
-        LocalNodeRole.Validator,
-      )
-      assertEquals(
-        bootstrap.consensus.bootstrapInput.validatorSet.hash,
-        validatorSet.hash,
-      )
-      assertEquals(bootstrap.consensus.bootstrapInput.holders, holders)
-      assertEquals(
-        bootstrap.consensus.bootstrapInput.localKeys.keySet,
-        config.localKeys.keySet,
-      )
-      assertEquals(
-        bootstrap.consensus.bootstrapTrustRoot.validatorSetHash,
-        validatorSet.hash,
-      )
-      assertEquals(
-        bootstrap.consensus.bootstrapServices.trustRoot.validatorSetHash,
-        validatorSet.hash,
-      )
-      assert(
-        bootstrap.consensus.topicContracts
-          .contractFor(GossipTopic.consensusProposal)
-          .isRight,
-      )
-      assert(
-        bootstrap.consensus.topicContracts
-          .contractFor(GossipTopic.consensusVote)
-          .isRight,
-      )
-      assert(
-        bootstrap.consensus.topicContracts
-          .contractFor(GossipTopic.consensusTimeoutVote)
-          .isRight,
-      )
-      assert(
-        bootstrap.consensus.topicContracts
-          .contractFor(GossipTopic.consensusNewView)
-          .isRight,
-      )
-      assert(bootstrap.consensus.inMemorySource.nonEmpty)
-      assert(bootstrap.consensus.inMemorySink.nonEmpty)
-      assert(bootstrap.consensus.bootstrapLifecycle.nonEmpty)
-      assertEquals(
-        bootstrap.registry.localPeer,
-        bootstrap.consensus.bootstrapInput.localPeer,
-      )
+    tempStorageLayoutResource.use: storageLayout =>
+      HotStuffRuntimeBootstrap
+        .fromTopology[IO](
+          topology = topology,
+          consensusConfig = config,
+          clock = GossipClock.constant[IO](startedAt),
+          storageLayout = storageLayout,
+        )
+        .use: bootstrapEither =>
+          for
+            bootstrap <- IO.fromEither(
+              bootstrapEither.leftMap(new IllegalArgumentException(_)),
+            )
+          yield
+            assertEquals(
+              bootstrap.consensus.bootstrapInput.localPeer,
+              topology.localNodeIdentity,
+            )
+            assertEquals(
+              bootstrap.consensus.bootstrapInput.role,
+              LocalNodeRole.Validator,
+            )
+            assertEquals(
+              bootstrap.consensus.bootstrapInput.validatorSet.hash,
+              validatorSet.hash,
+            )
+            assertEquals(bootstrap.consensus.bootstrapInput.holders, holders)
+            assertEquals(
+              bootstrap.consensus.bootstrapInput.localKeys.keySet,
+              config.localKeys.keySet,
+            )
+            assertEquals(
+              bootstrap.consensus.bootstrapTrustRoot.validatorSetHash,
+              validatorSet.hash,
+            )
+            assertEquals(
+              bootstrap.consensus.bootstrapServices.trustRoot.validatorSetHash,
+              validatorSet.hash,
+            )
+            assert(
+              bootstrap.consensus.topicContracts
+                .contractFor(GossipTopic.consensusProposal)
+                .isRight,
+            )
+            assert(
+              bootstrap.consensus.topicContracts
+                .contractFor(GossipTopic.consensusVote)
+                .isRight,
+            )
+            assert(
+              bootstrap.consensus.topicContracts
+                .contractFor(GossipTopic.consensusTimeoutVote)
+                .isRight,
+            )
+            assert(
+              bootstrap.consensus.topicContracts
+                .contractFor(GossipTopic.consensusNewView)
+                .isRight,
+            )
+            assert(bootstrap.consensus.inMemorySource.nonEmpty)
+            assert(bootstrap.consensus.inMemorySink.nonEmpty)
+            assert(bootstrap.consensus.bootstrapLifecycle.nonEmpty)
+            assertEquals(
+              bootstrap.registry.localPeer,
+              bootstrap.consensus.bootstrapInput.localPeer,
+            )
 
   private def bootstrapQc(): QuorumCertificate =
     val window = HotStuffWindow(chainId, 0L, 0L, validatorSet.hash)
@@ -425,6 +434,20 @@ final class HotStuffRuntimeServiceSuite extends CatsEffectSuite:
       bodyRoot = BodyRoot(hex(rootHex)),
       timestamp = BlockTimestamp.unsafeFromEpochMillis(startedAt.toEpochMilli),
     )
+
+  private def tempStorageLayoutResource: Resource[IO, StorageLayout] =
+    Resource
+      .make(IO.blocking(Files.createTempDirectory("sigilaris-runtime-service-bootstrap"))) {
+        root => IO.blocking(deleteRecursively(root))
+      }
+      .map(StorageLayout.fromRoot)
+
+  private def deleteRecursively(
+      path: Path,
+  ): Unit =
+    if Files.exists(path) then
+      Using.resource(Files.walk(path)): stream =>
+        stream.iterator.asScala.toList.reverse.foreach(Files.deleteIfExists)
 
   private final class RecordingPublisher private (
       ref: Ref[IO, Vector[GossipEvent[HotStuffGossipArtifact]]],

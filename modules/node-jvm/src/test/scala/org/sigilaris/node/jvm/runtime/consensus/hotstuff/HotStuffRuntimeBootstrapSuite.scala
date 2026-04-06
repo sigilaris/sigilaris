@@ -1,8 +1,14 @@
 package org.sigilaris.node.jvm.runtime.consensus.hotstuff
 
+import java.nio.file.{Files, Path}
 import java.time.Instant
+import java.util.concurrent.ConcurrentLinkedQueue
+
+import scala.jdk.CollectionConverters.*
+import scala.util.Using
 
 import cats.effect.IO
+import cats.effect.Resource
 import cats.effect.kernel.Ref
 import cats.syntax.all.*
 import munit.CatsEffectSuite
@@ -31,8 +37,11 @@ import org.sigilaris.node.jvm.runtime.block.{
   StateRoot,
 }
 import org.sigilaris.node.jvm.runtime.gossip.*
+import org.sigilaris.node.jvm.storage.swaydb.StorageLayout
 
 final class HotStuffRuntimeBootstrapSuite extends CatsEffectSuite:
+  private val openedBootstrapReleases = new ConcurrentLinkedQueue[IO[Unit]]()
+  private val tempStorageRoots        = new ConcurrentLinkedQueue[Path]()
 
   private val chainId       = ChainId.unsafe("chain-main")
   private val startedAt     = Instant.parse("2026-04-02T00:00:00Z")
@@ -153,10 +162,11 @@ final class HotStuffRuntimeBootstrapSuite extends CatsEffectSuite:
     )
 
     for
-      clock           <- TestClock.create(startedAt)
-      bootstrapEither <- HotStuffRuntimeBootstrap.fromConfig[IO](config, clock)
-      bootstrap <- IO.fromEither(
-        bootstrapEither.leftMap(new IllegalArgumentException(_)),
+      clock <- TestClock.create(startedAt)
+      bootstrap <- loadBootstrapFromConfig(
+        config = config,
+        clock = clock,
+        storageLayout = freshStorageLayout,
       )
       outboundAllowed <- bootstrap.runtime.startOutbound(
         PeerIdentity.unsafe("node-b"),
@@ -227,6 +237,27 @@ final class HotStuffRuntimeBootstrapSuite extends CatsEffectSuite:
       )
       assertEquals(outboundRejected.left.map(_.reason), Left("nonNeighborPeer"))
 
+  test("fromTopology fails when the durable historical archive path cannot be opened"):
+    tempDirResource.use: root =>
+      val layout = StorageLayout.fromRoot(root)
+      for
+        _ <- IO.blocking(Files.createDirectories(layout.state.historicalArchive.getParent))
+        _ <- IO.blocking(Files.writeString(layout.state.historicalArchive, "blocked"))
+        clock <- TestClock.create(startedAt)
+        bootstrapEither <- HotStuffRuntimeBootstrap
+          .fromTopology[IO](
+            topology = topology("node-a", Vector("node-b")),
+            consensusConfig = validatorConfig(),
+            clock = clock,
+            storageLayout = layout,
+          )
+          .use(IO.pure)
+      yield
+        assert(bootstrapEither.isLeft)
+        assert(
+          bootstrapEither.left.toOption.exists(_.contains("historical-archive")),
+        )
+
   test(
     "config loader reports signer references that are outside the validator set",
   ):
@@ -260,8 +291,14 @@ final class HotStuffRuntimeBootstrapSuite extends CatsEffectSuite:
     )
 
     for
-      clock           <- TestClock.create(startedAt)
-      bootstrapEither <- HotStuffRuntimeBootstrap.fromConfig[IO](config, clock)
+      clock <- TestClock.create(startedAt)
+      bootstrapEither <- HotStuffRuntimeBootstrap
+        .fromConfig[IO](
+          config,
+          clock,
+          storageLayout = freshStorageLayout,
+        )
+        .use(IO.pure)
     yield assertEquals(
       bootstrapEither.left.map(_.startsWith("unknown validator signer:")),
       Left(true),
@@ -294,8 +331,14 @@ final class HotStuffRuntimeBootstrapSuite extends CatsEffectSuite:
     )
 
     for
-      clock           <- TestClock.create(startedAt)
-      bootstrapEither <- HotStuffRuntimeBootstrap.fromConfig[IO](config, clock)
+      clock <- TestClock.create(startedAt)
+      bootstrapEither <- HotStuffRuntimeBootstrap
+        .fromConfig[IO](
+          config,
+          clock,
+          storageLayout = freshStorageLayout,
+        )
+        .use(IO.pure)
     yield assertEquals(
       bootstrapEither.left.map(_.startsWith("unknown key holder validator:")),
       Left(true),
@@ -416,14 +459,12 @@ final class HotStuffRuntimeBootstrapSuite extends CatsEffectSuite:
             backfillCalls.update(_ + 1) *> IO.pure(Right(Vector.empty))
         ,
       )
-      bootstrapEither <- HotStuffRuntimeBootstrap.fromTopology[IO](
+      bootstrap <- loadBootstrapFromTopology(
         topology = topology,
         consensusConfig = config,
         clock = clock,
         bootstrapTransport = transport.some,
-      )
-      bootstrap <- IO.fromEither(
-        bootstrapEither.leftMap(new IllegalArgumentException(_)),
+        storageLayout = freshStorageLayout,
       )
       result <- bootstrap.consensus.bootstrap(
         chainId = chainId,
@@ -468,7 +509,7 @@ final class HotStuffRuntimeBootstrapSuite extends CatsEffectSuite:
 
     for
       clock <- TestClock.create(startedAt)
-      bootstrapEither <- HotStuffRuntimeBootstrap.fromTopology[IO](
+      bootstrap <- loadBootstrapFromTopology(
         topology = topology("node-a", Vector("node-b")),
         consensusConfig = validatorConfig(),
         clock = clock,
@@ -481,9 +522,7 @@ final class HotStuffRuntimeBootstrapSuite extends CatsEffectSuite:
               proposalCatchUpReadiness = None,
             )
           ),
-      )
-      bootstrap <- IO.fromEither(
-        bootstrapEither.leftMap(new IllegalArgumentException(_)),
+        storageLayout = freshStorageLayout,
       )
       result <- bootstrap.consensus.bootstrap(
         chainId = chainId,
@@ -529,7 +568,7 @@ final class HotStuffRuntimeBootstrapSuite extends CatsEffectSuite:
       _ <- putProposalView(blockStore, child, Vector(childTx))
       _ <- putProposalView(blockStore, grandchild, Vector(grandchildTx))
       clock <- TestClock.create(startedAt)
-      bootstrapEither <- HotStuffRuntimeBootstrap.fromTopology[IO](
+      bootstrap <- loadBootstrapFromTopology(
         topology = topology("node-a", Vector("node-b")),
         consensusConfig = validatorConfig(),
         clock = clock,
@@ -550,9 +589,7 @@ final class HotStuffRuntimeBootstrapSuite extends CatsEffectSuite:
                 ),
             )
           ),
-      )
-      bootstrap <- IO.fromEither(
-        bootstrapEither.leftMap(new IllegalArgumentException(_)),
+        storageLayout = freshStorageLayout,
       )
       session =
         bootstrapSession(
@@ -648,7 +685,7 @@ final class HotStuffRuntimeBootstrapSuite extends CatsEffectSuite:
       knownTxIds <- Ref.of[IO, Set[StableArtifactId]](liveProposal.txSet.txIds.toSet)
       blockStore <- BlockStore.inMemory[IO, TestTx, Utf8, Utf8]
       clock <- TestClock.create(startedAt)
-      bootstrapEither <- HotStuffRuntimeBootstrap.fromTopology[IO](
+      bootstrap <- loadBootstrapFromTopology(
         topology = topology("node-a", Vector("node-b")),
         consensusConfig = validatorConfig(),
         clock = clock,
@@ -669,9 +706,7 @@ final class HotStuffRuntimeBootstrapSuite extends CatsEffectSuite:
                 ),
             )
           ),
-      )
-      bootstrap <- IO.fromEither(
-        bootstrapEither.leftMap(new IllegalArgumentException(_)),
+        storageLayout = freshStorageLayout,
       )
       session =
         bootstrapSession(
@@ -819,10 +854,11 @@ final class HotStuffRuntimeBootstrapSuite extends CatsEffectSuite:
     )
 
     for
-      clock           <- TestClock.create(startedAt)
-      bootstrapEither <- HotStuffRuntimeBootstrap.fromConfig[IO](config, clock)
-      bootstrap <- IO.fromEither(
-        bootstrapEither.leftMap(new IllegalArgumentException(_)),
+      clock <- TestClock.create(startedAt)
+      bootstrap <- loadBootstrapFromConfig(
+        config = config,
+        clock = clock,
+        storageLayout = freshStorageLayout,
       )
       rootLookup <- bootstrap.consensus.bootstrapServices.validatorSetLookup
         .validatorSetFor(HotStuffWindow(chainId, 9L, 4L, historicalValidatorSet.hash))
@@ -879,8 +915,14 @@ final class HotStuffRuntimeBootstrapSuite extends CatsEffectSuite:
     )
 
     for
-      clock           <- TestClock.create(startedAt)
-      bootstrapEither <- HotStuffRuntimeBootstrap.fromConfig[IO](config, clock)
+      clock <- TestClock.create(startedAt)
+      bootstrapEither <- HotStuffRuntimeBootstrap
+        .fromConfig[IO](
+          config,
+          clock,
+          storageLayout = freshStorageLayout,
+        )
+        .use(IO.pure)
     yield
       assertEquals(
         bootstrapEither.left.map(_.startsWith("weakSubjectivityAnchorExpired:")),
@@ -952,10 +994,11 @@ final class HotStuffRuntimeBootstrapSuite extends CatsEffectSuite:
     )
 
     for
-      clock           <- TestClock.create(startedAt)
-      bootstrapEither <- HotStuffRuntimeBootstrap.fromConfig[IO](config, clock)
-      bootstrap <- IO.fromEither(
-        bootstrapEither.leftMap(new IllegalArgumentException(_)),
+      clock <- TestClock.create(startedAt)
+      bootstrap <- loadBootstrapFromConfig(
+        config = config,
+        clock = clock,
+        storageLayout = freshStorageLayout,
       )
       metadataBefore <- bootstrap.consensus.bootstrapLifecycle
         .toRight(
@@ -1032,9 +1075,10 @@ final class HotStuffRuntimeBootstrapSuite extends CatsEffectSuite:
 
     for
       clock <- TestClock.create(startedAt)
-      bootstrapEither <- HotStuffRuntimeBootstrap.fromConfig[IO](config, clock)
-      bootstrap <- IO.fromEither(
-        bootstrapEither.leftMap(new IllegalArgumentException(_)),
+      bootstrap <- loadBootstrapFromConfig(
+        config = config,
+        clock = clock,
+        storageLayout = freshStorageLayout,
       )
       _ <- bootstrap.consensus.bootstrap(
         chainId = chainId,
@@ -1108,8 +1152,11 @@ final class HotStuffRuntimeBootstrapSuite extends CatsEffectSuite:
 
     for
       clock <- TestClock.create(startedAt)
-      bootstrapEither <- HotStuffRuntimeBootstrap.fromConfig[IO](config, clock)
-      bootstrap <- IO.fromEither(bootstrapEither.leftMap(new IllegalArgumentException(_)))
+      bootstrap <- loadBootstrapFromConfig(
+        config = config,
+        clock = clock,
+        storageLayout = freshStorageLayout,
+      )
       voteAttempt <- bootstrap.consensus.emitVote(
         voter = validatorIds.head,
         proposal = signedProposal("93", 2L),
@@ -1153,9 +1200,10 @@ final class HotStuffRuntimeBootstrapSuite extends CatsEffectSuite:
 
     for
       clock <- TestClock.create(startedAt)
-      bootstrapEither <- HotStuffRuntimeBootstrap.fromConfig[IO](config, clock)
-      bootstrap <- IO.fromEither(
-        bootstrapEither.leftMap(new IllegalArgumentException(_)),
+      bootstrap <- loadBootstrapFromConfig(
+        config = config,
+        clock = clock,
+        storageLayout = freshStorageLayout,
       )
       timeoutVoteAttempt <- bootstrap.consensus.signTimeoutVote(
         voter = validatorIds.head,
@@ -1213,8 +1261,11 @@ final class HotStuffRuntimeBootstrapSuite extends CatsEffectSuite:
 
     for
       clock <- TestClock.create(startedAt)
-      bootstrapEither <- HotStuffRuntimeBootstrap.fromConfig[IO](config, clock)
-      bootstrap <- IO.fromEither(bootstrapEither.leftMap(new IllegalArgumentException(_)))
+      bootstrap <- loadBootstrapFromConfig(
+        config = config,
+        clock = clock,
+        storageLayout = freshStorageLayout,
+      )
       _ <- bootstrap.consensus.bootstrap(
         chainId = chainId,
         sessions = Vector.empty,
@@ -1265,8 +1316,11 @@ final class HotStuffRuntimeBootstrapSuite extends CatsEffectSuite:
 
     for
       clock <- TestClock.create(startedAt)
-      bootstrapEither <- HotStuffRuntimeBootstrap.fromConfig[IO](config, clock)
-      bootstrap <- IO.fromEither(bootstrapEither.leftMap(new IllegalArgumentException(_)))
+      bootstrap <- loadBootstrapFromConfig(
+        config = config,
+        clock = clock,
+        storageLayout = freshStorageLayout,
+      )
       _ <- bootstrap.consensus.bootstrap(
         chainId = chainId,
         sessions = Vector.empty,
@@ -1329,8 +1383,11 @@ final class HotStuffRuntimeBootstrapSuite extends CatsEffectSuite:
 
     for
       clock <- TestClock.create(startedAt)
-      bootstrapEither <- HotStuffRuntimeBootstrap.fromConfig[IO](config, clock)
-      bootstrap <- IO.fromEither(bootstrapEither.leftMap(new IllegalArgumentException(_)))
+      bootstrap <- loadBootstrapFromConfig(
+        config = config,
+        clock = clock,
+        storageLayout = freshStorageLayout,
+      )
       voteAttempt <- bootstrap.consensus.emitVote(
         voter = validatorIds.head,
         proposal = signedProposal("92", 2L),
@@ -1375,8 +1432,11 @@ final class HotStuffRuntimeBootstrapSuite extends CatsEffectSuite:
 
     for
       clock <- TestClock.create(startedAt)
-      bootstrapEither <- HotStuffRuntimeBootstrap.fromConfig[IO](config, clock)
-      bootstrap <- IO.fromEither(bootstrapEither.leftMap(new IllegalArgumentException(_)))
+      bootstrap <- loadBootstrapFromConfig(
+        config = config,
+        clock = clock,
+        storageLayout = freshStorageLayout,
+      )
       first <- bootstrap.consensus.bootstrap(
         chainId = chainId,
         sessions = Vector.empty,
@@ -1411,8 +1471,14 @@ final class HotStuffRuntimeBootstrapSuite extends CatsEffectSuite:
     )
 
     for
-      clock           <- TestClock.create(startedAt)
-      bootstrapEither <- HotStuffRuntimeBootstrap.fromConfig[IO](config, clock)
+      clock <- TestClock.create(startedAt)
+      bootstrapEither <- HotStuffRuntimeBootstrap
+        .fromConfig[IO](
+          config,
+          clock,
+          storageLayout = freshStorageLayout,
+        )
+        .use(IO.pure)
     yield assertEquals(
       bootstrapEither.left.map(error =>
         error.contains("missing required config key: known-peers") &&
@@ -1442,8 +1508,14 @@ final class HotStuffRuntimeBootstrapSuite extends CatsEffectSuite:
     )
 
     for
-      clock           <- TestClock.create(startedAt)
-      bootstrapEither <- HotStuffRuntimeBootstrap.fromConfig[IO](config, clock)
+      clock <- TestClock.create(startedAt)
+      bootstrapEither <- HotStuffRuntimeBootstrap
+        .fromConfig[IO](
+          config,
+          clock,
+          storageLayout = freshStorageLayout,
+        )
+        .use(IO.pure)
     yield assertEquals(
       bootstrapEither.left.map(error =>
         error.contains("known-peers") &&
@@ -1733,6 +1805,64 @@ final class HotStuffRuntimeBootstrapSuite extends CatsEffectSuite:
       .toOption
       .get
 
+  private def tempDirResource: Resource[IO, Path] =
+    Resource.make(IO.blocking(Files.createTempDirectory("sigilaris-runtime-bootstrap"))) { dir =>
+      IO.blocking(deleteRecursively(dir))
+    }
+
+  private def freshStorageLayout: StorageLayout =
+    val root = Files.createTempDirectory("sigilaris-runtime-bootstrap-storage")
+    tempStorageRoots.add(root)
+    StorageLayout.fromRoot(root)
+
+  private def deleteRecursively(
+      path: Path,
+  ): Unit =
+    if Files.exists(path) then
+      Using.resource(Files.walk(path)): stream =>
+        stream.iterator.asScala.toList.reverse.foreach(Files.deleteIfExists)
+
+  private def allocateBootstrap(
+      resource: Resource[IO, Either[String, HotStuffRuntimeBootstrap[IO]]],
+  ): IO[HotStuffRuntimeBootstrap[IO]] =
+    resource.allocated.flatMap:
+      case (Left(error), release) =>
+        release *> IO.raiseError(new IllegalArgumentException(error))
+      case (Right(bootstrap), release) =>
+        IO.delay(openedBootstrapReleases.add(release)).as(bootstrap)
+
+  @SuppressWarnings(Array("org.wartremover.warts.DefaultArguments"))
+  private def loadBootstrapFromConfig(
+      config: com.typesafe.config.Config,
+      clock: GossipClock[IO],
+      storageLayout: StorageLayout,
+  ): IO[HotStuffRuntimeBootstrap[IO]] =
+    allocateBootstrap(
+      HotStuffRuntimeBootstrap.fromConfig[IO](
+        config = config,
+        clock = clock,
+        storageLayout = storageLayout,
+      ),
+    )
+
+  @SuppressWarnings(Array("org.wartremover.warts.DefaultArguments"))
+  private def loadBootstrapFromTopology(
+      topology: StaticPeerTopology,
+      consensusConfig: HotStuffBootstrapConfig,
+      clock: GossipClock[IO],
+      bootstrapTransport: Option[HotStuffBootstrapTransportServices[IO]],
+      storageLayout: StorageLayout,
+  ): IO[HotStuffRuntimeBootstrap[IO]] =
+    allocateBootstrap(
+      HotStuffRuntimeBootstrap.fromTopology[IO](
+        topology = topology,
+        consensusConfig = consensusConfig,
+        clock = clock,
+        bootstrapTransport = bootstrapTransport,
+        storageLayout = storageLayout,
+      ),
+    )
+
   private def bootstrapSession(
       peer: String,
       sessionId: String,
@@ -1962,3 +2092,9 @@ final class HotStuffRuntimeBootstrapSuite extends CatsEffectSuite:
       .map: (validatorId, keyPair) =>
         s"""${indent}{ validator-id = "${validatorId.value}", private-key = "${keyPair.privateKey.toHexLower}" }"""
       .mkString(",\n")
+  override def afterAll(): Unit =
+    openedBootstrapReleases.iterator.asScala.foreach: release =>
+      val _ = release.attempt.unsafeRunSync()
+    val _ = HistoricalProposalArchive.resetSharedStoresForTesting.attempt.unsafeRunSync()
+    tempStorageRoots.iterator.asScala.foreach(deleteRecursively)
+    super.afterAll()

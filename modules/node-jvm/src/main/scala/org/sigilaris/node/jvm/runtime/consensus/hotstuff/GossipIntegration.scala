@@ -1008,6 +1008,9 @@ final case class HotStuffNodeRuntime[F[_]: Sync](
   def currentBootstrapDiagnostics: F[BootstrapDiagnostics] =
     bootstrapLifecycle.fold(services.bootstrap.diagnostics.current)(_.current)
 
+  def close: F[Unit] =
+    bootstrapLifecycle.fold(Sync[F].unit)(_.close)
+
   def bootstrap(
       chainId: ChainId,
       sessions: Vector[BootstrapSessionBinding],

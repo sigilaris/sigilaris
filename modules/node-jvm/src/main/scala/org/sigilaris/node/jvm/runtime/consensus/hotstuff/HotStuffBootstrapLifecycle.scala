@@ -16,6 +16,8 @@ trait HotStuffBootstrapLifecycle[F[_]] extends BootstrapDiagnosticsSource[F]:
 
   def historicalArchive: HistoricalProposalArchive[F]
 
+  def close: F[Unit]
+
   def bootstrap(
       chainId: ChainId,
       sessions: Vector[BootstrapSessionBinding],
@@ -99,6 +101,9 @@ private final class InMemoryHotStuffBootstrapLifecycle[F[_]: Sync](
     currentInstant: F[Instant],
     ref: Ref[F, Map[ChainId, HotStuffBootstrapLifecycle.CoordinatorSlot[F]]],
 ) extends HotStuffBootstrapLifecycle[F]:
+
+  override def close: F[Unit] =
+    historicalArchive.close
 
   override def current: F[BootstrapDiagnostics] =
     coordinators.flatMap: currentCoordinators =>
