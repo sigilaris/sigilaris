@@ -212,6 +212,7 @@ Complete; ADR Tranche Drafted; Implementation Handoff Ready
 | Open Implementation Slice | Semantic Owner | Receiving Plan | Handoff Note |
 | --- | --- | --- | --- |
 | `TimeoutVote` / `TimeoutCertificate` / `NewView` runtime model, dissemination, timer/backoff, diagnostics | `ADR-0022` | plan `0004` | current static-validator-set baseline 위에서 먼저 구현하고, rotation-aware hardening 은 `ADR-0023` lookup seam 을 소비한다. |
+| event stream binary wire, byte-codec envelope, length-prefixed framing, text/base64 overhead reduction | `ADR-0016` transport-neutral substrate consequence area | plan `0003` | semantic contract 는 그대로 유지하고, exact media type / frame layout / adapter wiring 만 implementation plan 또는 spec 에서 고정한다. |
 | trusted checkpoint/root bundle, weak-subjectivity freshness, historical `ValidatorSetLookup`, finalized-proof verification continuity | `ADR-0023` | plan `0007` | bootstrap trust-root concrete input 과 historical validator-set lookup runtime 은 snapshot/bootstrap follow-up 아래에서 구현한다. |
 | configured peer identity credential binding, capability token/header/path encoding, re-auth / disconnect diagnostics | `ADR-0024` | plans `0003`, `0007` | generic gossip/session admission seam 은 `0003`, bootstrap service transport projection 은 `0007` 이 받는다. |
 | archive-grade backfill acceleration, snapshot compression, proof serving, durable archive compaction | `ADR-0019` / `ADR-0021` consequence area | plans `0005`, `0007` or separate follow-up plan | trust/liveness/authority contract 확장보다는 optimization / serving follow-up 으로 취급한다. |
@@ -294,9 +295,10 @@ Complete; ADR Tranche Drafted; Implementation Handoff Ready
 
 ## Follow-Ups
 - `P1`: plan `0004` 는 `ADR-0022` 기준으로 pacemaker runtime integration 을 받는다. 우선순위는 timeout artifact model/validation, dissemination policy, timer/backoff/diagnostics 정리다.
-- `P2`: plan `0007` 는 `ADR-0023` 기준으로 checkpoint/root bundle, weak-subjectivity freshness, historical `ValidatorSetLookup`, bootstrap verification continuity follow-up 을 받는다.
-- `P3`: plans `0003` / `0007` 는 `ADR-0024` 기준으로 transport credential binding, capability token or equivalent transport projection, re-auth/disconnect diagnostics follow-up 을 받는다.
-- `P4`: dynamic peer discovery, peer scoring, validator admission policy 가 static topology baseline 을 대체해야 하면 별도 ADR 또는 superseding deployment ADR 로 분리한다.
-- `P5`: archive-grade historical sync, snapshot compression, Merkle proof serving, remote body/proof fetch, durable archive compaction 은 별도 ADR 또는 implementation plan 으로 분리한다.
-- `P6`: application-specific scheduling extension 이 on-wire footprint 또는 receipt projection 같은 새 canonical artifact 를 요구하면 `ADR-0020` follow-up ADR 로 분리한다.
-- `P7`: multi-operator deployment, external validator participation, operator key compromise incident, 또는 raw key custody 가 운영 병목으로 드러나면 tentative `ADR-0025` `Validator Signing Custody And Remote Signer Baseline` 을 별도 security-hardening follow-up 으로 분리한다.
+- `P2`: plan `0003` 는 `ADR-0016` baseline 위에서 event stream binary wire follow-up 을 받는다. 현재 NDJSON baseline 을 immediate rollback 없이 유지하되, `application/octet-stream` 또는 동등 binary media type, byte-codec envelope, `BigNat` length-prefixed framing, text/base64 overhead 제거는 implementation plan 또는 spec 에서 구체화한다.
+- `P3`: plan `0007` 는 `ADR-0023` 기준으로 checkpoint/root bundle, weak-subjectivity freshness, historical `ValidatorSetLookup`, bootstrap verification continuity follow-up 을 받는다.
+- `P4`: plans `0003` / `0007` 는 `ADR-0024` 기준으로 transport credential binding, capability token or equivalent transport projection, re-auth/disconnect diagnostics follow-up 을 받는다.
+- `P5`: dynamic peer discovery, peer scoring, validator admission policy 가 static topology baseline 을 대체해야 하면 별도 ADR 또는 superseding deployment ADR 로 분리한다.
+- `P6`: archive-grade historical sync, snapshot compression, Merkle proof serving, remote body/proof fetch, durable archive compaction 은 별도 ADR 또는 implementation plan 으로 분리한다.
+- `P7`: application-specific scheduling extension 이 on-wire footprint 또는 receipt projection 같은 새 canonical artifact 를 요구하면 `ADR-0020` follow-up ADR 로 분리한다.
+- `P8`: multi-operator deployment, external validator participation, operator key compromise incident, 또는 raw key custody 가 운영 병목으로 드러나면 tentative `ADR-0025` `Validator Signing Custody And Remote Signer Baseline` 을 별도 security-hardening follow-up 으로 분리한다.

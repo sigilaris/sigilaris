@@ -312,6 +312,7 @@ Phase 3A Complete; ADR-0024 Drafted; Identity-Binding Follow-Up Scoped
 
 ## Follow-Ups
 - `P1`: configured `PeerIdentity` 와 concrete transport credential subject 간 매핑은 이 plan 의 gossip/session admission seam 에서 follow-up 한다. mutual TLS, application credential, equivalent auth principal 중 어떤 형태를 쓰든 ADR-0024 가 정의한 canonical peer principal 을 보존해야 한다.
-- `P2`: session-bound child capability 를 transport surface 에 투영해야 하면 capability token/header/path/query shape 와 re-auth handshake payload 는 이 plan 또는 별도 protocol spec 에서 고정한다.
-- `P3`: bootstrap service family 가 consumer 로 쓰는 concrete authorization / disconnect diagnostics 는 plan `0007` 과 함께 정렬하되, runtime-owned authorization seam ownership 은 이 plan 이 유지한다.
-- `P4`: HotStuff proposal/vote/QC 및 pacemaker artifact integration 은 plan `0004` 가 소유한다. correctness-sensitive topic의 exact known-set, range-set, IBLT/GCS, window key model은 각 topic owner plan이 고정한다.
+- `P2`: current NDJSON event stream baseline 은 유지하되, throughput/overhead 개선이 필요해지면 event stream 은 byte-codec 기반 binary envelope follow-up 을 받는다. 우선 후보는 `application/octet-stream` 또는 동등 binary media type 위의 length-prefixed frame 이며, `BigNat` length codec 을 framing에 재사용할 수 있다. 이 작업은 exact wire/spec follow-up 이지 별도 ADR 대상은 아니다.
+- `P3`: session-bound child capability 를 transport surface 에 투영해야 하면 capability token/header/path/query shape 와 re-auth handshake payload 는 이 plan 또는 별도 protocol spec 에서 고정한다.
+- `P4`: bootstrap service family 가 consumer 로 쓰는 concrete authorization / disconnect diagnostics 는 plan `0007` 과 함께 정렬하되, runtime-owned authorization seam ownership 은 이 plan 이 유지한다.
+- `P5`: HotStuff proposal/vote/QC 및 pacemaker artifact integration 은 plan `0004` 가 소유한다. correctness-sensitive topic의 exact known-set, range-set, IBLT/GCS, window key model은 각 topic owner plan이 고정한다.
