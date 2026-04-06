@@ -113,14 +113,16 @@ Complete; ADR Tranche Drafted; Implementation Handoff Ready
 | dynamic peer discovery / peer scoring / topology management / validator admission policy | Explicit defer | initial ADR tranche 밖의 deployment/discovery follow-up 으로 남긴다. | `ADR-0016`, `ADR-0018`, plans `0003`, `0007`, 필요 시 `README.md` | static topology baseline 을 당장 supersede 하지 않음 |
 | fee market / proposer fairness / distributed mempool policy | Explicit defer | current trust/liveness/authority tranche 밖의 economics/mempool follow-up 으로 남긴다. | 필요 시 `README.md`, future deployment or mempool plan | current ADR tranche blocker 아님 |
 | automatic audit-to-validator promotion / automatic cross-DC failover policy | Explicit defer | current operator-managed promotion baseline 을 유지하고, 자동화 계약은 별도 운영 ADR 로 분리한다. | `ADR-0018`, plan `0004` | `ADR-0023` 이 authority continuity 를 고정하더라도 자동 failover 까지 포함하지 않음 |
-| archive-grade historical sync / snapshot batching-compression / Merkle proof serving / remote body/proof fetch / durable archive compaction | Explicit defer | snapshot/archive optimization 후속 ADR 또는 implementation plan 으로 남긴다. | `ADR-0019`, `ADR-0021`, plans `0005`, `0007` | bootstrap baseline 위의 성능/serving 확장으로 취급 |
+| archive-grade historical sync | Explicit defer; elevated follow-up priority | audit node 운영을 위한 archive/deep-history follow-up 으로 분리하고, post-ADR backlog 에서 우선순위를 높여 다룬다. | `ADR-0019`, `ADR-0021`, plan `0007` | bootstrap baseline 위에서 audit-node deep history 가용성을 높이는 follow-up 으로 취급 |
+| snapshot batching-compression / Merkle proof serving / remote body/proof fetch / durable archive compaction | Explicit defer | snapshot/archive optimization 또는 serving 후속 ADR / implementation plan 으로 남긴다. | `ADR-0019`, `ADR-0021`, plans `0005`, `0007` | archive-grade historical sync 와 분리해 후순위 optimization 으로 취급 |
 | validator signing custody / KMS / HSM / remote signer baseline | Explicit defer; tentative `ADR-0025` | operator-managed raw key baseline 의 security-hardening follow-up 으로 남긴다. | `ADR-0018`, plan `0004` | multi-operator deployment, external validator participation, custody incident 가 re-open trigger |
 | application transaction-shape migration / dynamic-discovery schedulability follow-up | Existing `ADR-0020` follow-up, outside this tranche | multi-node trust/liveness ADR 이 아니라 application scheduling migration 으로 남긴다. | `ADR-0020`, plan `0006` | current tranche blocker 아님 |
 
 ## Phase 0 Explicit Defer List
 - `Dynamic peer discovery`, `peer scoring`, `topology management`, `validator admission policy` 는 static topology baseline 을 supersede 하는 별도 deployment/discovery ADR 로 미룬다.
 - `Automatic audit-to-validator promotion`, `automatic cross-DC failover`, fully automated emergency operator policy 는 current operator-managed baseline 밖으로 둔다.
-- `Archive-grade historical sync`, `snapshot batching/compression`, `Merkle proof serving`, `remote body/proof fetch`, `durable archive compaction` 은 snapshot/archive optimization follow-up 으로 남긴다.
+- `Archive-grade historical sync` 는 audit node 운영을 위한 archive/deep-history follow-up 으로 남기되, post-ADR backlog 에서 우선순위를 한 단계 올려 다룬다.
+- `Snapshot batching/compression`, `Merkle proof serving`, `remote body/proof fetch`, `durable archive compaction` 은 계속 snapshot/archive optimization follow-up 으로 남긴다.
 - `Fee market`, `proposer fairness`, distributed mempool policy 는 current trust/liveness/authority tranche 와 분리한다.
 - `Validator signing custody`, `KMS/HSM`, `remote signer` 는 tentative `ADR-0025` security-hardening candidate 로 defer 한다.
 - `ADR-0020` application-specific scheduling extension 과 future dynamic-discovery transaction migration 은 current multi-node ADR tranche 의 mandatory output 으로 두지 않는다.
@@ -215,7 +217,8 @@ Complete; ADR Tranche Drafted; Implementation Handoff Ready
 | event stream binary wire, byte-codec envelope, length-prefixed framing, text/base64 overhead reduction | `ADR-0016` transport-neutral substrate consequence area | plan `0003` | semantic contract 는 그대로 유지하고, exact media type / frame layout / adapter wiring 만 implementation plan 또는 spec 에서 고정한다. |
 | trusted checkpoint/root bundle, weak-subjectivity freshness, historical `ValidatorSetLookup`, finalized-proof verification continuity | `ADR-0023` | plan `0007` | bootstrap trust-root concrete input 과 historical validator-set lookup runtime 은 snapshot/bootstrap follow-up 아래에서 구현한다. |
 | configured peer identity credential binding, capability token/header/path encoding, re-auth / disconnect diagnostics | `ADR-0024` | plans `0003`, `0007` | generic gossip/session admission seam 은 `0003`, bootstrap service transport projection 은 `0007` 이 받는다. |
-| archive-grade backfill acceleration, snapshot compression, proof serving, durable archive compaction | `ADR-0019` / `ADR-0021` consequence area | plans `0005`, `0007` or separate follow-up plan | trust/liveness/authority contract 확장보다는 optimization / serving follow-up 으로 취급한다. |
+| archive-grade historical sync for audit-node operation | `ADR-0019` / `ADR-0021` consequence area | plan `0007` or separate audit/archive follow-up plan | snapshot/bootstrap baseline 위에서 audit node deep-history hydration 경로를 우선 정리한다. |
+| snapshot compression, Merkle proof serving, remote body/proof fetch, durable archive compaction | `ADR-0019` / `ADR-0021` consequence area | plans `0005`, `0007` or separate follow-up plan | trust/liveness/authority contract 확장보다는 optimization / serving follow-up 으로 취급한다. |
 | validator signing custody, KMS/HSM, remote signer baseline | tentative `ADR-0025` | future security-hardening ADR / plan | multi-operator deployment, external validator, custody incident 가 re-open trigger 다. |
 
 ### Split Criteria
@@ -298,7 +301,8 @@ Complete; ADR Tranche Drafted; Implementation Handoff Ready
 - `P2`: plan `0003` 는 `ADR-0016` baseline 위에서 event stream binary wire follow-up 을 받는다. 현재 NDJSON baseline 을 immediate rollback 없이 유지하되, `application/octet-stream` 또는 동등 binary media type, byte-codec envelope, `BigNat` length-prefixed framing, text/base64 overhead 제거는 implementation plan 또는 spec 에서 구체화한다.
 - `P3`: plan `0007` 는 `ADR-0023` 기준으로 checkpoint/root bundle, weak-subjectivity freshness, historical `ValidatorSetLookup`, bootstrap verification continuity follow-up 을 받는다.
 - `P4`: plans `0003` / `0007` 는 `ADR-0024` 기준으로 transport credential binding, capability token or equivalent transport projection, re-auth/disconnect diagnostics follow-up 을 받는다.
-- `P5`: dynamic peer discovery, peer scoring, validator admission policy 가 static topology baseline 을 대체해야 하면 별도 ADR 또는 superseding deployment ADR 로 분리한다.
-- `P6`: archive-grade historical sync, snapshot compression, Merkle proof serving, remote body/proof fetch, durable archive compaction 은 별도 ADR 또는 implementation plan 으로 분리한다.
-- `P7`: application-specific scheduling extension 이 on-wire footprint 또는 receipt projection 같은 새 canonical artifact 를 요구하면 `ADR-0020` follow-up ADR 로 분리한다.
-- `P8`: multi-operator deployment, external validator participation, operator key compromise incident, 또는 raw key custody 가 운영 병목으로 드러나면 tentative `ADR-0025` `Validator Signing Custody And Remote Signer Baseline` 을 별도 security-hardening follow-up 으로 분리한다.
+- `P5`: audit node 운영을 위해 archive-grade historical sync 는 별도 priority follow-up 으로 올린다.
+- `P6`: dynamic peer discovery, peer scoring, validator admission policy 가 static topology baseline 을 대체해야 하면 별도 ADR 또는 superseding deployment ADR 로 분리한다.
+- `P7`: snapshot compression, Merkle proof serving, remote body/proof fetch, durable archive compaction 은 별도 ADR 또는 implementation plan 으로 분리한다.
+- `P8`: application-specific scheduling extension 이 on-wire footprint 또는 receipt projection 같은 새 canonical artifact 를 요구하면 `ADR-0020` follow-up ADR 로 분리한다.
+- `P9`: multi-operator deployment, external validator participation, operator key compromise incident, 또는 raw key custody 가 운영 병목으로 드러나면 tentative `ADR-0025` `Validator Signing Custody And Remote Signer Baseline` 을 별도 security-hardening follow-up 으로 분리한다.
