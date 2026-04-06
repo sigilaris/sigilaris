@@ -1,7 +1,7 @@
 # 0008 - Multi-Node Follow-Up ADR Authoring Plan
 
 ## Status
-Phase 2 Draft Complete; Phase 3 Pending
+Phase 3 Draft Complete; Phase 4 Pending
 
 ## Created
 2026-04-06
@@ -13,7 +13,7 @@ Phase 2 Draft Complete; Phase 3 Pending
 - `docs/plans/0003-multiplexed-gossip-session-sync-plan.md`부터 `docs/plans/0007-snapshot-sync-and-background-backfill-plan.md`까지의 shipped baseline으로, Sigilaris 는 static topology 위의 multi-node gossip/session sync, HotStuff artifact/QC, canonical `BlockHeader`, conflict-free block scheduling, snapshot sync + background backfill 기반을 이미 갖췄다.
 - 이 plan 이 시작될 때 남아 있던 큰 공백은 구현 디테일보다는 장기 계약에 가까웠다. 대표적으로 pacemaker/timeouts/new-view, validator-set rotation 과 bootstrap trust root, static-topology peer identity binding, session-bound bootstrap capability revoke 가 그랬다. validator signer custody / remote signer baseline 은 보안 hardening 가치가 있지만, 현재 shipped baseline 을 막는 immediate blocker 라기보다 deferred follow-up 후보에 가깝다.
 - 위 항목들은 원래 `ADR-0016`, `ADR-0017`, `ADR-0018`, `ADR-0021` 의 follow-up 으로 이미 암시돼 있었고, plan 시작 시점에는 canonical decision 문서가 없거나 existing ADR 의 consequence/follow-up section 에만 남아 있었다.
-- Phase 1~2 output 으로 pacemaker / view-change baseline 과 validator-set rotation / bootstrap trust-root baseline 은 각각 ADR-0022, ADR-0023 초안으로 승격됐다. 현재 immediate ADR gap 은 static-topology peer identity binding / session-bound bootstrap capability authorization 쪽에 더 가깝다.
+- Phase 1~3 output 으로 pacemaker / view-change baseline, validator-set rotation / bootstrap trust-root baseline, static-topology peer identity binding / session-bound bootstrap capability authorization baseline 은 각각 ADR-0022, ADR-0023, ADR-0024 초안으로 승격됐다. 현재 immediate 작업은 cross-ADR alignment 와 implementation handoff 쪽에 더 가깝다.
 - 특히 `ADR-0018` 은 current baseline 의 사실상 참조점처럼 사용되고 있었지만 문서 status 는 `Proposed` 로 남아 있었다. Phase 0 는 이 mismatch 를 먼저 해소해, 후속 ADR 이 "이미 accepted 된 운영 baseline 위의 확장"인지 "아직 미확정 운영 가정 위의 초안"인지가 흐려지지 않게 만든다.
 - 이 상태에서 바로 implementation plan 을 추가로 쌓으면, runtime/transport/storage 경계보다 더 상위의 trust/liveness/authority contract 가 plan 안에서 임시로 고정될 위험이 있다.
 - 따라서 다음 단계의 핵심은 "남은 기능을 바로 전부 구현하는 것"이 아니라, multi-node 운영을 위해 장기 유지해야 할 정책을 ADR 로 먼저 잠그는 것이다.
@@ -29,7 +29,7 @@ Phase 2 Draft Complete; Phase 3 Pending
 - 아래 ADR 후보의 초안 작성과 반복 갱신을 이 plan 의 직접 범위로 둔다.
   - `ADR-0022`: HotStuff Pacemaker And View-Change Baseline
   - `ADR-0023`: Validator-Set Rotation And Bootstrap Trust Roots
-  - tentative `ADR-0024`: Static-Topology Peer Identity Binding And Session-Bound Capability Authorization
+  - `ADR-0024`: Static-Topology Peer Identity Binding And Session-Bound Capability Authorization
 - deferred candidate `ADR-0025`: Validator Signing Custody And Remote Signer Baseline
 - 위 ADR 작성 결과를 반영해 `ADR-0016`, `ADR-0017`, `ADR-0018`, `ADR-0021`, 관련 plan 문서의 follow-up / consequence / residual gap 서술을 정렬한다.
 - ADR 수용 이후 어떤 구현 작업이 기존 plan 의 phase 확장으로 들어갈지, 별도 plan 으로 분리할지를 backlog 수준으로 정리한다.
@@ -51,6 +51,7 @@ Phase 2 Draft Complete; Phase 3 Pending
 - ADR-0021: Snapshot Sync And Background Backfill From Best Finalized Suggestions
 - ADR-0022: HotStuff Pacemaker And View-Change Baseline
 - ADR-0023: Validator-Set Rotation And Bootstrap Trust Roots
+- ADR-0024: Static-Topology Peer Identity Binding And Session-Bound Capability Authorization
 - `docs/plans/0003-multiplexed-gossip-session-sync-plan.md`
 - `docs/plans/0004-hotstuff-consensus-without-threshold-signatures-plan.md`
 - `docs/plans/0005-canonical-block-structure-migration-plan.md`
@@ -85,6 +86,12 @@ Phase 2 Draft Complete; Phase 3 Pending
 - `ADR-0021` finalized-anchor verification 은 selected local bootstrap root 에서 proof-window별 historical validator set 을 resolve 해야 한다는 점이 더 분명해졌다. peer-provided suggestion payload 는 계속 candidate proof bundle 일 뿐 trust root 가 아니다.
 - `ADR-0019` / `ADR-0020` wording impact review 결과, canonical `BlockHeader` / `BlockBody` contract 나 body-level schedulability baseline 을 수정할 필요는 없었다. validator-set continuity 는 계속 consensus/bootstrap layer 가 소유한다.
 - Phase 2 draft 는 peer identity binding scope 를 materially 넓히지 않는다. `ADR-0024` 는 그대로 configured peer identity, session-bound capability ownership, revoke cascade 에 집중할 수 있다.
+
+## Phase 3 Checkpoint Review
+- Phase 2 `ADR-0023` trust-root / authority continuity draft 는 peer identity binding을 validator-set authority 계약으로 넓히지 않는다. Phase 3 은 configured peer principal, direct-neighbor admission, session-bound child capability ownership만 고정하면 된다.
+- `ADR-0016` 은 이미 directional session, peer correlation, parent-session revoke baseline 을 substrate 차원에서 말하고 있었고, `ADR-0021` 은 bootstrap service family 를 session-bound consumer 로 사용하고 있었다. 따라서 Phase 3 의 주된 역할은 existing seam 위에 configured-peer/authenticated-counterparty binding과 child capability lineage ownership을 올바른 owner 아래 재배치하는 것이다.
+- current shipped runtime 은 `PeerIdentity`, `StaticPeerAuthenticator`, `authorizeOpenSession`, `BootstrapSessionBinding(peer, sessionId)` seam을 이미 갖고 있다. Phase 3 은 이 shipped seam을 뒤집지 않고, address/base-URI routing metadata 와 canonical peer principal 을 분리하는 baseline 을 고정한다.
+- Phase 3 draft 는 dynamic discovery, peer scoring, exact TLS/certificate mechanism, capability token wire shape 를 고정하지 않는다. 이 항목들은 계속 follow-up spec 또는 implementation plan 범위로 남는다.
 
 ## Phase 0 Inventory Summary
 
@@ -138,6 +145,7 @@ Phase 2 Draft Complete; Phase 3 Pending
 - 새 ADR 후보 문서 3개 또는 그에 준하는 split/merge 결과물
 - `docs/adr/0022-hotstuff-pacemaker-and-view-change-baseline.md`
 - `docs/adr/0023-validator-set-rotation-and-bootstrap-trust-roots.md`
+- `docs/adr/0024-static-topology-peer-identity-binding-and-session-bound-capability-authorization.md`
 - `docs/adr/0016-multiplexed-gossip-session-sync.md`
 - `docs/adr/0017-hotstuff-consensus-without-threshold-signatures.md`
 - `docs/adr/0018-static-peer-topology-and-initial-hotstuff-deployment-baseline.md`
@@ -183,7 +191,7 @@ Phase 2 Draft Complete; Phase 3 Pending
 - bootstrap service family 와 parent directional session 의 binding, revoke/close cascade, re-authentication failure contract 를 정의한다.
 - gossip runtime/service ownership 과 transport adapter ownership 을 다시 정리해, auth shortcut 이 transport/storage direct path 로 새지 않게 한다.
 - static topology baseline 을 유지하더라도, "configured trusted peer 에게만 pull 을 허용한다"는 가정을 무엇으로 판정하는지 여기서 먼저 잠근다.
-- output 은 tentative `ADR-0024` 와 `ADR-0016` / `ADR-0021` / plans `0003`, `0007` 정렬이다.
+- output 은 `ADR-0024` 와 `ADR-0016` / `ADR-0021` / plans `0003`, `0007` 정렬이다.
 
 ### Phase 4: Cross-ADR Alignment And Implementation Handoff
 - 새 ADR 들 사이의 용어와 state model 을 다시 대조해 중복/모순을 정리한다.
@@ -249,10 +257,10 @@ Phase 2 Draft Complete; Phase 3 Pending
 - [x] `ADR-0018` / `ADR-0021` / plan `0007` follow-up 참조 업데이트
 
 ### Phase 3: Static-Topology Peer Identity Binding And Session-Bound Capability ADR Draft
-- [ ] Phase 2 output 기준 Phase 3 scope checkpoint review
-- [ ] tentative peer-identity-binding / capability ADR 초안 작성
-- [ ] configured peer identity / revoke cascade / bootstrap capability baseline 정리
-- [ ] `ADR-0016` / `ADR-0021` / plans `0003`, `0007` 참조 업데이트
+- [x] Phase 2 output 기준 Phase 3 scope checkpoint review
+- [x] peer-identity-binding / capability ADR 초안 작성
+- [x] configured peer identity / revoke cascade / bootstrap capability baseline 정리
+- [x] `ADR-0016` / `ADR-0021` / plans `0003`, `0007` 참조 업데이트
 
 ### Phase 4: Cross-ADR Alignment And Implementation Handoff
 - [ ] 새 ADR 간 용어/경계/precedence 정렬
