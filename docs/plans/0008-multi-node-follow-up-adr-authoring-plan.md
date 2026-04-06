@@ -1,7 +1,7 @@
 # 0008 - Multi-Node Follow-Up ADR Authoring Plan
 
 ## Status
-Phase 3 Draft Complete; Phase 4 Pending
+Complete; ADR Tranche Drafted; Implementation Handoff Ready
 
 ## Created
 2026-04-06
@@ -13,7 +13,7 @@ Phase 3 Draft Complete; Phase 4 Pending
 - `docs/plans/0003-multiplexed-gossip-session-sync-plan.md`부터 `docs/plans/0007-snapshot-sync-and-background-backfill-plan.md`까지의 shipped baseline으로, Sigilaris 는 static topology 위의 multi-node gossip/session sync, HotStuff artifact/QC, canonical `BlockHeader`, conflict-free block scheduling, snapshot sync + background backfill 기반을 이미 갖췄다.
 - 이 plan 이 시작될 때 남아 있던 큰 공백은 구현 디테일보다는 장기 계약에 가까웠다. 대표적으로 pacemaker/timeouts/new-view, validator-set rotation 과 bootstrap trust root, static-topology peer identity binding, session-bound bootstrap capability revoke 가 그랬다. validator signer custody / remote signer baseline 은 보안 hardening 가치가 있지만, 현재 shipped baseline 을 막는 immediate blocker 라기보다 deferred follow-up 후보에 가깝다.
 - 위 항목들은 원래 `ADR-0016`, `ADR-0017`, `ADR-0018`, `ADR-0021` 의 follow-up 으로 이미 암시돼 있었고, plan 시작 시점에는 canonical decision 문서가 없거나 existing ADR 의 consequence/follow-up section 에만 남아 있었다.
-- Phase 1~3 output 으로 pacemaker / view-change baseline, validator-set rotation / bootstrap trust-root baseline, static-topology peer identity binding / session-bound bootstrap capability authorization baseline 은 각각 ADR-0022, ADR-0023, ADR-0024 초안으로 승격됐다. 현재 immediate 작업은 cross-ADR alignment 와 implementation handoff 쪽에 더 가깝다.
+- Phase 1~4 output 으로 pacemaker / view-change baseline, validator-set rotation / bootstrap trust-root baseline, static-topology peer identity binding / session-bound bootstrap capability authorization baseline 은 각각 ADR-0022, ADR-0023, ADR-0024 초안으로 승격됐고, cross-ADR alignment 와 implementation handoff 도 정리됐다. 다음 immediate 작업은 plans `0003`, `0004`, `0007` 아래의 concrete runtime/spec follow-up 으로 이동했다.
 - 특히 `ADR-0018` 은 current baseline 의 사실상 참조점처럼 사용되고 있었지만 문서 status 는 `Proposed` 로 남아 있었다. Phase 0 는 이 mismatch 를 먼저 해소해, 후속 ADR 이 "이미 accepted 된 운영 baseline 위의 확장"인지 "아직 미확정 운영 가정 위의 초안"인지가 흐려지지 않게 만든다.
 - 이 상태에서 바로 implementation plan 을 추가로 쌓으면, runtime/transport/storage 경계보다 더 상위의 trust/liveness/authority contract 가 plan 안에서 임시로 고정될 위험이 있다.
 - 따라서 다음 단계의 핵심은 "남은 기능을 바로 전부 구현하는 것"이 아니라, multi-node 운영을 위해 장기 유지해야 할 정책을 ADR 로 먼저 잠그는 것이다.
@@ -92,6 +92,13 @@ Phase 3 Draft Complete; Phase 4 Pending
 - `ADR-0016` 은 이미 directional session, peer correlation, parent-session revoke baseline 을 substrate 차원에서 말하고 있었고, `ADR-0021` 은 bootstrap service family 를 session-bound consumer 로 사용하고 있었다. 따라서 Phase 3 의 주된 역할은 existing seam 위에 configured-peer/authenticated-counterparty binding과 child capability lineage ownership을 올바른 owner 아래 재배치하는 것이다.
 - current shipped runtime 은 `PeerIdentity`, `StaticPeerAuthenticator`, `authorizeOpenSession`, `BootstrapSessionBinding(peer, sessionId)` seam을 이미 갖고 있다. Phase 3 은 이 shipped seam을 뒤집지 않고, address/base-URI routing metadata 와 canonical peer principal 을 분리하는 baseline 을 고정한다.
 - Phase 3 draft 는 dynamic discovery, peer scoring, exact TLS/certificate mechanism, capability token wire shape 를 고정하지 않는다. 이 항목들은 계속 follow-up spec 또는 implementation plan 범위로 남는다.
+
+## Phase 4 Alignment Review
+- `ADR-0022` 는 consensus-local liveness / view-change / pacemaker artifact family 를 소유하고, transport heartbeat/liveness 나 bootstrap vote-hold precedence 를 소비 제약으로만 다룬다. authority continuity 와 peer identity binding 은 여기서 다시 소유하지 않는다.
+- `ADR-0023` 는 bootstrap trust-root class / precedence, historical `ValidatorSetLookup`, validator ordering continuity 를 소유한다. pacemaker timer policy 나 configured peer principal 판정은 이 ADR 의 범위가 아니다.
+- `ADR-0024` 는 configured peer principal, direct-neighbor admission, session-bound child capability lineage, runtime-vs-transport authorization ownership 을 소유한다. trust-root precedence 나 pacemaker view progression 은 여기서 다시 정의하지 않는다.
+- Phase 4 정렬 결과, `shipped baseline`, `semantic baseline`, `follow-up implementation/spec` 세 용어를 문서 공통 기준으로 다시 맞췄다. `shipped baseline` 은 이미 landed runtime/transport behavior, `semantic baseline` 은 새 ADR 이 잠근 장기 contract, `follow-up implementation/spec` 은 exact wire/runtime/storage detail 을 뜻한다.
+- implementation handoff 는 semantic owner 기준으로만 연결한다. `ADR-0022` 는 plan `0004`, `ADR-0023` 는 plan `0007`, `ADR-0024` 는 plans `0003` / `0007` 이 concrete follow-up 을 받는다.
 
 ## Phase 0 Inventory Summary
 
@@ -199,6 +206,23 @@ Phase 3 Draft Complete; Phase 4 Pending
 - 기존 문서의 "follow-up 예정" 문장을 새 ADR 참조로 치환하고, still-open gap 을 더 좁은 구현 단위로 재기술한다.
 - 필요하면 이 plan 의 status 를 `In Progress` 또는 `Superseded` 로 갱신하고, implementation-focused 후속 plan 으로 handoff 한다.
 
+## Phase 4 Implementation Handoff
+
+### Backlog Mapping
+| Open Implementation Slice | Semantic Owner | Receiving Plan | Handoff Note |
+| --- | --- | --- | --- |
+| `TimeoutVote` / `TimeoutCertificate` / `NewView` runtime model, dissemination, timer/backoff, diagnostics | `ADR-0022` | plan `0004` | current static-validator-set baseline 위에서 먼저 구현하고, rotation-aware hardening 은 `ADR-0023` lookup seam 을 소비한다. |
+| trusted checkpoint/root bundle, weak-subjectivity freshness, historical `ValidatorSetLookup`, finalized-proof verification continuity | `ADR-0023` | plan `0007` | bootstrap trust-root concrete input 과 historical validator-set lookup runtime 은 snapshot/bootstrap follow-up 아래에서 구현한다. |
+| configured peer identity credential binding, capability token/header/path encoding, re-auth / disconnect diagnostics | `ADR-0024` | plans `0003`, `0007` | generic gossip/session admission seam 은 `0003`, bootstrap service transport projection 은 `0007` 이 받는다. |
+| archive-grade backfill acceleration, snapshot compression, proof serving, durable archive compaction | `ADR-0019` / `ADR-0021` consequence area | plans `0005`, `0007` or separate follow-up plan | trust/liveness/authority contract 확장보다는 optimization / serving follow-up 으로 취급한다. |
+| validator signing custody, KMS/HSM, remote signer baseline | tentative `ADR-0025` | future security-hardening ADR / plan | multi-operator deployment, external validator, custody incident 가 re-open trigger 다. |
+
+### Split Criteria
+- semantic owner 가 이미 고정되어 있고 남은 일이 runtime/transport/storage/wire detail 뿐이면 기존 implementation plan 안에서 계속 진행한다.
+- 구현 작업이 둘 이상의 기존 plan 을 크게 가로지르거나, checkpoint distribution 같은 별도 lifecycle / operator workflow 를 형성하면 새 implementation plan 으로 분리한다.
+- trust-root precedence, pacemaker timing domain, canonical peer principal, session-bound capability lineage, validator authority continuity 같은 long-lived contract 가 바뀌면 새 implementation plan 이 아니라 새 ADR 또는 superseding ADR 로 올린다.
+- static topology / same-DC validator placement 자체를 더 이상 baseline 으로 유지하지 않으면, residual follow-up 이 아니라 deployment baseline 을 다시 쓰는 superseding ADR 이 필요하다.
+
 ## Test Plan
 - Phase 0 Success: `0003`~`0007` 과 `ADR-0016`~`ADR-0021` 에 남은 architecture-level gap 이 모두 "새 ADR", "기존 ADR amendment", "명시적 defer" 셋 중 하나로 분류되는지 검증한다.
 - Phase 0 Success: inventory output 이 이 plan 본문 안에 inline section 또는 동등한 summary 형태로 반영되고, 별도 메모에만 남지 않는지 검증한다.
@@ -263,14 +287,16 @@ Phase 3 Draft Complete; Phase 4 Pending
 - [x] `ADR-0016` / `ADR-0021` / plans `0003`, `0007` 참조 업데이트
 
 ### Phase 4: Cross-ADR Alignment And Implementation Handoff
-- [ ] 새 ADR 간 용어/경계/precedence 정렬
-- [ ] existing plan follow-up 을 새 ADR 참조 기준으로 재작성
-- [ ] implementation backlog 와 후속 plan 분리 기준 정리
-- [ ] 이 plan status 와 next-step handoff 갱신
+- [x] 새 ADR 간 용어/경계/precedence 정렬
+- [x] existing plan follow-up 을 새 ADR 참조 기준으로 재작성
+- [x] implementation backlog 와 후속 plan 분리 기준 정리
+- [x] 이 plan status 와 next-step handoff 갱신
 
 ## Follow-Ups
-- dynamic peer discovery, peer scoring, validator admission policy 가 static topology baseline 을 대체해야 하면 별도 ADR 또는 superseding deployment ADR 로 분리한다.
-- archive-grade historical sync, snapshot compression, Merkle proof serving, remote body/proof fetch 는 별도 ADR 또는 implementation plan 으로 분리한다.
-- application-specific scheduling extension 이 on-wire footprint 또는 receipt projection 같은 새 canonical artifact 를 요구하면 `ADR-0020` follow-up ADR 로 분리한다.
-- multi-operator deployment, external validator participation, operator key compromise incident, 또는 raw key custody 가 운영 병목으로 드러나면 tentative `ADR-0025` `Validator Signing Custody And Remote Signer Baseline` 을 별도 security-hardening follow-up 으로 분리한다.
-- 위 ADR tranche 가 수용된 뒤, implementation 중심 후속 plan 은 pacemaker/runtime integration, rotation/bootstrap implementation, static-topology identity binding/runtime wiring 순으로 분리할 수 있다.
+- `P1`: plan `0004` 는 `ADR-0022` 기준으로 pacemaker runtime integration 을 받는다. 우선순위는 timeout artifact model/validation, dissemination policy, timer/backoff/diagnostics 정리다.
+- `P2`: plan `0007` 는 `ADR-0023` 기준으로 checkpoint/root bundle, weak-subjectivity freshness, historical `ValidatorSetLookup`, bootstrap verification continuity follow-up 을 받는다.
+- `P3`: plans `0003` / `0007` 는 `ADR-0024` 기준으로 transport credential binding, capability token or equivalent transport projection, re-auth/disconnect diagnostics follow-up 을 받는다.
+- `P4`: dynamic peer discovery, peer scoring, validator admission policy 가 static topology baseline 을 대체해야 하면 별도 ADR 또는 superseding deployment ADR 로 분리한다.
+- `P5`: archive-grade historical sync, snapshot compression, Merkle proof serving, remote body/proof fetch, durable archive compaction 은 별도 ADR 또는 implementation plan 으로 분리한다.
+- `P6`: application-specific scheduling extension 이 on-wire footprint 또는 receipt projection 같은 새 canonical artifact 를 요구하면 `ADR-0020` follow-up ADR 로 분리한다.
+- `P7`: multi-operator deployment, external validator participation, operator key compromise incident, 또는 raw key custody 가 운영 병목으로 드러나면 tentative `ADR-0025` `Validator Signing Custody And Remote Signer Baseline` 을 별도 security-hardening follow-up 으로 분리한다.
