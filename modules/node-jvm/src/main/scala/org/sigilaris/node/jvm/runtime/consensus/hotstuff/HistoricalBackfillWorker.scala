@@ -13,9 +13,13 @@ import cats.syntax.all.*
 import org.sigilaris.node.jvm.runtime.block.BlockHeight
 import org.sigilaris.node.jvm.runtime.gossip.{CanonicalRejection, ChainId}
 
+@SuppressWarnings(Array("org.wartremover.warts.DefaultArguments"))
 final case class HistoricalBackfillPolicy(
     batchSize: Int,
     interBatchDelay: Duration,
+    priority: HistoricalBackfillPriority = HistoricalBackfillPriority.Background,
+    archiveSource: HistoricalArchiveSource = HistoricalArchiveSource.BackgroundBackfill,
+    enabled: Boolean = true,
 ):
   require(batchSize > 0, "batchSize must be positive")
   require(!interBatchDelay.isNegative, "interBatchDelay must be non-negative")
@@ -26,6 +30,25 @@ object HistoricalBackfillPolicy:
       batchSize = 32,
       interBatchDelay = Duration.ofSeconds(1L),
     )
+
+  val archiveDefault: HistoricalBackfillPolicy =
+    HistoricalBackfillPolicy(
+      batchSize = 256,
+      interBatchDelay = Duration.ofMillis(10L),
+      priority = HistoricalBackfillPriority.Archive,
+      archiveSource = HistoricalArchiveSource.ArchiveSync,
+    )
+
+  @SuppressWarnings(Array("org.wartremover.warts.DefaultArguments"))
+  def forRole(
+      role: LocalNodeRole,
+      enabled: Boolean = true,
+  ): HistoricalBackfillPolicy =
+    val policy =
+      role match
+        case LocalNodeRole.Validator => backgroundDefault
+        case LocalNodeRole.Audit     => archiveDefault
+    policy.copy(enabled = enabled)
 
 trait HistoricalBackfillWorker[F[_]]:
   def start(
@@ -47,7 +70,14 @@ trait HistoricalBackfillWorker[F[_]]:
   def current: F[HistoricalBackfillStatus]
 
 object HistoricalBackfillWorker:
+  val DisabledByPolicyReason: String = "historicalSyncDisabled"
+
   def disabled[F[_]: Applicative]: HistoricalBackfillWorker[F] =
+    disabledWithStatus(HistoricalBackfillStatus.Idle)
+
+  def disabledWithStatus[F[_]: Applicative](
+      status: HistoricalBackfillStatus,
+  ): HistoricalBackfillWorker[F] =
     new HistoricalBackfillWorker[F]:
       override def start(
           chainId: ChainId,
@@ -69,7 +99,7 @@ object HistoricalBackfillWorker:
         Applicative[F].unit
 
       override def current: F[HistoricalBackfillStatus] =
-        HistoricalBackfillStatus.Idle.pure[F]
+        status.pure[F]
 
   def create[F[_]: Async: Clock](
       policy: HistoricalBackfillPolicy,
@@ -84,18 +114,23 @@ object HistoricalBackfillWorker:
       archive: HistoricalProposalArchive[F],
       now: F[Instant],
   ): F[HistoricalBackfillWorker[F]] =
-    Ref
-      .of[F, HistoricalBackfillWorkerState](HistoricalBackfillWorkerState.empty)
-      .flatMap: stateRef =>
-        Semaphore[F](1).map: writeLock =>
-          new InMemoryHistoricalBackfillWorker[F](
-            policy = policy,
-            historicalBackfill = historicalBackfill,
-            archive = archive,
-            now = now,
-            ref = stateRef,
-            writeLock = writeLock,
-          )
+    if !policy.enabled then
+      disabledWithStatus(
+        HistoricalBackfillStatus.Disabled(DisabledByPolicyReason),
+      ).pure[F]
+    else
+      Ref
+        .of[F, HistoricalBackfillWorkerState](HistoricalBackfillWorkerState.empty)
+        .flatMap: stateRef =>
+          Semaphore[F](1).map: writeLock =>
+            new InMemoryHistoricalBackfillWorker[F](
+              policy = policy,
+              historicalBackfill = historicalBackfill,
+              archive = archive,
+              now = now,
+              ref = stateRef,
+              writeLock = writeLock,
+            )
 
 private final case class HistoricalBackfillRuntimeState(
     chainId: ChainId,
@@ -175,7 +210,7 @@ private final class InMemoryHistoricalBackfillWorker[F[_]: Async](
                 status =
                   HistoricalBackfillStatus.Running(
                     progress = initialProgress,
-                    priority = HistoricalBackfillPriority.Background,
+                    priority = policy.priority,
                   ),
                 runtime =
                   Some(
@@ -345,7 +380,7 @@ private final class InMemoryHistoricalBackfillWorker[F[_]: Async](
               .putAll(
                 chainId = runtime.chainId,
                 proposals = batch,
-                source = HistoricalArchiveSource.BackgroundBackfill,
+                source = policy.archiveSource,
                 storedAt = currentTime,
               )
               .flatMap: storedProposalIds =>
@@ -401,7 +436,7 @@ private final class InMemoryHistoricalBackfillWorker[F[_]: Async](
                             status =
                               HistoricalBackfillStatus.Running(
                                 progress = updatedProgress,
-                                priority = HistoricalBackfillPriority.Background,
+                                priority = policy.priority,
                               ),
                             runtime = Some(runtime.copy(progress = updatedProgress)),
                           ) -> true

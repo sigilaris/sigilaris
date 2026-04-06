@@ -161,6 +161,82 @@ final class HotStuffHistoricalBackfillSuite extends CatsEffectSuite:
         case other =>
           fail("expected failed backfill status but saw " + other.toString)
 
+  test("archive-grade historical sync reports archive priority and archive source"):
+    val anchor = finalizedSuggestion("95", 3L, validatorSet, validatorKeys)
+    val genesis = genesisProposal("15")
+
+    for
+      started <- Deferred[IO, Unit]
+      release <- Deferred[IO, Unit]
+      archive <- HistoricalProposalArchive.inMemory[IO]
+      worker <- HistoricalBackfillWorker.createWithNow[IO](
+        policy =
+          HistoricalBackfillPolicy.archiveDefault.copy(
+            batchSize = 1,
+            interBatchDelay = Duration.ofMillis(10L),
+          ),
+        historicalBackfill =
+          gatedBackfillService(
+            started = started,
+            release = release,
+            response = Right(Vector(genesis)),
+          ),
+        archive = archive,
+        now = IO.pure(startedAt),
+      )
+      _ <- worker.start(chainId, Vector(session1), anchor.snapshotAnchor, startedAt)
+      _ <- started.get
+      running <- awaitValue(worker.current, attempts = 40):
+        case HistoricalBackfillStatus.Running(_, HistoricalBackfillPriority.Archive) =>
+          true
+        case _ =>
+          false
+      _ <- release.complete(()).void
+      completed <- awaitValue(worker.current, attempts = 40):
+        case HistoricalBackfillStatus.Completed("genesisReached", progress)
+            if progress.fetchedProposalCount === 1L =>
+          true
+        case _ =>
+          false
+      archived <- archive.list(chainId)
+    yield
+      running match
+        case HistoricalBackfillStatus.Running(progress, priority) =>
+          assertEquals(priority, HistoricalBackfillPriority.Archive)
+          assertEquals(progress.anchor, anchor.snapshotAnchor)
+          assertEquals(progress.fetchedProposalCount, 0L)
+        case other =>
+          fail("expected archive running backfill status but saw " + other.toString)
+      completed match
+        case HistoricalBackfillStatus.Completed(reason, progress) =>
+          assertEquals(reason, "genesisReached")
+          assertEquals(progress.nextBeforeHeight, BlockHeight.Genesis)
+        case other =>
+          fail("expected archive completed backfill status but saw " + other.toString)
+      assertEquals(archived.map(_.proposal.proposalId), Vector(genesis.proposalId))
+      assertEquals(archived.map(_.source), Vector(HistoricalArchiveSource.ArchiveSync))
+
+  test("historical backfill policy maps validator and audit roles to their default sync modes"):
+    val validatorPolicy = HistoricalBackfillPolicy.forRole(LocalNodeRole.Validator)
+    val auditPolicy = HistoricalBackfillPolicy.forRole(LocalNodeRole.Audit)
+    val validatorOptOut =
+      HistoricalBackfillPolicy.forRole(
+        LocalNodeRole.Validator,
+        enabled = false,
+      )
+
+    assertEquals(validatorPolicy.priority, HistoricalBackfillPriority.Background)
+    assertEquals(
+      validatorPolicy.archiveSource,
+      HistoricalArchiveSource.BackgroundBackfill,
+    )
+    assertEquals(validatorPolicy.enabled, true)
+    assertEquals(auditPolicy.priority, HistoricalBackfillPriority.Archive)
+    assertEquals(auditPolicy.archiveSource, HistoricalArchiveSource.ArchiveSync)
+    assertEquals(auditPolicy.enabled, true)
+    assertEquals(validatorOptOut.priority, HistoricalBackfillPriority.Background)
+    assertEquals(validatorOptOut.enabled, false)
+
   test("historical backfill worker supports pause and resume while reporting progress to genesis"):
     val anchor = finalizedSuggestion("a0", 3L, validatorSet, validatorKeys)
     val genesis = genesisProposal("11")

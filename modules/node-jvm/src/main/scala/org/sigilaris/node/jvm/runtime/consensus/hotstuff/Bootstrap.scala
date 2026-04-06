@@ -217,7 +217,7 @@ enum BootstrapVoteReadiness:
   case Ready
 
 enum HistoricalBackfillPriority:
-  case Background
+  case Background, Archive
 
 final case class HistoricalBackfillProgress(
     anchor: SnapshotAnchor,
@@ -229,6 +229,7 @@ final case class HistoricalBackfillProgress(
 
 enum HistoricalBackfillStatus:
   case Idle
+  case Disabled(reason: String)
   case Running(
       progress: HistoricalBackfillProgress,
       priority: HistoricalBackfillPriority,

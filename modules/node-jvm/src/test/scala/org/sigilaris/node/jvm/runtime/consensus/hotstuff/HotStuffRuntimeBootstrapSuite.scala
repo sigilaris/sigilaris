@@ -6,14 +6,19 @@ import cats.effect.IO
 import cats.effect.kernel.Ref
 import cats.syntax.all.*
 import munit.CatsEffectSuite
+import scodec.bits.ByteVector
 
 import com.typesafe.config.ConfigFactory
 
 import org.sigilaris.core.crypto.{CryptoOps, KeyPair}
+import org.sigilaris.core.crypto.Hash.ops.*
 import org.sigilaris.core.datatype.UInt256
+import org.sigilaris.core.merkle.MerkleTrieNode
+import org.sigilaris.core.merkle.Nibbles.*
 import org.sigilaris.node.jvm.runtime.block.{
   BlockHeader,
   BlockHeight,
+  BlockId,
   BlockTimestamp,
   BodyRoot,
   StateRoot,
@@ -254,6 +259,156 @@ final class HotStuffRuntimeBootstrapSuite extends CatsEffectSuite:
       bootstrapEither.left.map(_.startsWith("unknown key holder validator:")),
       Left(true),
     )
+
+  test("config loader parses historical sync opt-out"):
+    val config = ConfigFactory.parseString(
+      s"""
+         |sigilaris.node.consensus.hotstuff {
+         |  local-role = "validator"
+         |  historical-sync-enabled = false
+         |  validators = [
+         |    { id = "${validatorIds(0).value}", public-key = "${validatorKeys(0).publicKey.toBytes.toHex}" }
+         |  ]
+         |  key-holders = [
+         |    { validator-id = "${validatorIds(0).value}", holder = "node-a", status = "active" }
+         |  ]
+         |  local-signers = [
+         |    { validator-id = "${validatorIds(0).value}", private-key = "${validatorKeys(0).privateKey.toHexLower}" }
+         |  ]
+         |}
+         |""".stripMargin,
+    )
+
+    val loaded = HotStuffBootstrapConfig.load(config)
+
+    assertEquals(loaded.map(_.historicalSyncEnabled), Right(false))
+
+  test("assembled runtime reports disabled historical sync and skips backfill transport when opted out"):
+    val topology =
+      StaticPeerTopology
+        .parse(
+          localNodeIdentity = "node-a",
+          knownPeers = List("node-b"),
+          directNeighbors = List("node-b"),
+        )
+        .toOption
+        .get
+    val root =
+      MerkleTrieNode.branch(
+        ByteVector.empty.toNibbles,
+        MerkleTrieNode.Children.empty,
+      )
+    val rootHash = root.toHash
+    val anchor = finalizedSuggestion("c1", StateRoot(rootHash.toUInt256))
+    val session =
+      BootstrapSessionBinding(
+        peer = PeerIdentity.unsafe("node-b"),
+        sessionId =
+          DirectionalSessionId
+            .parse("cccccccc-cccc-4ccc-8ccc-cccccccccccc")
+            .toOption
+            .get,
+      )
+    val holders = Vector(
+      ValidatorKeyHolder(validatorIds(0), PeerIdentity.unsafe("node-a"), ValidatorKeyHolderStatus.Active),
+      ValidatorKeyHolder(validatorIds(1), PeerIdentity.unsafe("node-a"), ValidatorKeyHolderStatus.Active),
+      ValidatorKeyHolder(validatorIds(2), PeerIdentity.unsafe("node-a"), ValidatorKeyHolderStatus.Active),
+      ValidatorKeyHolder(validatorIds(3), PeerIdentity.unsafe("node-b"), ValidatorKeyHolderStatus.Active),
+    )
+    val config =
+      HotStuffBootstrapConfig(
+        role = LocalNodeRole.Validator,
+        validatorSet = validatorSet,
+        holders = holders,
+        localKeys = Map(
+          validatorIds(0) -> validatorKeys(0),
+          validatorIds(1) -> validatorKeys(1),
+          validatorIds(2) -> validatorKeys(2),
+        ),
+        historicalSyncEnabled = false,
+      )
+
+    for
+      clock <- TestClock.create(startedAt)
+      backfillCalls <- Ref.of[IO, Int](0)
+      transport = HotStuffBootstrapTransportServices[IO](
+        finalizedAnchorSuggestions = new FinalizedAnchorSuggestionService[IO]:
+          override def bestFinalized(
+              session: BootstrapSessionBinding,
+              chainId: ChainId,
+          ): IO[Either[CanonicalRejection, Option[FinalizedAnchorSuggestion]]] =
+            IO.pure(Right(Some(anchor)))
+        ,
+        snapshotNodeFetch = new SnapshotNodeFetchService[IO]:
+          override def fetchNodes(
+              session: BootstrapSessionBinding,
+              chainId: ChainId,
+              stateRoot: StateRoot,
+              hashes: Vector[MerkleTrieNode.MerkleHash],
+          ): IO[Either[CanonicalRejection, Vector[SnapshotTrieNode]]] =
+            IO.pure(
+              Right(
+                hashes
+                  .filter(_ === rootHash)
+                  .map(_ => SnapshotTrieNode(rootHash, root)),
+              ),
+            )
+        ,
+        proposalReplay = new ProposalReplayService[IO]:
+          override def readNext(
+              session: BootstrapSessionBinding,
+              chainId: ChainId,
+              anchorBlockId: BlockId,
+              nextHeight: BlockHeight,
+              limit: Int,
+          ): IO[Either[CanonicalRejection, Vector[Proposal]]] =
+            IO.pure(Right(Vector.empty))
+        ,
+        historicalBackfill = new HistoricalBackfillService[IO]:
+          override def readPrevious(
+              session: BootstrapSessionBinding,
+              chainId: ChainId,
+              beforeBlockId: BlockId,
+              beforeHeight: BlockHeight,
+              limit: Int,
+          ): IO[Either[CanonicalRejection, Vector[Proposal]]] =
+            backfillCalls.update(_ + 1) *> IO.pure(Right(Vector.empty))
+        ,
+      )
+      bootstrapEither <- HotStuffRuntimeBootstrap.fromTopology[IO](
+        topology = topology,
+        consensusConfig = config,
+        clock = clock,
+        bootstrapTransport = transport.some,
+      )
+      bootstrap <- IO.fromEither(
+        bootstrapEither.leftMap(new IllegalArgumentException(_)),
+      )
+      result <- bootstrap.consensus.bootstrap(
+        chainId = chainId,
+        sessions = Vector(session),
+        startedAt = startedAt,
+        liveProposals = Vector.empty,
+      )
+      diagnostics <- bootstrap.consensus.currentBootstrapDiagnostics
+      calls <- backfillCalls.get
+    yield
+      assert(result.isRight)
+      assertEquals(calls, 0)
+      assertEquals(
+        result.map(_.diagnostics.historicalBackfill),
+        Right(
+          HistoricalBackfillStatus.Disabled(
+            HistoricalBackfillWorker.DisabledByPolicyReason,
+          ),
+        ),
+      )
+      assertEquals(
+        diagnostics.historicalBackfill,
+        HistoricalBackfillStatus.Disabled(
+          HistoricalBackfillWorker.DisabledByPolicyReason,
+        ),
+      )
 
   test(
     "config loader parses trusted checkpoint roots and historical validator-set inventory",
@@ -1024,6 +1179,82 @@ final class HotStuffRuntimeBootstrapSuite extends CatsEffectSuite:
       .toOption
       .get
 
+  private def finalizedSuggestion(
+      seed: String,
+      stateRoot: StateRoot,
+  ): FinalizedAnchorSuggestion =
+    val anchorBlock =
+      block(
+        parent = Some(bootstrapQc().subject.blockId),
+        height = 1L,
+        stateRoot = stateRoot,
+        bodyHex = seed + "10",
+      )
+    val anchor =
+      Proposal
+        .sign(
+          UnsignedProposal(
+            window = HotStuffWindow(chainId, 1L, 1L, validatorSet.hash),
+            proposer = validatorIds(0),
+            targetBlockId = BlockHeader.computeId(anchorBlock),
+            block = anchorBlock,
+            txSet = ProposalTxSet.empty,
+            justify = bootstrapQc(),
+          ),
+          validatorKeys(0),
+        )
+        .toOption
+        .get
+    val childBlock =
+      block(
+        parent = Some(anchor.targetBlockId),
+        height = 2L,
+        stateRoot = stateRoot,
+        bodyHex = seed + "20",
+      )
+    val child =
+      Proposal
+        .sign(
+          UnsignedProposal(
+            window = HotStuffWindow(chainId, 2L, 2L, validatorSet.hash),
+            proposer = validatorIds(1),
+            targetBlockId = BlockHeader.computeId(childBlock),
+            block = childBlock,
+            txSet = ProposalTxSet.empty,
+            justify = qcFor(anchor),
+          ),
+          validatorKeys(1),
+        )
+        .toOption
+        .get
+    val grandchildBlock =
+      block(
+        parent = Some(child.targetBlockId),
+        height = 3L,
+        stateRoot = stateRoot,
+        bodyHex = seed + "30",
+      )
+    val grandchild =
+      Proposal
+        .sign(
+          UnsignedProposal(
+            window = HotStuffWindow(chainId, 3L, 3L, validatorSet.hash),
+            proposer = validatorIds(2),
+            targetBlockId = BlockHeader.computeId(grandchildBlock),
+            block = grandchildBlock,
+            txSet = ProposalTxSet.empty,
+            justify = qcFor(child),
+          ),
+          validatorKeys(2),
+        )
+        .toOption
+        .get
+
+    FinalizedAnchorSuggestion(
+      proposal = anchor,
+      finalizedProof = FinalizedProof(child, grandchild),
+    )
+
   private def signedProposal(
       rootHex: String,
       height: Long,
@@ -1046,6 +1277,26 @@ final class HotStuffRuntimeBootstrapSuite extends CatsEffectSuite:
           justify = bootstrapQc(),
         ),
         validatorKeys.head,
+      )
+      .toOption
+      .get
+
+  private def qcFor(
+      proposal: Proposal,
+  ): QuorumCertificate =
+    QuorumCertificateAssembler
+      .assemble(
+        QuorumCertificateSubject(
+          window = proposal.window,
+          proposalId = proposal.proposalId,
+          blockId = proposal.targetBlockId,
+        ),
+        Vector(
+          signedVoteFor(proposal.window, proposal.proposalId, 0),
+          signedVoteFor(proposal.window, proposal.proposalId, 1),
+          signedVoteFor(proposal.window, proposal.proposalId, 2),
+        ),
+        validatorSet,
       )
       .toOption
       .get
@@ -1106,6 +1357,21 @@ final class HotStuffRuntimeBootstrapSuite extends CatsEffectSuite:
       value: String,
   ): UInt256 =
     UInt256.fromHex(value).toOption.get
+
+  private def block(
+      parent: Option[BlockId],
+      height: Long,
+      stateRoot: StateRoot,
+      bodyHex: String,
+  ): BlockHeader =
+    BlockHeader(
+      parent = parent,
+      height = BlockHeight.unsafeFromLong(height),
+      stateRoot = stateRoot,
+      bodyRoot = BodyRoot(hex(bodyHex)),
+      timestamp =
+        BlockTimestamp.unsafeFromEpochMillis(startedAt.toEpochMilli + height),
+    )
 
   private def validatorSetEntries(
       validatorSet: ValidatorSet,

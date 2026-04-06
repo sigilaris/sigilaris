@@ -61,7 +61,7 @@ object ForwardCatchUpStore:
             )
 
 enum HistoricalArchiveSource:
-  case BackgroundBackfill
+  case BackgroundBackfill, ArchiveSync
 
 final case class HistoricalArchiveEntry(
     proposal: Proposal,

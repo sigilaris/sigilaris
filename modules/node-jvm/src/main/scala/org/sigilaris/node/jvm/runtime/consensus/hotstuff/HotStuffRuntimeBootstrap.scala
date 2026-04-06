@@ -30,6 +30,7 @@ final case class HotStuffBootstrapConfig(
     gossipPolicy: HotStuffGossipPolicy = HotStuffGossipPolicy.default,
     bootstrapTrustRootOverride: Option[BootstrapTrustRoot] = None,
     historicalValidatorSets: Vector[ValidatorSet] = Vector.empty,
+    historicalSyncEnabled: Boolean = true,
 ):
   def bootstrapTrustRoot: BootstrapTrustRoot =
     bootstrapTrustRootOverride.getOrElse:
@@ -74,6 +75,12 @@ object HotStuffBootstrapConfig:
       localKeys <- requiredConfigList(section, "local-signers", "localSigners")
         .flatMap(parseLocalKeys(validatorSet))
       gossipPolicy <- loadGossipPolicy(section)
+      historicalSyncEnabled <- optionalBoolean(
+        section,
+        "historical-sync-enabled",
+        "historicalSyncEnabled",
+        default = true,
+      )
       historicalValidatorSets <- loadHistoricalValidatorSets(section)
       bootstrapTrustRootOverride <- loadBootstrapTrustRoot(
         section,
@@ -88,6 +95,7 @@ object HotStuffBootstrapConfig:
       gossipPolicy = gossipPolicy,
       bootstrapTrustRootOverride = bootstrapTrustRootOverride,
       historicalValidatorSets = historicalValidatorSets,
+      historicalSyncEnabled = historicalSyncEnabled,
     )
 
   private def parseValidators(
@@ -482,6 +490,18 @@ object HotStuffBootstrapConfig:
       case Some(path) =>
         Either.catchNonFatal(config.getInt(path)).leftMap(_.getMessage)
 
+  private def optionalBoolean(
+      config: Config,
+      primary: String,
+      alternate: String,
+      default: Boolean,
+  ): Either[String, Boolean] =
+    findPath(config, primary, alternate) match
+      case None =>
+        default.asRight[String]
+      case Some(path) =>
+        Either.catchNonFatal(config.getBoolean(path)).leftMap(_.getMessage)
+
   private def optionalLong(
       config: Config,
       primary: String,
@@ -675,7 +695,10 @@ object HotStuffRuntimeBootstrap:
                       historicalArchive = historicalArchive,
                       retryPolicy = BootstrapRetryPolicy.boundedDefault,
                       historicalBackfillPolicy =
-                        HistoricalBackfillPolicy.backgroundDefault,
+                        HistoricalBackfillPolicy.forRole(
+                          validatedInput.role,
+                          enabled = consensusConfig.historicalSyncEnabled,
+                        ),
                       beforeCoordinatorBuild = None,
                       // Phase 6 wires the lifecycle gate but does not yet connect
                       // concrete replay/view validation into the shipped newcomer

@@ -274,6 +274,126 @@ final class HotStuffBootstrapLifecycleSuite extends CatsEffectSuite:
       assert(secondAttempt.isRight)
       assertEquals(readinessAfterSuccess, BootstrapVoteReadiness.Ready)
 
+  test("bootstrap lifecycle can disable historical sync without calling the backfill transport"):
+    val session = Vector(
+      BootstrapSessionBinding(
+        peer = org.sigilaris.node.jvm.runtime.gossip.PeerIdentity.unsafe("node-b"),
+        sessionId =
+          org.sigilaris.node.jvm.runtime.gossip.DirectionalSessionId
+            .parse("bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb")
+            .toOption
+            .get,
+      ),
+    )
+    val root =
+      MerkleTrieNode.branch(
+        ByteVector.empty.toNibbles,
+        MerkleTrieNode.Children.empty,
+      )
+    val rootHash = root.toHash
+    val anchor = finalizedSuggestion("b1", StateRoot(rootHash.toUInt256))
+
+    for
+      metadataStore <- SnapshotMetadataStore.inMemory[IO]
+      nodeStore <- SnapshotNodeStore.inMemory[IO]
+      backfillCalls <- Ref.of[IO, Int](0)
+      lifecycle <- HotStuffBootstrapLifecycle.inMemory[IO](
+        metadataStore = metadataStore,
+        nodeStore = nodeStore,
+        validatorSetLookup = ValidatorSetLookup.static[IO](
+          BootstrapTrustRoot.staticValidatorSet(validatorSet),
+        ),
+        finalizedAnchorSuggestions = new FinalizedAnchorSuggestionService[IO]:
+          override def bestFinalized(
+              session: BootstrapSessionBinding,
+              chainId: ChainId,
+          ): IO[Either[
+            org.sigilaris.node.jvm.runtime.gossip.CanonicalRejection,
+            Option[FinalizedAnchorSuggestion],
+          ]] =
+            IO.pure(
+              Option(anchor).asRight[
+                org.sigilaris.node.jvm.runtime.gossip.CanonicalRejection
+              ],
+            )
+        ,
+        snapshotNodeFetch = new SnapshotNodeFetchService[IO]:
+          override def fetchNodes(
+              session: BootstrapSessionBinding,
+              chainId: ChainId,
+              stateRoot: StateRoot,
+              hashes: Vector[MerkleTrieNode.MerkleHash],
+          ): IO[Either[
+            org.sigilaris.node.jvm.runtime.gossip.CanonicalRejection,
+            Vector[SnapshotTrieNode],
+          ]] =
+            IO.pure(
+              hashes
+                .filter(_ === rootHash)
+                .map(_ => SnapshotTrieNode(rootHash, root))
+                .asRight[
+                  org.sigilaris.node.jvm.runtime.gossip.CanonicalRejection
+                ],
+            )
+        ,
+        proposalReplay = new ProposalReplayService[IO]:
+          override def readNext(
+              session: BootstrapSessionBinding,
+              chainId: ChainId,
+              anchorBlockId: org.sigilaris.node.jvm.runtime.block.BlockId,
+              nextHeight: org.sigilaris.node.jvm.runtime.block.BlockHeight,
+              limit: Int,
+          ): IO[Either[
+            org.sigilaris.node.jvm.runtime.gossip.CanonicalRejection,
+            Vector[Proposal],
+          ]] =
+            IO.pure(Right(Vector.empty))
+        ,
+        historicalBackfill = new HistoricalBackfillService[IO]:
+          override def readPrevious(
+              session: BootstrapSessionBinding,
+              chainId: ChainId,
+              beforeBlockId: org.sigilaris.node.jvm.runtime.block.BlockId,
+              beforeHeight: org.sigilaris.node.jvm.runtime.block.BlockHeight,
+              limit: Int,
+          ): IO[Either[
+            org.sigilaris.node.jvm.runtime.gossip.CanonicalRejection,
+            Vector[Proposal],
+          ]] =
+            backfillCalls.update(_ + 1) *> IO.pure(Right(Vector.empty))
+        ,
+        readiness = ProposalCatchUpReadiness.static[IO](
+          ProposalCatchUpAssessment(
+            voteReadiness = BootstrapVoteReadiness.Ready,
+            controlBatch = None,
+          ),
+        ),
+        forwardStore = ForwardCatchUpStore.noop[IO],
+        historicalArchive = HistoricalProposalArchive.noop[IO],
+        retryPolicy = BootstrapRetryPolicy.boundedDefault,
+        historicalBackfillPolicy =
+          HistoricalBackfillPolicy.archiveDefault.copy(enabled = false),
+        beforeCoordinatorBuild = None,
+        currentInstant = IO.pure(startedAt),
+      )
+      result <- lifecycle.bootstrap(
+        chainId = chainId,
+        sessions = session,
+        startedAt = startedAt,
+        liveProposals = Vector.empty,
+      )
+      diagnostics <- lifecycle.current
+      calls <- backfillCalls.get
+    yield
+      assert(result.isRight)
+      assertEquals(calls, 0)
+      assertEquals(
+        diagnostics.historicalBackfill,
+        HistoricalBackfillStatus.Disabled(
+          HistoricalBackfillWorker.DisabledByPolicyReason,
+        ),
+      )
+
   private def finalizedSuggestion(
       seed: String,
       stateRoot: StateRoot,
