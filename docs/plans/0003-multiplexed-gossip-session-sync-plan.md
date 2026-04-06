@@ -338,14 +338,14 @@ Phase 3A Complete; ADR-0024 Drafted; Identity-Binding And Binary-Wire Follow-Ups
 - [x] `3A-15` README / ADR / plan wording refresh
 
 ### Phase 3B: P2 Binary Event-Stream Wire Follow-Up
-- [ ] `3B-1` binary media type / binary-only cutover / non-negotiated compatibility policy lock
-- [ ] `3B-2` versioned binary event envelope 와 `BigNat`-based length-prefixed frame codec 추가
-- [ ] `3B-3` Armeria event-stream binary projection 및 binary-only operational cutover wiring 추가
-- [ ] `3B-4` frame size cap, truncated-frame reject, malformed-version reject guard 추가
-- [ ] `3B-5` binary operational-protocol cutover integration regression test green
-- [ ] `3B-6` semantic-baseline preservation regression test green
-- [ ] `3B-7` decoder failure / malformed frame rejection test green
-- [ ] `3B-8` README / ADR / plan wording refresh 및 필요 시 companion protocol spec 연결
+- [x] `3B-1` binary media type / binary-only cutover / non-negotiated compatibility policy lock
+- [x] `3B-2` versioned binary event envelope 와 `BigNat`-based length-prefixed frame codec 추가
+- [x] `3B-3` Armeria event-stream binary projection 및 binary-only operational cutover wiring 추가
+- [x] `3B-4` frame size cap, truncated-frame reject, malformed-version reject guard 추가
+- [x] `3B-5` binary operational-protocol cutover integration regression test green
+- [x] `3B-6` semantic-baseline preservation regression test green
+- [x] `3B-7` decoder failure / malformed frame rejection test green
+- [x] `3B-8` README / ADR / plan wording refresh 및 필요 시 companion protocol spec 연결
 
 ## Follow-Ups
 - `P1`: configured `PeerIdentity` 와 concrete transport credential subject 간 매핑은 이 plan 의 gossip/session admission seam 에서 follow-up 한다. mutual TLS, application credential, equivalent auth principal 중 어떤 형태를 쓰든 ADR-0024 가 정의한 canonical peer principal 을 보존해야 한다.

@@ -47,7 +47,7 @@ libraryDependencies ++= Seq(
 
 ### JVM Networking Baseline
 - `sigilaris-node-jvm` now ships a runtime-owned tx gossip/session substrate under `org.sigilaris.node.jvm.runtime.gossip` and `org.sigilaris.node.jvm.runtime.gossip.tx`.
-- The current HTTP-friendly baseline maps directional sessions to Armeria resources for session-open handshake, NDJSON event polling/keepalive, and batched control requests.
+- The current HTTP-friendly baseline maps directional sessions to Armeria resources for session-open handshake, binary event polling/keepalive (`application/octet-stream` length-prefixed frames), and batched JSON control requests.
 - Negotiated heartbeat/liveness, opening timeout expiry, and pre-open reject-and-close are now enforced by the shipped runtime/Armeria baseline rather than manual disconnect hooks alone.
 - Static peer topology and direct-neighbor admission are the current deployment baseline. Dynamic discovery and peer scoring remain follow-up work.
 - The concrete JVM baseline loader reads static peer topology from `sigilaris.node.gossip.peers` (`local-node-identity`, `known-peers`, `direct-neighbors`) and wires it into runtime bootstrap/admission.

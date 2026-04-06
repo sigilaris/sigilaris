@@ -168,7 +168,7 @@ Accepted
 - `P2`: HotStuff non-threshold-signature consensus artifact contract는 ADR-0017이 소유한다.
 - `P3`: static peer topology, validator/audit node role, initial 100ms deployment target은 ADR-0018이 소유한다.
 - `P4`: HotStuff consensus implementation plan은 `docs/plans/0004-hotstuff-consensus-without-threshold-signatures-plan.md`에서 관리한다.
-- `P5`: `transport.armeria`용 SSE/NDJSON adapter 초안과, full-duplex transport로 전환할 때 재사용할 serialization envelope를 설계한다.
+- `P5`: `transport.armeria` baseline 은 peer-facing event stream 을 binary length-prefixed envelope 로 승격했고 session-open/control 은 JSON baseline 을 유지한다. 이후 full-duplex transport 로 전환할 때도 same runtime-owned envelope / compatibility policy 를 재사용한다.
 - `P6`: static-topology peer identity binding, session-bound bootstrap capability authorization, parent-session revoke cascade semantic baseline은 ADR-0024가 소유한다. snapshot/backfill contract, nack semantics의 상세 rule, exact transport credential / capability encoding은 별도 protocol spec 또는 implementation plan에서 구체화한다.
 
 ## References
