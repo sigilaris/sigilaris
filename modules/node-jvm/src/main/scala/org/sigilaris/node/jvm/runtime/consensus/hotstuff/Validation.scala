@@ -11,6 +11,9 @@ import org.sigilaris.node.jvm.runtime.block.BlockHeader
 enum VoteRecordOutcome:
   case Applied, Duplicate
 
+enum TimeoutVoteRecordOutcome:
+  case Applied, Duplicate
+
 final case class VoteAccumulator(
     votesById: Map[VoteId, Vote],
     votesByEquivocationKey: Map[EquivocationKey, Vote],
@@ -60,6 +63,55 @@ object VoteAccumulator:
       votesByEquivocationKey = Map.empty[EquivocationKey, Vote],
     )
 
+final case class TimeoutVoteAccumulator(
+    votesById: Map[TimeoutVoteId, TimeoutVote],
+    votesByEquivocationKey: Map[EquivocationKey, TimeoutVote],
+):
+  def record(
+      vote: TimeoutVote,
+  ): Either[
+    HotStuffValidationFailure,
+    (TimeoutVoteAccumulator, TimeoutVoteRecordOutcome),
+  ] =
+    votesById.get(vote.timeoutVoteId) match
+      case Some(_) =>
+        (
+          this -> TimeoutVoteRecordOutcome.Duplicate
+        ).asRight[HotStuffValidationFailure]
+      case None =>
+        votesByEquivocationKey.get(vote.equivocationKey) match
+          case Some(existing) if existing.subject =!= vote.subject =>
+            HotStuffValidationFailure(
+              reason = "timeoutEquivocationDetected",
+              detail = Some:
+                ss"${vote.equivocationKey.validatorId.value}:${existing.subject.highestKnownQc.proposalId.toHexLower}:${vote.subject.highestKnownQc.proposalId.toHexLower}"
+            ).asLeft[(TimeoutVoteAccumulator, TimeoutVoteRecordOutcome)]
+          case Some(_) =>
+            HotStuffValidationFailure(
+              reason = "duplicateValidatorTimeoutVote",
+              detail = Some(vote.equivocationKey.validatorId.value),
+            ).asLeft[(TimeoutVoteAccumulator, TimeoutVoteRecordOutcome)]
+          case None =>
+            (
+              copy(
+                votesById = votesById.updated(vote.timeoutVoteId, vote),
+                votesByEquivocationKey =
+                  votesByEquivocationKey.updated(vote.equivocationKey, vote),
+              ) -> TimeoutVoteRecordOutcome.Applied
+            ).asRight[HotStuffValidationFailure]
+
+  def votesFor(
+      subject: TimeoutVoteSubject,
+  ): Vector[TimeoutVote] =
+    votesById.values.toVector.filter(_.subject === subject)
+
+object TimeoutVoteAccumulator:
+  val empty: TimeoutVoteAccumulator =
+    TimeoutVoteAccumulator(
+      votesById = Map.empty[TimeoutVoteId, TimeoutVote],
+      votesByEquivocationKey = Map.empty[EquivocationKey, TimeoutVote],
+    )
+
 object QuorumCertificateAssembler:
   def assemble(
       subject: QuorumCertificateSubject,
@@ -106,6 +158,65 @@ object QuorumCertificateAssembler:
     yield QuorumCertificate(
       subject = subject,
       votes = byValidator.values.toVector.sortBy(_.voter.value),
+    )
+
+object TimeoutCertificateAssembler:
+  def assemble(
+      subject: TimeoutVoteSubject,
+      votes: Vector[TimeoutVote],
+      validatorSet: ValidatorSet,
+  ): Either[HotStuffValidationFailure, TimeoutCertificate] =
+    val deduplicated =
+      votes
+        .foldLeft((Set.empty[TimeoutVoteId], Vector.empty[TimeoutVote])):
+          case ((seen, acc), vote) if seen.contains(vote.timeoutVoteId) =>
+            seen -> acc
+          case ((seen, acc), vote) =>
+            (seen + vote.timeoutVoteId) -> (acc :+ vote)
+        ._2
+    for
+      byValidator <- deduplicated
+        .foldLeft(
+          Map.empty[ValidatorId, TimeoutVote]
+            .asRight[HotStuffValidationFailure],
+        ):
+          case (Right(acc), vote) =>
+            acc.get(vote.voter) match
+              case Some(existing)
+                  if existing.timeoutVoteId === vote.timeoutVoteId =>
+                acc.asRight[HotStuffValidationFailure]
+              case Some(existing) if existing.subject =!= vote.subject =>
+                HotStuffValidationFailure(
+                  reason = "timeoutEquivocationDetected",
+                  detail = Some:
+                    ss"${vote.voter.value}:${existing.subject.highestKnownQc.proposalId.toHexLower}:${vote.subject.highestKnownQc.proposalId.toHexLower}"
+                ).asLeft[Map[ValidatorId, TimeoutVote]]
+              case Some(_) =>
+                HotStuffValidationFailure(
+                  reason = "duplicateValidatorTimeoutVote",
+                  detail = Some(vote.voter.value),
+                ).asLeft[Map[ValidatorId, TimeoutVote]]
+              case None =>
+                HotStuffValidator
+                  .validateTimeoutVote(
+                    vote,
+                    validatorSet = validatorSet,
+                    expectedSubject = Some(subject),
+                  )
+                  .map(_ => acc.updated(vote.voter, vote))
+          case (left @ Left(_), _) =>
+            left
+      _ <- HotStuffValidationSupport.ensure(
+        byValidator.sizeCompare(validatorSet.quorumSize) >= 0,
+        "insufficientTimeoutQuorum",
+        Some:
+          ss"required=${validatorSet.quorumSize.toString} actual=${byValidator.size.toString}"
+      )
+    yield TimeoutCertificate(
+      subject = subject,
+      votes = byValidator.values.toVector.sortBy(vote =>
+        (vote.voter.value, vote.timeoutVoteId.toHexLower),
+      ),
     )
 
 @SuppressWarnings(Array("org.wartremover.warts.DefaultArguments"))
@@ -252,6 +363,160 @@ object HotStuffValidator:
       _ <- QuorumCertificateAssembler
         .assemble(qc.subject, qc.votes, validatorSet)
         .void
+    yield ()
+
+  def validateTimeoutVote(
+      vote: TimeoutVote,
+      validatorSet: ValidatorSet,
+      expectedSubject: Option[TimeoutVoteSubject] = None,
+  ): Either[HotStuffValidationFailure, Unit] =
+    for
+      _ <- validateTimeoutVoteSubject(vote.subject, validatorSet)
+      _ <- expectedSubject.traverse: subject =>
+        HotStuffValidationSupport.ensure(
+          vote.subject === subject,
+          "wrongTimeoutVoteSubject",
+          Some(vote.subject.highestKnownQc.proposalId.toHexLower),
+        )
+      voter <- validatorSet
+        .member(vote.voter)
+        .toRight:
+          HotStuffValidationFailure(
+            reason = "unknownTimeoutVoter",
+            detail = Some(vote.voter.value),
+          )
+      _ <- HotStuffValidationSupport.ensure(
+        vote.timeoutVoteId === TimeoutVote.recomputeId(vote),
+        "timeoutVoteIdMismatch",
+        Some(vote.timeoutVoteId.toHexLower),
+      )
+      _ <- verifySignature(
+        TimeoutVote.signBytes:
+          UnsignedTimeoutVote(
+            subject = vote.subject,
+            voter = vote.voter,
+          ),
+        vote.signature,
+        voter.publicKey,
+        "timeoutVoteSignatureMismatch",
+      )
+    yield ()
+
+  def validateTimeoutCertificate(
+      timeoutCertificate: TimeoutCertificate,
+      validatorSet: ValidatorSet,
+  ): Either[HotStuffValidationFailure, Unit] =
+    for
+      _ <- validateTimeoutVoteSubject(timeoutCertificate.subject, validatorSet)
+      _ <- TimeoutCertificateAssembler
+        .assemble(timeoutCertificate.subject, timeoutCertificate.votes, validatorSet)
+        .void
+    yield ()
+
+  def validateNewView(
+      newView: NewView,
+      validatorSet: ValidatorSet,
+  ): Either[HotStuffValidationFailure, Unit] =
+    for
+      _ <- HotStuffValidationSupport.ensure(
+        newView.window.validatorSetHash === validatorSet.hash,
+        "validatorSetHashMismatch",
+        Some(newView.window.validatorSetHash.toHexLower),
+      )
+      sender <- validatorSet
+        .member(newView.sender)
+        .toRight:
+          HotStuffValidationFailure(
+            reason = "unknownNewViewSender",
+            detail = Some(newView.sender.value),
+          )
+      _ <- validatorSet
+        .member(newView.nextLeader)
+        .toRight:
+          HotStuffValidationFailure(
+            reason = "unknownNewViewLeader",
+            detail = Some(newView.nextLeader.value),
+          )
+      _ <- validateQuorumCertificate(newView.highestKnownQc, validatorSet)
+      _ <- validateTimeoutCertificate(newView.timeoutCertificate, validatorSet)
+      _ <- HotStuffValidationSupport.ensure(
+        newView.timeoutCertificate.subject.highestKnownQc === newView.highestKnownQc.subject,
+        "newViewHighestQcMismatch",
+        Some(newView.highestKnownQc.subject.proposalId.toHexLower),
+      )
+      _ <- HotStuffValidationSupport.ensure(
+        newView.window.chainId === newView.timeoutCertificate.subject.window.chainId &&
+          newView.window.height === newView.timeoutCertificate.subject.window.height &&
+          newView.window.view === newView.timeoutCertificate.subject.window.view.next &&
+          newView.window.validatorSetHash === newView.timeoutCertificate.subject.window.validatorSetHash,
+        "newViewWindowMismatch",
+        Some(
+          ss"${newView.window.height.render}:${newView.window.view.render}",
+        ),
+      )
+      _ <- HotStuffValidationSupport.ensure(
+        newView.highestKnownQc.subject.window.chainId === newView.window.chainId &&
+          newView.highestKnownQc.subject.window.validatorSetHash === newView.window.validatorSetHash &&
+          newView.highestKnownQc.subject.window.height <= newView.window.height,
+        "newViewHighestQcMismatch",
+        Some(newView.highestKnownQc.subject.proposalId.toHexLower),
+      )
+      _ <- HotStuffValidationSupport.ensure(
+        newView.nextLeader ===
+          HotStuffPacemaker.deterministicLeader(newView.window, validatorSet),
+        "newViewLeaderMismatch",
+        Some(newView.nextLeader.value),
+      )
+      _ <- HotStuffValidationSupport.ensure(
+        newView.newViewId === NewView.recomputeId(newView),
+        "newViewIdMismatch",
+        Some(newView.newViewId.toHexLower),
+      )
+      _ <- verifySignature(
+        NewView.signBytes:
+          UnsignedNewView(
+            window = newView.window,
+            sender = newView.sender,
+            nextLeader = newView.nextLeader,
+            highestKnownQc = newView.highestKnownQc,
+            timeoutCertificate = newView.timeoutCertificate,
+          ),
+        newView.signature,
+        sender.publicKey,
+        "newViewSignatureMismatch",
+      )
+    yield ()
+
+  private def validateTimeoutVoteSubject(
+      subject: TimeoutVoteSubject,
+      validatorSet: ValidatorSet,
+  ): Either[HotStuffValidationFailure, Unit] =
+    for
+      _ <- HotStuffValidationSupport.ensure(
+        subject.window.validatorSetHash === validatorSet.hash,
+        "validatorSetHashMismatch",
+        Some(subject.window.validatorSetHash.toHexLower),
+      )
+      _ <- HotStuffValidationSupport.ensure(
+        subject.highestKnownQc.window.chainId === subject.window.chainId,
+        "timeoutVoteHighestQcChainMismatch",
+        Some(subject.window.chainId.value),
+      )
+      _ <- HotStuffValidationSupport.ensure(
+        subject.highestKnownQc.window.validatorSetHash === subject.window.validatorSetHash,
+        "timeoutVoteHighestQcValidatorSetMismatch",
+        Some(subject.highestKnownQc.window.validatorSetHash.toHexLower),
+      )
+      _ <- HotStuffValidationSupport.ensure(
+        subject.highestKnownQc.window.height < subject.window.height ||
+          (
+            subject.highestKnownQc.window.height === subject.window.height &&
+              subject.highestKnownQc.window.view < subject.window.view
+          ),
+        "timeoutVoteHighestQcWindowMismatch",
+        Some:
+          ss"${subject.highestKnownQc.window.height.render}:${subject.highestKnownQc.window.view.render}"
+      )
     yield ()
 
   private def verifySignature(
