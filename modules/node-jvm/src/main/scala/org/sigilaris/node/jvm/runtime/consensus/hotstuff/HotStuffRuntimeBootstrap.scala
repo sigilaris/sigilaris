@@ -794,12 +794,15 @@ object HotStuffRuntimeBootstrap:
                                   bootstrap =
                                     bootstrapServices.copy(diagnostics = bootstrapLifecycle),
                                 )
-                              consensus =
-                                HotStuffNodeRuntime.fromValidatedServices[F](
-                                  bootstrapInput = validatedInput,
-                                  services = assembledServices,
-                                  diagnostics = Some(diagnostics),
-                                  bootstrapLifecycle = bootstrapLifecycle.some,
+                              consensus <- InMemoryHotStuffPacemakerDriver
+                                .attach(
+                                  HotStuffNodeRuntime.fromValidatedServices[F](
+                                    bootstrapInput = validatedInput,
+                                    services = assembledServices,
+                                    diagnostics = Some(diagnostics),
+                                    bootstrapLifecycle = bootstrapLifecycle.some,
+                                  ),
+                                  automaticConsensus = true,
                                 )
                               gossipBootstrap <- TxGossipRuntimeBootstrap
                                 .fromTopology[F, HotStuffGossipArtifact](

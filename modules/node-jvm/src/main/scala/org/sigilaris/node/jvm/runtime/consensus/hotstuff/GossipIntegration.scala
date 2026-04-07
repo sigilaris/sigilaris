@@ -973,6 +973,7 @@ final case class HotStuffNodeRuntime[F[_]: Sync](
     services: HotStuffRuntimeServices[F],
     diagnostics: Option[HotStuffInMemoryRuntimeDiagnostics[F]] = None,
     bootstrapLifecycle: Option[HotStuffBootstrapLifecycle[F]] = None,
+    pacemakerSnapshot: Option[F[HotStuffPacemakerRuntimeSnapshot]] = None,
 ):
   def localPeer: PeerIdentity = bootstrapInput.localPeer
 
@@ -1007,6 +1008,13 @@ final case class HotStuffNodeRuntime[F[_]: Sync](
 
   def currentBootstrapDiagnostics: F[BootstrapDiagnostics] =
     bootstrapLifecycle.fold(services.bootstrap.diagnostics.current)(_.current)
+
+  def currentPacemakerSnapshot: F[Option[HotStuffPacemakerRuntimeSnapshot]] =
+    pacemakerSnapshot match
+      case Some(snapshot) =>
+        snapshot.map(_.some)
+      case None =>
+        none[HotStuffPacemakerRuntimeSnapshot].pure[F]
 
   def close: F[Unit] =
     bootstrapLifecycle.fold(Sync[F].unit)(_.close)
@@ -1352,6 +1360,7 @@ object HotStuffNodeRuntime:
       services = services,
       diagnostics = diagnostics,
       bootstrapLifecycle = bootstrapLifecycle,
+      pacemakerSnapshot = None,
     )
 
   @SuppressWarnings(Array("org.wartremover.warts.DefaultArguments"))
@@ -1397,7 +1406,9 @@ object HotStuffNodeRuntime:
   @SuppressWarnings(Array("org.wartremover.warts.DefaultArguments"))
   // `create` remains a lightweight test/runtime convenience that omits the
   // shipped newcomer bootstrap lifecycle. Use `HotStuffRuntimeBootstrap` when
-  // the assembled bootstrap gate and diagnostics are required.
+  // the assembled bootstrap gate and diagnostics are required. Automatic
+  // consensus stays opt-in here so manual harnesses can seed proposals/votes
+  // deterministically; the assembled bootstrap path enables it explicitly.
   def create[F[_]: Sync](
       localPeer: PeerIdentity,
       role: LocalNodeRole,
@@ -1405,6 +1416,7 @@ object HotStuffNodeRuntime:
       validatorSet: ValidatorSet,
       localKeys: Map[ValidatorId, KeyPair],
       gossipPolicy: HotStuffGossipPolicy = HotStuffGossipPolicy.default,
+      automaticConsensus: Boolean = false,
   )(using
       clock: GossipClock[F],
   ): F[Either[HotStuffPolicyViolation, HotStuffNodeRuntime[F]]] =
@@ -1425,11 +1437,15 @@ object HotStuffNodeRuntime:
           validatorSet,
           gossipPolicy,
           HotStuffRelayPolicy.forRole(role),
-        ).map: (services, diagnostics) =>
-          fromValidatedServices(
-            validatedInput,
-            services,
-            Some(diagnostics),
-            none[HotStuffBootstrapLifecycle[F]],
-          )
-            .asRight[HotStuffPolicyViolation]
+        ).flatMap: (services, diagnostics) =>
+          InMemoryHotStuffPacemakerDriver
+            .attach(
+              fromValidatedServices(
+                validatedInput,
+                services,
+                Some(diagnostics),
+                none[HotStuffBootstrapLifecycle[F]],
+              ),
+              automaticConsensus = automaticConsensus,
+            )
+            .map(_.asRight[HotStuffPolicyViolation])
