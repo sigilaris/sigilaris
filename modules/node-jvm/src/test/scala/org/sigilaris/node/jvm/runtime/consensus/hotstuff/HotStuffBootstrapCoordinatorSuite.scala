@@ -215,7 +215,7 @@ final class HotStuffBootstrapCoordinatorSuite extends CatsEffectSuite:
       assertEquals(result.map(_.forwardCatchUp.queued), Right(Vector.empty))
       assertEquals(result.map(_.forwardCatchUp.voteReadiness), Right(BootstrapVoteReadiness.Ready))
 
-  test("bootstrap coordinator widens replay prefix without skipping slower peer histories"):
+  test("bootstrap coordinator ignores stale replay branches once a contiguous highest prefix is available"):
     val anchor = finalizedSuggestion("65", 2L, validatorSet, validatorKeys)
     val replayed = proposalChain(anchor.proposal, startSeed = 0xff00, length = 300)
     val peer1Noise =
@@ -262,11 +262,25 @@ final class HotStuffBootstrapCoordinatorSuite extends CatsEffectSuite:
         result.map(_.forwardCatchUp.applied.map(_.proposalId)),
         Right(replayed.map(_.proposalId)),
       )
-      assert(result.exists(_.forwardCatchUp.queued.nonEmpty))
-      assertEquals(
-        result.map(_.forwardCatchUp.voteReadiness),
-        Right(BootstrapVoteReadiness.Held("proposalReplayGap")),
+      assertEquals(result.map(_.forwardCatchUp.queued), Right(Vector.empty))
+      assertEquals(result.map(_.forwardCatchUp.voteReadiness), Right(BootstrapVoteReadiness.Ready))
+
+  test("forward catch-up keeps proposalReplayGap when no contiguous child is reachable from the anchor"):
+    val anchor    = finalizedSuggestion("68", 2L, validatorSet, validatorKeys)
+    val proposal1 = childProposal(anchor.proposal, "69", 3L, Vector.empty)
+    val proposal2 = childProposal(proposal1, "6a", 4L, Vector.empty)
+
+    for
+      result <- HotStuffForwardCatchUp.plan(
+        anchor = anchor,
+        replayed = Vector(proposal2),
+        live = Vector.empty,
+        readiness = ProposalCatchUpReadiness.ready[IO],
       )
+    yield
+      assertEquals(result.map(_.applied), Right(Vector.empty))
+      assertEquals(result.map(_.queued.map(_.proposalId)), Right(Vector(proposal2.proposalId)))
+      assertEquals(result.map(_.voteReadiness), Right(BootstrapVoteReadiness.Held("proposalReplayGap")))
 
   test("forward catch-up recovers once the proposal block view becomes locally available"):
     val anchor = finalizedSuggestion("70", 2L, validatorSet, validatorKeys)
