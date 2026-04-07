@@ -9,6 +9,11 @@ Complete; Phase 0-5 Complete
 ## Last Updated
 2026-04-07
 
+## Current Implementation Status
+- `2026-04-07` 기준 repo 는 runtime-owned pacemaker loop, bootstrap readiness closure, durable historical archive backing, transport credential binding/capability hardening, DR relocation smoke, test-only static multi-node launch harness, 그리고 operator-facing launch note 를 모두 landed 했다.
+- current reference launch smoke 는 static full-mesh session set 을 자동으로 형성하고 background event drain 을 유지한 뒤, runtime-owned proposal / vote / timeout-vote / new-view progression 으로 contiguous height advancement, stalled leader recovery, newcomer bounded-ready bootstrap, archive restart persistence, same-validator relocation DR recovery 를 함께 검증한다.
+- 이 plan 의 minimal static multi-node launch blocker 는 닫혔다. 남은 follow-up 은 productized launcher / CLI, dynamic discovery, validator-set rotation trust root, automatic failover, remote signer / KMS 같은 explicit non-goal 영역이다.
+
 ## Background
 - 이 문서는 `0008` ADR tranche 이후, current Sigilaris baseline 으로 "실제로 static multi-node chain 을 띄울 수 있느냐"를 막는 필수 구현 공백만 정리하는 implementation plan 이다.
 - `2026-04-07` 기준 shipped baseline 은 아래를 이미 갖고 있다.
@@ -18,8 +23,8 @@ Complete; Phase 0-5 Complete
   - canonical `BlockHeader` / `BlockBody` / `BlockView`
   - conflict-free block body selection / verification
   - finalized-anchor suggestion, snapshot sync, forward catch-up, historical backfill runtime seam
-- 그러나 이 baseline 만으로는 "별도 프로세스로 여러 노드를 띄워 steady-state 로 block 을 생산하고, leader stall 을 넘기고, newcomer 가 실제 ready 로 들어오는" 최소 운영 경로가 아직 닫히지 않았다.
-- current confirmed blocker 는 아래 여섯 가지다.
+- 이 plan 은 원래 "별도 프로세스로 여러 노드를 띄워 steady-state 로 block 을 생산하고, leader stall 을 넘기고, newcomer 가 실제 ready 로 들어오는" 최소 운영 경로를 닫기 위한 blocker inventory 로 시작했다.
+- implementation 시작 시점에 추적하던 blocker 는 아래 여섯 가지였다.
   - pacemaker artifact 는 semantic model / sign / validate 까지는 있으나, concrete dissemination / timer / backoff / leader-activation runtime 이 아직 follow-up 이다.
   - shipped newcomer bootstrap assembly 는 `ProposalCatchUpReadiness` 에 placeholder `forwardCatchUpUnavailable` hold 를 남기고 있어, replayed/live proposal 이 있는 실제 catch-up 경로가 완전히 ready 로 닫히지 않는다.
   - configured `PeerIdentity` 는 아직 concrete transport credential subject 와 강하게 binding 되지 않고, bootstrap capability header 도 stronger cryptographic binding 없이 transport projection placeholder 에 머문다.
@@ -250,11 +255,11 @@ Complete; Phase 0-5 Complete
 - [x] companion protocol note 필요 여부 확정
 
 ### Phase 1: Pacemaker Runtime And Liveness Driver
-- [x] timeout artifact runtime state / validation / accumulation 연결
-- [x] pacemaker artifact dissemination path 연결
-- [x] timer / backoff / jitter / leader activation 추가
-- [x] bootstrap vote-hold 와 pacemaker interaction 고정
-- [x] timeout recovery / wrong-window / equivocation regression test green
+- [x] timeout artifact model / validation / accumulation primitive landed
+- [x] pacemaker artifact dissemination topic / transport contract landed
+- [x] timer / backoff / jitter / leader activation 이 shipped node runtime 에 자동 경로로 wire 됨
+- [x] bootstrap vote-hold 와 automatic pacemaker progression interaction 이 shipped runtime policy 로 고정됨
+- [x] timeout recovery integration test 가 harness-driven manual artifact emission 없이 green
 
 ### Phase 2: Bootstrap Readiness Closure
 - [x] placeholder `forwardCatchUpUnavailable` hold 제거
@@ -278,13 +283,14 @@ Complete; Phase 0-5 Complete
 
 ### Phase 5: Reference Launch Harness And End-To-End Verification
 - [x] repo-local reference launch path 또는 동등 smoke harness 추가
-- [x] 3-4 validator static cluster launch scenario 고정
-- [x] newcomer 또는 audit follower join scenario 고정
-- [x] same-validator identity relocation DR scenario 고정
-- [x] contiguous height advancement `3`회 + timeout recovery `1`회 + newcomer ready bounded smoke gate green
+- [x] 3-4 validator static cluster scenario 를 test-only harness 로 고정
+- [x] newcomer 또는 audit follower bootstrap scenario 를 test-only harness 로 고정
+- [x] same-validator identity relocation DR scenario 를 test-only harness 로 고정
+- [x] manual artifact injection 없이 automatic static mesh session 형성 + runtime-owned consensus progression proof 확보
+- [x] contiguous height advancement `3`회 + timeout recovery `1`회 + newcomer ready bounded gate 를 reference launch smoke automatic flow 로 green
 - [x] audit/history follower restart 뒤 persisted historical archive 유지 smoke gate green
 - [x] old-holder fence + key relocation + validator restart DR smoke gate green
-- [x] minimal operator note / README wording 갱신
+- [x] concrete config shape / startup order / DR runbook 를 담은 operator note 갱신
 
 ## Follow-Ups
 - validator-set rotation, trusted checkpoint bundle, weak-subjectivity freshness, historical validator-set lookup runtime 은 계속 `ADR-0023` / plan `0007` follow-up 으로 남긴다.
