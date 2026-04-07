@@ -183,6 +183,42 @@ final class HotStuffGossipLoopbackSuite extends CatsEffectSuite:
       assert(snapshot.proposals.contains(proposal.proposalId))
       assert(snapshot.votes.nonEmpty)
 
+  test("pacemaker runtime attaches only for validators with local validator keys"):
+    val holders = Vector(
+      ValidatorKeyHolder(validatorSet.members(0).id, PeerIdentity.unsafe("node-a"), ValidatorKeyHolderStatus.Active),
+      ValidatorKeyHolder(validatorSet.members(1).id, PeerIdentity.unsafe("node-b"), ValidatorKeyHolderStatus.Active),
+    )
+
+    for
+      validatorWithKey <- Harness.create(
+        "node-a",
+        "node-b",
+        LocalNodeRole.Validator,
+        holders,
+        Map(validatorSet.members(0).id -> validatorKeys(0)),
+      )
+      validatorWithoutKey <- Harness.create(
+        "node-b",
+        "node-a",
+        LocalNodeRole.Validator,
+        holders,
+        Map.empty,
+      )
+      auditNode <- Harness.create(
+        "node-c",
+        "node-a",
+        LocalNodeRole.Audit,
+        holders,
+        Map.empty,
+      )
+      validatorSnapshot <- validatorWithKey.consensus.currentPacemakerSnapshot
+      missingKeySnapshot <- validatorWithoutKey.consensus.currentPacemakerSnapshot
+      auditSnapshot <- auditNode.consensus.currentPacemakerSnapshot
+    yield
+      assert(validatorSnapshot.nonEmpty)
+      assertEquals(missingKeySnapshot, None)
+      assertEquals(auditSnapshot, None)
+
   test("timeout-vote and new-view exact-known request-by-id semantics match the proposal and vote baseline"):
     val holders = Vector(
       ValidatorKeyHolder(validatorSet.members(0).id, PeerIdentity.unsafe("node-a"), ValidatorKeyHolderStatus.Active),
@@ -300,6 +336,247 @@ final class HotStuffGossipLoopbackSuite extends CatsEffectSuite:
       )
       assert(secondSnapshot.timeoutCertificates.contains(timeoutVote1.subject))
       assertEquals(secondSnapshot.newViews.keySet, Set(newView.newViewId))
+
+  test("automatic pacemaker emits timeout-votes and advances new-view after a stalled leader without manual timeout artifact injection"):
+    val holders = Vector(
+      ValidatorKeyHolder(validatorSet.members(0).id, PeerIdentity.unsafe("node-a"), ValidatorKeyHolderStatus.Active),
+      ValidatorKeyHolder(validatorSet.members(1).id, PeerIdentity.unsafe("node-b"), ValidatorKeyHolderStatus.Active),
+      ValidatorKeyHolder(validatorSet.members(2).id, PeerIdentity.unsafe("node-c"), ValidatorKeyHolderStatus.Active),
+      ValidatorKeyHolder(validatorSet.members(3).id, PeerIdentity.unsafe("node-d"), ValidatorKeyHolderStatus.Active),
+    )
+
+    val proposalWindow = HotStuffWindow(chainId, 2L, 2L, validatorSet.hash)
+    val stalledWindow  = HotStuffWindow(chainId, 3L, 3L, validatorSet.hash)
+    val recoveredWindow = HotStuffWindow(chainId, 3L, 4L, validatorSet.hash)
+    val localLeaderKey =
+      HotStuffPacemakerKey(chainId, validatorSet.members(0).id)
+
+    for
+      a <- Harness.createWithPeers(
+        "node-a",
+        List("node-b", "node-c"),
+        LocalNodeRole.Validator,
+        holders,
+        Map(validatorSet.members(0).id -> validatorKeys(0)),
+      )
+      b <- Harness.createWithPeers(
+        "node-b",
+        List("node-a", "node-c"),
+        LocalNodeRole.Validator,
+        holders,
+        Map(validatorSet.members(1).id -> validatorKeys(1)),
+      )
+      c <- Harness.createWithPeers(
+        "node-c",
+        List("node-a", "node-b"),
+        LocalNodeRole.Validator,
+        holders,
+        Map(validatorSet.members(2).id -> validatorKeys(2)),
+      )
+      links <- openDirectedMesh(Vector(a, b, c))
+      justify = bootstrapQc()
+      proposalEvent <- c.consensus.emitProposal(
+        proposer = validatorSet.members(2).id,
+        block = block(parent = Some(justify.subject.blockId), height = 2L, rootHex = "91"),
+        txSet = ProposalTxSet.empty,
+        window = proposalWindow,
+        justify = justify,
+        ts = baseInstant,
+      ).flatMap(unwrapPolicy)
+      _ <- applyLocalEvent(c.consensus, proposalEvent)
+      proposal = proposalPayload(proposalEvent)
+      _ <- drainLinks(links)
+      _ <- Vector(
+        a -> validatorSet.members(0).id,
+        b -> validatorSet.members(1).id,
+        c -> validatorSet.members(2).id,
+      ).zipWithIndex.traverse_ { case ((node, voter), index) =>
+        node.consensus
+          .emitVote(voter, proposal, baseInstant.plusMillis(index.toLong + 1L))
+          .flatMap(unwrapPolicy)
+          .flatMap(applyLocalEvent(node.consensus, _))
+      }
+      _ <- drainLinks(links)
+      beforeTimeout <- a.consensus.currentPacemakerSnapshot
+      _ <- Vector(a, b, c).traverse_(_.clock.advance(HotStuffPacemakerPolicy.default.baseTimeout.plusSeconds(1L)))
+      _ <- drainLinks(links, maxRounds = 12)
+      snapshotA <- sinkSnapshot(a.consensus)
+      snapshotB <- sinkSnapshot(b.consensus)
+      snapshotC <- sinkSnapshot(c.consensus)
+      afterTimeout <- a.consensus.currentPacemakerSnapshot
+    yield
+      val snapshots = Vector(snapshotA, snapshotB, snapshotC)
+      val proposalWindows =
+        snapshots.map(snapshot =>
+          snapshot.proposals.valuesIterator.map(_.window).toSet,
+        )
+      val voteWindows =
+        snapshots.map(snapshot =>
+          snapshot.votes.valuesIterator.map(_.window).toSet,
+        )
+      assertEquals(
+        beforeTimeout
+          .flatMap(_.entries.get(localLeaderKey))
+          .flatMap(_.state.map(_.activeWindow)),
+        Some(stalledWindow),
+      )
+      assert(snapshots.forall(_.timeoutVotes.valuesIterator.exists(_.subject.window === stalledWindow)))
+      assert(snapshots.forall(_.timeoutCertificates.keySet.exists(_.window === stalledWindow)))
+      assert(snapshots.forall(_.newViews.valuesIterator.exists(_.window === recoveredWindow)))
+      assertEquals(
+        proposalWindows,
+        Vector.fill(3)(Set(proposalWindow)),
+      )
+      assertEquals(
+        voteWindows,
+        Vector.fill(3)(Set(proposalWindow)),
+      )
+      assertEquals(
+        afterTimeout
+          .flatMap(_.entries.get(localLeaderKey))
+          .flatMap(_.state.map(_.activeWindow)),
+        Some(recoveredWindow),
+      )
+      assertEquals(
+        afterTimeout
+          .flatMap(_.entries.get(localLeaderKey))
+          .flatMap(_.proposalEligibility),
+        Some(
+          HotStuffPacemakerProposalEligibility.EligibleAsLeader(
+            validatorSet.members(0).id,
+          ),
+        ),
+      )
+
+  test("automatic consensus emits votes and follows consecutive local leaders after a single seeded proposal"):
+    val holders = Vector(
+      ValidatorKeyHolder(validatorSet.members(0).id, PeerIdentity.unsafe("node-a"), ValidatorKeyHolderStatus.Active),
+      ValidatorKeyHolder(validatorSet.members(1).id, PeerIdentity.unsafe("node-b"), ValidatorKeyHolderStatus.Active),
+      ValidatorKeyHolder(validatorSet.members(2).id, PeerIdentity.unsafe("node-c"), ValidatorKeyHolderStatus.Active),
+      ValidatorKeyHolder(validatorSet.members(3).id, PeerIdentity.unsafe("node-d"), ValidatorKeyHolderStatus.Active),
+    )
+    val automaticValidators =
+      Set(
+        validatorSet.members(0).id,
+        validatorSet.members(1).id,
+        validatorSet.members(2).id,
+      )
+    val seedHeight =
+      (1L to 12L)
+        .find: height =>
+          (0L to 2L).forall: delta =>
+            automaticValidators.contains(
+              HotStuffPacemaker.deterministicLeader(
+                HotStuffWindow(chainId, height + delta, height + delta, validatorSet.hash),
+                validatorSet,
+              ),
+            )
+        .getOrElse(
+          throw new IllegalStateException("expected local leader run"),
+        )
+    val seedWindow =
+      HotStuffWindow(chainId, seedHeight, seedHeight, validatorSet.hash)
+    val seedLeader =
+      HotStuffPacemaker.deterministicLeader(seedWindow, validatorSet)
+
+    for
+      a <- Harness.createWithPeers(
+        "node-a",
+        List("node-b", "node-c"),
+        LocalNodeRole.Validator,
+        holders,
+        Map(validatorSet.members(0).id -> validatorKeys(0)),
+        automaticConsensus = true,
+      )
+      b <- Harness.createWithPeers(
+        "node-b",
+        List("node-a", "node-c"),
+        LocalNodeRole.Validator,
+        holders,
+        Map(validatorSet.members(1).id -> validatorKeys(1)),
+        automaticConsensus = true,
+      )
+      c <- Harness.createWithPeers(
+        "node-c",
+        List("node-a", "node-b"),
+        LocalNodeRole.Validator,
+        holders,
+        Map(validatorSet.members(2).id -> validatorKeys(2)),
+        automaticConsensus = true,
+      )
+      links <- openDirectedMesh(Vector(a, b, c))
+      leaderHarness <- IO.fromOption(
+        Map(
+          validatorSet.members(0).id -> a,
+          validatorSet.members(1).id -> b,
+          validatorSet.members(2).id -> c,
+        ).get(seedLeader),
+      )(new IllegalStateException("seed leader was not local"))
+      seedEvent <- leaderHarness.consensus.emitProposal(
+        proposer = seedLeader,
+        block = block(
+          parent = Some(bootstrapQc().subject.blockId),
+          height = seedHeight,
+          rootHex = "97",
+        ),
+        txSet = ProposalTxSet.empty,
+        window = seedWindow,
+        justify = bootstrapQc(),
+        ts = baseInstant,
+      ).flatMap(unwrapPolicy)
+      _ <- applyLocalEvent(leaderHarness.consensus, seedEvent)
+      _ <- drainLinks(links, maxRounds = 24)
+      snapshotA <- sinkSnapshot(a.consensus)
+      snapshotB <- sinkSnapshot(b.consensus)
+      snapshotC <- sinkSnapshot(c.consensus)
+    yield
+      val expectedHeights =
+        Set(seedHeight, seedHeight + 1L, seedHeight + 2L)
+      val snapshots = Vector(snapshotA, snapshotB, snapshotC)
+      val proposalHeights =
+        snapshots.map(snapshot =>
+          snapshot.proposals.valuesIterator
+            .map(_.block.height.toBigNat.toBigInt.longValue)
+            .toSet,
+        )
+      val qcHeights =
+        snapshots.map(snapshot =>
+          snapshot.qcs.valuesIterator
+            .map(_.subject.window.height.toBigNat.toBigInt.longValue)
+            .toSet,
+        )
+      val voteWindows =
+        snapshots.map(snapshot =>
+          snapshot.votes.valuesIterator
+            .map(vote => (vote.voter.value, vote.window.height.toBigNat.toBigInt.longValue))
+            .toSet,
+        )
+      val seedStateRoot =
+        snapshots.head.proposals.valuesIterator
+          .find(_.block.height.toBigNat.toBigInt.longValue == seedHeight)
+          .map(_.block.stateRoot)
+          .getOrElse(throw new IllegalStateException("missing seed proposal"))
+      val automaticStateRoots =
+        snapshots.map(snapshot =>
+          snapshot.proposals.valuesIterator
+            .filter(proposal =>
+              proposal.block.height.toBigNat.toBigInt.longValue > seedHeight,
+            )
+            .map(_.block.stateRoot)
+            .toSet,
+        )
+      assert(
+        proposalHeights.forall(expectedHeights.subsetOf),
+        s"proposals=$proposalHeights qcs=$qcHeights votes=$voteWindows",
+      )
+      assert(
+        qcHeights.forall(Set(seedHeight, seedHeight + 1L).subsetOf),
+        s"proposals=$proposalHeights qcs=$qcHeights votes=$voteWindows",
+      )
+      assert(
+        automaticStateRoots.forall(_ == Set(seedStateRoot)),
+        s"automaticStateRoots=$automaticStateRoots seedStateRoot=$seedStateRoot",
+      )
 
   test("audit followers relay validated proposal and vote artifacts downstream without local signing"):
     val holders = Vector(
@@ -1204,9 +1481,75 @@ final class HotStuffGossipLoopbackSuite extends CatsEffectSuite:
       .fromOption(runtime.inMemorySink)(new IllegalStateException("expected in-memory sink diagnostics"))
       .flatMap(_.snapshot)
 
+  private def applyLocalEvent(
+      runtime: HotStuffNodeRuntime[IO],
+      event: GossipEvent[HotStuffGossipArtifact],
+  ): IO[GossipEvent[HotStuffGossipArtifact]] =
+    runtime.sink
+      .applyEvent(event)
+      .flatMap(result =>
+        IO.fromEither(
+          result.leftMap(rejection =>
+            new IllegalStateException(rejection.reason),
+          ),
+        ).as(event),
+      )
+
+  private def openDirectedMesh(
+      nodes: Vector[Harness],
+  ): IO[Vector[DirectedLink]] =
+    nodes.traverse: from =>
+      nodes
+        .filter(_.localNodeId =!= from.localNodeId)
+        .traverse(to =>
+          openOutbound(from, to).map(opened =>
+            DirectedLink(from, to, opened.proposal.sessionId),
+          ),
+        )
+    .map(_.flatten)
+
+  private def drainLinks(
+      links: Vector[DirectedLink],
+      maxRounds: Int = 8,
+  ): IO[Unit] =
+    def loop(
+        roundsRemaining: Int,
+        pending: Int,
+    ): IO[Unit] =
+      if roundsRemaining <= 0 || pending <= 0 then
+        IO.unit
+      else
+        links
+          .traverse(relayLink)
+          .map(_.sum)
+          .flatMap(total => loop(roundsRemaining - 1, total))
+
+    links.traverse(relayLink).map(_.sum).flatMap(total => loop(maxRounds - 1, total))
+
+  private def relayLink(
+      link: DirectedLink,
+  ): IO[Int] =
+    for
+      polled <- link.from.gossip.pollEvents(link.sessionId)
+      messages <- IO.fromEither(
+        polled.leftMap(rejection => new IllegalStateException(rejection.reason)),
+      )
+      _ <- link.to.gossip.receiveEvents(link.sessionId, messages).flatMap(result =>
+        IO.fromEither(
+          result.leftMap(rejection => new IllegalStateException(rejection.reason)),
+        ).void,
+      )
+    yield messages.collect { case EventStreamMessage.Event(_) => 1 }.sum
+
   private final case class OpenedSession(
       proposal: SessionOpenProposal,
       ack: SessionOpenAck,
+  )
+
+  private final case class DirectedLink(
+      from: Harness,
+      to: Harness,
+      sessionId: DirectionalSessionId,
   )
 
   private final case class Harness(
@@ -1223,8 +1566,16 @@ final class HotStuffGossipLoopbackSuite extends CatsEffectSuite:
         role: LocalNodeRole,
         holders: Vector[ValidatorKeyHolder],
         localKeys: Map[ValidatorId, org.sigilaris.core.crypto.KeyPair],
+        automaticConsensus: Boolean = false,
     ): IO[Harness] =
-      createWithPeers(localNodeId, List(remoteNodeId), role, holders, localKeys)
+      createWithPeers(
+        localNodeId,
+        List(remoteNodeId),
+        role,
+        holders,
+        localKeys,
+        automaticConsensus,
+      )
 
     def createWithPeers(
         localNodeId: String,
@@ -1232,6 +1583,7 @@ final class HotStuffGossipLoopbackSuite extends CatsEffectSuite:
         role: LocalNodeRole,
         holders: Vector[ValidatorKeyHolder],
         localKeys: Map[ValidatorId, org.sigilaris.core.crypto.KeyPair],
+        automaticConsensus: Boolean = false,
     ): IO[Harness] =
       for
         topology <- IO.fromEither(
@@ -1252,6 +1604,7 @@ final class HotStuffGossipLoopbackSuite extends CatsEffectSuite:
             holders = holders,
             validatorSet = validatorSet,
             localKeys = localKeys,
+            automaticConsensus = automaticConsensus,
           )
           .flatMap(unwrapPolicy)
         stateStore <- TxGossipStateStore.inMemory[IO](GossipSessionEngine(registry.localPeer, topology))

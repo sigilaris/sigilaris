@@ -692,6 +692,150 @@ final class HotStuffRuntimeBootstrapSuite extends CatsEffectSuite:
         BootstrapVoteReadiness.Ready,
       )
 
+  test("automatic pacemaker suppresses timeout emission while bootstrap vote-readiness is held and releases it once ready"):
+    val root =
+      MerkleTrieNode.branch(
+        ByteVector.empty.toNibbles,
+        MerkleTrieNode.Children.empty,
+      )
+    val rootHash = root.toHash
+    val anchor =
+      replayableSuggestion(
+        seed = "e4",
+        stateRoot = StateRoot(rootHash.toUInt256),
+        childTxs = Vector(TestTx(Utf8("tx-4"))),
+        grandchildTxs = Vector(TestTx(Utf8("tx-5"))),
+      )
+    val child          = anchor.finalizedProof.child
+    val grandchild     = anchor.finalizedProof.grandchild
+    val childTx        = TestTx(Utf8("tx-4"))
+    val grandchildTx   = TestTx(Utf8("tx-5"))
+    val grandchildTxId = grandchild.txSet.txIds.head
+    val localValidatorKey =
+      HotStuffPacemakerKey(chainId, validatorIds.head)
+
+    for
+      knownTxIds <- Ref.of[IO, Set[StableArtifactId]](Set(child.txSet.txIds.head))
+      blockStore <- BlockStore.inMemory[IO, TestTx, Utf8, Utf8]
+      _ <- putProposalView(blockStore, child, Vector(childTx))
+      _ <- putProposalView(blockStore, grandchild, Vector(grandchildTx))
+      clock <- TestClock.create(startedAt)
+      bootstrap <- loadBootstrapFromTopology(
+        topology = topology("node-a", Vector("node-b")),
+        consensusConfig = validatorConfig(),
+        clock = clock,
+        bootstrapTransport =
+          Some(
+            proposalTransport(
+              anchor = anchor,
+              replayed = Vector(child, grandchild),
+              snapshotRoot = rootHash -> root,
+              proposalCatchUpReadiness =
+                Some(
+                  HotStuffRuntimeBootstrap
+                    .proposalCatchUpReadinessFromBlockQuery[IO, TestTx, Utf8, Utf8](
+                      validatorSet = validatorSet,
+                      knownTxIds = knownTxIds.get,
+                      blockQuery = blockStore,
+                    )(_ => schedulable()),
+                ),
+            ),
+          ),
+        storageLayout = freshStorageLayout,
+      )
+      session =
+        bootstrapSession(
+          peer = "node-b",
+          sessionId = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
+        )
+      first <- bootstrap.consensus.bootstrap(
+        chainId = chainId,
+        sessions = Vector(session),
+        startedAt = startedAt,
+        liveProposals = Vector.empty,
+      )
+      proposalEvent <- bootstrap.consensus.services.publisher.append(
+        HotStuffGossipArtifact.ProposalArtifact(grandchild),
+        startedAt.plusSeconds(10L),
+      )
+      _ <- bootstrap.consensus.sink.applyEvent(proposalEvent).flatMap(result =>
+        IO.fromEither(
+          result.leftMap(rejection =>
+            new IllegalStateException(rejection.reason),
+          ),
+        ).void,
+      )
+      _ <- clock.advance(HotStuffPacemakerPolicy.default.baseTimeout.plusSeconds(1L))
+      heldTimeoutVotes <- bootstrap.consensus.source
+        .readAfter(chainId, GossipTopic.consensusTimeoutVote, None)
+        .flatMap(result =>
+          IO.fromEither(
+            result.leftMap(rejection =>
+              new IllegalStateException(rejection.toString),
+            ),
+          ),
+        )
+      heldPacemaker <- bootstrap.consensus.currentPacemakerSnapshot
+      _ <- knownTxIds.update(_ + grandchildTxId)
+      second <- bootstrap.consensus.bootstrap(
+        chainId = chainId,
+        sessions = Vector(session),
+        startedAt = startedAt.plusSeconds(2L),
+        liveProposals = Vector.empty,
+      )
+      _ <- clock.advance(HotStuffPacemakerPolicy.default.baseTimeout.plusSeconds(1L))
+      readyTimeoutVotes <- bootstrap.consensus.source
+        .readAfter(chainId, GossipTopic.consensusTimeoutVote, None)
+        .flatMap(result =>
+          IO.fromEither(
+            result.leftMap(rejection =>
+              new IllegalStateException(rejection.toString),
+            ),
+          ),
+        )
+      readyPacemaker <- bootstrap.consensus.currentPacemakerSnapshot
+    yield
+      assertEquals(
+        first.map(_.forwardCatchUp.voteReadiness),
+        Right(BootstrapVoteReadiness.Held("missingTxPayload")),
+      )
+      assertEquals(heldTimeoutVotes.map(_.event.payload), Vector.empty)
+      assertEquals(
+        heldPacemaker
+          .flatMap(_.entries.get(localValidatorKey))
+          .flatMap(_.state.map(_.activeWindow)),
+        Some(grandchild.window),
+      )
+      assertEquals(
+        heldPacemaker
+          .flatMap(_.entries.get(localValidatorKey))
+          .flatMap(_.proposalEligibility),
+        Some(
+          HotStuffPacemakerProposalEligibility.BootstrapHeld(
+            reason = "missingTxPayload",
+            expectedLeader = validatorIds(3),
+          ),
+        ),
+      )
+      assertEquals(
+        second.map(_.forwardCatchUp.voteReadiness),
+        Right(BootstrapVoteReadiness.Ready),
+      )
+      assertEquals(
+        readyTimeoutVotes.map(available => timeoutVotePayload(available.event).voter).toSet,
+        validatorIds.take(3).toSet,
+      )
+      assert(
+        readyPacemaker
+          .flatMap(_.entries.get(localValidatorKey))
+          .flatMap(_.state.map(_.activeWindow))
+          .exists(window =>
+            window.height > grandchild.window.height ||
+              (window.height === grandchild.window.height &&
+                window.view >= HotStuffView.unsafeFromLong(4L)),
+          ),
+      )
+
   test("assembled bootstrap runtime advances live catch-up once injected readiness sees the block view"):
     val root =
       MerkleTrieNode.branch(
@@ -1557,6 +1701,9 @@ final class HotStuffRuntimeBootstrapSuite extends CatsEffectSuite:
     override def now: IO[Instant] =
       ref.get
 
+    def advance(duration: java.time.Duration): IO[Unit] =
+      ref.update(_.plus(duration))
+
   private object TestClock:
     def create(instant: Instant): IO[TestClock] =
       Ref.of[IO, Instant](instant).map(new TestClock(_))
@@ -1589,6 +1736,15 @@ final class HotStuffRuntimeBootstrapSuite extends CatsEffectSuite:
       )
       .toOption
       .get
+
+  private def timeoutVotePayload(
+      event: GossipEvent[HotStuffGossipArtifact],
+  ): TimeoutVote =
+    event.payload match
+      case HotStuffGossipArtifact.TimeoutVoteArtifact(timeoutVote) =>
+        timeoutVote
+      case _ =>
+        throw new IllegalStateException("expected timeout vote")
 
   private def finalizedSuggestion(
       seed: String,
