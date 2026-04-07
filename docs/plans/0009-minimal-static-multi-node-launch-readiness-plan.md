@@ -1,18 +1,25 @@
 # 0009 - Minimal Static Multi-Node Launch Readiness Plan
 
 ## Status
-Complete; Phase 0-5 Complete
+In Progress; Phase 0-1, 3-4 Complete; Phase 2 and Phase 5 Partially Complete
 
 ## Created
 2026-04-07
 
 ## Last Updated
-2026-04-07
+2026-04-08
 
 ## Current Implementation Status
-- `2026-04-07` 기준 repo 는 runtime-owned pacemaker loop, bootstrap readiness closure, durable historical archive backing, transport credential binding/capability hardening, DR relocation smoke, test-only static multi-node launch harness, 그리고 operator-facing launch note 를 모두 landed 했다.
-- current reference launch smoke 는 static full-mesh session set 을 자동으로 형성하고 background event drain 을 유지한 뒤, runtime-owned proposal / vote / timeout-vote / new-view progression 으로 contiguous height advancement, stalled leader recovery, newcomer bounded-ready bootstrap, archive restart persistence, same-validator relocation DR recovery 를 함께 검증한다.
-- 이 plan 의 minimal static multi-node launch blocker 는 닫혔다. 남은 follow-up 은 productized launcher / CLI, dynamic discovery, validator-set rotation trust root, automatic failover, remote signer / KMS 같은 explicit non-goal 영역이다.
+### Implemented In Repo
+- `2026-04-07` 기준 repo 는 runtime-owned pacemaker loop, durable historical archive backing, static-peer HMAC transport auth/capability hardening, same-validator relocation DR smoke, test-only static multi-node launch harness, 그리고 operator-facing launch note 를 landed 했다.
+- current reference launch harness 는 static full-mesh session set 을 자동으로 형성하고 background event drain 을 유지한 뒤, runtime-owned proposal / vote / timeout-vote / new-view progression, archive restart persistence, same-validator relocation DR recovery 를 검증한다.
+- newcomer bootstrap 관련 concrete readiness helper (`ProposalCatchUpReadiness.fromBlockQuery`) 도 landed 되어 tx sufficiency / body-view validation / vote eligibility 판단 자체는 구현돼 있다.
+
+### Remaining To Implement In This Plan
+- shipped `HotStuffRuntimeBootstrap.fromConfig/fromTopology` 기본 조립은 non-empty replay/live catch-up 에서 concrete `ProposalCatchUpReadiness` 를 자동으로 wire 하지 못한다. 현재 기본 경로는 `proposalCatchUpReadinessUnavailable` failure 로 남아 있다.
+- current newcomer launch smoke 는 harness-side `HotStuffBootstrapHttpTransport.services(..., proposalCatchUpReadiness = Some(ProposalCatchUpReadiness.ready))` injection 으로 bounded-ready gate 를 통과시키며, 실제 block/tx/view 기반 readiness consumer path 를 end-to-end 로 증명하지 않는다.
+- remote bootstrap transport graph (`peerBaseUris`, `bootstrapTransport`) 역시 현재 test harness programmatic wiring 이다. operator-facing config loader 만으로 newcomer/restarted node remote bootstrap path 를 조립하는 shipped baseline 은 아직 없다.
+- 따라서 이 plan 은 complete 가 아니라 partial 이다. remaining blocker 는 "shipped 기본 newcomer catch-up closure" 와 "그 경로를 쓰는 end-to-end launch proof" 두 축으로 좁혀졌다.
 
 ## Background
 - 이 문서는 `0008` ADR tranche 이후, current Sigilaris baseline 으로 "실제로 static multi-node chain 을 띄울 수 있느냐"를 막는 필수 구현 공백만 정리하는 implementation plan 이다.
@@ -23,7 +30,7 @@ Complete; Phase 0-5 Complete
   - canonical `BlockHeader` / `BlockBody` / `BlockView`
   - conflict-free block body selection / verification
   - finalized-anchor suggestion, snapshot sync, forward catch-up, historical backfill runtime seam
-- 이 plan 은 원래 "별도 프로세스로 여러 노드를 띄워 steady-state 로 block 을 생산하고, leader stall 을 넘기고, newcomer 가 실제 ready 로 들어오는" 최소 운영 경로를 닫기 위한 blocker inventory 로 시작했다.
+- 이 plan 은 원래 "여러 runtime instance 를 띄워 steady-state 로 block 을 생산하고, leader stall 을 넘기고, newcomer 가 실제 ready 로 들어오는" 최소 운영 경로를 닫기 위한 blocker inventory 로 시작했다.
 - implementation 시작 시점에 추적하던 blocker 는 아래 여섯 가지였다.
   - pacemaker artifact 는 semantic model / sign / validate 까지는 있으나, concrete dissemination / timer / backoff / leader-activation runtime 이 아직 follow-up 이다.
   - shipped newcomer bootstrap assembly 는 `ProposalCatchUpReadiness` 에 placeholder `forwardCatchUpUnavailable` hold 를 남기고 있어, replayed/live proposal 이 있는 실제 catch-up 경로가 완전히 ready 로 닫히지 않는다.
@@ -39,7 +46,7 @@ Complete; Phase 0-5 Complete
   - production bandwidth shaping / proposer fairness
 
 ## Goal
-- current static-topology / static-validator-set baseline 위에서 validator node 여러 개를 별도 프로세스로 기동해 자동으로 session 을 맺고 consensus 를 진행할 수 있게 한다.
+- current static-topology / static-validator-set baseline 위에서 validator runtime 여러 개를 별도 runtime instance 로 기동해 자동으로 session 을 맺고 consensus 를 진행할 수 있게 한다.
 - leader stall 이나 missing proposal 상황에서 pacemaker timeout / new-view 경로로 liveness 가 유지되게 한다.
 - newcomer 또는 restarted node 가 current static trust-root baseline 아래에서 실제 replayed/live proposal 을 소비하며 ready 상태로 진입하게 한다.
 - historical backfill 로 읽어온 proposal 이 memory-only retention 에 머물지 않고 local durable storage 에 보존되게 한다.
@@ -241,6 +248,13 @@ Complete; Phase 0-5 Complete
 7. repo 안에 current baseline 을 실제 다중 노드 기동 증거로 묶는 reference launch harness 또는 동등 smoke gate 가 존재한다.
 8. dynamic discovery, rotation trust root, archive acceleration, custody hardening 이 없어도 "minimal static multi-node launch"가 가능하다는 경계가 문서와 테스트에 일관되게 반영된다.
 
+## Current Acceptance Status
+- currently satisfied: `1`, `2`, `4`, `5`, `6`
+- partially satisfied: `7`, `8`
+  current baseline 에는 test-only reference launch harness 가 존재하지만, newcomer bootstrap path 는 아직 harness-side remote bootstrap transport/readiness injection 에 의존한다.
+- still open: `3`
+  shipped default newcomer catch-up closure 와 그 same-path end-to-end smoke proof 가 아직 닫히지 않았다.
+
 ## Checklist
 
 ### Phase 0: Minimal Launch Boundary Lock
@@ -263,9 +277,10 @@ Complete; Phase 0-5 Complete
 
 ### Phase 2: Bootstrap Readiness Closure
 - [x] placeholder `forwardCatchUpUnavailable` hold 제거
-- [x] replayed/live proposal readiness consumer path 연결
-- [x] tx sufficiency / body-view validation / vote eligibility advancement 연결
-- [x] non-empty catch-up ready regression test green
+- [x] `ProposalCatchUpReadiness.fromBlockQuery` concrete readiness helper landed
+- [ ] shipped `HotStuffRuntimeBootstrap.fromConfig/fromTopology` 가 non-empty replay/live catch-up 에 concrete readiness consumer 를 기본 조립으로 wire 함
+- [ ] replayed/live proposal 이 shipped newcomer path 에서 tx sufficiency / body-view validation / vote eligibility advancement 를 거쳐 `Ready` 로 닫힘
+- [ ] non-empty catch-up ready regression test 가 caller-supplied readiness injection 없이 green
 - [x] hold reason / readiness diagnostics regression test green
 
 ### Phase 3: Durable Historical Archive Backing
@@ -287,10 +302,12 @@ Complete; Phase 0-5 Complete
 - [x] newcomer 또는 audit follower bootstrap scenario 를 test-only harness 로 고정
 - [x] same-validator identity relocation DR scenario 를 test-only harness 로 고정
 - [x] manual artifact injection 없이 automatic static mesh session 형성 + runtime-owned consensus progression proof 확보
-- [x] contiguous height advancement `3`회 + timeout recovery `1`회 + newcomer ready bounded gate 를 reference launch smoke automatic flow 로 green
 - [x] audit/history follower restart 뒤 persisted historical archive 유지 smoke gate green
 - [x] old-holder fence + key relocation + validator restart DR smoke gate green
 - [x] concrete config shape / startup order / DR runbook 를 담은 operator note 갱신
+- [ ] config loader 또는 shipped equivalent assembly 가 newcomer/restarted node remote bootstrap transport (`peerBaseUris`, `bootstrapTransport`) 를 harness-only programmatic injection 없이 provision 함
+- [ ] reference launch smoke 가 `ProposalCatchUpReadiness.ready` stub 대신 concrete readiness consumer path 를 사용함
+- [ ] contiguous height advancement `3`회 + timeout recovery `1`회 + newcomer ready bounded gate 가 shipped default newcomer path 로 green
 
 ## Follow-Ups
 - validator-set rotation, trusted checkpoint bundle, weak-subjectivity freshness, historical validator-set lookup runtime 은 계속 `ADR-0023` / plan `0007` follow-up 으로 남긴다.
