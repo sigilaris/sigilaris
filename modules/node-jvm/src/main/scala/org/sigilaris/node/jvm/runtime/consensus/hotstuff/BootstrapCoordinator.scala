@@ -195,8 +195,11 @@ object HotStuffForwardCatchUp:
       readiness: ProposalCatchUpReadiness[F],
   ): F[Either[BootstrapCoordinatorFailure, ForwardCatchUpResult]] =
     val ordered =
-      dedupeByProposalId(replayed ++ live)
-        .sortBy(proposal => (proposal.block.height, proposal.proposalId.toHexLower))
+      normalizeReplayWindow(
+        anchorBlockId = anchor.anchorBlockId,
+        anchorHeight = anchor.anchorHeight,
+        proposals = replayed ++ live,
+      )
 
     @SuppressWarnings(Array("org.wartremover.warts.Recursion"))
     def loop(
@@ -284,6 +287,69 @@ object HotStuffForwardCatchUp:
           case None              => Some(proposal)
       .values
       .toVector
+
+  private def normalizeReplayWindow(
+      anchorBlockId: BlockId,
+      anchorHeight: BlockHeight,
+      proposals: Vector[Proposal],
+  ): Vector[Proposal] =
+    val deduped =
+      dedupeByProposalId(proposals)
+        .sortBy(proposal =>
+          (
+            proposal.block.height,
+            proposal.window.view,
+            proposal.proposalId.toHexLower,
+          ),
+        )
+    val byBlockId =
+      deduped.iterator
+        .map(proposal => proposal.targetBlockId -> proposal)
+        .toMap
+
+    @SuppressWarnings(Array("org.wartremover.warts.Recursion"))
+    def pathToAnchor(
+        proposal: Proposal,
+        acc: Vector[Proposal],
+    ): Option[Vector[Proposal]] =
+      if proposal.block.parent.contains(anchorBlockId) &&
+          proposal.block.height.toBigNat === increment(anchorHeight).toBigNat
+      then
+        (proposal +: acc).some
+      else
+        proposal.block.parent.flatMap(byBlockId.get) match
+          case Some(parent)
+              if proposal.block.height.toBigNat === increment(parent.block.height).toBigNat =>
+            pathToAnchor(parent, proposal +: acc)
+          case _ =>
+            none[Vector[Proposal]]
+
+    val canonicalChain =
+      deduped
+        .flatMap(proposal => pathToAnchor(proposal, Vector.empty))
+        .maxByOption(chain =>
+          chain.lastOption.fold(
+            (anchorHeight, HotStuffView.unsafeFromLong(0L), "")
+          ): leaf =>
+            (
+              leaf.block.height,
+              leaf.window.view,
+              leaf.proposalId.toHexLower,
+            )
+        )
+        .getOrElse(Vector.empty[Proposal])
+
+    val canonicalIds =
+      canonicalChain.iterator.map(_.proposalId).toSet
+    val canonicalFrontierHeight =
+      canonicalChain.lastOption.fold(anchorHeight)(_.block.height)
+    val unresolvedHigher =
+      deduped.filter(proposal =>
+        !canonicalIds.contains(proposal.proposalId) &&
+          Ordering[BlockHeight].gt(proposal.block.height, canonicalFrontierHeight),
+      )
+
+    canonicalChain ++ unresolvedHigher
 
 trait BootstrapCoordinator[F[_]] extends BootstrapDiagnosticsSource[F]:
   def discover(
