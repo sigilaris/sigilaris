@@ -255,6 +255,13 @@ object HotStuffValidator:
         "proposalTxSetNotCanonical",
         Some(proposal.targetBlockId.toHexLower),
       )
+      _ <- ProposalTxSet
+        .firstUnsupportedTxId(proposal.txSet)
+        .fold(().asRight[HotStuffValidationFailure]): txId =>
+          HotStuffValidationFailure(
+            reason = "proposalTxIdUnsupported",
+            detail = Some(txId.toHexLower),
+          ).asLeft[Unit]
       _ <- HotStuffValidationSupport.ensure(
         proposal.proposalId === Proposal.recomputeId(proposal),
         "proposalIdMismatch",

@@ -1,5 +1,7 @@
 package org.sigilaris.node.jvm.runtime.consensus.hotstuff
 
+import scodec.bits.ByteVector
+
 import org.sigilaris.core.codec.byte.{ByteDecoder, ByteEncoder}
 import org.sigilaris.core.codec.byte.ByteDecoder.{BigNat as DecoderBigNat}
 import org.sigilaris.core.codec.OrderedCodec.orderedByteVector
@@ -71,7 +73,16 @@ given ByteDecoder[Signature] =
 given ByteDecoder[QuorumCertificateSubject] = ByteDecoder.derived
 given ByteDecoder[Vote] = ByteDecoder.derived
 given ByteDecoder[QuorumCertificate] = ByteDecoder.derived
-given ByteDecoder[ProposalTxSet] = ByteDecoder.derived
+given ByteDecoder[ProposalTxSet] =
+  val proposalTxIdDecoder =
+    ByteDecoder
+      .fromFixedSizeBytes[ByteVector](UInt256.Size.toLong)(identity)
+      .emap(bytes => StableArtifactId.fromBytes(bytes).left.map(DecodeFailure(_)))
+  ByteDecoder[DecoderBigNat]
+    .flatMap: size =>
+      given ByteDecoder[StableArtifactId] = proposalTxIdDecoder
+      ByteDecoder.sizedListDecoder[StableArtifactId](size)
+    .map(txIds => ProposalTxSet(txIds.toVector))
 given ByteDecoder[BlockHeader] = ByteDecoder.derived
 given ByteDecoder[Proposal] = ByteDecoder.derived
 

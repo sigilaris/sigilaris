@@ -6,6 +6,8 @@ import scala.collection.immutable.{HashSet, VectorMap}
 
 import cats.Eq
 import cats.syntax.all.*
+import io.github.iltotore.iron.*
+import io.github.iltotore.iron.constraint.numeric.Positive0
 import scodec.bits.ByteVector
 
 import org.sigilaris.core.codec.byte.ByteEncoder
@@ -200,10 +202,24 @@ final case class QuorumCertificate(
 
 final case class ProposalTxSet(
     txIds: Vector[StableArtifactId],
-) derives ByteEncoder
+)
 
 object ProposalTxSet:
   given Eq[ProposalTxSet] = Eq.by(_.txIds)
+  given ByteEncoder[ProposalTxSet] =
+    txSet =>
+      require(
+        firstUnsupportedTxId(txSet).isEmpty,
+        "proposal tx-set contains tx ids that are not fixed-width wire compatible",
+      )
+      // Preserve the legacy fixed-width wire format:
+      // [count][32-byte tx id][32-byte tx id]...
+      txSet.txIds.foldLeft(
+        ByteEncoder[ByteEncoder.BigNat]
+          .encode(BigInt(txSet.txIds.size).refineUnsafe[Positive0]),
+      ):
+        case (encoded, txId) =>
+          encoded ++ txId.bytes
 
   val empty: ProposalTxSet = ProposalTxSet(Vector.empty)
 
@@ -254,6 +270,14 @@ object ProposalTxSet:
           (txId.some, compareCanonicalOrder(previous, txId) < 0)
       ._2
 
+  def firstUnsupportedTxId(
+      txSet: ProposalTxSet,
+  ): Option[StableArtifactId] =
+    // General gossip artifact ids are variable-width, but consensus proposal
+    // snapshots and wire payloads need a fixed-width tx-set encoding so
+    // non-empty proposal tx-sets are restricted to 32-byte hash ids.
+    txSet.txIds.find(_.bytes.size =!= UInt256.Size.toLong)
+
   private def compareCanonicalOrder(
       left: StableArtifactId,
       right: StableArtifactId,
@@ -289,15 +313,33 @@ object Proposal:
       keyPair: KeyPair,
   ): Either[HotStuffValidationFailure, Proposal] =
     val canonicalUnsigned = normalizeUnsignedProposal(unsigned)
-    HotStuffCanonicalEncoding
-      .sign(
-        HotStuffCanonicalEncoding.proposalSignBytes(canonicalUnsigned),
-        keyPair,
-      )
-      .map: signature =>
-        val proposalId =
-          ProposalId:
-            HotStuffCanonicalEncoding.proposalId(
+    ProposalTxSet
+      .firstUnsupportedTxId(canonicalUnsigned.txSet)
+      .fold(().asRight[HotStuffValidationFailure]): txId =>
+        HotStuffValidationFailure(
+          reason = "proposalTxIdUnsupported",
+          detail = Some(txId.toHexLower),
+        ).asLeft[Unit]
+      .flatMap: _ =>
+        HotStuffCanonicalEncoding
+          .sign(
+            HotStuffCanonicalEncoding.proposalSignBytes(canonicalUnsigned),
+            keyPair,
+          )
+          .map: signature =>
+            val proposalId =
+              ProposalId:
+                HotStuffCanonicalEncoding.proposalId(
+                  window = canonicalUnsigned.window,
+                  proposer = canonicalUnsigned.proposer,
+                  targetBlockId = canonicalUnsigned.targetBlockId,
+                  block = canonicalUnsigned.block,
+                  txSet = canonicalUnsigned.txSet,
+                  justify = canonicalUnsigned.justify,
+                  signature = signature,
+                )
+            Proposal(
+              proposalId = proposalId,
               window = canonicalUnsigned.window,
               proposer = canonicalUnsigned.proposer,
               targetBlockId = canonicalUnsigned.targetBlockId,
@@ -306,16 +348,6 @@ object Proposal:
               justify = canonicalUnsigned.justify,
               signature = signature,
             )
-        Proposal(
-          proposalId = proposalId,
-          window = canonicalUnsigned.window,
-          proposer = canonicalUnsigned.proposer,
-          targetBlockId = canonicalUnsigned.targetBlockId,
-          block = canonicalUnsigned.block,
-          txSet = canonicalUnsigned.txSet,
-          justify = canonicalUnsigned.justify,
-          signature = signature,
-        )
 
   def signBytes(
       unsigned: UnsignedProposal,

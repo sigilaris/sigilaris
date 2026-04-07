@@ -106,6 +106,9 @@ final class HotStuffLaunchSmokeSuite extends CatsEffectSuite:
             case 0x01 =>
               ByteDecoder[Proposal]
                 .decode(remainder)
+                .leftMap(error =>
+                  DecodeFailure("proposal artifact decode failed: " + error.msg),
+                )
                 .map(result =>
                   DecodeResult(
                     HotStuffGossipArtifact.ProposalArtifact(result.value),
@@ -115,6 +118,9 @@ final class HotStuffLaunchSmokeSuite extends CatsEffectSuite:
             case 0x02 =>
               ByteDecoder[Vote]
                 .decode(remainder)
+                .leftMap(error =>
+                  DecodeFailure("vote artifact decode failed: " + error.msg),
+                )
                 .map(result =>
                   DecodeResult(
                     HotStuffGossipArtifact.VoteArtifact(result.value),
@@ -124,6 +130,11 @@ final class HotStuffLaunchSmokeSuite extends CatsEffectSuite:
             case 0x03 =>
               ByteDecoder[TimeoutVote]
                 .decode(remainder)
+                .leftMap(error =>
+                  DecodeFailure(
+                    "timeout vote artifact decode failed: " + error.msg,
+                  ),
+                )
                 .map(result =>
                   DecodeResult(
                     HotStuffGossipArtifact.TimeoutVoteArtifact(result.value),
@@ -133,6 +144,9 @@ final class HotStuffLaunchSmokeSuite extends CatsEffectSuite:
             case 0x04 =>
               ByteDecoder[NewView]
                 .decode(remainder)
+                .leftMap(error =>
+                  DecodeFailure("new-view artifact decode failed: " + error.msg),
+                )
                 .map(result =>
                   DecodeResult(
                     HotStuffGossipArtifact.NewViewArtifact(result.value),
@@ -156,7 +170,7 @@ final class HotStuffLaunchSmokeSuite extends CatsEffectSuite:
         height = 1L,
         view = 1L,
         stateRoot = StateRoot(graph.rootHash.toUInt256),
-        bodySeed = "5101",
+        txSeeds = Vector("5101"),
         justify = qcFor(genesis, Vector(0, 1, 2)),
         at = tsAt(10L),
       )
@@ -166,7 +180,7 @@ final class HotStuffLaunchSmokeSuite extends CatsEffectSuite:
         height = 2L,
         view = 2L,
         stateRoot = StateRoot(graph.rootHash.toUInt256),
-        bodySeed = "5202",
+        txSeeds = Vector("5202"),
         justify = qcFor(round1, Vector(0, 1, 2)),
         at = tsAt(20L),
       )
@@ -216,7 +230,6 @@ final class HotStuffLaunchSmokeSuite extends CatsEffectSuite:
               height5Proposal <- IO.fromOption(
                 proposalAtHeight(primarySnapshot, 5L),
               )(new IllegalStateException("missing automatic height-5 proposal"))
-              bootstrapTransport = bootstrapTransportFor(nodeE, validators)
               auditRoot = root.resolve(nodeE)
               auditRestartRoot = root.resolve("node-e-restart")
               auditBootstrapResult <- launchedNodeResource(
@@ -225,7 +238,7 @@ final class HotStuffLaunchSmokeSuite extends CatsEffectSuite:
                 holders = holders,
                 localKeys = Map.empty,
                 storageRoot = auditRoot,
-                bootstrapTransport = Some(bootstrapTransport),
+                bootstrapPeerBaseUris = bootstrapPeerBaseUris(validators),
               ).use: audit =>
                 for
                   validatorNow <- latestClockInstant(validators)
@@ -249,7 +262,7 @@ final class HotStuffLaunchSmokeSuite extends CatsEffectSuite:
                 holders = holders,
                 localKeys = Map.empty,
                 storageRoot = auditRestartRoot,
-                bootstrapTransport = Some(bootstrapTransport),
+                bootstrapPeerBaseUris = bootstrapPeerBaseUris(validators),
               ).use: _ =>
                 withArchive(StorageLayout.fromRoot(auditRestartRoot))(_.list(chainId))
             yield (
@@ -363,7 +376,7 @@ final class HotStuffLaunchSmokeSuite extends CatsEffectSuite:
         height = 1L,
         view = 1L,
         stateRoot = StateRoot(hex("6201")),
-        bodySeed = "6201",
+        txSeeds = Vector("6201"),
         justify = qcFor(genesis, Vector(0, 1, 2)),
         at = tsAt(10L),
       )
@@ -373,7 +386,7 @@ final class HotStuffLaunchSmokeSuite extends CatsEffectSuite:
         height = 2L,
         view = 2L,
         stateRoot = StateRoot(hex("6202")),
-        bodySeed = "6202",
+        txSeeds = Vector("6202"),
         justify = qcFor(round1, Vector(0, 1, 2)),
         at = tsAt(20L),
       )
@@ -503,7 +516,7 @@ final class HotStuffLaunchSmokeSuite extends CatsEffectSuite:
       holders: Vector[ValidatorKeyHolder],
       localKeys: Map[ValidatorId, org.sigilaris.core.crypto.KeyPair],
       storageRoot: Path,
-      bootstrapTransport: Option[HotStuffBootstrapTransportServices[IO]] = None,
+      bootstrapPeerBaseUris: Map[String, String] = Map.empty,
       historicalSyncEnabled: Boolean = true,
   ): Resource[IO, LaunchedNode] =
     val layout = StorageLayout.fromRoot(storageRoot)
@@ -513,6 +526,7 @@ final class HotStuffLaunchSmokeSuite extends CatsEffectSuite:
         role = role,
         holders = holders,
         localKeys = localKeys,
+        bootstrapPeerBaseUris = bootstrapPeerBaseUris,
         historicalSyncEnabled = historicalSyncEnabled,
       ),
     )
@@ -525,7 +539,6 @@ final class HotStuffLaunchSmokeSuite extends CatsEffectSuite:
             config = config,
             clock = clock,
             storageLayout = layout,
-            bootstrapTransport = bootstrapTransport,
           )
           .evalMap: either =>
             IO.fromEither(either.leftMap(new IllegalArgumentException(_)))
@@ -890,7 +903,12 @@ final class HotStuffLaunchSmokeSuite extends CatsEffectSuite:
             s"unexpected event poll status for ${link.from.localNodeId}->${link.to.localNodeId}: ${response.status}",
           ),
         )
-      messages <- decodeBinaryMessages(response.bodyBytes)
+      messages <- decodeBinaryMessages(
+        body = response.bodyBytes,
+        responseStatus = response.status,
+        contentType = response.contentType,
+        link = link,
+      )
       receiveResult <- link.to.bootstrap.runtime.receiveEvents(
         link.binding.sessionId,
         messages,
@@ -904,12 +922,39 @@ final class HotStuffLaunchSmokeSuite extends CatsEffectSuite:
 
   private def decodeBinaryMessages(
       body: Array[Byte],
+      responseStatus: Int,
+      contentType: Option[String],
+      link: MeshLink,
   ): IO[Vector[EventStreamMessage[HotStuffGossipArtifact]]] =
-    IO.fromEither(
-      BinaryEventStreamCodec
-        .decode[HotStuffGossipArtifact](body)
-        .leftMap(new IllegalStateException(_)),
-    ).flatMap(_.traverse(toEventStreamMessage))
+    if body.isEmpty then
+      contentType match
+        case Some(value)
+            if value.startsWith(BinaryEventStreamCodec.MediaType) &&
+              responseStatus == 200 =>
+          Vector.empty[EventStreamMessage[HotStuffGossipArtifact]].pure[IO]
+        case _ =>
+          IO.raiseError(
+            new IllegalStateException(
+              s"unexpected empty event poll body for ${link.from.localNodeId}->${link.to.localNodeId}: " +
+                s"status=$responseStatus " +
+                s"contentType=${contentType.getOrElse("<missing>")}",
+            ),
+          )
+    else
+      IO.fromEither(
+        BinaryEventStreamCodec
+          .decode[HotStuffGossipArtifact](body)
+          .leftMap(error =>
+            new IllegalStateException(
+                s"failed to decode event poll body for ${link.from.localNodeId}->${link.to.localNodeId}: " +
+                s"status=$responseStatus " +
+                s"contentType=${contentType.getOrElse("<missing>")} " +
+                s"bytes=${body.length} " +
+                s"hexPreview=${ByteVector.view(body).take(32).toHex} " +
+                s"error=$error",
+            ),
+          ),
+      ).flatMap(_.traverse(toEventStreamMessage))
 
   private def toEventStreamMessage(
       envelope: EventEnvelopeWire[HotStuffGossipArtifact],
@@ -993,20 +1038,10 @@ final class HotStuffLaunchSmokeSuite extends CatsEffectSuite:
       )
       .flatMap(_.snapshot)
 
-  private def bootstrapTransportFor(
-      localNodeId: String,
+  private def bootstrapPeerBaseUris(
       remotes: Vector[LaunchedNode],
-  ): HotStuffBootstrapTransportServices[IO] =
-    HotStuffBootstrapHttpTransport.services[IO](
-      peerBaseUris =
-        remotes
-          .map(node => PeerIdentity.unsafe(node.localNodeId) -> node.baseUri)
-          .toMap,
-      transportAuth = StaticPeerTransportAuth.testing(
-        topologyFor(localNodeId),
-      ),
-      proposalCatchUpReadiness = Some(ProposalCatchUpReadiness.ready[IO]),
-    )
+  ): Map[String, String] =
+    remotes.map(node => node.localNodeId -> node.baseUri).toMap
 
   private def withArchive[A](
       storageLayout: StorageLayout,
@@ -1022,12 +1057,29 @@ final class HotStuffLaunchSmokeSuite extends CatsEffectSuite:
       role: LocalNodeRole,
       holders: Vector[ValidatorKeyHolder],
       localKeys: Map[ValidatorId, org.sigilaris.core.crypto.KeyPair],
+      bootstrapPeerBaseUris: Map[String, String],
       historicalSyncEnabled: Boolean,
   ): Config =
     val roleValue =
       role match
         case LocalNodeRole.Validator => "validator"
         case LocalNodeRole.Audit     => "audit"
+    val bootstrapPeerBaseUriEntries =
+      bootstrapPeerBaseUris.toVector
+        .sortBy(_._1)
+        .map: (peer, baseUri) =>
+          s"""      "$peer" = "$baseUri""""
+        .mkString("\n")
+    val bootstrapSection =
+      if bootstrapPeerBaseUris.isEmpty then ""
+      else
+        s"""
+           |  bootstrap {
+           |    peer-base-uris {
+           |$bootstrapPeerBaseUriEntries
+           |    }
+           |  }
+           |""".stripMargin
 
     ConfigFactory.parseString(
       s"""
@@ -1035,6 +1087,7 @@ final class HotStuffLaunchSmokeSuite extends CatsEffectSuite:
          |  local-node-identity = "$localNodeId"
          |  known-peers = [${allPeers.filterNot(_ === localNodeId).map(peer => s""""$peer"""").mkString(", ")}]
          |  direct-neighbors = [${allPeers.filterNot(_ === localNodeId).map(peer => s""""$peer"""").mkString(", ")}]
+         |$bootstrapSection
          |}
          |
          |sigilaris.node.consensus.hotstuff {
@@ -1146,12 +1199,17 @@ final class HotStuffLaunchSmokeSuite extends CatsEffectSuite:
       seed: String,
   ): Proposal =
     val bootstrap = bootstrapQc(seed)
+    val txIds = Vector.empty[StableArtifactId]
     val genesisBlock =
       block(
         parent = None,
         height = 0L,
         stateRoot = StateRoot(hex(seed + "10")),
-        bodyRoot = BodyRoot(hex(seed + "11")),
+        bodyRoot =
+          requireEither(
+            ApplicationNeutralProposalView.bodyRoot(txIds),
+            s"failed to compute genesis body root for seed $seed",
+          ),
         at = startedAt,
       )
     requireEither(
@@ -1242,12 +1300,13 @@ final class HotStuffLaunchSmokeSuite extends CatsEffectSuite:
       height: Long,
       view: Long,
       stateRoot: StateRoot,
-      bodySeed: String,
+      txSeeds: Vector[String],
       justify: QuorumCertificate,
       at: Instant,
   ): Proposal =
     val proposer = validatorSet.members(proposerIndex).id
     val window = HotStuffWindow(chainId, height, view, validatorSet.hash)
+    val txIds = txSeeds.map(stableTxId)
     require(
       HotStuffPacemaker.deterministicLeader(window, validatorSet) === proposer,
       s"unexpected deterministic leader for $window",
@@ -1257,7 +1316,11 @@ final class HotStuffLaunchSmokeSuite extends CatsEffectSuite:
         parent = parentBlockId,
         height = height,
         stateRoot = stateRoot,
-        bodyRoot = BodyRoot(hex(bodySeed)),
+        bodyRoot =
+          requireEither(
+            ApplicationNeutralProposalView.bodyRoot(txIds),
+            s"failed to compute body root at height $height view $view",
+          ),
         at = at,
       )
     requireEither(
@@ -1267,12 +1330,24 @@ final class HotStuffLaunchSmokeSuite extends CatsEffectSuite:
           proposer = proposer,
           targetBlockId = BlockHeader.computeId(proposalBlock),
           block = proposalBlock,
-          txSet = ProposalTxSet.empty,
+          txSet = ApplicationNeutralProposalView.proposalTxSet(txIds),
           justify = justify,
         ),
         validatorKeys(proposerIndex),
       ),
       s"failed to sign proposal at height $height view $view",
+    )
+
+  private def stableTxId(
+      seed: String,
+  ): StableArtifactId =
+    requireEither(
+      ApplicationNeutralProposalView.txIdFromBytes(
+        ByteVector.view(
+          CryptoOps.keccak256(seed.getBytes(StandardCharsets.UTF_8)),
+        ),
+      ),
+      "failed to derive application-neutral stable tx id",
     )
 
   private def proposalHeight(

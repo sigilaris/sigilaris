@@ -18,6 +18,7 @@ import scodec.bits.ByteVector
 import com.typesafe.config.{Config, ConfigFactory}
 
 import org.sigilaris.core.application.scheduling.{ConflictFootprint, SchedulingClassification}
+import org.sigilaris.core.codec.byte.ByteDecoder.ops.*
 import org.sigilaris.core.codec.byte.ByteEncoder
 import org.sigilaris.core.crypto.{CryptoOps, KeyPair}
 import org.sigilaris.core.crypto.Hash
@@ -567,8 +568,281 @@ final class HotStuffRuntimeBootstrapSuite extends CatsEffectSuite:
     yield
       assertEquals(
         result.left.map(_.reason),
-        Left("proposalCatchUpReadinessUnavailable"),
+        Left("proposalBodyRootMismatch"),
       )
+
+  test("application-neutral fallback readiness accepts only matching or legacy proposal bodies"):
+    val readiness = ApplicationNeutralProposalView.readiness[IO](validatorSet)
+    val applicationNeutral =
+      signedApplicationNeutralReplayProposal(
+        parent = Some(bootstrapQc().subject.blockId),
+        height = 1L,
+        proposerIndex = 0,
+        justify = bootstrapQc(),
+        stateRoot = StateRoot(Utf8("readiness-root").toHash.toUInt256),
+        txSeeds = Vector("tx-a"),
+      )
+    val legacyAutomatic =
+      signedLegacyAutomaticReplayProposal(
+        parent = Some(applicationNeutral.targetBlockId),
+        height = 2L,
+        proposerIndex = 1,
+        justify = qcFor(applicationNeutral),
+        stateRoot = StateRoot(Utf8("readiness-root").toHash.toUInt256),
+      )
+    val applicationOwned =
+      signedReplayProposal(
+        parent = Some(bootstrapQc().subject.blockId),
+        height = 3L,
+        proposerIndex = 2,
+        justify = bootstrapQc(),
+        stateRoot = StateRoot(Utf8("readiness-root").toHash.toUInt256),
+        txs = Vector(TestTx(Utf8("tx-app-owned"))),
+        bodyHexFallback = "deadbeef",
+      )
+
+    for
+      applicationNeutralResult <- readiness.assess(applicationNeutral)
+      legacyAutomaticResult <- readiness.assess(legacyAutomatic)
+      applicationOwnedResult <- readiness.assess(applicationOwned)
+    yield
+      assertEquals(
+        applicationNeutralResult,
+        Right(
+          ProposalCatchUpAssessment(
+            voteReadiness = BootstrapVoteReadiness.Ready,
+            controlBatch = None,
+          ),
+        ),
+      )
+      assertEquals(
+        legacyAutomaticResult,
+        Right(
+          ProposalCatchUpAssessment(
+            voteReadiness = BootstrapVoteReadiness.Ready,
+            controlBatch = None,
+          ),
+        ),
+      )
+      assertNotEquals(
+        applicationOwned.block.bodyRoot,
+        ApplicationNeutralProposalView
+          .bodyRoot(applicationOwned.txSet.txIds)
+          .toOption
+          .get,
+      )
+      assertEquals(
+        applicationOwnedResult.left.map(_.reason),
+        Left("proposalBodyRootMismatch"),
+      )
+
+  test("application-neutral fallback readiness surfaces proposal validation failures after body-root match"):
+    val readiness = ApplicationNeutralProposalView.readiness[IO](validatorSet)
+    val proposal =
+      signedApplicationNeutralReplayProposal(
+        parent = Some(bootstrapQc().subject.blockId),
+        height = 1L,
+        proposerIndex = 0,
+        justify = bootstrapQc(),
+        stateRoot = StateRoot(Utf8("readiness-root").toHash.toUInt256),
+        txSeeds = Vector("tx-valid"),
+      )
+    val targetBlockMismatch =
+      proposal.copy(
+        targetBlockId = BlockId(Utf8("wrong-target").toHash.toUInt256),
+      )
+
+    for
+      result <- readiness.assess(targetBlockMismatch)
+    yield
+      assertEquals(
+        result.left.map(_.reason),
+        Left("targetBlockIdMismatch"),
+      )
+
+  test(
+    "assembled bootstrap runtime advances replay catch-up without injected readiness when proposal tx-set carries an application-neutral block view",
+  ):
+    val root =
+      MerkleTrieNode.branch(
+        ByteVector.empty.toNibbles,
+        MerkleTrieNode.Children.empty,
+      )
+    val rootHash = root.toHash
+    val anchor =
+      applicationNeutralReplayableSuggestion(
+        seed = "e2-default",
+        stateRoot = StateRoot(rootHash.toUInt256),
+        childTxSeeds = Vector("tx-1"),
+        grandchildTxSeeds = Vector("tx-2"),
+      )
+    val child      = anchor.finalizedProof.child
+    val grandchild = anchor.finalizedProof.grandchild
+
+    for
+      clock <- TestClock.create(startedAt)
+      bootstrap <- loadBootstrapFromTopology(
+        topology = topology("node-a", Vector("node-b")),
+        consensusConfig = validatorConfig(),
+        clock = clock,
+        bootstrapTransport =
+          Some(
+            proposalTransport(
+              anchor = anchor,
+              replayed = Vector(child, grandchild),
+              snapshotRoot = rootHash -> root,
+              proposalCatchUpReadiness = None,
+            )
+          ),
+        storageLayout = freshStorageLayout,
+      )
+      result <- bootstrap.consensus.bootstrap(
+        chainId = chainId,
+        sessions =
+          Vector(
+            bootstrapSession(
+              peer = "node-b",
+              sessionId = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
+            ),
+          ),
+        startedAt = startedAt,
+        liveProposals = Vector.empty,
+      )
+      diagnostics <- bootstrap.consensus.currentBootstrapDiagnostics
+    yield
+      assertEquals(
+        result.map(_.forwardCatchUp.applied.map(_.proposalId)),
+        Right(Vector(child.proposalId, grandchild.proposalId)),
+      )
+      assertEquals(
+        result.map(_.forwardCatchUp.voteReadiness),
+        Right(BootstrapVoteReadiness.Ready),
+      )
+      assertEquals(diagnostics.phase, BootstrapPhase.Ready)
+
+  test("proposal codec round-trips non-empty application-neutral tx sets"):
+    val proposal =
+      signedApplicationNeutralReplayProposal(
+        parent = Some(bootstrapQc().subject.blockId),
+        height = 1L,
+        proposerIndex = 0,
+        justify = bootstrapQc(),
+        stateRoot = StateRoot(Utf8("codec-root").toHash.toUInt256),
+        txSeeds = Vector("tx-a", "tx-b"),
+      )
+
+    assertEquals(
+      ByteEncoder[Proposal].encode(proposal).to[Proposal],
+      Right(proposal),
+    )
+
+  test("proposal tx-set codec preserves the legacy fixed-width wire format"):
+    val txSet =
+      ApplicationNeutralProposalView.proposalTxSet(
+        Vector(
+          applicationNeutralTxId("legacy-codec-a"),
+          applicationNeutralTxId("legacy-codec-b"),
+        ),
+      )
+    val expectedWireBytes =
+      ByteVector.fromByte(0x02.toByte) ++ txSet.txIds.foldLeft(ByteVector.empty):
+        case (encoded, txId) =>
+          encoded ++ txId.bytes
+
+    assertEquals(
+      ByteEncoder[ProposalTxSet].encode(txSet),
+      expectedWireBytes,
+    )
+    assertEquals(
+      expectedWireBytes.to[ProposalTxSet],
+      Right(txSet),
+    )
+
+  test("proposal signing rejects tx ids that are not fixed-width wire compatible"):
+    val header =
+      BlockHeader(
+        parent = Some(bootstrapQc().subject.blockId),
+        height = BlockHeight.unsafeFromLong(1L),
+        stateRoot = StateRoot(Utf8("codec-root").toHash.toUInt256),
+        bodyRoot = BodyRoot(Utf8("codec-body").toHash.toUInt256),
+        timestamp = BlockTimestamp.unsafeFromEpochMillis(startedAt.toEpochMilli + 1L),
+      )
+
+    assertEquals(
+      Proposal
+        .sign(
+          UnsignedProposal(
+            window = HotStuffWindow(chainId, 1L, 1L, validatorSet.hash),
+            proposer = validatorIds(0),
+            targetBlockId = BlockHeader.computeId(header),
+            block = header,
+            txSet =
+              ProposalTxSet.canonical(
+                ProposalTxSet(Vector(StableArtifactId.unsafeFromHex("ff"))),
+              ),
+            justify = bootstrapQc(),
+          ),
+          validatorKeys(0),
+        )
+        .left
+        .map(_.reason),
+      Left("proposalTxIdUnsupported"),
+    )
+
+  test("assembled bootstrap runtime advances replay catch-up without injected readiness for legacy automatic proposals"):
+    val root =
+      MerkleTrieNode.branch(
+        ByteVector.empty.toNibbles,
+        MerkleTrieNode.Children.empty,
+      )
+    val rootHash = root.toHash
+    val anchor =
+      legacyAutomaticReplayableSuggestion(
+        stateRoot = StateRoot(rootHash.toUInt256),
+      )
+    val child      = anchor.finalizedProof.child
+    val grandchild = anchor.finalizedProof.grandchild
+
+    for
+      clock <- TestClock.create(startedAt)
+      bootstrap <- loadBootstrapFromTopology(
+        topology = topology("node-a", Vector("node-b")),
+        consensusConfig = validatorConfig(),
+        clock = clock,
+        bootstrapTransport =
+          Some(
+            proposalTransport(
+              anchor = anchor,
+              replayed = Vector(child, grandchild),
+              snapshotRoot = rootHash -> root,
+              proposalCatchUpReadiness = None,
+            )
+          ),
+        storageLayout = freshStorageLayout,
+      )
+      result <- bootstrap.consensus.bootstrap(
+        chainId = chainId,
+        sessions =
+          Vector(
+            bootstrapSession(
+              peer = "node-b",
+              sessionId = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
+            ),
+          ),
+        startedAt = startedAt,
+        liveProposals = Vector.empty,
+      )
+      diagnostics <- bootstrap.consensus.currentBootstrapDiagnostics
+    yield
+      assertEquals(
+        result.map(_.forwardCatchUp.applied.map(_.proposalId)),
+        Right(Vector(child.proposalId, grandchild.proposalId)),
+      )
+      assertEquals(
+        result.map(_.forwardCatchUp.voteReadiness),
+        Right(BootstrapVoteReadiness.Ready),
+      )
+      assertEquals(diagnostics.phase, BootstrapPhase.Ready)
 
   test("assembled bootstrap runtime advances replay catch-up once injected readiness sees tx sufficiency"):
     val root =
@@ -2165,6 +2439,77 @@ final class HotStuffRuntimeBootstrapSuite extends CatsEffectSuite:
       finalizedProof = FinalizedProof(child, grandchild),
     )
 
+  private def applicationNeutralReplayableSuggestion(
+      seed: String,
+      stateRoot: StateRoot,
+      childTxSeeds: Vector[String],
+      grandchildTxSeeds: Vector[String],
+  ): FinalizedAnchorSuggestion =
+    val anchor =
+      signedApplicationNeutralReplayProposal(
+        parent = Some(bootstrapQc().subject.blockId),
+        height = 1L,
+        proposerIndex = 0,
+        justify = bootstrapQc(),
+        stateRoot = stateRoot,
+        txSeeds = Vector.empty,
+      )
+    val child =
+      signedApplicationNeutralReplayProposal(
+        parent = Some(anchor.targetBlockId),
+        height = 2L,
+        proposerIndex = 1,
+        justify = qcFor(anchor),
+        stateRoot = stateRoot,
+        txSeeds = childTxSeeds.map(seed + "-" + _),
+      )
+    val grandchild =
+      signedApplicationNeutralReplayProposal(
+        parent = Some(child.targetBlockId),
+        height = 3L,
+        proposerIndex = 2,
+        justify = qcFor(child),
+        stateRoot = stateRoot,
+        txSeeds = grandchildTxSeeds.map(seed + "-" + _),
+      )
+    FinalizedAnchorSuggestion(
+      proposal = anchor,
+      finalizedProof = FinalizedProof(child, grandchild),
+    )
+
+  private def legacyAutomaticReplayableSuggestion(
+      stateRoot: StateRoot,
+  ): FinalizedAnchorSuggestion =
+    val anchor =
+      signedApplicationNeutralReplayProposal(
+        parent = Some(bootstrapQc().subject.blockId),
+        height = 1L,
+        proposerIndex = 0,
+        justify = bootstrapQc(),
+        stateRoot = stateRoot,
+        txSeeds = Vector.empty,
+      )
+    val child =
+      signedLegacyAutomaticReplayProposal(
+        parent = Some(anchor.targetBlockId),
+        height = 2L,
+        proposerIndex = 1,
+        justify = qcFor(anchor),
+        stateRoot = stateRoot,
+      )
+    val grandchild =
+      signedLegacyAutomaticReplayProposal(
+        parent = Some(child.targetBlockId),
+        height = 3L,
+        proposerIndex = 2,
+        justify = qcFor(child),
+        stateRoot = stateRoot,
+      )
+    FinalizedAnchorSuggestion(
+      proposal = anchor,
+      finalizedProof = FinalizedProof(child, grandchild),
+    )
+
   private def signedReplayProposal(
       parent: Option[BlockId],
       height: Long,
@@ -2242,6 +2587,94 @@ final class HotStuffRuntimeBootstrapSuite extends CatsEffectSuite:
         )
         .toSet,
     )
+
+  private def signedApplicationNeutralReplayProposal(
+      parent: Option[BlockId],
+      height: Long,
+      proposerIndex: Int,
+      justify: QuorumCertificate,
+      stateRoot: StateRoot,
+      txSeeds: Vector[String],
+  ): Proposal =
+    val txIds = txSeeds.map(applicationNeutralTxId)
+    val header =
+      BlockHeader(
+        parent = parent,
+        height = BlockHeight.unsafeFromLong(height),
+        stateRoot = stateRoot,
+        bodyRoot =
+          ApplicationNeutralProposalView
+            .bodyRoot(txIds)
+            .toOption
+            .get,
+        timestamp =
+          BlockTimestamp.unsafeFromEpochMillis(
+            startedAt.toEpochMilli + height,
+          ),
+      )
+    Proposal
+      .sign(
+        UnsignedProposal(
+          window = HotStuffWindow(chainId, height, height, validatorSet.hash),
+          proposer = validatorIds(proposerIndex),
+          targetBlockId = BlockHeader.computeId(header),
+          block = header,
+          txSet = ApplicationNeutralProposalView.proposalTxSet(txIds),
+          justify = justify,
+        ),
+        validatorKeys(proposerIndex),
+      )
+      .toOption
+      .get
+
+  private def signedLegacyAutomaticReplayProposal(
+      parent: Option[BlockId],
+      height: Long,
+      proposerIndex: Int,
+      justify: QuorumCertificate,
+      stateRoot: StateRoot,
+  ): Proposal =
+    val window =
+      HotStuffWindow(chainId, height, height, validatorSet.hash)
+    val proposer = validatorIds(proposerIndex)
+    val header =
+      BlockHeader(
+        parent = parent,
+        height = BlockHeight.unsafeFromLong(height),
+        stateRoot = stateRoot,
+        bodyRoot =
+          ApplicationNeutralProposalView.legacyAutomaticBodyRoot(
+            window = window,
+            proposer = proposer,
+            justify = justify,
+          ),
+        timestamp =
+          BlockTimestamp.unsafeFromEpochMillis(
+            startedAt.toEpochMilli + height,
+          ),
+      )
+    Proposal
+      .sign(
+        UnsignedProposal(
+          window = window,
+          proposer = proposer,
+          targetBlockId = BlockHeader.computeId(header),
+          block = header,
+          txSet = ProposalTxSet.empty,
+          justify = justify,
+        ),
+        validatorKeys(proposerIndex),
+      )
+      .toOption
+      .get
+
+  private def applicationNeutralTxId(
+      seed: String,
+  ): StableArtifactId =
+    ApplicationNeutralProposalView
+      .txIdFromBytes(Utf8(seed).toHash.toUInt256.bytes)
+      .toOption
+      .get
 
   private def schedulable(): SchedulingClassification =
     SchedulingClassification.Schedulable(ConflictFootprint.empty)

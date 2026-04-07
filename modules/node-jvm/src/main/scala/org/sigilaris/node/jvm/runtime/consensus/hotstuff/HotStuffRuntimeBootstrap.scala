@@ -28,6 +28,7 @@ import org.sigilaris.node.jvm.runtime.gossip.tx.{
   TxGossipRuntimeBootstrap,
   TxRuntimePolicy,
 }
+import org.sigilaris.node.jvm.transport.armeria.gossip.HotStuffBootstrapHttpTransport
 
 @SuppressWarnings(Array("org.wartremover.warts.DefaultArguments"))
 final case class HotStuffBootstrapConfig(
@@ -671,16 +672,31 @@ object HotStuffRuntimeBootstrap:
             case Left(error) =>
               Resource.pure(error.asLeft[HotStuffRuntimeBootstrap[F]])
             case Right(transportAuth) =>
-              fromTopology(
-                topology = topology,
-                transportAuth = transportAuth,
-                consensusConfig = consensusConfig,
-                clock = clock,
-                runtimePolicy = runtimePolicy,
-                handshakePolicy = handshakePolicy,
-                bootstrapTransport = bootstrapTransport,
-                storageLayout = storageLayout,
-              )
+              StaticPeerBootstrapHttpTransportConfig
+                .load(config, topology, peerConfigPath) match
+                case Left(error) =>
+                  Resource.pure(error.asLeft[HotStuffRuntimeBootstrap[F]])
+                case Right(httpBootstrapConfig) =>
+                  val resolvedBootstrapTransport =
+                    bootstrapTransport.orElse:
+                      httpBootstrapConfig.map(config =>
+                        HotStuffBootstrapHttpTransport.services[F](
+                          peerBaseUris = config.peerBaseUris,
+                          transportAuth = transportAuth,
+                          requestTimeout = config.requestTimeout,
+                          maxConcurrentRequests = config.maxConcurrentRequests,
+                        ),
+                      )
+                  fromTopology(
+                    topology = topology,
+                    transportAuth = transportAuth,
+                    consensusConfig = consensusConfig,
+                    clock = clock,
+                    runtimePolicy = runtimePolicy,
+                    handshakePolicy = handshakePolicy,
+                    bootstrapTransport = resolvedBootstrapTransport,
+                    storageLayout = storageLayout,
+                  )
 
   @SuppressWarnings(Array("org.wartremover.warts.DefaultArguments"))
   def fromTopology[F[_]: Async: LiftIO](
@@ -760,13 +776,13 @@ object HotStuffRuntimeBootstrap:
                                 )
                               proposalCatchUpReadiness =
                                 transportServices.proposalCatchUpReadiness.getOrElse:
-                                  // Empty catch-up can still complete without this seam,
-                                  // but any replayed/live proposal must use an
-                                  // application-owned readiness implementation because
-                                  // tx inventory and block-view validation are outside
-                                  // the application-neutral HotStuff bootstrap assembly.
-                                  ProposalCatchUpReadiness.failure[F](
-                                    "proposalCatchUpReadinessUnavailable",
+                                  // The application-neutral fallback closes
+                                  // proposals whose body commitment is
+                                  // derivable from the carried tx-set itself.
+                                  // Richer application-owned bodies can still
+                                  // override this via `bootstrapTransport`.
+                                  ApplicationNeutralProposalView.readiness[F](
+                                    validatedInput.validatorSet,
                                   )
                               bootstrapLifecycle <- HotStuffBootstrapLifecycle.inMemory[F](
                                 metadataStore = metadataStore,
