@@ -76,6 +76,9 @@ final class HotStuffLaunchSmokeSuite extends CatsEffectSuite:
   private val transportProofInfo = "sigilaris.transport-proof.v1"
   private val transportProofHmacAlgorithm = "HmacSHA256"
   private val transportProofSha256 = "SHA-256"
+  private val sharedHttpClient = HttpClient.newHttpClient()
+  private val validatorNodeSpecs =
+    Vector(nodeA -> 0, nodeB -> 1, nodeC -> 2, nodeD -> 3)
 
   private val subscription = SessionSubscription.unsafe(
     ChainTopic(chainId, GossipTopic.consensusProposal),
@@ -146,7 +149,7 @@ final class HotStuffLaunchSmokeSuite extends CatsEffectSuite:
       val genesis = genesisProposal("41")
       val holders = initialHolders
 
-      validatorClusterResource(root, holders).use: validators =>
+      validatorNodesResource(root, holders, validatorNodeSpecs).use: validators =>
         val validatorByNode = validators.map(node => node.localNodeId -> node).toMap
         val leader1 = validatorByNode(nodeB)
         val leader2 = validatorByNode(nodeC)
@@ -339,7 +342,7 @@ final class HotStuffLaunchSmokeSuite extends CatsEffectSuite:
     tempDirResource.use: root =>
       val genesis = genesisProposal("61")
 
-      stableClusterResource(root, initialHolders).use: stableNodes =>
+      validatorNodesResource(root, initialHolders, validatorNodeSpecs.take(3)).use: stableNodes =>
         val nodeById = stableNodes.map(node => node.localNodeId -> node).toMap
         val nodeDRoot = root.resolve(nodeD)
         val nodeERoot = root.resolve(nodeE)
@@ -576,68 +579,20 @@ final class HotStuffLaunchSmokeSuite extends CatsEffectSuite:
         newView = newView,
       )
 
-  private def validatorClusterResource(
+  private def validatorNodesResource(
       root: Path,
       holders: Vector[ValidatorKeyHolder],
+      nodeSpecs: Vector[(String, Int)],
   ): Resource[IO, Vector[LaunchedNode]] =
-    for
-      node1 <- launchedNodeResource(
-        localNodeId = nodeA,
+    nodeSpecs.traverse: (localNodeId, validatorIndex) =>
+      launchedNodeResource(
+        localNodeId = localNodeId,
         role = LocalNodeRole.Validator,
         holders = holders,
-        localKeys = Map(validatorSet.members(0).id -> validatorKeys(0)),
-        storageRoot = root.resolve(nodeA),
+        localKeys =
+          Map(validatorSet.members(validatorIndex).id -> validatorKeys(validatorIndex)),
+        storageRoot = root.resolve(localNodeId),
       )
-      node2 <- launchedNodeResource(
-        localNodeId = nodeB,
-        role = LocalNodeRole.Validator,
-        holders = holders,
-        localKeys = Map(validatorSet.members(1).id -> validatorKeys(1)),
-        storageRoot = root.resolve(nodeB),
-      )
-      node3 <- launchedNodeResource(
-        localNodeId = nodeC,
-        role = LocalNodeRole.Validator,
-        holders = holders,
-        localKeys = Map(validatorSet.members(2).id -> validatorKeys(2)),
-        storageRoot = root.resolve(nodeC),
-      )
-      node4 <- launchedNodeResource(
-        localNodeId = nodeD,
-        role = LocalNodeRole.Validator,
-        holders = holders,
-        localKeys = Map(validatorSet.members(3).id -> validatorKeys(3)),
-        storageRoot = root.resolve(nodeD),
-      )
-    yield Vector(node1, node2, node3, node4)
-
-  private def stableClusterResource(
-      root: Path,
-      holders: Vector[ValidatorKeyHolder],
-  ): Resource[IO, Vector[LaunchedNode]] =
-    for
-      node1 <- launchedNodeResource(
-        localNodeId = nodeA,
-        role = LocalNodeRole.Validator,
-        holders = holders,
-        localKeys = Map(validatorSet.members(0).id -> validatorKeys(0)),
-        storageRoot = root.resolve(nodeA),
-      )
-      node2 <- launchedNodeResource(
-        localNodeId = nodeB,
-        role = LocalNodeRole.Validator,
-        holders = holders,
-        localKeys = Map(validatorSet.members(1).id -> validatorKeys(1)),
-        storageRoot = root.resolve(nodeB),
-      )
-      node3 <- launchedNodeResource(
-        localNodeId = nodeC,
-        role = LocalNodeRole.Validator,
-        holders = holders,
-        localKeys = Map(validatorSet.members(2).id -> validatorKeys(2)),
-        storageRoot = root.resolve(nodeC),
-      )
-    yield Vector(node1, node2, node3)
 
   @SuppressWarnings(Array("org.wartremover.warts.DefaultArguments"))
   private def launchedNodeResource(
@@ -987,14 +942,14 @@ final class HotStuffLaunchSmokeSuite extends CatsEffectSuite:
   private def topologyFor(
       localNodeId: String,
   ): StaticPeerTopology =
-    StaticPeerTopology
-      .parse(
+    requireEither(
+      StaticPeerTopology.parse(
         localNodeIdentity = localNodeId,
         knownPeers = allPeers.filterNot(_ === localNodeId).toList,
         directNeighbors = allPeers.filterNot(_ === localNodeId).toList,
-      )
-      .toOption
-      .get
+      ),
+      s"failed to build test topology for $localNodeId",
+    )
 
   private def initialHolders: Vector[ValidatorKeyHolder] =
     Vector(
@@ -1019,12 +974,18 @@ final class HotStuffLaunchSmokeSuite extends CatsEffectSuite:
     val leftLeaf =
       MerkleTrieNode.leaf(
         ByteVector.empty.toNibbles,
-        ByteVector.fromHexDescriptive(seed + "aa").toOption.get,
+        requireEither(
+          ByteVector.fromHexDescriptive(seed + "aa"),
+          s"invalid snapshot left leaf hex for seed $seed",
+        ),
       )
     val rightLeaf =
       MerkleTrieNode.leaf(
         ByteVector.empty.toNibbles,
-        ByteVector.fromHexDescriptive(seed + "bb").toOption.get,
+        requireEither(
+          ByteVector.fromHexDescriptive(seed + "bb"),
+          s"invalid snapshot right leaf hex for seed $seed",
+        ),
       )
     val leftHash = leftLeaf.toHash
     val rightHash = rightLeaf.toHash
@@ -1055,8 +1016,8 @@ final class HotStuffLaunchSmokeSuite extends CatsEffectSuite:
         bodyRoot = BodyRoot(hex(seed + "11")),
         at = startedAt,
       )
-    Proposal
-      .sign(
+    requireEither(
+      Proposal.sign(
         UnsignedProposal(
           window = HotStuffWindow(chainId, 0L, 0L, validatorSet.hash),
           proposer = validatorSet.members(0).id,
@@ -1066,9 +1027,9 @@ final class HotStuffLaunchSmokeSuite extends CatsEffectSuite:
           justify = bootstrap,
         ),
         validatorKeys(0),
-      )
-      .toOption
-      .get
+      ),
+      s"failed to sign genesis proposal for seed $seed",
+    )
 
   private def bootstrapQc(
       seed: String,
@@ -1078,21 +1039,21 @@ final class HotStuffLaunchSmokeSuite extends CatsEffectSuite:
       proposalId = ProposalId(hex(seed + "01")),
       blockId = BlockId(hex(seed + "02")),
     )
-    QuorumCertificateAssembler
-      .assemble(
+    requireEither(
+      QuorumCertificateAssembler.assemble(
         subject,
         quorumVotes(subject.window, subject.proposalId, Vector(0, 1, 2)),
         validatorSet,
-      )
-      .toOption
-      .get
+      ),
+      s"failed to assemble bootstrap QC for seed $seed",
+    )
 
   private def qcFor(
       proposal: Proposal,
       voters: Vector[Int],
   ): QuorumCertificate =
-    QuorumCertificateAssembler
-      .assemble(
+    requireEither(
+      QuorumCertificateAssembler.assemble(
         QuorumCertificateSubject(
           window = proposal.window,
           proposalId = proposal.proposalId,
@@ -1100,9 +1061,9 @@ final class HotStuffLaunchSmokeSuite extends CatsEffectSuite:
         ),
         quorumVotes(proposal.window, proposal.proposalId, voters),
         validatorSet,
-      )
-      .toOption
-      .get
+      ),
+      s"failed to assemble QC for proposal ${proposal.proposalId.toHexLower}",
+    )
 
   private def quorumVotes(
       window: HotStuffWindow,
@@ -1110,17 +1071,17 @@ final class HotStuffLaunchSmokeSuite extends CatsEffectSuite:
       voters: Vector[Int],
   ): Vector[Vote] =
     voters.map: index =>
-      Vote
-        .sign(
+      requireEither(
+        Vote.sign(
           UnsignedVote(
             window = window,
             voter = validatorSet.members(index).id,
             targetProposalId = proposalId,
           ),
           validatorKeys(index),
-        )
-        .toOption
-        .get
+        ),
+        s"failed to sign vote for ${validatorSet.members(index).id.value} on ${proposalId.toHexLower}",
+      )
 
   private def block(
       parent: Option[BlockId],
@@ -1177,7 +1138,15 @@ final class HotStuffLaunchSmokeSuite extends CatsEffectSuite:
   private def hex(
       value: String,
   ): UInt256 =
-    UInt256.fromHex(value.padTo(64, '0')).toOption.get
+    requireEither(UInt256.fromHex(value.padTo(64, '0')), s"invalid test hex value: $value")
+
+  private def requireEither[A](
+      result: Either[?, A],
+      context: String,
+  ): A =
+    result match
+      case Right(value) => value
+      case Left(error)  => fail(s"$context: $error")
 
   private def validatorSetEntries(
       indent: String,
@@ -1352,7 +1321,6 @@ final class HotStuffLaunchSmokeSuite extends CatsEffectSuite:
         bootstrapCapability: Option[String] = None,
     ): IO[Response] =
       IO.blocking:
-        val client = HttpClient.newHttpClient()
         val builder = HttpRequest
           .newBuilder(URI.create(s"$baseUri$path"))
           .header("content-type", "application/json")
@@ -1381,7 +1349,7 @@ final class HotStuffLaunchSmokeSuite extends CatsEffectSuite:
           builder
             .POST(HttpRequest.BodyPublishers.ofString(body))
             .build()
-        val response = client.send(request, HttpResponse.BodyHandlers.ofByteArray())
+        val response = sharedHttpClient.send(request, HttpResponse.BodyHandlers.ofByteArray())
         Response(
           status = response.statusCode(),
           bodyBytes = response.body(),
@@ -1395,10 +1363,11 @@ final class HotStuffLaunchSmokeSuite extends CatsEffectSuite:
       body: String,
   ): String =
     val peer = PeerIdentity.unsafe(authenticatedPeer)
-    transportAuth
-      .secretFor(peer)
-      .orElse(StaticPeerTransportAuth.testing(topologyFor(authenticatedPeer)).secretFor(peer))
-      .map: secret =>
+    requireEither(
+      transportAuth
+        .secretFor(peer)
+        .orElse(StaticPeerTransportAuth.testing(topologyFor(authenticatedPeer)).secretFor(peer))
+        .map: secret =>
         val derivedKey =
           deriveTransportProofKey(secret.bytes)
         val message =
@@ -1416,9 +1385,9 @@ final class HotStuffLaunchSmokeSuite extends CatsEffectSuite:
         Base64
           .getUrlEncoder
           .withoutPadding()
-          .encodeToString(hmac(derivedKey, message).toArray)
-      .toOption
-      .get
+          .encodeToString(hmac(derivedKey, message).toArray),
+      s"failed to sign transport proof for $authenticatedPeer",
+    )
 
   private def deriveTransportProofKey(
       secret: ByteVector,
