@@ -931,6 +931,9 @@ final class HotStuffLaunchSmokeSuite extends CatsEffectSuite:
         case Some(value)
             if value.startsWith(BinaryEventStreamCodec.MediaType) &&
               responseStatus == 200 =>
+          // Poll responses legitimately encode "no pending events" as an empty
+          // octet-stream body because BinaryEventStreamCodec emits zero frames
+          // as zero bytes.
           Vector.empty[EventStreamMessage[HotStuffGossipArtifact]].pure[IO]
         case _ =>
           IO.raiseError(

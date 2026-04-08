@@ -208,9 +208,16 @@ object ProposalTxSet:
   given Eq[ProposalTxSet] = Eq.by(_.txIds)
   given ByteEncoder[ProposalTxSet] =
     txSet =>
+      val firstUnsupported = firstUnsupportedTxId(txSet)
+      // Proposal.sign/validation reject unsupported ids before this encoder runs,
+      // but ByteEncoder cannot surface a structured failure so keep a defensive
+      // invariant here in case a non-wire-compatible tx-set reaches snapshot I/O.
       require(
-        firstUnsupportedTxId(txSet).isEmpty,
-        "proposal tx-set contains tx ids that are not fixed-width wire compatible",
+        firstUnsupported.isEmpty,
+        "proposal tx-set contains tx ids that are not fixed-width wire compatible" +
+          firstUnsupported.fold("")(txId =>
+            ": firstUnsupportedTxIdSize=" + txId.bytes.size.toString,
+          ),
       )
       // Preserve the legacy fixed-width wire format:
       // [count][32-byte tx id][32-byte tx id]...

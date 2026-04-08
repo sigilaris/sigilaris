@@ -403,6 +403,15 @@ final class TxGossipArmeriaAdapterSuite extends CatsEffectSuite:
       ),
     )
 
+  test("binary event stream codec treats an empty poll as an empty body"):
+    val encodedEither = BinaryEventStreamCodec.encode(Vector.empty[EventEnvelopeWire[TestTx]])
+
+    assertEquals(encodedEither.map(_.length), Right(0))
+    assertEquals(
+      encodedEither.flatMap(BinaryEventStreamCodec.decode[TestTx]),
+      Right(Vector.empty),
+    )
+
   test("binary event stream codec rejects truncated, oversize, unknown-version, and malformed payload frames"):
     val keepAliveBytes = IO.fromEither(
       BinaryEventStreamCodec
