@@ -121,6 +121,7 @@ Proposed
 - 새 module boundary에 맞는 import/dependency rule test를 추가한다.
 - shared HTTP contract가 필요하다면, exact Tapir module availability 를 JVM + JS target 기준으로 검증하고, 실패 시 DTO / codec / semantic model fallback 규칙을 implementation plan 과 build/dependency rule에 반영한다.
 - `ADR-0015`의 follow-up 문구와 이후 implementation plan 문서에서, shared node abstraction re-evaluation 결과를 이 ADR 참조로 치환한다.
+- concrete implementation handoff 의 canonical record 는 [0010 - Node Common Extraction And Cross-Runtime Contract Plan](../plans/0010-node-common-extraction-and-cross-runtime-contract-plan.md) 이 소유한다.
 
 ## References
 - [ADR-0015: JVM Node Bundle Boundary And Packaging](0015-jvm-node-bundle-boundary-and-packaging.md)
@@ -130,3 +131,4 @@ Proposed
 - [ADR-0024: Static-Topology Peer Identity Binding And Session-Bound Capability Authorization](0024-static-topology-peer-identity-binding-and-session-bound-capability-authorization.md)
 - [0002 - Sigilaris Node JVM Extraction](../plans/0002-sigilaris-node-jvm-extraction-plan.md)
 - [0008 - Multi-Node Follow-Up ADR Authoring Plan](../plans/0008-multi-node-follow-up-adr-authoring-plan.md)
+- [0010 - Node Common Extraction And Cross-Runtime Contract Plan](../plans/0010-node-common-extraction-and-cross-runtime-contract-plan.md)
