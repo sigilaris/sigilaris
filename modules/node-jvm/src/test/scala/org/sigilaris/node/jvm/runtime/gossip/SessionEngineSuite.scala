@@ -6,23 +6,35 @@ import munit.FunSuite
 
 final class SessionEngineSuite extends FunSuite:
 
-  private val localPeer = PeerIdentity.unsafe("node-a")
+  private val localPeer  = PeerIdentity.unsafe("node-a")
   private val remotePeer = PeerIdentity.unsafe("node-b")
-  private val chainId = ChainId.unsafe("chain-main")
-  private val subscription = SessionSubscription.unsafe(ChainTopic(chainId, GossipTopic.tx))
-  private val topology = StaticPeerTopology.parse(
-    localNodeIdentity = "node-a",
-    knownPeers = List("node-b"),
-    directNeighbors = List("node-b"),
-  ).toOption.get
+  private val chainId    = ChainId.unsafe("chain-main")
+  private val subscription =
+    SessionSubscription.unsafe(ChainTopic(chainId, GossipTopic.tx))
+  private val topology = StaticPeerTopology
+    .parse(
+      localNodeIdentity = "node-a",
+      knownPeers = List("node-b"),
+      directNeighbors = List("node-b"),
+    )
+    .toOption
+    .get
   private val createdAt = Instant.parse("2026-03-31T10:15:30Z")
 
-  test("simultaneous open closes the losing provisional outbound lineage and reuses the winning correlation id on retry"):
+  test(
+    "simultaneous open closes the losing provisional outbound lineage and reuses the winning correlation id on retry",
+  ):
     val engine = GossipSessionEngine(localPeer, topology)
     val localLosingCorrelation =
-      PeerCorrelationId.parse("eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee").toOption.get
+      PeerCorrelationId
+        .parse("eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee")
+        .toOption
+        .get
     val remoteWinningCorrelation =
-      PeerCorrelationId.parse("11111111-1111-4111-8111-111111111111").toOption.get
+      PeerCorrelationId
+        .parse("11111111-1111-4111-8111-111111111111")
+        .toOption
+        .get
 
     val (afterOutbound, outboundProposal) = engine
       .startOutbound(
@@ -35,7 +47,10 @@ final class SessionEngineSuite extends FunSuite:
       .get
 
     val inboundProposal = SessionOpenProposal(
-      sessionId = DirectionalSessionId.parse("aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa").toOption.get,
+      sessionId = DirectionalSessionId
+        .parse("aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa")
+        .toOption
+        .get,
       peerCorrelationId = remoteWinningCorrelation,
       initiator = remotePeer,
       acceptor = localPeer,
@@ -45,14 +60,23 @@ final class SessionEngineSuite extends FunSuite:
       maxControlRetryInterval = Some(Duration.ofSeconds(30)),
     )
 
-    val (afterInbound, result) = afterOutbound.handleInboundProposal(inboundProposal, createdAt.plusSeconds(1))
+    val (afterInbound, result) = afterOutbound.handleInboundProposal(
+      inboundProposal,
+      createdAt.plusSeconds(1),
+    )
     val accepted = result.asInstanceOf[InboundHandshakeResult.Accepted]
     assertEquals(accepted.supersededSessionId, Some(outboundProposal.sessionId))
 
     val relationship = afterInbound.relationshipWith(remotePeer).get
     assertEquals(relationship.peerCorrelationId, remoteWinningCorrelation)
-    assertEquals(relationship.outbound.map(_.status), Some(DirectionalSessionStatus.Closed))
-    assertEquals(relationship.inbound.map(_.status), Some(DirectionalSessionStatus.Open))
+    assertEquals(
+      relationship.outbound.map(_.status),
+      Some(DirectionalSessionStatus.Closed),
+    )
+    assertEquals(
+      relationship.inbound.map(_.status),
+      Some(DirectionalSessionStatus.Open),
+    )
 
     val (afterRetry, retryProposal) = afterInbound
       .startOutbound(
@@ -64,14 +88,25 @@ final class SessionEngineSuite extends FunSuite:
       .get
     assertEquals(retryProposal.peerCorrelationId, remoteWinningCorrelation)
     assert(retryProposal.sessionId != outboundProposal.sessionId)
-    assertEquals(afterRetry.relationshipWith(remotePeer).get.status, PeerRelationshipStatus.Opening)
+    assertEquals(
+      afterRetry.relationshipWith(remotePeer).get.status,
+      PeerRelationshipStatus.Opening,
+    )
 
-  test("simultaneous open local-win path rejects the inbound loser and preserves the local opening lineage"):
+  test(
+    "simultaneous open local-win path rejects the inbound loser and preserves the local opening lineage",
+  ):
     val engine = GossipSessionEngine(localPeer, topology)
     val localWinningCorrelation =
-      PeerCorrelationId.parse("11111111-1111-4111-8111-111111111111").toOption.get
+      PeerCorrelationId
+        .parse("11111111-1111-4111-8111-111111111111")
+        .toOption
+        .get
     val remoteLosingCorrelation =
-      PeerCorrelationId.parse("eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee").toOption.get
+      PeerCorrelationId
+        .parse("eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee")
+        .toOption
+        .get
 
     val (afterOutbound, outboundProposal) = engine
       .startOutbound(
@@ -84,7 +119,10 @@ final class SessionEngineSuite extends FunSuite:
       .get
 
     val inboundProposal = SessionOpenProposal(
-      sessionId = DirectionalSessionId.parse("bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb").toOption.get,
+      sessionId = DirectionalSessionId
+        .parse("bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb")
+        .toOption
+        .get,
       peerCorrelationId = remoteLosingCorrelation,
       initiator = remotePeer,
       acceptor = localPeer,
@@ -94,25 +132,51 @@ final class SessionEngineSuite extends FunSuite:
       maxControlRetryInterval = Some(Duration.ofSeconds(30)),
     )
 
-    val (afterInbound, result) = afterOutbound.handleInboundProposal(inboundProposal, createdAt.plusSeconds(1))
+    val (afterInbound, result) = afterOutbound.handleInboundProposal(
+      inboundProposal,
+      createdAt.plusSeconds(1),
+    )
     val rejected = result.asInstanceOf[InboundHandshakeResult.Rejected]
 
     assertEquals(rejected.rejection.reason, "simultaneousOpenLost")
-    assertEquals(afterInbound.relationshipWith(remotePeer).flatMap(_.outbound).map(_.sessionId), Some(outboundProposal.sessionId))
     assertEquals(
-      afterInbound.relationshipWith(remotePeer).flatMap(_.outbound).map(_.status),
+      afterInbound
+        .relationshipWith(remotePeer)
+        .flatMap(_.outbound)
+        .map(_.sessionId),
+      Some(outboundProposal.sessionId),
+    )
+    assertEquals(
+      afterInbound
+        .relationshipWith(remotePeer)
+        .flatMap(_.outbound)
+        .map(_.status),
       Some(DirectionalSessionStatus.Opening),
     )
-    assertEquals(afterInbound.relationshipWith(remotePeer).flatMap(_.inbound), None)
+    assertEquals(
+      afterInbound.relationshipWith(remotePeer).flatMap(_.inbound),
+      None,
+    )
 
-  test("simultaneous open still applies lexicographic tiebreak when a stale inbound session record exists"):
+  test(
+    "simultaneous open still applies lexicographic tiebreak when a stale inbound session record exists",
+  ):
     val localWinningCorrelation =
-      PeerCorrelationId.parse("11111111-1111-4111-8111-111111111111").toOption.get
+      PeerCorrelationId
+        .parse("11111111-1111-4111-8111-111111111111")
+        .toOption
+        .get
     val remoteLosingCorrelation =
-      PeerCorrelationId.parse("eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee").toOption.get
+      PeerCorrelationId
+        .parse("eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee")
+        .toOption
+        .get
 
     val outboundProposal = SessionOpenProposal(
-      sessionId = DirectionalSessionId.parse("aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa").toOption.get,
+      sessionId = DirectionalSessionId
+        .parse("aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa")
+        .toOption
+        .get,
       peerCorrelationId = localWinningCorrelation,
       initiator = localPeer,
       acceptor = remotePeer,
@@ -122,7 +186,10 @@ final class SessionEngineSuite extends FunSuite:
       maxControlRetryInterval = Some(Duration.ofSeconds(30)),
     )
     val staleInboundProposal = SessionOpenProposal(
-      sessionId = DirectionalSessionId.parse("bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb").toOption.get,
+      sessionId = DirectionalSessionId
+        .parse("bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb")
+        .toOption
+        .get,
       peerCorrelationId = localWinningCorrelation,
       initiator = remotePeer,
       acceptor = localPeer,
@@ -151,7 +218,7 @@ final class SessionEngineSuite extends FunSuite:
               createdAt = createdAt,
               openedAt = None,
               lastActivityAt = createdAt,
-            )
+            ),
           ),
           inbound = Some(
             DirectionalSession(
@@ -165,22 +232,25 @@ final class SessionEngineSuite extends FunSuite:
                   heartbeatInterval = Duration.ofSeconds(10),
                   livenessTimeout = Duration.ofSeconds(30),
                   maxControlRetryInterval = Duration.ofSeconds(30),
-                )
+                ),
               ),
               status = DirectionalSessionStatus.Closed,
               createdAt = createdAt.minusSeconds(10),
               openedAt = Some(createdAt.minusSeconds(9)),
               lastActivityAt = createdAt.minusSeconds(9),
-            )
+            ),
           ),
           status = PeerRelationshipStatus.HalfOpen,
           wasBidirectionalOpen = true,
-        )
+        ),
       ),
     )
 
     val inboundProposal = SessionOpenProposal(
-      sessionId = DirectionalSessionId.parse("cccccccc-cccc-4ccc-8ccc-cccccccccccc").toOption.get,
+      sessionId = DirectionalSessionId
+        .parse("cccccccc-cccc-4ccc-8ccc-cccccccccccc")
+        .toOption
+        .get,
       peerCorrelationId = remoteLosingCorrelation,
       initiator = remotePeer,
       acceptor = localPeer,
@@ -190,13 +260,16 @@ final class SessionEngineSuite extends FunSuite:
       maxControlRetryInterval = Some(Duration.ofSeconds(30)),
     )
 
-    val (_, result) = engine.handleInboundProposal(inboundProposal, createdAt.plusSeconds(1))
+    val (_, result) =
+      engine.handleInboundProposal(inboundProposal, createdAt.plusSeconds(1))
     assertEquals(
       result.asInstanceOf[InboundHandshakeResult.Rejected].rejection.reason,
       "simultaneousOpenLost",
     )
 
-  test("pre-open event or control traffic rejects and closes the opening session without advancing state"):
+  test(
+    "pre-open event or control traffic rejects and closes the opening session without advancing state",
+  ):
     val engine = GossipSessionEngine(localPeer, topology)
     val (afterOutbound, proposal) =
       engine.startOutbound(remotePeer, subscription, createdAt).toOption.get
@@ -208,10 +281,16 @@ final class SessionEngineSuite extends FunSuite:
 
     assertEquals(rejection.reason, "preOpenEventTraffic")
     assertEquals(
-      afterReject.relationshipWith(remotePeer).flatMap(_.outbound).map(_.status),
+      afterReject
+        .relationshipWith(remotePeer)
+        .flatMap(_.outbound)
+        .map(_.status),
       Some(DirectionalSessionStatus.Closed),
     )
-    assertEquals(afterReject.relationshipWith(remotePeer).map(_.status), Some(PeerRelationshipStatus.Closed))
+    assertEquals(
+      afterReject.relationshipWith(remotePeer).map(_.status),
+      Some(PeerRelationshipStatus.Closed),
+    )
 
   test("pre-open control traffic uses the dedicated rejection reason"):
     val engine = GossipSessionEngine(localPeer, topology)
@@ -219,16 +298,27 @@ final class SessionEngineSuite extends FunSuite:
       engine.startOutbound(remotePeer, subscription, createdAt).toOption.get
 
     val (_, rejection) = afterOutbound
-      .rejectPreOpenTraffic(proposal.sessionId, PreOpenTrafficKind.ControlChannel)
+      .rejectPreOpenTraffic(
+        proposal.sessionId,
+        PreOpenTrafficKind.ControlChannel,
+      )
       .toOption
       .get
 
     assertEquals(rejection.reason, "preOpenControlTraffic")
 
-  test("pre-open rejection also updates inbound opening sessions through the inbound branch"):
+  test(
+    "pre-open rejection also updates inbound opening sessions through the inbound branch",
+  ):
     val inboundProposal = SessionOpenProposal(
-      sessionId = DirectionalSessionId.parse("bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb").toOption.get,
-      peerCorrelationId = PeerCorrelationId.parse("11111111-1111-4111-8111-111111111111").toOption.get,
+      sessionId = DirectionalSessionId
+        .parse("bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb")
+        .toOption
+        .get,
+      peerCorrelationId = PeerCorrelationId
+        .parse("11111111-1111-4111-8111-111111111111")
+        .toOption
+        .get,
       initiator = remotePeer,
       acceptor = localPeer,
       subscriptions = subscription,
@@ -257,16 +347,19 @@ final class SessionEngineSuite extends FunSuite:
               createdAt = createdAt,
               openedAt = None,
               lastActivityAt = createdAt,
-            )
+            ),
           ),
           status = PeerRelationshipStatus.Opening,
           wasBidirectionalOpen = false,
-        )
+        ),
       ),
     )
 
     val (afterReject, rejection) = engine
-      .rejectPreOpenTraffic(inboundProposal.sessionId, PreOpenTrafficKind.ControlChannel)
+      .rejectPreOpenTraffic(
+        inboundProposal.sessionId,
+        PreOpenTrafficKind.ControlChannel,
+      )
       .toOption
       .get
 
@@ -276,7 +369,9 @@ final class SessionEngineSuite extends FunSuite:
       Some(DirectionalSessionStatus.Closed),
     )
 
-  test("handleInboundProposal rejects a mismatched peer correlation when another alive direction already exists"):
+  test(
+    "handleInboundProposal rejects a mismatched peer correlation when another alive direction already exists",
+  ):
     val engine = GossipSessionEngine(localPeer, topology)
     val (afterOutbound, proposal) =
       engine.startOutbound(remotePeer, subscription, createdAt).toOption.get
@@ -289,11 +384,20 @@ final class SessionEngineSuite extends FunSuite:
       )
       .toOption
       .get
-    val opened = afterOutbound.applyHandshakeAck(ack, createdAt.plusSeconds(1)).toOption.get
+    val opened = afterOutbound
+      .applyHandshakeAck(ack, createdAt.plusSeconds(1))
+      .toOption
+      .get
 
     val mismatchedInbound = SessionOpenProposal(
-      sessionId = DirectionalSessionId.parse("dddddddd-dddd-4ddd-8ddd-dddddddddddd").toOption.get,
-      peerCorrelationId = PeerCorrelationId.parse("99999999-9999-4999-8999-999999999999").toOption.get,
+      sessionId = DirectionalSessionId
+        .parse("dddddddd-dddd-4ddd-8ddd-dddddddddddd")
+        .toOption
+        .get,
+      peerCorrelationId = PeerCorrelationId
+        .parse("99999999-9999-4999-8999-999999999999")
+        .toOption
+        .get,
       initiator = remotePeer,
       acceptor = localPeer,
       subscriptions = subscription,
@@ -302,17 +406,26 @@ final class SessionEngineSuite extends FunSuite:
       maxControlRetryInterval = Some(Duration.ofSeconds(30)),
     )
 
-    val (_, result) = opened.handleInboundProposal(mismatchedInbound, createdAt.plusSeconds(2))
+    val (_, result) =
+      opened.handleInboundProposal(mismatchedInbound, createdAt.plusSeconds(2))
     assertEquals(
       result.asInstanceOf[InboundHandshakeResult.Rejected].rejection.reason,
       "peerCorrelationMismatch",
     )
 
-  test("handleInboundProposal rejects a duplicate inbound direction while one is already alive"):
+  test(
+    "handleInboundProposal rejects a duplicate inbound direction while one is already alive",
+  ):
     val engine = GossipSessionEngine(localPeer, topology)
     val inbound = SessionOpenProposal(
-      sessionId = DirectionalSessionId.parse("bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb").toOption.get,
-      peerCorrelationId = PeerCorrelationId.parse("11111111-1111-4111-8111-111111111111").toOption.get,
+      sessionId = DirectionalSessionId
+        .parse("bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb")
+        .toOption
+        .get,
+      peerCorrelationId = PeerCorrelationId
+        .parse("11111111-1111-4111-8111-111111111111")
+        .toOption
+        .get,
       initiator = remotePeer,
       acceptor = localPeer,
       subscriptions = subscription,
@@ -321,24 +434,39 @@ final class SessionEngineSuite extends FunSuite:
       maxControlRetryInterval = Some(Duration.ofSeconds(30)),
     )
 
-    val (afterFirstInbound, firstResult) = engine.handleInboundProposal(inbound, createdAt)
+    val (afterFirstInbound, firstResult) =
+      engine.handleInboundProposal(inbound, createdAt)
     assert(firstResult.isInstanceOf[InboundHandshakeResult.Accepted])
 
     val duplicateInbound = inbound.copy(
-      sessionId = DirectionalSessionId.parse("cccccccc-cccc-4ccc-8ccc-cccccccccccc").toOption.get
+      sessionId = DirectionalSessionId
+        .parse("cccccccc-cccc-4ccc-8ccc-cccccccccccc")
+        .toOption
+        .get,
     )
 
-    val (_, result) = afterFirstInbound.handleInboundProposal(duplicateInbound, createdAt.plusSeconds(1))
+    val (_, result) = afterFirstInbound.handleInboundProposal(
+      duplicateInbound,
+      createdAt.plusSeconds(1),
+    )
     assertEquals(
       result.asInstanceOf[InboundHandshakeResult.Rejected].rejection.reason,
       "duplicateInboundDirection",
     )
 
-  test("handleInboundProposal rejects invalid acceptor-side overrides during acknowledge"):
+  test(
+    "handleInboundProposal rejects invalid acceptor-side overrides during acknowledge",
+  ):
     val engine = GossipSessionEngine(localPeer, topology)
     val inbound = SessionOpenProposal(
-      sessionId = DirectionalSessionId.parse("bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb").toOption.get,
-      peerCorrelationId = PeerCorrelationId.parse("11111111-1111-4111-8111-111111111111").toOption.get,
+      sessionId = DirectionalSessionId
+        .parse("bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb")
+        .toOption
+        .get,
+      peerCorrelationId = PeerCorrelationId
+        .parse("11111111-1111-4111-8111-111111111111")
+        .toOption
+        .get,
       initiator = remotePeer,
       acceptor = localPeer,
       subscriptions = subscription,
@@ -363,7 +491,10 @@ final class SessionEngineSuite extends FunSuite:
       engine.startOutbound(remotePeer, subscription, createdAt).toOption.get
 
     assertEquals(
-      afterOutbound.startOutbound(remotePeer, subscription, createdAt.plusSeconds(1)).left.map(_.reason),
+      afterOutbound
+        .startOutbound(remotePeer, subscription, createdAt.plusSeconds(1))
+        .left
+        .map(_.reason),
       Left("duplicateOutboundDirection"),
     )
 
@@ -374,7 +505,13 @@ final class SessionEngineSuite extends FunSuite:
     val closed = afterOutbound.closeSession(proposal.sessionId).toOption.get
 
     assertEquals(
-      closed.rejectPreOpenTraffic(proposal.sessionId, PreOpenTrafficKind.EventStream).left.map(_.reason),
+      closed
+        .rejectPreOpenTraffic(
+          proposal.sessionId,
+          PreOpenTrafficKind.EventStream,
+        )
+        .left
+        .map(_.reason),
       Left("sessionNotOpening"),
     )
 
@@ -383,13 +520,18 @@ final class SessionEngineSuite extends FunSuite:
     val (afterOutbound, proposal) =
       engine.startOutbound(remotePeer, subscription, createdAt).toOption.get
 
-    val boundaryExpired = afterOutbound.expireOpeningHandshakes(createdAt.plusSeconds(30))
+    val boundaryExpired =
+      afterOutbound.expireOpeningHandshakes(createdAt.plusSeconds(30))
     assertEquals(
-      boundaryExpired.relationshipWith(remotePeer).flatMap(_.outbound).map(_.status),
+      boundaryExpired
+        .relationshipWith(remotePeer)
+        .flatMap(_.outbound)
+        .map(_.status),
       Some(DirectionalSessionStatus.Dead),
     )
 
-    val expired = afterOutbound.expireOpeningHandshakes(createdAt.plusSeconds(31))
+    val expired =
+      afterOutbound.expireOpeningHandshakes(createdAt.plusSeconds(31))
     assertEquals(
       expired.relationshipWith(remotePeer).flatMap(_.outbound).map(_.sessionId),
       Some(proposal.sessionId),
@@ -398,12 +540,23 @@ final class SessionEngineSuite extends FunSuite:
       expired.relationshipWith(remotePeer).flatMap(_.outbound).map(_.status),
       Some(DirectionalSessionStatus.Dead),
     )
-    assertEquals(expired.relationshipWith(remotePeer).map(_.status), Some(PeerRelationshipStatus.Dead))
+    assertEquals(
+      expired.relationshipWith(remotePeer).map(_.status),
+      Some(PeerRelationshipStatus.Dead),
+    )
 
-  test("expireOpeningHandshakes also expires manually tracked inbound opening sessions"):
+  test(
+    "expireOpeningHandshakes also expires manually tracked inbound opening sessions",
+  ):
     val inboundProposal = SessionOpenProposal(
-      sessionId = DirectionalSessionId.parse("bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb").toOption.get,
-      peerCorrelationId = PeerCorrelationId.parse("11111111-1111-4111-8111-111111111111").toOption.get,
+      sessionId = DirectionalSessionId
+        .parse("bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb")
+        .toOption
+        .get,
+      peerCorrelationId = PeerCorrelationId
+        .parse("11111111-1111-4111-8111-111111111111")
+        .toOption
+        .get,
       initiator = remotePeer,
       acceptor = localPeer,
       subscriptions = subscription,
@@ -432,11 +585,11 @@ final class SessionEngineSuite extends FunSuite:
               createdAt = createdAt,
               openedAt = None,
               lastActivityAt = createdAt,
-            )
+            ),
           ),
           status = PeerRelationshipStatus.Opening,
           wasBidirectionalOpen = false,
-        )
+        ),
       ),
     )
 
@@ -446,11 +599,22 @@ final class SessionEngineSuite extends FunSuite:
       Some(DirectionalSessionStatus.Dead),
     )
 
-  test("handleInboundProposal can re-associate a dead relationship to a new correlation id"):
-    val oldCorrelation = PeerCorrelationId.parse("11111111-1111-4111-8111-111111111111").toOption.get
-    val newCorrelation = PeerCorrelationId.parse("22222222-2222-4222-8222-222222222222").toOption.get
+  test(
+    "handleInboundProposal can re-associate a dead relationship to a new correlation id",
+  ):
+    val oldCorrelation = PeerCorrelationId
+      .parse("11111111-1111-4111-8111-111111111111")
+      .toOption
+      .get
+    val newCorrelation = PeerCorrelationId
+      .parse("22222222-2222-4222-8222-222222222222")
+      .toOption
+      .get
     val staleProposal = SessionOpenProposal(
-      sessionId = DirectionalSessionId.parse("aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa").toOption.get,
+      sessionId = DirectionalSessionId
+        .parse("aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa")
+        .toOption
+        .get,
       peerCorrelationId = oldCorrelation,
       initiator = remotePeer,
       acceptor = localPeer,
@@ -480,41 +644,56 @@ final class SessionEngineSuite extends FunSuite:
                   heartbeatInterval = Duration.ofSeconds(10),
                   livenessTimeout = Duration.ofSeconds(30),
                   maxControlRetryInterval = Duration.ofSeconds(30),
-                )
+                ),
               ),
               status = DirectionalSessionStatus.Closed,
               createdAt = createdAt.minusSeconds(10),
               openedAt = Some(createdAt.minusSeconds(9)),
               lastActivityAt = createdAt.minusSeconds(9),
-            )
+            ),
           ),
           status = PeerRelationshipStatus.Closed,
           wasBidirectionalOpen = true,
-        )
+        ),
       ),
     )
 
     val newInbound = staleProposal.copy(
-      sessionId = DirectionalSessionId.parse("cccccccc-cccc-4ccc-8ccc-cccccccccccc").toOption.get,
+      sessionId = DirectionalSessionId
+        .parse("cccccccc-cccc-4ccc-8ccc-cccccccccccc")
+        .toOption
+        .get,
       peerCorrelationId = newCorrelation,
     )
 
-    val (afterInbound, result) = engine.handleInboundProposal(newInbound, createdAt.plusSeconds(1))
+    val (afterInbound, result) =
+      engine.handleInboundProposal(newInbound, createdAt.plusSeconds(1))
     assert(result.isInstanceOf[InboundHandshakeResult.Accepted])
-    assertEquals(afterInbound.relationshipWith(remotePeer).map(_.peerCorrelationId), Some(newCorrelation))
     assertEquals(
-      afterInbound.relationshipWith(remotePeer).flatMap(_.inbound).map(_.status),
+      afterInbound.relationshipWith(remotePeer).map(_.peerCorrelationId),
+      Some(newCorrelation),
+    )
+    assertEquals(
+      afterInbound
+        .relationshipWith(remotePeer)
+        .flatMap(_.inbound)
+        .map(_.status),
       Some(DirectionalSessionStatus.Open),
     )
 
-  test("ack round-trip opens the outbound direction and later dead direction yields half-open relationship"):
+  test(
+    "ack round-trip opens the outbound direction and later dead direction yields half-open relationship",
+  ):
     val engine = GossipSessionEngine(localPeer, topology)
     val (afterOutbound, proposal) =
       engine.startOutbound(remotePeer, subscription, createdAt).toOption.get
 
     val (afterInbound, inboundResult) = afterOutbound.handleInboundProposal(
       SessionOpenProposal(
-        sessionId = DirectionalSessionId.parse("aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa").toOption.get,
+        sessionId = DirectionalSessionId
+          .parse("aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa")
+          .toOption
+          .get,
         peerCorrelationId = proposal.peerCorrelationId,
         initiator = remotePeer,
         acceptor = localPeer,
@@ -535,18 +714,29 @@ final class SessionEngineSuite extends FunSuite:
       )
       .toOption
       .get
-    val opened = afterInbound.applyHandshakeAck(outboundAck, createdAt.plusSeconds(2)).toOption.get
+    val opened = afterInbound
+      .applyHandshakeAck(outboundAck, createdAt.plusSeconds(2))
+      .toOption
+      .get
 
-    assertEquals(opened.relationshipWith(remotePeer).map(_.status), Some(PeerRelationshipStatus.Open))
+    assertEquals(
+      opened.relationshipWith(remotePeer).map(_.status),
+      Some(PeerRelationshipStatus.Open),
+    )
 
     val halfOpen = opened.markSessionDead(proposal.sessionId).toOption.get
-    assertEquals(halfOpen.relationshipWith(remotePeer).map(_.status), Some(PeerRelationshipStatus.HalfOpen))
+    assertEquals(
+      halfOpen.relationshipWith(remotePeer).map(_.status),
+      Some(PeerRelationshipStatus.HalfOpen),
+    )
     assertEquals(
       halfOpen.relationshipWith(remotePeer).flatMap(_.outbound).map(_.status),
       Some(DirectionalSessionStatus.Dead),
     )
 
-  test("open session idle timeout uses the negotiated liveness timeout and keepalive refreshes activity"):
+  test(
+    "open session idle timeout uses the negotiated liveness timeout and keepalive refreshes activity",
+  ):
     val engine = GossipSessionEngine(localPeer, topology)
     val (afterOutbound, proposal) =
       engine.startOutbound(remotePeer, subscription, createdAt).toOption.get
@@ -561,10 +751,16 @@ final class SessionEngineSuite extends FunSuite:
       .toOption
       .get
 
-    val opened = afterOutbound.applyHandshakeAck(ack, createdAt.plusSeconds(1)).toOption.get
-    val refreshed = opened.touchSessionActivity(proposal.sessionId, createdAt.plusSeconds(20)).toOption.get
+    val opened = afterOutbound
+      .applyHandshakeAck(ack, createdAt.plusSeconds(1))
+      .toOption
+      .get
+    val refreshed = opened
+      .touchSessionActivity(proposal.sessionId, createdAt.plusSeconds(20))
+      .toOption
+      .get
     val stillOpen = refreshed.expireTimedOutSessions(createdAt.plusSeconds(49))
-    val expired = refreshed.expireTimedOutSessions(createdAt.plusSeconds(50))
+    val expired   = refreshed.expireTimedOutSessions(createdAt.plusSeconds(50))
 
     assertEquals(
       stillOpen.relationshipWith(remotePeer).flatMap(_.outbound).map(_.status),
@@ -575,7 +771,9 @@ final class SessionEngineSuite extends FunSuite:
       Some(DirectionalSessionStatus.Dead),
     )
 
-  test("applyHandshakeAck rejects a duplicate ack after the outbound session is already open"):
+  test(
+    "applyHandshakeAck rejects a duplicate ack after the outbound session is already open",
+  ):
     val engine = GossipSessionEngine(localPeer, topology)
     val (afterOutbound, proposal) =
       engine.startOutbound(remotePeer, subscription, createdAt).toOption.get
@@ -590,18 +788,30 @@ final class SessionEngineSuite extends FunSuite:
       .toOption
       .get
 
-    val opened = afterOutbound.applyHandshakeAck(ack, createdAt.plusSeconds(1)).toOption.get
+    val opened = afterOutbound
+      .applyHandshakeAck(ack, createdAt.plusSeconds(1))
+      .toOption
+      .get
     assertEquals(
-      opened.applyHandshakeAck(ack, createdAt.plusSeconds(2)).left.map(_.reason),
+      opened
+        .applyHandshakeAck(ack, createdAt.plusSeconds(2))
+        .left
+        .map(_.reason),
       Left("sessionNotOpening"),
     )
 
   test("public session mutation APIs reject unknown session ids"):
     val engine = GossipSessionEngine(localPeer, topology)
-    val unknownSessionId = DirectionalSessionId.parse("ffffffff-ffff-4fff-8fff-ffffffffffff").toOption.get
+    val unknownSessionId = DirectionalSessionId
+      .parse("ffffffff-ffff-4fff-8fff-ffffffffffff")
+      .toOption
+      .get
     val unknownAck = SessionOpenAck(
       sessionId = unknownSessionId,
-      peerCorrelationId = PeerCorrelationId.parse("11111111-1111-4111-8111-111111111111").toOption.get,
+      peerCorrelationId = PeerCorrelationId
+        .parse("11111111-1111-4111-8111-111111111111")
+        .toOption
+        .get,
       initiator = localPeer,
       acceptor = remotePeer,
       subscriptions = subscription,
@@ -612,11 +822,22 @@ final class SessionEngineSuite extends FunSuite:
       ),
     )
 
-    assertEquals(engine.applyHandshakeAck(unknownAck, createdAt).left.map(_.reason), Left("unknownSession"))
-    assertEquals(engine.closeSession(unknownSessionId).left.map(_.reason), Left("unknownSession"))
-    assertEquals(engine.markSessionDead(unknownSessionId).left.map(_.reason), Left("unknownSession"))
+    assertEquals(
+      engine.applyHandshakeAck(unknownAck, createdAt).left.map(_.reason),
+      Left("unknownSession"),
+    )
+    assertEquals(
+      engine.closeSession(unknownSessionId).left.map(_.reason),
+      Left("unknownSession"),
+    )
+    assertEquals(
+      engine.markSessionDead(unknownSessionId).left.map(_.reason),
+      Left("unknownSession"),
+    )
 
-  test("closeSession closes an opening session and refuses to rewrite a dead session"):
+  test(
+    "closeSession closes an opening session and refuses to rewrite a dead session",
+  ):
     val engine = GossipSessionEngine(localPeer, topology)
     val (afterOutbound, proposal) =
       engine.startOutbound(remotePeer, subscription, createdAt).toOption.get
@@ -637,7 +858,9 @@ final class SessionEngineSuite extends FunSuite:
       Some(DirectionalSessionStatus.Dead),
     )
 
-  test("startOutbound after a dead relationship issues a fresh peer correlation id"):
+  test(
+    "startOutbound after a dead relationship issues a fresh peer correlation id",
+  ):
     val engine = GossipSessionEngine(localPeer, topology)
     val (afterOutbound, proposal) =
       engine.startOutbound(remotePeer, subscription, createdAt).toOption.get
@@ -650,15 +873,23 @@ final class SessionEngineSuite extends FunSuite:
 
     assert(retryProposal.peerCorrelationId != proposal.peerCorrelationId)
 
-  test("non-neighbor admission is rejected for outbound and inbound session opens"):
+  test(
+    "non-neighbor admission is rejected for outbound and inbound session opens",
+  ):
     val nonNeighbor = PeerIdentity.unsafe("node-z")
-    val engine = GossipSessionEngine(localPeer, topology)
+    val engine      = GossipSessionEngine(localPeer, topology)
 
     assert(engine.startOutbound(nonNeighbor, subscription, createdAt).isLeft)
 
     val inbound = SessionOpenProposal(
-      sessionId = DirectionalSessionId.parse("aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa").toOption.get,
-      peerCorrelationId = PeerCorrelationId.parse("bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb").toOption.get,
+      sessionId = DirectionalSessionId
+        .parse("aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa")
+        .toOption
+        .get,
+      peerCorrelationId = PeerCorrelationId
+        .parse("bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb")
+        .toOption
+        .get,
       initiator = nonNeighbor,
       acceptor = localPeer,
       subscriptions = subscription,
@@ -670,11 +901,19 @@ final class SessionEngineSuite extends FunSuite:
     val (_, result) = engine.handleInboundProposal(inbound, createdAt)
     assert(result.isInstanceOf[InboundHandshakeResult.Rejected])
 
-  test("handleInboundProposal rejects a proposal addressed to the wrong acceptor"):
+  test(
+    "handleInboundProposal rejects a proposal addressed to the wrong acceptor",
+  ):
     val engine = GossipSessionEngine(localPeer, topology)
     val inbound = SessionOpenProposal(
-      sessionId = DirectionalSessionId.parse("aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa").toOption.get,
-      peerCorrelationId = PeerCorrelationId.parse("bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb").toOption.get,
+      sessionId = DirectionalSessionId
+        .parse("aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa")
+        .toOption
+        .get,
+      peerCorrelationId = PeerCorrelationId
+        .parse("bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb")
+        .toOption
+        .get,
       initiator = remotePeer,
       acceptor = PeerIdentity.unsafe("node-c"),
       subscriptions = subscription,

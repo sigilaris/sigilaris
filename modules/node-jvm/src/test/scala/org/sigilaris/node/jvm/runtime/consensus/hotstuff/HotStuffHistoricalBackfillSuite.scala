@@ -10,51 +10,70 @@ import munit.CatsEffectSuite
 
 import org.sigilaris.core.crypto.CryptoOps
 import org.sigilaris.core.datatype.UInt256
-import org.sigilaris.node.jvm.runtime.block.{BlockHeader, BlockHeight, BlockId, BlockTimestamp, BodyRoot, StateRoot}
-import org.sigilaris.node.jvm.runtime.gossip.{CanonicalRejection, ChainId, DirectionalSessionId, PeerIdentity}
+import org.sigilaris.node.jvm.runtime.block.{
+  BlockHeader,
+  BlockHeight,
+  BlockId,
+  BlockTimestamp,
+  BodyRoot,
+  StateRoot,
+}
+import org.sigilaris.node.jvm.runtime.gossip.{
+  CanonicalRejection,
+  ChainId,
+  DirectionalSessionId,
+  PeerIdentity,
+}
 
 final class HotStuffHistoricalBackfillSuite extends CatsEffectSuite:
 
-  private val chainId = ChainId.unsafe("chain-main")
-  private val startedAt = Instant.parse("2026-04-05T06:00:00Z")
+  private val chainId       = ChainId.unsafe("chain-main")
+  private val startedAt     = Instant.parse("2026-04-05T06:00:00Z")
   private val validatorKeys = Vector.fill(4)(CryptoOps.generate())
   private val validatorSet = ValidatorSet.unsafe(
     validatorKeys.zipWithIndex.map: (keyPair, index) =>
       ValidatorMember(
         id = ValidatorId.unsafe(s"validator-${index + 1}"),
         publicKey = keyPair.publicKey,
-      )
+      ),
   )
-  private val session1 = session("11111111-1111-4111-8111-111111111111", "node-b")
+  private val session1 =
+    session("11111111-1111-4111-8111-111111111111", "node-b")
 
-  test("background historical backfill starts after bootstrap without blocking ready diagnostics"):
-    val anchor = finalizedSuggestion("80", 3L, validatorSet, validatorKeys)
+  test(
+    "background historical backfill starts after bootstrap without blocking ready diagnostics",
+  ):
+    val anchor  = finalizedSuggestion("80", 3L, validatorSet, validatorKeys)
     val genesis = genesisProposal("01")
 
     for
       started <- Deferred[IO, Unit]
       release <- Deferred[IO, Unit]
       archive <- HistoricalProposalArchive.inMemory[IO]
-      suggestions <- Ref.of[IO, Map[PeerIdentity, Either[CanonicalRejection, Option[FinalizedAnchorSuggestion]]]](
-        Map(session1.peer -> Right(Some(anchor)))
+      suggestions <- Ref.of[IO, Map[
+        PeerIdentity,
+        Either[CanonicalRejection, Option[FinalizedAnchorSuggestion]],
+      ]](
+        Map(session1.peer -> Right(Some(anchor))),
       )
       backfill <- HistoricalBackfillWorker.createWithNow[IO](
         policy = HistoricalBackfillPolicy(
           batchSize = 1,
           interBatchDelay = Duration.ofMillis(10L),
         ),
-        historicalBackfill =
-          gatedBackfillService(
-            started = started,
-            release = release,
-            response = Right(Vector(genesis)),
-          ),
+        historicalBackfill = gatedBackfillService(
+          started = started,
+          release = release,
+          response = Right(Vector(genesis)),
+        ),
         archive = archive,
         now = IO.pure(startedAt),
       )
       coordinator <- BootstrapCoordinator.createWithBackfill[IO](
         retryPolicy = BootstrapRetryPolicy.boundedDefault,
-        validatorSetLookup = ValidatorSetLookup.static[IO](BootstrapTrustRoot.staticValidatorSet(validatorSet)),
+        validatorSetLookup = ValidatorSetLookup.static[IO](
+          BootstrapTrustRoot.staticValidatorSet(validatorSet),
+        ),
         finalizedAnchorSuggestions = suggestionService(suggestions),
         snapshotCoordinator = completedSnapshotCoordinator,
         proposalReplay = replayService(Vector.empty),
@@ -64,13 +83,21 @@ final class HotStuffHistoricalBackfillSuite extends CatsEffectSuite:
         forwardStore = ForwardCatchUpStore.noop[IO],
         historicalBackfill = backfill,
       )
-      bootstrap <- coordinator.bootstrap(chainId, Vector(session1), startedAt, Vector.empty)
+      bootstrap <- coordinator.bootstrap(
+        chainId,
+        Vector(session1),
+        startedAt,
+        Vector.empty,
+      )
       _ <- started.get
       running <- awaitValue(
         coordinator.current.map(_.historicalBackfill),
         attempts = 40,
       ):
-        case HistoricalBackfillStatus.Running(_, HistoricalBackfillPriority.Background) =>
+        case HistoricalBackfillStatus.Running(
+              _,
+              HistoricalBackfillPriority.Background,
+            ) =>
           true
         case _ =>
           false
@@ -86,9 +113,15 @@ final class HotStuffHistoricalBackfillSuite extends CatsEffectSuite:
           false
       diagnostics <- coordinator.current
     yield
-      assertEquals(bootstrap.map(_.forwardCatchUp.voteReadiness), Right(BootstrapVoteReadiness.Ready))
+      assertEquals(
+        bootstrap.map(_.forwardCatchUp.voteReadiness),
+        Right(BootstrapVoteReadiness.Ready),
+      )
       assertEquals(diagnostics.phase, BootstrapPhase.Ready)
-      assertEquals(diagnostics.chains(chainId).voteReadiness, BootstrapVoteReadiness.Ready)
+      assertEquals(
+        diagnostics.chains(chainId).voteReadiness,
+        BootstrapVoteReadiness.Ready,
+      )
       running match
         case HistoricalBackfillStatus.Running(progress, priority) =>
           assertEquals(priority, HistoricalBackfillPriority.Background)
@@ -105,12 +138,17 @@ final class HotStuffHistoricalBackfillSuite extends CatsEffectSuite:
         case other =>
           fail("expected completed backfill status but saw " + other.toString)
 
-  test("background historical backfill failure is isolated from ready bootstrap state"):
+  test(
+    "background historical backfill failure is isolated from ready bootstrap state",
+  ):
     val anchor = finalizedSuggestion("90", 3L, validatorSet, validatorKeys)
 
     for
-      suggestions <- Ref.of[IO, Map[PeerIdentity, Either[CanonicalRejection, Option[FinalizedAnchorSuggestion]]]](
-        Map(session1.peer -> Right(Some(anchor)))
+      suggestions <- Ref.of[IO, Map[
+        PeerIdentity,
+        Either[CanonicalRejection, Option[FinalizedAnchorSuggestion]],
+      ]](
+        Map(session1.peer -> Right(Some(anchor))),
       )
       backfill <- HistoricalBackfillWorker.createWithNow[IO](
         policy = HistoricalBackfillPolicy(
@@ -121,14 +159,16 @@ final class HotStuffHistoricalBackfillSuite extends CatsEffectSuite:
           CanonicalRejection.BackfillUnavailable(
             reason = "historicalBackfillUnavailable",
             detail = Some("missingArchive"),
-          )
+          ),
         ),
         archive = HistoricalProposalArchive.noop[IO],
         now = IO.pure(startedAt),
       )
       coordinator <- BootstrapCoordinator.createWithBackfill[IO](
         retryPolicy = BootstrapRetryPolicy.boundedDefault,
-        validatorSetLookup = ValidatorSetLookup.static[IO](BootstrapTrustRoot.staticValidatorSet(validatorSet)),
+        validatorSetLookup = ValidatorSetLookup.static[IO](
+          BootstrapTrustRoot.staticValidatorSet(validatorSet),
+        ),
         finalizedAnchorSuggestions = suggestionService(suggestions),
         snapshotCoordinator = completedSnapshotCoordinator,
         proposalReplay = replayService(Vector.empty),
@@ -138,20 +178,35 @@ final class HotStuffHistoricalBackfillSuite extends CatsEffectSuite:
         forwardStore = ForwardCatchUpStore.noop[IO],
         historicalBackfill = backfill,
       )
-      bootstrap <- coordinator.bootstrap(chainId, Vector(session1), startedAt, Vector.empty)
+      bootstrap <- coordinator.bootstrap(
+        chainId,
+        Vector(session1),
+        startedAt,
+        Vector.empty,
+      )
       failed <- awaitValue(
         coordinator.current.map(_.historicalBackfill),
         attempts = 40,
       ):
-        case HistoricalBackfillStatus.Failed("historicalBackfillUnavailable", Some("missingArchive"), _) =>
+        case HistoricalBackfillStatus.Failed(
+              "historicalBackfillUnavailable",
+              Some("missingArchive"),
+              _,
+            ) =>
           true
         case _ =>
           false
       diagnostics <- coordinator.current
     yield
-      assertEquals(bootstrap.map(_.forwardCatchUp.voteReadiness), Right(BootstrapVoteReadiness.Ready))
+      assertEquals(
+        bootstrap.map(_.forwardCatchUp.voteReadiness),
+        Right(BootstrapVoteReadiness.Ready),
+      )
       assertEquals(diagnostics.phase, BootstrapPhase.Ready)
-      assertEquals(diagnostics.chains(chainId).voteReadiness, BootstrapVoteReadiness.Ready)
+      assertEquals(
+        diagnostics.chains(chainId).voteReadiness,
+        BootstrapVoteReadiness.Ready,
+      )
       assertEquals(diagnostics.lastFailure, None)
       failed match
         case HistoricalBackfillStatus.Failed(reason, detail, progress) =>
@@ -161,8 +216,10 @@ final class HotStuffHistoricalBackfillSuite extends CatsEffectSuite:
         case other =>
           fail("expected failed backfill status but saw " + other.toString)
 
-  test("archive-grade historical sync reports archive priority and archive source"):
-    val anchor = finalizedSuggestion("95", 3L, validatorSet, validatorKeys)
+  test(
+    "archive-grade historical sync reports archive priority and archive source",
+  ):
+    val anchor  = finalizedSuggestion("95", 3L, validatorSet, validatorKeys)
     val genesis = genesisProposal("15")
 
     for
@@ -170,24 +227,30 @@ final class HotStuffHistoricalBackfillSuite extends CatsEffectSuite:
       release <- Deferred[IO, Unit]
       archive <- HistoricalProposalArchive.inMemory[IO]
       worker <- HistoricalBackfillWorker.createWithNow[IO](
-        policy =
-          HistoricalBackfillPolicy.archiveDefault.copy(
-            batchSize = 1,
-            interBatchDelay = Duration.ofMillis(10L),
-          ),
-        historicalBackfill =
-          gatedBackfillService(
-            started = started,
-            release = release,
-            response = Right(Vector(genesis)),
-          ),
+        policy = HistoricalBackfillPolicy.archiveDefault.copy(
+          batchSize = 1,
+          interBatchDelay = Duration.ofMillis(10L),
+        ),
+        historicalBackfill = gatedBackfillService(
+          started = started,
+          release = release,
+          response = Right(Vector(genesis)),
+        ),
         archive = archive,
         now = IO.pure(startedAt),
       )
-      _ <- worker.start(chainId, Vector(session1), anchor.snapshotAnchor, startedAt)
+      _ <- worker.start(
+        chainId,
+        Vector(session1),
+        anchor.snapshotAnchor,
+        startedAt,
+      )
       _ <- started.get
       running <- awaitValue(worker.current, attempts = 40):
-        case HistoricalBackfillStatus.Running(_, HistoricalBackfillPriority.Archive) =>
+        case HistoricalBackfillStatus.Running(
+              _,
+              HistoricalBackfillPriority.Archive,
+            ) =>
           true
         case _ =>
           false
@@ -206,18 +269,29 @@ final class HotStuffHistoricalBackfillSuite extends CatsEffectSuite:
           assertEquals(progress.anchor, anchor.snapshotAnchor)
           assertEquals(progress.fetchedProposalCount, 0L)
         case other =>
-          fail("expected archive running backfill status but saw " + other.toString)
+          fail:
+            "expected archive running backfill status but saw " + other.toString
       completed match
         case HistoricalBackfillStatus.Completed(reason, progress) =>
           assertEquals(reason, "genesisReached")
           assertEquals(progress.nextBeforeHeight, BlockHeight.Genesis)
         case other =>
-          fail("expected archive completed backfill status but saw " + other.toString)
-      assertEquals(archived.map(_.proposal.proposalId), Vector(genesis.proposalId))
-      assertEquals(archived.map(_.source), Vector(HistoricalArchiveSource.ArchiveSync))
+          fail:
+            "expected archive completed backfill status but saw " + other.toString
+      assertEquals(
+        archived.map(_.proposal.proposalId),
+        Vector(genesis.proposalId),
+      )
+      assertEquals(
+        archived.map(_.source),
+        Vector(HistoricalArchiveSource.ArchiveSync),
+      )
 
-  test("historical backfill policy maps validator and audit roles to their default sync modes"):
-    val validatorPolicy = HistoricalBackfillPolicy.forRole(LocalNodeRole.Validator)
+  test(
+    "historical backfill policy maps validator and audit roles to their default sync modes",
+  ):
+    val validatorPolicy =
+      HistoricalBackfillPolicy.forRole(LocalNodeRole.Validator)
     val auditPolicy = HistoricalBackfillPolicy.forRole(LocalNodeRole.Audit)
     val validatorOptOut =
       HistoricalBackfillPolicy.forRole(
@@ -225,7 +299,10 @@ final class HotStuffHistoricalBackfillSuite extends CatsEffectSuite:
         enabled = false,
       )
 
-    assertEquals(validatorPolicy.priority, HistoricalBackfillPriority.Background)
+    assertEquals(
+      validatorPolicy.priority,
+      HistoricalBackfillPriority.Background,
+    )
     assertEquals(
       validatorPolicy.archiveSource,
       HistoricalArchiveSource.BackgroundBackfill,
@@ -234,23 +311,29 @@ final class HotStuffHistoricalBackfillSuite extends CatsEffectSuite:
     assertEquals(auditPolicy.priority, HistoricalBackfillPriority.Archive)
     assertEquals(auditPolicy.archiveSource, HistoricalArchiveSource.ArchiveSync)
     assertEquals(auditPolicy.enabled, true)
-    assertEquals(validatorOptOut.priority, HistoricalBackfillPriority.Background)
+    assertEquals(
+      validatorOptOut.priority,
+      HistoricalBackfillPriority.Background,
+    )
     assertEquals(validatorOptOut.enabled, false)
 
-  test("historical backfill worker supports pause and resume while reporting progress to genesis"):
-    val anchor = finalizedSuggestion("a0", 3L, validatorSet, validatorKeys)
-    val genesis = genesisProposal("11")
+  test(
+    "historical backfill worker supports pause and resume while reporting progress to genesis",
+  ):
+    val anchor    = finalizedSuggestion("a0", 3L, validatorSet, validatorKeys)
+    val genesis   = genesisProposal("11")
     val proposal1 = childProposal(genesis, "12", 1L)
     val proposal2 = childProposal(proposal1, "13", 2L)
 
     for
-      responses <- Ref.of[IO, Vector[Either[CanonicalRejection, Vector[Proposal]]]](
-        Vector(
-          Right(Vector(proposal2)),
-          Right(Vector(proposal1)),
-          Right(Vector(genesis)),
+      responses <- Ref
+        .of[IO, Vector[Either[CanonicalRejection, Vector[Proposal]]]](
+          Vector(
+            Right(Vector(proposal2)),
+            Right(Vector(proposal1)),
+            Right(Vector(genesis)),
+          ),
         )
-      )
       archive <- HistoricalProposalArchive.inMemory[IO]
       worker <- HistoricalBackfillWorker.createWithNow[IO](
         policy = HistoricalBackfillPolicy(
@@ -261,7 +344,12 @@ final class HotStuffHistoricalBackfillSuite extends CatsEffectSuite:
         archive = archive,
         now = IO.pure(startedAt),
       )
-      _ <- worker.start(chainId, Vector(session1), anchor.snapshotAnchor, startedAt)
+      _ <- worker.start(
+        chainId,
+        Vector(session1),
+        anchor.snapshotAnchor,
+        startedAt,
+      )
       firstProgress <- awaitValue(worker.current, attempts = 40):
         case HistoricalBackfillStatus.Running(progress, _)
             if progress.fetchedProposalCount === 1L &&
@@ -306,19 +394,22 @@ final class HotStuffHistoricalBackfillSuite extends CatsEffectSuite:
         case other =>
           fail("expected completed status but saw " + other.toString)
 
-  test("historical backfill pause waits for in-flight archive writes before changing generation"):
-    val anchor = finalizedSuggestion("b0", 3L, validatorSet, validatorKeys)
-    val genesis = genesisProposal("21")
+  test(
+    "historical backfill pause waits for in-flight archive writes before changing generation",
+  ):
+    val anchor    = finalizedSuggestion("b0", 3L, validatorSet, validatorKeys)
+    val genesis   = genesisProposal("21")
     val proposal1 = childProposal(genesis, "22", 1L)
     val proposal2 = childProposal(proposal1, "23", 2L)
 
     for
-      responses <- Ref.of[IO, Vector[Either[CanonicalRejection, Vector[Proposal]]]](
-        Vector(Right(Vector(proposal2)))
-      )
+      responses <- Ref
+        .of[IO, Vector[Either[CanonicalRejection, Vector[Proposal]]]](
+          Vector(Right(Vector(proposal2))),
+        )
       archiveEntered <- Deferred[IO, Unit]
       archiveRelease <- Deferred[IO, Unit]
-      innerArchive <- HistoricalProposalArchive.inMemory[IO]
+      innerArchive   <- HistoricalProposalArchive.inMemory[IO]
       archive = new HistoricalProposalArchive[IO]:
         override def close: IO[Unit] =
           IO.unit
@@ -357,13 +448,21 @@ final class HotStuffHistoricalBackfillSuite extends CatsEffectSuite:
         archive = archive,
         now = IO.pure(startedAt),
       )
-      _ <- worker.start(chainId, Vector(session1), anchor.snapshotAnchor, startedAt)
-      _ <- archiveEntered.get
+      _ <- worker.start(
+        chainId,
+        Vector(session1),
+        anchor.snapshotAnchor,
+        startedAt,
+      )
+      _              <- archiveEntered.get
       pauseCompleted <- Ref.of[IO, Boolean](false)
-      pauseFiber <- (worker.pause("operatorPaused", startedAt.plusSeconds(1L)) *> pauseCompleted.set(true)).start
+      pauseFiber <- (worker.pause(
+        "operatorPaused",
+        startedAt.plusSeconds(1L),
+      ) *> pauseCompleted.set(true)).start
       pauseBeforeRelease <- IO.sleep(100.millis) *> pauseCompleted.get
-      _ <- archiveRelease.complete(()).void
-      _ <- pauseFiber.joinWithNever
+      _                  <- archiveRelease.complete(()).void
+      _                  <- pauseFiber.joinWithNever
       paused <- awaitValue(worker.current, attempts = 20):
         case HistoricalBackfillStatus.Paused("operatorPaused", progress, _)
             if progress.fetchedProposalCount === 1L =>
@@ -381,10 +480,15 @@ final class HotStuffHistoricalBackfillSuite extends CatsEffectSuite:
           assertEquals(progress.nextBeforeBlockId, proposal2.targetBlockId)
         case other =>
           fail("expected paused status but saw " + other.toString)
-      assertEquals(archived.map(_.proposal.proposalId), Vector(proposal2.proposalId))
+      assertEquals(
+        archived.map(_.proposal.proposalId),
+        Vector(proposal2.proposalId),
+      )
 
   private def suggestionService(
-      ref: Ref[IO, Map[PeerIdentity, Either[CanonicalRejection, Option[FinalizedAnchorSuggestion]]]],
+      ref: Ref[IO, Map[PeerIdentity, Either[CanonicalRejection, Option[
+        FinalizedAnchorSuggestion,
+      ]]]],
   ): FinalizedAnchorSuggestionService[IO] =
     new FinalizedAnchorSuggestionService[IO]:
       override def bestFinalized(
@@ -411,8 +515,8 @@ final class HotStuffHistoricalBackfillSuite extends CatsEffectSuite:
                 lastUpdatedAt = startedAt,
               ),
               fetchedNodeCount = 1L,
-            )
-          )
+            ),
+          ),
         )
 
   private def replayService(
@@ -485,8 +589,7 @@ final class HotStuffHistoricalBackfillSuite extends CatsEffectSuite:
       if predicate(value) then IO.pure(value)
       else if attempts <= 1 then
         IO.raiseError(new IllegalStateException("condition not met"))
-      else
-        IO.sleep(delay) *> awaitValue(effect, attempts - 1, delay)(predicate)
+      else IO.sleep(delay) *> awaitValue(effect, attempts - 1, delay)(predicate)
 
   private def session(
       sessionId: String,
@@ -505,7 +608,12 @@ final class HotStuffHistoricalBackfillSuite extends CatsEffectSuite:
   ): FinalizedAnchorSuggestion =
     val baseHeight = anchorHeight - 1L
     val bootstrapSubject = QuorumCertificateSubject(
-      window = HotStuffWindow(chainId, baseHeight, baseHeight, activeValidatorSet.hash),
+      window = HotStuffWindow(
+        chainId,
+        baseHeight,
+        baseHeight,
+        activeValidatorSet.hash,
+      ),
       proposalId = ProposalId(hex(seed + "01")),
       blockId = BlockId(hex(seed + "02")),
     )
@@ -513,7 +621,12 @@ final class HotStuffHistoricalBackfillSuite extends CatsEffectSuite:
       QuorumCertificateAssembler
         .assemble(
           bootstrapSubject,
-          quorumVotes(activeValidatorSet, keys, bootstrapSubject.window, bootstrapSubject.proposalId),
+          quorumVotes(
+            activeValidatorSet,
+            keys,
+            bootstrapSubject.window,
+            bootstrapSubject.proposalId,
+          ),
           activeValidatorSet,
         )
         .toOption
@@ -529,7 +642,12 @@ final class HotStuffHistoricalBackfillSuite extends CatsEffectSuite:
       Proposal
         .sign(
           UnsignedProposal(
-            window = HotStuffWindow(chainId, anchorHeight, anchorHeight, activeValidatorSet.hash),
+            window = HotStuffWindow(
+              chainId,
+              anchorHeight,
+              anchorHeight,
+              activeValidatorSet.hash,
+            ),
             proposer = activeValidatorSet.members(0).id,
             targetBlockId = BlockHeader.computeId(anchorBlock),
             block = anchorBlock,
@@ -541,9 +659,21 @@ final class HotStuffHistoricalBackfillSuite extends CatsEffectSuite:
         .toOption
         .get
     val child =
-      childProposal(anchor, seed + "20", anchorHeight + 1L, activeValidatorSet, keys)
+      childProposal(
+        anchor,
+        seed + "20",
+        anchorHeight + 1L,
+        activeValidatorSet,
+        keys,
+      )
     val grandchild =
-      childProposal(child, seed + "30", anchorHeight + 2L, activeValidatorSet, keys)
+      childProposal(
+        child,
+        seed + "30",
+        anchorHeight + 2L,
+        activeValidatorSet,
+        keys,
+      )
 
     FinalizedAnchorSuggestion(
       proposal = anchor,
@@ -564,7 +694,12 @@ final class HotStuffHistoricalBackfillSuite extends CatsEffectSuite:
       QuorumCertificateAssembler
         .assemble(
           bootstrapSubject,
-          quorumVotes(activeValidatorSet, keys, bootstrapSubject.window, bootstrapSubject.proposalId),
+          quorumVotes(
+            activeValidatorSet,
+            keys,
+            bootstrapSubject.window,
+            bootstrapSubject.proposalId,
+          ),
           activeValidatorSet,
         )
         .toOption
@@ -604,12 +739,14 @@ final class HotStuffHistoricalBackfillSuite extends CatsEffectSuite:
         height = BlockHeight.unsafeFromLong(height),
         stateRoot = StateRoot(hex(seed + "02")),
         bodyRoot = BodyRoot(hex(seed + "03")),
-        timestamp = BlockTimestamp.unsafeFromEpochMillis(startedAt.toEpochMilli + height),
+        timestamp =
+          BlockTimestamp.unsafeFromEpochMillis(startedAt.toEpochMilli + height),
       )
     Proposal
       .sign(
         UnsignedProposal(
-          window = HotStuffWindow(chainId, height, height, activeValidatorSet.hash),
+          window =
+            HotStuffWindow(chainId, height, height, activeValidatorSet.hash),
           proposer = activeValidatorSet.members((height.toInt % 3).min(2)).id,
           targetBlockId = BlockHeader.computeId(blockHeader),
           block = blockHeader,
@@ -633,7 +770,12 @@ final class HotStuffHistoricalBackfillSuite extends CatsEffectSuite:
           proposalId = proposal.proposalId,
           blockId = proposal.targetBlockId,
         ),
-        quorumVotes(activeValidatorSet, keys, proposal.window, proposal.proposalId),
+        quorumVotes(
+          activeValidatorSet,
+          keys,
+          proposal.window,
+          proposal.proposalId,
+        ),
         activeValidatorSet,
       )
       .toOption
@@ -669,7 +811,8 @@ final class HotStuffHistoricalBackfillSuite extends CatsEffectSuite:
       height = BlockHeight.unsafeFromLong(height),
       stateRoot = StateRoot(hex(stateRootHex)),
       bodyRoot = BodyRoot(hex(bodyRootHex)),
-      timestamp = BlockTimestamp.unsafeFromEpochMillis(startedAt.toEpochMilli + height),
+      timestamp =
+        BlockTimestamp.unsafeFromEpochMillis(startedAt.toEpochMilli + height),
     )
 
   private def hex(

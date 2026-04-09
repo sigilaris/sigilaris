@@ -55,7 +55,9 @@ class BigNatTest extends HedgehogSuite:
       val yz = BigNat.bignatOrdering.compare(y, z)
       val xz = BigNat.bignatOrdering.compare(x, z)
 
-      Result.all(List(
-        if xy <= 0 && yz <= 0 then Result.assert(xz <= 0) else Result.success,
-        if xy >= 0 && yz >= 0 then Result.assert(xz >= 0) else Result.success,
-      ))
+      Result.all(
+        List(
+          if xy <= 0 && yz <= 0 then Result.assert(xz <= 0) else Result.success,
+          if xy >= 0 && yz >= 0 then Result.assert(xz >= 0) else Result.success,
+        ),
+      )

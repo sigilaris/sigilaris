@@ -26,9 +26,10 @@ final class JsonDerivationPropertySuite extends HedgehogSuite:
       back ==== Right(p)
 
   property("product: SnakeCase naming roundtrip via configured givens"):
-    val snake = JsonConfig.default.copy(fieldNaming = FieldNamingPolicy.SnakeCase)
-    val encs  = JsonEncoder.configured(snake)
-    val decs  = JsonDecoder.configured(snake)
+    val snake =
+      JsonConfig.default.copy(fieldNaming = FieldNamingPolicy.SnakeCase)
+    val encs = JsonEncoder.configured(snake)
+    val decs = JsonDecoder.configured(snake)
     import encs.given
     import decs.given
 
@@ -45,8 +46,9 @@ final class JsonDerivationPropertySuite extends HedgehogSuite:
       val json = JsonEncoder[Person].encode(p0)
       // Drop the optional field to simulate absence
       val stripped = json match
-        case JsonValue.JObject(fields) => JsonValue.JObject(fields - "age" - "Age" - "age" - "AGE")
-        case other                     => other
+        case JsonValue.JObject(fields) =>
+          JsonValue.JObject(fields - "age" - "Age" - "age" - "AGE")
+        case other => other
       val res = JsonDecoder[Person].decode(stripped)
       res ==== Right(p0.copy(age = None))
 
@@ -60,9 +62,8 @@ final class JsonDerivationPropertySuite extends HedgehogSuite:
   private val genShape: Gen[Shape] =
     for
       tag <- Gen.int(Range.linear(0, 1))
-      s   <-
-        if tag == 0 then
-          Gen.int(Range.linear(0, 1000)).map(Circle.apply)
+      s <-
+        if tag == 0 then Gen.int(Range.linear(0, 1000)).map(Circle.apply)
         else
           for
             w <- Gen.int(Range.linear(0, 1000))
@@ -80,8 +81,9 @@ final class JsonDerivationPropertySuite extends HedgehogSuite:
           fields.head match
             case ("Circle", JsonValue.JObject(body)) =>
               s match
-                case Circle(r) => body.get("r").exists(_ == JsonValue.JNumber(BigDecimal(r)))
-                case _         => false
+                case Circle(r) =>
+                  body.get("r").exists(_ == JsonValue.JNumber(BigDecimal(r)))
+                case _ => false
             case ("Rect", JsonValue.JObject(body)) =>
               s match
                 case Rect(w, h) =>
@@ -100,8 +102,8 @@ final class JsonDerivationPropertySuite extends HedgehogSuite:
   property("sum: custom discriminator mapping roundtrip"):
     val cfg = JsonConfig.default.copy(
       discriminator = DiscriminatorConfig(
-        TypeNameStrategy.Custom(Map("Circle" -> "circle", "Rect" -> "rect"))
-      )
+        TypeNameStrategy.Custom(Map("Circle" -> "circle", "Rect" -> "rect")),
+      ),
     )
     val encs = JsonEncoder.configured(cfg)
     val decs = JsonDecoder.configured(cfg)

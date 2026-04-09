@@ -6,7 +6,11 @@ import cats.syntax.all.*
 import org.sigilaris.core.application.scheduling.SchedulingClassification
 import org.sigilaris.core.codec.byte.ByteEncoder
 import org.sigilaris.core.crypto.Hash
-import org.sigilaris.node.jvm.runtime.block.{BlockQuery, BlockValidationFailure, BlockView}
+import org.sigilaris.node.jvm.runtime.block.{
+  BlockQuery,
+  BlockValidationFailure,
+  BlockView,
+}
 
 enum HotStuffRuntimeRejection:
   case Policy(rejection: HotStuffPolicyViolation)
@@ -16,18 +20,22 @@ object HotStuffRuntimeRejection:
   extension (rejection: HotStuffRuntimeRejection)
     def reason: String =
       rejection match
-        case HotStuffRuntimeRejection.Policy(policy)         => policy.reason
-        case HotStuffRuntimeRejection.Validation(validation) => validation.reason
+        case HotStuffRuntimeRejection.Policy(policy) => policy.reason
+        case HotStuffRuntimeRejection.Validation(validation) =>
+          validation.reason
 
     def detail: Option[String] =
       rejection match
-        case HotStuffRuntimeRejection.Policy(policy)         => policy.detail
-        case HotStuffRuntimeRejection.Validation(validation) => validation.detail
+        case HotStuffRuntimeRejection.Policy(policy) => policy.detail
+        case HotStuffRuntimeRejection.Validation(validation) =>
+          validation.detail
 
 final case class HotStuffProposalEmission[TxRef, ResultRef, Event](
     selection: ConflictFreeBlockBodySelection[TxRef, ResultRef, Event],
     view: BlockView[TxRef, ResultRef, Event],
-    event: org.sigilaris.node.jvm.runtime.gossip.GossipEvent[HotStuffGossipArtifact],
+    event: org.sigilaris.node.jvm.runtime.gossip.GossipEvent[
+      HotStuffGossipArtifact,
+    ],
 )
 
 object HotStuffRuntimeScheduling:
@@ -39,7 +47,8 @@ object HotStuffRuntimeScheduling:
       detail = failure.detail,
     )
 
-  def validateProposalViewFromBlockQuery[F[_]: Sync, TxRef: ByteEncoder: Hash, ResultRef: ByteEncoder, Event: ByteEncoder](
+  def validateProposalViewFromBlockQuery[F[_]
+    : Sync, TxRef: ByteEncoder: Hash, ResultRef: ByteEncoder, Event: ByteEncoder](
       proposal: Proposal,
       validatorSet: ValidatorSet,
       blockQuery: BlockQuery[F, TxRef, ResultRef, Event],
@@ -67,7 +76,8 @@ object HotStuffRuntimeScheduling:
             )(classifyTx)
             .map(_ => view)
 
-  def proposalValidationFromBlockQuery[F[_]: Sync, TxRef: ByteEncoder: Hash, ResultRef: ByteEncoder, Event: ByteEncoder](
+  def proposalValidationFromBlockQuery[F[_]
+    : Sync, TxRef: ByteEncoder: Hash, ResultRef: ByteEncoder, Event: ByteEncoder](
       validatorSet: ValidatorSet,
       blockQuery: BlockQuery[F, TxRef, ResultRef, Event],
   )(
@@ -80,5 +90,6 @@ object HotStuffRuntimeScheduling:
         blockQuery = blockQuery,
       )(classifyTx).map(_.void)
 
-  def allowAll[F[_]: Sync]: Proposal => F[Either[HotStuffValidationFailure, Unit]] =
+  def allowAll[F[_]: Sync]
+      : Proposal => F[Either[HotStuffValidationFailure, Unit]] =
     _ => Sync[F].pure(().asRight[HotStuffValidationFailure])

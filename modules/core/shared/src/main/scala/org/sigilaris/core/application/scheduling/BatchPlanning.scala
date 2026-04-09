@@ -102,15 +102,14 @@ object BatchPlanner:
     val schedulableItems = classified.flatMap(_.schedulable)
     if schedulableItems.sizeCompare(classified.size) == 0 then
       ConflictFootprintVerifier
-        .verifyAll(
-          schedulableItems.map(item => item.item -> item.declaredFootprint),
-        )
+        .verifyAll:
+          schedulableItems.map(item => item.item -> item.declaredFootprint)
         .map: aggregate =>
           BatchPlan.Schedulable(
             SchedulableBatchPlan(
               items = schedulableItems,
               aggregate = aggregate,
-            )
+            ),
           )
     else
       val mode =
@@ -120,7 +119,7 @@ object BatchPlanner:
         CompatibilityBatchPlan(
           items = classified,
           mode = mode,
-        )
+        ),
       )
 
   def plan[A](
@@ -140,21 +139,21 @@ enum SchedulableExecutionFailure[A, E]:
   case ActualFootprintUnavailable(
       item: A,
       violation: ConflictFootprint.AccessLogInvariantViolation,
-    )
+  )
   case ConformanceFailed(
       item: A,
       failure: FootprintConformanceFailure,
-    )
+  )
 
 enum ExecutionConformanceFailure[A]:
   case ActualFootprintUnavailable(
       item: A,
       violation: ConflictFootprint.AccessLogInvariantViolation,
-    )
+  )
   case ConformanceFailed(
       item: A,
       failure: FootprintConformanceFailure,
-    )
+  )
 
 final case class ExecutedSchedulableItem[A](
     planned: SchedulableItem[A],
@@ -171,8 +170,7 @@ object SchedulableExecutionVerifier:
       planned: SchedulableItem[A],
       execution: TxExecution[?, ?],
   ): Either[ExecutionConformanceFailure[A], Unit] =
-    execution.actualFootprint
-      .left
+    execution.actualFootprint.left
       .map: violation =>
         ExecutionConformanceFailure.ActualFootprintUnavailable(
           item = planned.item,
@@ -193,7 +191,10 @@ object SchedulableBatchExecutor:
       failure: ExecutionConformanceFailure[A],
   ): SchedulableExecutionFailure[A, E] =
     failure match
-      case ExecutionConformanceFailure.ActualFootprintUnavailable(item, violation) =>
+      case ExecutionConformanceFailure.ActualFootprintUnavailable(
+            item,
+            violation,
+          ) =>
         SchedulableExecutionFailure.ActualFootprintUnavailable[A, E](
           item = item,
           violation = violation,
@@ -208,8 +209,7 @@ object SchedulableBatchExecutor:
       planned: SchedulableItem[A],
       result: Either[E, TxExecution[?, ?]],
   ): Either[SchedulableExecutionFailure[A, E], TxExecution[?, ?]] =
-    result
-      .left
+    result.left
       .map: cause =>
         SchedulableExecutionFailure.ExecutionFailed(
           item = planned.item,
@@ -229,23 +229,28 @@ object SchedulableBatchExecutor:
       execute: (StoreState, A) => Either[E, TxExecution[?, ?]],
   ): Either[SchedulableExecutionFailure[A, E], SchedulableBatchExecution[A]] =
     val initialAcc =
-      scala.Right[SchedulableExecutionFailure[A, E], (StoreState, Vector[ExecutedSchedulableItem[A]])](
+      scala.Right[SchedulableExecutionFailure[
+        A,
+        E,
+      ], (StoreState, Vector[ExecutedSchedulableItem[A]])]:
         initial -> Vector.empty[ExecutedSchedulableItem[A]]
-      )
 
     plan.items
       .foldLeft[
         Either[
           SchedulableExecutionFailure[A, E],
           (StoreState, Vector[ExecutedSchedulableItem[A]]),
-        ]
+        ],
       ](initialAcc):
         case (Right((currentState, executed)), planned) =>
           validateExecution(
             planned,
             execute(currentState, planned.item),
           ).map: execution =>
-            execution.nextState -> (executed :+ ExecutedSchedulableItem(planned, execution))
+            execution.nextState -> (executed :+ ExecutedSchedulableItem(
+              planned,
+              execution,
+            ))
         case (left @ Left(_), _) =>
           left
       .map: (nextState, items) =>

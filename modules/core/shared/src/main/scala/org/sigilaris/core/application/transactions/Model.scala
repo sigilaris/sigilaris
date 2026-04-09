@@ -155,8 +155,8 @@ object TxRegistry:
 /** Account signature containing both the signing account and the signature.
   *
   * This binds a cryptographic signature to the account that produced it,
-  * enabling verification that the signature was created by a key controlled
-  * by the specified account.
+  * enabling verification that the signature was created by a key controlled by
+  * the specified account.
   *
   * @param account
   *   the account that signed the transaction
@@ -182,8 +182,8 @@ final case class AccountSignature(
   * carry a valid signature. This is enforced at compile time - attempting to
   * submit an unsigned transaction to a blueprint will result in a type error.
   *
-  * The covariant type parameter (+A <: Tx) allows Signed[CreateNamedAccount]
-  * to be used where Signed[Tx & ModuleRoutedTx] is expected, enabling flexible
+  * The covariant type parameter (+A <: Tx) allows Signed[CreateNamedAccount] to
+  * be used where Signed[Tx & ModuleRoutedTx] is expected, enabling flexible
   * composition while maintaining type safety.
   *
   * @tparam A

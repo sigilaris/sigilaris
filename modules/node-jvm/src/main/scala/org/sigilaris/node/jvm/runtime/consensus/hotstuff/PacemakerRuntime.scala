@@ -150,7 +150,8 @@ final case class HotStuffPacemakerRuntime(
         Vector.empty[HotStuffPacemakerCommand],
         Vector.empty[HotStuffPacemakerDiagnostic],
       )
-    else if state.localTimeoutVoteRequested || state.localTimeoutVote.nonEmpty then
+    else if state.localTimeoutVoteRequested || state.localTimeoutVote.nonEmpty
+    then
       step(
         state,
         HotStuffPacemakerStepOutcome.NoOp,
@@ -161,7 +162,8 @@ final case class HotStuffPacemakerRuntime(
       val nextFailures = state.consecutiveTimeoutWindows + 1
       val updated =
         state.copy(
-          timeoutDeadline = now.plus(timeoutFor(state.activeWindow, nextFailures)),
+          timeoutDeadline =
+            now.plus(timeoutFor(state.activeWindow, nextFailures)),
           localTimeoutVoteRequested = state.bootstrapHoldReason.isEmpty,
           consecutiveTimeoutWindows = nextFailures,
         )
@@ -185,7 +187,7 @@ final case class HotStuffPacemakerRuntime(
                 voter = localValidator,
                 window = state.activeWindow,
                 highestKnownQc = state.highestKnownQc,
-              )
+              ),
             ),
             diagnostics,
           )
@@ -198,7 +200,10 @@ final case class HotStuffPacemakerRuntime(
       .validateTimeoutVote(timeoutVote, validatorSet)
       .leftMap(validationFailureToPolicyViolation)
       .flatMap: _ =>
-        classifyCurrentWindow(timeoutVote.subject.window, state.activeWindow) match
+        classifyCurrentWindow(
+          timeoutVote.subject.window,
+          state.activeWindow,
+        ) match
           case HotStuffPacemakerWindowDisposition.Stale =>
             step(
               state,
@@ -207,62 +212,66 @@ final case class HotStuffPacemakerRuntime(
               Vector.empty[HotStuffPacemakerDiagnostic],
             ).asRight[HotStuffPolicyViolation]
           case HotStuffPacemakerWindowDisposition.Expected =>
-            state.timeoutVotes.record(timeoutVote).leftMap(validationFailureToPolicyViolation).map:
-              case (_, TimeoutVoteRecordOutcome.Duplicate) =>
-                step(
-                  state,
-                  HotStuffPacemakerStepOutcome.Duplicate,
-                  Vector.empty[HotStuffPacemakerCommand],
-                  Vector.empty[HotStuffPacemakerDiagnostic],
-                )
-              case (updatedAccumulator, TimeoutVoteRecordOutcome.Applied) =>
-                val maybeLocalTimeoutVote =
-                  if timeoutVote.voter === localValidator then
-                    Some(timeoutVote)
-                  else state.localTimeoutVote
-                val maybeTimeoutCertificate =
-                  state.timeoutCertificate.orElse:
-                    TimeoutCertificateAssembler
-                      .assemble(
-                        timeoutVote.subject,
-                        updatedAccumulator.votesFor(timeoutVote.subject),
-                        validatorSet,
-                      )
-                      .toOption
-                val shouldEmitNewView =
-                  maybeLocalTimeoutVote.nonEmpty &&
-                    maybeTimeoutCertificate.nonEmpty &&
-                    !state.localNewViewRequested &&
-                    state.bootstrapHoldReason.isEmpty
-                val updated =
-                  state.copy(
-                    timeoutVotes = updatedAccumulator,
-                    timeoutCertificate = maybeTimeoutCertificate,
-                    localTimeoutVoteRequested =
-                      if timeoutVote.voter === localValidator then false
-                      else state.localTimeoutVoteRequested,
-                    localTimeoutVote = maybeLocalTimeoutVote,
-                    localNewViewRequested =
-                      state.localNewViewRequested || shouldEmitNewView,
+            state.timeoutVotes
+              .record(timeoutVote)
+              .leftMap(validationFailureToPolicyViolation)
+              .map:
+                case (_, TimeoutVoteRecordOutcome.Duplicate) =>
+                  step(
+                    state,
+                    HotStuffPacemakerStepOutcome.Duplicate,
+                    Vector.empty[HotStuffPacemakerCommand],
+                    Vector.empty[HotStuffPacemakerDiagnostic],
                   )
-                val commands =
-                  if shouldEmitNewView then
-                    maybeTimeoutCertificate.fold(Vector.empty[HotStuffPacemakerCommand]):
-                      timeoutCertificate =>
+                case (updatedAccumulator, TimeoutVoteRecordOutcome.Applied) =>
+                  val maybeLocalTimeoutVote =
+                    if timeoutVote.voter === localValidator then
+                      Some(timeoutVote)
+                    else state.localTimeoutVote
+                  val maybeTimeoutCertificate =
+                    state.timeoutCertificate.orElse:
+                      TimeoutCertificateAssembler
+                        .assemble(
+                          timeoutVote.subject,
+                          updatedAccumulator.votesFor(timeoutVote.subject),
+                          validatorSet,
+                        )
+                        .toOption
+                  val shouldEmitNewView =
+                    maybeLocalTimeoutVote.nonEmpty &&
+                      maybeTimeoutCertificate.nonEmpty &&
+                      !state.localNewViewRequested &&
+                      state.bootstrapHoldReason.isEmpty
+                  val updated =
+                    state.copy(
+                      timeoutVotes = updatedAccumulator,
+                      timeoutCertificate = maybeTimeoutCertificate,
+                      localTimeoutVoteRequested =
+                        if timeoutVote.voter === localValidator then false
+                        else state.localTimeoutVoteRequested,
+                      localTimeoutVote = maybeLocalTimeoutVote,
+                      localNewViewRequested =
+                        state.localNewViewRequested || shouldEmitNewView,
+                    )
+                  val commands =
+                    if shouldEmitNewView then
+                      maybeTimeoutCertificate.fold(
+                        Vector.empty[HotStuffPacemakerCommand],
+                      ): timeoutCertificate =>
                         Vector(
                           HotStuffPacemakerCommand.EmitNewView(
                             sender = localValidator,
                             highestKnownQc = updated.highestKnownQc,
                             timeoutCertificate = timeoutCertificate,
-                          )
+                          ),
                         )
-                  else Vector.empty[HotStuffPacemakerCommand]
-                step(
-                  updated,
-                  HotStuffPacemakerStepOutcome.Applied,
-                  commands,
-                  divergentTimeoutDiagnostics(updated),
-                )
+                    else Vector.empty[HotStuffPacemakerCommand]
+                  step(
+                    updated,
+                    HotStuffPacemakerStepOutcome.Applied,
+                    commands,
+                    divergentTimeoutDiagnostics(updated),
+                  )
           case HotStuffPacemakerWindowDisposition.Invalid =>
             HotStuffPolicyViolation(
               reason = "wrongPacemakerWindow",
@@ -329,7 +338,9 @@ final case class HotStuffPacemakerRuntime(
             HotStuffPolicyViolation(
               reason = "wrongPacemakerWindow",
               detail = Some(
-                ss"expected=${renderWindow(HotStuffPacemaker.nextWindowAfter(state.activeWindow))} actual=${renderWindow(newView.window)}",
+                ss"expected=${renderWindow(
+                    HotStuffPacemaker.nextWindowAfter(state.activeWindow),
+                  )} actual=${renderWindow(newView.window)}",
               ),
             ).asLeft[HotStuffPacemakerStep]
 
@@ -343,11 +354,12 @@ final case class HotStuffPacemakerRuntime(
     val jitterSlots =
       if policy.maxJitterSlots === 0 then 0L
       else
-        Math.floorMod(
-          ss"${window.chainId.value}:${window.height.render}:${window.view.render}:${localValidator.value}"
-            .hashCode,
-          policy.maxJitterSlots + 1,
-        ).toLong
+        Math
+          .floorMod(
+            ss"${window.chainId.value}:${window.height.render}:${window.view.render}:${localValidator.value}".hashCode,
+            policy.maxJitterSlots + 1,
+          )
+          .toLong
     policy.baseTimeout
       .multipliedBy(multiplier)
       .plus(policy.jitterStep.multipliedBy(jitterSlots))
@@ -361,12 +373,15 @@ final case class HotStuffPacemakerRuntime(
           reason = reason,
           expectedLeader = state.currentLeader,
         )
-      case None if state.localTimeoutVoteRequested || state.localTimeoutVote.nonEmpty =>
+      case None
+          if state.localTimeoutVoteRequested || state.localTimeoutVote.nonEmpty =>
         HotStuffPacemakerProposalEligibility.TimeoutInProgress(
           expectedLeader = state.currentLeader,
         )
       case None if localValidator === state.currentLeader =>
-        HotStuffPacemakerProposalEligibility.EligibleAsLeader(state.currentLeader)
+        HotStuffPacemakerProposalEligibility.EligibleAsLeader(
+          state.currentLeader,
+        )
       case None =>
         HotStuffPacemakerProposalEligibility.Follower(state.currentLeader)
 
@@ -379,7 +394,7 @@ final case class HotStuffPacemakerRuntime(
           HotStuffPacemakerCommand.ActivateLeader(
             window = state.activeWindow,
             leader = leader,
-          )
+          ),
         )
       case _ =>
         Vector.empty[HotStuffPacemakerCommand]
@@ -414,8 +429,8 @@ final case class HotStuffPacemakerRuntime(
       active: HotStuffWindow,
   ): Option[Int] =
     if candidate.chainId =!= active.chainId ||
-        candidate.validatorSetHash =!= active.validatorSetHash then
-      None
+      candidate.validatorSetHash =!= active.validatorSetHash
+    then None
     else
       val heightOrdering = summon[Ordering[HotStuffHeight]]
       val viewOrdering   = summon[Ordering[HotStuffView]]
@@ -440,19 +455,20 @@ final case class HotStuffPacemakerRuntime(
         HotStuffPacemakerDiagnostic.DivergentTimeoutSubjects(
           window = state.activeWindow,
           subjects = subjects,
-        )
+        ),
       )
     else Vector.empty
 
   private def timeoutDiagnostics(
       state: HotStuffPacemakerState,
   ): Vector[HotStuffPacemakerDiagnostic] =
-    if state.consecutiveTimeoutWindows >= policy.elevatedTimeoutAlertThreshold then
+    if state.consecutiveTimeoutWindows >= policy.elevatedTimeoutAlertThreshold
+    then
       Vector(
         HotStuffPacemakerDiagnostic.ElevatedTimeoutAlert(
           window = state.activeWindow,
           consecutiveTimeoutWindows = state.consecutiveTimeoutWindows,
-        )
+        ),
       )
     else Vector.empty
 

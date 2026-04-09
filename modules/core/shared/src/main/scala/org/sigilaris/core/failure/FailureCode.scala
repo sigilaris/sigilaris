@@ -19,12 +19,14 @@ object FailureCode:
   val Crypto: FailureCode  = FailureCode("core.crypto")
 
   object UInt256:
-    val TooLong: FailureCode       = FailureCode("datatype.uint256.too_long")
-    val NegativeValue: FailureCode = FailureCode("datatype.uint256.negative_value")
-    val Overflow: FailureCode      = FailureCode("datatype.uint256.overflow")
-    val InvalidHex: FailureCode    = FailureCode("datatype.uint256.invalid_hex")
+    val TooLong: FailureCode = FailureCode("datatype.uint256.too_long")
+    val NegativeValue: FailureCode = FailureCode:
+      "datatype.uint256.negative_value"
+    val Overflow: FailureCode   = FailureCode("datatype.uint256.overflow")
+    val InvalidHex: FailureCode = FailureCode("datatype.uint256.invalid_hex")
 
-/** External mapping key projected from a [[FailureCode]] plus formatter context.
+/** External mapping key projected from a [[FailureCode]] plus formatter
+  * context.
   */
 final case class ErrorKey(rendered: String, code: FailureCode)
 

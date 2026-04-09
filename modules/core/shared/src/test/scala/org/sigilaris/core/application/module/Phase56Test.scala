@@ -5,13 +5,27 @@ import cats.data.{EitherT, Kleisli, StateT}
 import munit.FunSuite
 import scala.Tuple.++
 
-import _root_.org.sigilaris.core.application.state.{Entry, StoreF, StoreState, Tables}
+import _root_.org.sigilaris.core.application.state.{
+  Entry,
+  StoreF,
+  StoreState,
+  Tables,
+}
 import _root_.org.sigilaris.core.application.feature.accounts.domain.Account
-import _root_.org.sigilaris.core.application.module.blueprint.{Blueprint, ModuleBlueprint, StateReducer0}
+import _root_.org.sigilaris.core.application.module.blueprint.{
+  Blueprint,
+  ModuleBlueprint,
+  StateReducer0,
+}
 import _root_.org.sigilaris.core.application.module.provider.TablesProvider
 import _root_.org.sigilaris.core.application.module.runtime.StateModule
 import _root_.org.sigilaris.core.application.support.compiletime.Requires
-import _root_.org.sigilaris.core.application.transactions.{AccountSignature, Signed, Tx, TxRegistry}
+import _root_.org.sigilaris.core.application.transactions.{
+  AccountSignature,
+  Signed,
+  Tx,
+  TxRegistry,
+}
 import org.sigilaris.core.crypto.Signature
 import org.sigilaris.core.datatype.UInt256
 import org.sigilaris.core.merkle.{MerkleTrie, MerkleTrieNode}
@@ -19,9 +33,10 @@ import scodec.bits.ByteVector
 
 /** Phase 5.6: Provider Composition Tests
   *
-  * Tests for TablesProvider.merge and composition of modules with non-empty Needs.
-  * Phase 5.6 enables composeBlueprint and extend to work with modules that have
-  * external dependencies, as long as their dependency schemas are disjoint.
+  * Tests for TablesProvider.merge and composition of modules with non-empty
+  * Needs. Phase 5.6 enables composeBlueprint and extend to work with modules
+  * that have external dependencies, as long as their dependency schemas are
+  * disjoint.
   */
 class Phase56Test extends FunSuite:
   import Phase56Test.*
@@ -55,28 +70,29 @@ class Phase56Test extends FunSuite:
 
     // Verify the error mentions either DisjointSchemas or DifferentNames
     val mentionsMerge = errors.contains("Cannot merge provider schemas")
-    val mentionsDuplicate = errors.contains("Table Entry") || errors.contains("Table Entry[")
+    val mentionsDuplicate =
+      errors.contains("Table Entry") || errors.contains("Table Entry[")
     assert(
       mentionsMerge || mentionsDuplicate,
-      s"Expected error about overlapping provider schemas, got: $errors"
+      s"Expected error about overlapping provider schemas, got: $errors",
     )
 
   test("TablesProvider.merge: merge two empty providers"):
-    val p1 = TablesProvider.empty[Id]
-    val p2 = TablesProvider.empty[Id]
+    val p1     = TablesProvider.empty[Id]
+    val p2     = TablesProvider.empty[Id]
     val merged = TablesProvider.merge(p1, p2)
     assertEquals(merged.tables, EmptyTuple)
 
   test("TablesProvider.merge: merge providers with disjoint schemas"):
     // Create a simple module with a single table
-    val accountsBP = createAccountsBlueprint()
+    val accountsBP     = createAccountsBlueprint()
     val accountsModule = StateModule.mount[("app", "accounts")](accountsBP)
 
     // Create a provider from the accounts module
     val accountsProvider = TablesProvider.fromModule(accountsModule)
 
     // Create another module with a different table
-    val groupBP = createGroupBlueprint()
+    val groupBP     = createGroupBlueprint()
     val groupModule = StateModule.mount[("app", "group")](groupBP)
 
     // Create a provider from the group module
@@ -91,7 +107,7 @@ class Phase56Test extends FunSuite:
 
   test("composeBlueprint: compose modules with EmptyTuple Needs"):
     val accountsBP = createAccountsBlueprint()
-    val groupBP = createGroupBlueprint()
+    val groupBP    = createGroupBlueprint()
 
     // This should compile because both have Needs = EmptyTuple
     val composedBP = Blueprint.composeBlueprint[Id, "app"](accountsBP, groupBP)
@@ -107,7 +123,8 @@ class Phase56Test extends FunSuite:
 
     // Both have non-empty Needs, but they're disjoint
     // This should compile in Phase 5.6
-    val composedBP = Blueprint.composeBlueprint[Id, "dapp"](tokenBP, governanceBP)
+    val composedBP =
+      Blueprint.composeBlueprint[Id, "dapp"](tokenBP, governanceBP)
 
     assertEquals(composedBP.owns.size, 2)
 
@@ -126,12 +143,15 @@ class Phase56Test extends FunSuite:
     """)
 
     // Verify compilation failed
-    assert(errors.nonEmpty, "Expected compilation error for overlapping Needs in composeBlueprint")
+    assert(
+      errors.nonEmpty,
+      "Expected compilation error for overlapping Needs in composeBlueprint",
+    )
 
     // Verify the error mentions the relevant type classes
     assert(
       errors.contains("Cannot merge provider schemas"),
-      s"Expected error about overlapping provider schemas, got: $errors"
+      s"Expected error about overlapping provider schemas, got: $errors",
     )
 
   test("extend: overlapping Needs should not compile"):
@@ -150,12 +170,15 @@ class Phase56Test extends FunSuite:
     """)
 
     // Verify compilation failed
-    assert(errors.nonEmpty, "Expected compilation error for overlapping Needs in extend")
+    assert(
+      errors.nonEmpty,
+      "Expected compilation error for overlapping Needs in extend",
+    )
 
     // Verify the error mentions the relevant type classes
     assert(
       errors.contains("Cannot merge provider schemas"),
-      s"Expected error about overlapping provider schemas, got: $errors"
+      s"Expected error about overlapping provider schemas, got: $errors",
     )
 
   test("Phase 5.6: extend compiles with disjoint non-empty Needs"):
@@ -166,17 +189,20 @@ class Phase56Test extends FunSuite:
     // Needs = EmptyTuple. Phase 5.6 accepts it because the Needs are disjoint.
 
     // For simplicity, just verify that merging providers works
-    val p1 = TablesProvider.empty[Id]
-    val p2 = TablesProvider.empty[Id]
+    val p1     = TablesProvider.empty[Id]
+    val p2     = TablesProvider.empty[Id]
     val merged = TablesProvider.merge(p1, p2)
 
     assertEquals(merged.tables, EmptyTuple)
 
   // Regression test for the narrow() fix: verify that composed blueprints
   // correctly project multi-table providers when routing to sub-modules
-  test("composeBlueprint: provider projection with multi-table Needs pattern matching"):
+  test(
+    "composeBlueprint: provider projection with multi-table Needs pattern matching",
+  ):
     // Create a module with TWO dependencies that we'll pattern match
-    type DualNeeds = Entry["dep1", Long, Long] *: Entry["dep2", Long, Long] *: EmptyTuple
+    type DualNeeds = Entry["dep1", Long, Long] *: Entry["dep2", Long, Long] *:
+      EmptyTuple
     type TestOwns = Entry["test", Long, Long] *: EmptyTuple
 
     val testEntry = new Entry["test", Long, Long]("test")
@@ -186,7 +212,10 @@ class Phase56Test extends FunSuite:
     val reducer = new StateReducer0[Id, TestOwns, DualNeeds]:
       def apply[T <: Tx](signedTx: Signed[T])(using
           requiresReads: Requires[signedTx.value.Reads, TestOwns ++ DualNeeds],
-          requiresWrites: Requires[signedTx.value.Writes, TestOwns ++ DualNeeds],
+          requiresWrites: Requires[
+            signedTx.value.Writes,
+            TestOwns ++ DualNeeds,
+          ],
           ownsTables: Tables[Id, TestOwns],
           provider: TablesProvider[Id, DualNeeds],
       ): StoreF[Id][(signedTx.value.Result, List[signedTx.value.Event])] =
@@ -203,12 +232,13 @@ class Phase56Test extends FunSuite:
         val mockTuple = (null, null)
         mockTuple.asInstanceOf[Tables[Id, DualNeeds]]
 
-    val blueprint1 = new ModuleBlueprint[Id, "test", TestOwns, DualNeeds, EmptyTuple](
-      owns = testEntry *: EmptyTuple,
-      reducer0 = reducer,
-      txs = TxRegistry.empty,
-      provider = mockProvider,
-    )
+    val blueprint1 =
+      new ModuleBlueprint[Id, "test", TestOwns, DualNeeds, EmptyTuple](
+        owns = testEntry *: EmptyTuple,
+        reducer0 = reducer,
+        txs = TxRegistry.empty,
+        provider = mockProvider,
+      )
 
     // Compose with an independent module with EmptyTuple needs
     val accountsEntry = new Entry["accounts", Long, Long]("accounts")
@@ -221,7 +251,13 @@ class Phase56Test extends FunSuite:
       ): StoreF[Id][(signedTx.value.Result, List[signedTx.value.Event])] =
         StateT.pure((().asInstanceOf[signedTx.value.Result], Nil))
 
-    val blueprint2 = new ModuleBlueprint[Id, "accounts", AccountsSchema, EmptyTuple, EmptyTuple](
+    val blueprint2 = new ModuleBlueprint[
+      Id,
+      "accounts",
+      AccountsSchema,
+      EmptyTuple,
+      EmptyTuple,
+    ](
       owns = accountsEntry *: EmptyTuple,
       reducer0 = accountsReducer,
       txs = TxRegistry.empty,
@@ -233,7 +269,8 @@ class Phase56Test extends FunSuite:
 
     // Now actually test the narrow() projection at runtime
     // Create the merged provider with all dependencies (DualNeeds ++ EmptyTuple)
-    val mergedProvider = TablesProvider.merge(mockProvider, TablesProvider.empty[Id])
+    val mergedProvider =
+      TablesProvider.merge(mockProvider, TablesProvider.empty[Id])
 
     // The critical test: narrow the merged provider to just DualNeeds
     // Before the fix, this would succeed at compile time but the pattern match would fail at runtime
@@ -260,7 +297,9 @@ object Phase56Test:
     Signed(AccountSignature(account, dummySig), tx)
 
   // Helper to create accounts blueprint (no dependencies)
-  def createAccountsBlueprint()(using @annotation.unused nodeStore: MerkleTrie.NodeStore[Id]): ModuleBlueprint[Id, "accounts", AccountsSchema, EmptyTuple, EmptyTuple] =
+  def createAccountsBlueprint()(using
+      @annotation.unused nodeStore: MerkleTrie.NodeStore[Id],
+  ): ModuleBlueprint[Id, "accounts", AccountsSchema, EmptyTuple, EmptyTuple] =
     val accountsEntry = new Entry["accounts", Long, Long]("accounts")
 
     val reducer = new StateReducer0[Id, AccountsSchema, EmptyTuple]:
@@ -280,7 +319,9 @@ object Phase56Test:
     )
 
   // Helper to create group blueprint (no dependencies)
-  def createGroupBlueprint()(using @annotation.unused nodeStore: MerkleTrie.NodeStore[Id]): ModuleBlueprint[Id, "group", GroupSchema, EmptyTuple, EmptyTuple] =
+  def createGroupBlueprint()(using
+      @annotation.unused nodeStore: MerkleTrie.NodeStore[Id],
+  ): ModuleBlueprint[Id, "group", GroupSchema, EmptyTuple, EmptyTuple] =
     val groupEntry = new Entry["groups", Long, Long]("groups")
 
     val reducer = new StateReducer0[Id, GroupSchema, EmptyTuple]:
@@ -300,13 +341,21 @@ object Phase56Test:
     )
 
   // Helper to create token blueprint (depends on accounts)
-  def createTokenBlueprint()(using @annotation.unused nodeStore: MerkleTrie.NodeStore[Id]): ModuleBlueprint[Id, "token", TokenSchema, AccountsSchema, EmptyTuple] =
+  def createTokenBlueprint()(using
+      @annotation.unused nodeStore: MerkleTrie.NodeStore[Id],
+  ): ModuleBlueprint[Id, "token", TokenSchema, AccountsSchema, EmptyTuple] =
     val tokenEntry = new Entry["tokens", Long, Long]("tokens")
 
     val reducer = new StateReducer0[Id, TokenSchema, AccountsSchema]:
       def apply[T <: Tx](signedTx: Signed[T])(using
-          requiresReads: Requires[signedTx.value.Reads, TokenSchema ++ AccountsSchema],
-          requiresWrites: Requires[signedTx.value.Writes, TokenSchema ++ AccountsSchema],
+          requiresReads: Requires[
+            signedTx.value.Reads,
+            TokenSchema ++ AccountsSchema,
+          ],
+          requiresWrites: Requires[
+            signedTx.value.Writes,
+            TokenSchema ++ AccountsSchema,
+          ],
           ownsTables: Tables[Id, TokenSchema],
           provider: TablesProvider[Id, AccountsSchema],
       ): StoreF[Id][(signedTx.value.Result, List[signedTx.value.Event])] =
@@ -319,21 +368,30 @@ object Phase56Test:
       owns = tokenEntry *: EmptyTuple,
       reducer0 = reducer,
       txs = TxRegistry.empty,
-      provider = new TablesProvider[Id, AccountsSchema] {
-        def tables: Tables[Id, AccountsSchema] = EmptyTuple.asInstanceOf[Tables[Id, AccountsSchema]]
-      }, // Dummy provider for blueprint creation
+      provider = new TablesProvider[Id, AccountsSchema]:
+        def tables: Tables[Id, AccountsSchema] =
+          EmptyTuple.asInstanceOf[Tables[Id, AccountsSchema]],
+      // Dummy provider for blueprint creation
     )
 
   // Helper to create token blueprint with actual provider
-  def createTokenBlueprintWithProvider(provider: TablesProvider[Id, AccountsSchema])(using
+  def createTokenBlueprintWithProvider(
+      provider: TablesProvider[Id, AccountsSchema],
+  )(using
       @annotation.unused nodeStore: MerkleTrie.NodeStore[Id],
   ): ModuleBlueprint[Id, "token", TokenSchema, AccountsSchema, EmptyTuple] =
     val tokenEntry = new Entry["tokens", Long, Long]("tokens")
 
     val reducer = new StateReducer0[Id, TokenSchema, AccountsSchema]:
       def apply[T <: Tx](signedTx: Signed[T])(using
-          requiresReads: Requires[signedTx.value.Reads, TokenSchema ++ AccountsSchema],
-          requiresWrites: Requires[signedTx.value.Writes, TokenSchema ++ AccountsSchema],
+          requiresReads: Requires[
+            signedTx.value.Reads,
+            TokenSchema ++ AccountsSchema,
+          ],
+          requiresWrites: Requires[
+            signedTx.value.Writes,
+            TokenSchema ++ AccountsSchema,
+          ],
           ownsTables: Tables[Id, TokenSchema],
           accountsProvider: TablesProvider[Id, AccountsSchema],
       ): StoreF[Id][(signedTx.value.Result, List[signedTx.value.Event])] =
@@ -347,13 +405,21 @@ object Phase56Test:
     )
 
   // Helper to create governance blueprint (depends on groups)
-  def createGovernanceBlueprint()(using @annotation.unused nodeStore: MerkleTrie.NodeStore[Id]): ModuleBlueprint[Id, "governance", GovSchema, GroupSchema, EmptyTuple] =
+  def createGovernanceBlueprint()(using
+      @annotation.unused nodeStore: MerkleTrie.NodeStore[Id],
+  ): ModuleBlueprint[Id, "governance", GovSchema, GroupSchema, EmptyTuple] =
     val govEntry = new Entry["governance", Long, Long]("governance")
 
     val reducer = new StateReducer0[Id, GovSchema, GroupSchema]:
       def apply[T <: Tx](signedTx: Signed[T])(using
-          requiresReads: Requires[signedTx.value.Reads, GovSchema ++ GroupSchema],
-          requiresWrites: Requires[signedTx.value.Writes, GovSchema ++ GroupSchema],
+          requiresReads: Requires[
+            signedTx.value.Reads,
+            GovSchema ++ GroupSchema,
+          ],
+          requiresWrites: Requires[
+            signedTx.value.Writes,
+            GovSchema ++ GroupSchema,
+          ],
           ownsTables: Tables[Id, GovSchema],
           provider: TablesProvider[Id, GroupSchema],
       ): StoreF[Id][(signedTx.value.Result, List[signedTx.value.Event])] =
@@ -366,21 +432,30 @@ object Phase56Test:
       owns = govEntry *: EmptyTuple,
       reducer0 = reducer,
       txs = TxRegistry.empty,
-      provider = new TablesProvider[Id, GroupSchema] {
-        def tables: Tables[Id, GroupSchema] = EmptyTuple.asInstanceOf[Tables[Id, GroupSchema]]
-      }, // Dummy provider for blueprint creation
+      provider = new TablesProvider[Id, GroupSchema]:
+        def tables: Tables[Id, GroupSchema] =
+          EmptyTuple.asInstanceOf[Tables[Id, GroupSchema]],
+      // Dummy provider for blueprint creation
     )
 
   // Helper to create governance blueprint with actual provider
-  def createGovernanceBlueprintWithProvider(provider: TablesProvider[Id, GroupSchema])(using
+  def createGovernanceBlueprintWithProvider(
+      provider: TablesProvider[Id, GroupSchema],
+  )(using
       @annotation.unused nodeStore: MerkleTrie.NodeStore[Id],
   ): ModuleBlueprint[Id, "governance", GovSchema, GroupSchema, EmptyTuple] =
     val govEntry = new Entry["governance", Long, Long]("governance")
 
     val reducer = new StateReducer0[Id, GovSchema, GroupSchema]:
       def apply[T <: Tx](signedTx: Signed[T])(using
-          requiresReads: Requires[signedTx.value.Reads, GovSchema ++ GroupSchema],
-          requiresWrites: Requires[signedTx.value.Writes, GovSchema ++ GroupSchema],
+          requiresReads: Requires[
+            signedTx.value.Reads,
+            GovSchema ++ GroupSchema,
+          ],
+          requiresWrites: Requires[
+            signedTx.value.Writes,
+            GovSchema ++ GroupSchema,
+          ],
           ownsTables: Tables[Id, GovSchema],
           groupProvider: TablesProvider[Id, GroupSchema],
       ): StoreF[Id][(signedTx.value.Result, List[signedTx.value.Event])] =

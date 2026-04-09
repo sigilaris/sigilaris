@@ -4,11 +4,23 @@ import cats.Monad
 import cats.data.{EitherT, StateT}
 import scala.Tuple.++
 
-import org.sigilaris.core.application.module.provider.{TablesProjection, TablesProvider}
+import org.sigilaris.core.application.module.provider.{
+  TablesProjection,
+  TablesProvider,
+}
 import org.sigilaris.core.application.module.runtime.{StateModule, StateReducer}
 import org.sigilaris.core.application.state.{StoreF, Tables}
-import org.sigilaris.core.application.support.compiletime.{PrefixFreePath, Requires, UniqueNames}
-import org.sigilaris.core.application.transactions.{ModuleRoutedTx, Signed, Tx, TxRegistry}
+import org.sigilaris.core.application.support.compiletime.{
+  PrefixFreePath,
+  Requires,
+  UniqueNames,
+}
+import org.sigilaris.core.application.transactions.{
+  ModuleRoutedTx,
+  Signed,
+  Tx,
+  TxRegistry,
+}
 import org.sigilaris.core.failure.RoutingFailure
 import org.sigilaris.core.merkle.MerkleTrie.NodeStore
 import org.sigilaris.core.util.SafeStringInterp.ss
@@ -474,12 +486,18 @@ object Blueprint:
         Array("org.wartremover.warts.AsInstanceOf", "org.wartremover.warts.Any"),
       )
       def apply[T <: Tx & ModuleRoutedTx](signedTx: Signed[T])(using
-          requiresReads: Requires[signedTx.value.Reads, (O1 ++ O2) ++ (N1 ++ N2)],
-          requiresWrites: Requires[signedTx.value.Writes, (O1 ++ O2) ++ (N1 ++ N2)],
+          requiresReads: Requires[
+            signedTx.value.Reads,
+            (O1 ++ O2) ++ (N1 ++ N2),
+          ],
+          requiresWrites: Requires[
+            signedTx.value.Writes,
+            (O1 ++ O2) ++ (N1 ++ N2),
+          ],
           ownsTables: Tables[F, O1 ++ O2],
           provider: TablesProvider[F, N1 ++ N2],
       ): StoreF[F][(signedTx.value.Result, List[signedTx.value.Event])] =
-        val tx = signedTx.value
+        val tx   = signedTx.value
         val path = tx.moduleId.path
         val maybeHead: Option[String] = path match
           case (head: String) *: _ => Some(head)
@@ -490,8 +508,10 @@ object Blueprint:
           case Some(pathHead) if aRouteHeads.contains(pathHead) =>
             // Route to first blueprint (module or composed).
             a.routedReducer.apply(signedTx)(using
-              requiresReads.asInstanceOf[Requires[signedTx.value.Reads, O1 ++ N1]],
-              requiresWrites.asInstanceOf[Requires[signedTx.value.Writes, O1 ++ N1]],
+              requiresReads
+                .asInstanceOf[Requires[signedTx.value.Reads, O1 ++ N1]],
+              requiresWrites
+                .asInstanceOf[Requires[signedTx.value.Writes, O1 ++ N1]],
               ownsTables.asInstanceOf[Tables[F, O1]],
               provider.narrow[N1](using
                 projectionN1,
@@ -500,8 +520,10 @@ object Blueprint:
           case Some(pathHead) if bRouteHeads.contains(pathHead) =>
             // Route to second blueprint (module or composed).
             b.routedReducer.apply(signedTx)(using
-              requiresReads.asInstanceOf[Requires[signedTx.value.Reads, O2 ++ N2]],
-              requiresWrites.asInstanceOf[Requires[signedTx.value.Writes, O2 ++ N2]],
+              requiresReads
+                .asInstanceOf[Requires[signedTx.value.Reads, O2 ++ N2]],
+              requiresWrites
+                .asInstanceOf[Requires[signedTx.value.Writes, O2 ++ N2]],
               ownsTables.asInstanceOf[Tables[F, O2]],
               provider.narrow[N2](using
                 projectionN2,
@@ -510,15 +532,19 @@ object Blueprint:
           case Some(pathHead) =>
             val expected = allowedHeads.mkString("'", "', '", "'")
             StateT.liftF:
-              EitherT.leftT[F, (signedTx.value.Result, List[signedTx.value.Event])]:
+              EitherT.leftT[
+                F,
+                (signedTx.value.Result, List[signedTx.value.Event]),
+              ]:
                 RoutingFailure:
                   ss"TxRouteMissing: module '$pathHead' not found in $expected"
           case None =>
             val expected = allowedHeads.mkString("'", "', '", "'")
             StateT.liftF:
-              EitherT.leftT[F, (signedTx.value.Result, List[signedTx.value.Event])]:
-                RoutingFailure:
-                  ss"TxRouteMissing: empty module path; expected head in $expected"
+              EitherT
+                .leftT[F, (signedTx.value.Result, List[signedTx.value.Event])]:
+                  RoutingFailure:
+                    ss"TxRouteMissing: empty module path; expected head in $expected"
 
     val combinedTxs: TxRegistry[T1 ++ T2] = a.txs.combine(b.txs)
     val combinedRouteHeads: List[String]  = allowedHeads

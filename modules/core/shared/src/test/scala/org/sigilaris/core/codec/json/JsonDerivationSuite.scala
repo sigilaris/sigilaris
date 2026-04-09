@@ -8,7 +8,9 @@ final class JsonDerivationSuite extends FunSuite:
   // Product derivation
   case class Person(name: String, age: Option[Int])
 
-  test("product: encode/decode roundtrip with Identity naming and Option field"):
+  test(
+    "product: encode/decode roundtrip with Identity naming and Option field",
+  ):
     val p    = Person("Ann", Some(42))
     val json = JsonEncoder[Person].encode(p)
     val back = JsonDecoder[Person].decode(json)
@@ -58,7 +60,9 @@ final class JsonDerivationSuite extends FunSuite:
   import Shape.*
   import PaymentStatus.*
 
-  test("sum: encode uses wrapped-by-type-key with SimpleName; decode roundtrip"):
+  test(
+    "sum: encode uses wrapped-by-type-key with SimpleName; decode roundtrip",
+  ):
     val s: Shape = Circle(3)
     val json     = JsonEncoder[Shape].encode(s)
     assertEquals(
@@ -75,8 +79,8 @@ final class JsonDerivationSuite extends FunSuite:
   test("sum: custom discriminator mapping is shared between encode and decode"):
     val cfg = JsonConfig.default.copy(
       discriminator = DiscriminatorConfig(
-        TypeNameStrategy.Custom(Map("Circle" -> "circle", "Rect" -> "rect"))
-      )
+        TypeNameStrategy.Custom(Map("Circle" -> "circle", "Rect" -> "rect")),
+      ),
     )
     val encs = JsonEncoder.configured(cfg)
     val decs = JsonDecoder.configured(cfg)
@@ -106,9 +110,11 @@ final class JsonDerivationSuite extends FunSuite:
     val back = JsonDecoder[PaymentStatus].decode(json)
     assertEquals(back, Right(Pending))
 
-  test("enum: FullyQualified strategy remains a compatibility alias to canonical labels"):
+  test(
+    "enum: FullyQualified strategy remains a compatibility alias to canonical labels",
+  ):
     val cfg = JsonConfig.default.copy(
-      discriminator = DiscriminatorConfig(TypeNameStrategy.FullyQualified)
+      discriminator = DiscriminatorConfig(TypeNameStrategy.FullyQualified),
     )
     val encs = JsonEncoder.configured(cfg)
     val decs = JsonDecoder.configured(cfg)

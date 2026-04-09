@@ -31,8 +31,16 @@ object StaticPeerTransportAuthConfig:
   ): Either[String, StaticPeerTransportAuth] =
     for
       authSection <- requiredConfig(section, "transport-auth", "transportAuth")
-      secretSection <- requiredConfig(authSection, "peer-secrets", "peerSecrets")
-      peerSecrets <- secretSection.root().keySet().asScala.toList
+      secretSection <- requiredConfig(
+        authSection,
+        "peer-secrets",
+        "peerSecrets",
+      )
+      peerSecrets <- secretSection
+        .root()
+        .keySet()
+        .asScala
+        .toList
         .sorted
         .traverse: peer =>
           Either

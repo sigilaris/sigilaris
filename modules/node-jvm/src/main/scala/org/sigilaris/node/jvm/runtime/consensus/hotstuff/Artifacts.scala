@@ -13,7 +13,13 @@ import scodec.bits.ByteVector
 import org.sigilaris.core.codec.byte.ByteEncoder
 import org.sigilaris.core.codec.byte.ByteEncoder.ops.*
 import org.sigilaris.core.codec.OrderedCodec.orderedByteVector
-import org.sigilaris.core.crypto.{CryptoOps, Hash, KeyPair, PublicKey, Signature}
+import org.sigilaris.core.crypto.{
+  CryptoOps,
+  Hash,
+  KeyPair,
+  PublicKey,
+  Signature,
+}
 import org.sigilaris.core.crypto.Hash.ops.*
 import org.sigilaris.core.datatype.{UInt256, Utf8}
 import org.sigilaris.node.jvm.runtime.block.BlockHeader
@@ -25,9 +31,8 @@ given ByteEncoder[StableArtifactId] =
   ByteEncoder[ByteVector].contramap(_.bytes)
 given ByteEncoder[HotStuffWindow] = ByteEncoder.derived
 given ByteEncoder[Signature] = signature =>
-  ByteEncoder[Long].encode:
-    signature.v.toLong
-  ++ signature.r.bytes ++ signature.s.bytes
+  ByteEncoder[Long].encode(signature.v.toLong) ++
+    signature.r.bytes ++ signature.s.bytes
 given [A: ByteEncoder]: ByteEncoder[Vector[A]] =
   ByteEncoder[List[A]].contramap(_.toList)
 
@@ -123,7 +128,7 @@ object ValidatorSet:
   ): ValidatorSet =
     apply(members) match
       case Right(validatorSet) => validatorSet
-      case Left(error)         => throw new IllegalArgumentException(error.message)
+      case Left(error) => throw new IllegalArgumentException(error.message)
 
 final case class QuorumCertificateSubject(
     window: HotStuffWindow,
@@ -256,9 +261,10 @@ object ProposalTxSet:
   ): ProposalTxSet =
     ProposalTxSet(
       canonicalize(
-        txs.iterator.map: tx =>
-          StableArtifactId.unsafeFromBytes(tx.toHash.toUInt256.bytes)
-        .toVector
+        txs.iterator
+          .map: tx =>
+            StableArtifactId.unsafeFromBytes(tx.toHash.toUInt256.bytes)
+          .toVector,
       ),
     )
 

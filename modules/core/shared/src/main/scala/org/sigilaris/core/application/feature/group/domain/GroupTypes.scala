@@ -22,16 +22,20 @@ object GroupId extends KeyLikeOpaqueValueCompanion[GroupId, Utf8]:
 
   protected def unwrap(value: GroupId): Utf8 = value
 
-  extension (g: GroupId)
-    inline def toUtf8: Utf8 = g
+  extension (g: GroupId) inline def toUtf8: Utf8 = g
 
 /** Group metadata stored on-chain.
   *
-  * @param name human-readable group name (immutable after creation)
-  * @param coordinator account with management permissions
-  * @param nonce sequential number for replay attack prevention (increments by exactly 1)
-  * @param memberCount number of accounts in the group (excluding coordinator)
-  * @param createdAt timestamp when the group was created
+  * @param name
+  *   human-readable group name (immutable after creation)
+  * @param coordinator
+  *   account with management permissions
+  * @param nonce
+  *   sequential number for replay attack prevention (increments by exactly 1)
+  * @param memberCount
+  *   number of accounts in the group (excluding coordinator)
+  * @param createdAt
+  *   timestamp when the group was created
   */
 final case class GroupData(
     name: Utf8,
@@ -39,7 +43,8 @@ final case class GroupData(
     nonce: BigNat,
     memberCount: BigNat,
     createdAt: Instant,
-) derives ByteEncoder, ByteDecoder
+) derives ByteEncoder,
+      ByteDecoder
 
 object GroupData:
   given groupDataEq: Eq[GroupData] = Eq.fromUniversalEquals

@@ -11,47 +11,57 @@ import scala.compiletime.{erasedValue, constValue, summonInline}
 
 /** Type class for decoding the core [[JsonValue]] AST into Scala values.
   *
-  * Decoders use [[JsonConfig]] to interpret field naming, discriminator strategy,
-  * null/absent semantics, and big number representations.
+  * Decoders use [[JsonConfig]] to interpret field naming, discriminator
+  * strategy, null/absent semantics, and big number representations.
   *
   * Combinators `map`/`emap` help build validated or dependent decoders;
   * `derived` provides automatic derivation for products and sums.
   *
   * @example
-  * ```scala
-  * case class User(name: String, age: Int) derives JsonDecoder
-  * val json = JsonValue.obj("name" -> JString("Alice"), "age" -> JNumber(30))
-  * val user = JsonDecoder[User].decode(json)
-  * ```
+  *   ```scala
+  *   case class User(name: String, age: Int) derives JsonDecoder
+  *   val json = JsonValue.obj("name" -> JString("Alice"), "age" -> JNumber(30))
+  *   val user = JsonDecoder[User].decode(json)
+  *   ```
   *
-  * @note Decoding validates structure and types. Failures return [[org.sigilaris.core.failure.DecodeFailure]]
-  *       with descriptive error messages.
+  * @note
+  *   Decoding validates structure and types. Failures return
+  *   [[org.sigilaris.core.failure.DecodeFailure]] with descriptive error
+  *   messages.
   *
-  * @see [[JsonEncoder]] for the inverse operation
-  * @see [[JsonCodec]] for bidirectional encoding and decoding
-  * @see [[JsonConfig]] for configuration options
+  * @see
+  *   [[JsonEncoder]] for the inverse operation
+  * @see
+  *   [[JsonCodec]] for bidirectional encoding and decoding
+  * @see
+  *   [[JsonConfig]] for configuration options
   */
 trait JsonDecoder[A]:
   self =>
+
   /** Decodes a JSON value to a Scala value.
     *
-    * @param json the JSON value to decode
-    * @return either a decode failure or the decoded value
+    * @param json
+    *   the JSON value to decode
+    * @return
+    *   either a decode failure or the decoded value
     */
   def decode(json: JsonValue): Either[DecodeFailure, A]
 
   /** Creates a new decoder by applying a function after decoding.
     *
-    * @param f the postprocessing function
-    * @return a new decoder for type B
+    * @param f
+    *   the postprocessing function
+    * @return
+    *   a new decoder for type B
     *
     * @example
-    * ```scala
-    * val intDecoder: JsonDecoder[Int] = JsonDecoder[Int]
-    * val evenDecoder = intDecoder.emap { n =>
-    *   if (n % 2 == 0) Right(n) else Left(DecodeFailure("Not even"))
-    * }
-    * ```
+    *   ```scala
+    *   val intDecoder: JsonDecoder[Int] = JsonDecoder[Int]
+    *   val evenDecoder = intDecoder.emap { n =>
+    *     if n % 2 == 0 then Right(n) else Left(DecodeFailure("Not even"))
+    *   }
+    *   ```
     */
   def map[B](f: A => B): JsonDecoder[B] = new JsonDecoder[B]:
     def decode(json: JsonValue): Either[DecodeFailure, B] =
@@ -59,15 +69,17 @@ trait JsonDecoder[A]:
 
   /** Creates a new decoder by applying a validation function after decoding.
     *
-    * @param f the validation function
-    * @return a new decoder for type B
+    * @param f
+    *   the validation function
+    * @return
+    *   a new decoder for type B
     *
     * @example
-    * ```scala
-    * val positiveInt = JsonDecoder[Int].emap { n =>
-    *   if (n > 0) Right(n) else Left(DecodeFailure("Must be positive"))
-    * }
-    * ```
+    *   ```scala
+    *   val positiveInt = JsonDecoder[Int].emap { n =>
+    *     if n > 0 then Right(n) else Left(DecodeFailure("Must be positive"))
+    *   }
+    *   ```
     */
   def emap[B](f: A => Either[DecodeFailure, B]): JsonDecoder[B] =
     new JsonDecoder[B]:
@@ -301,7 +313,7 @@ object JsonDecoder extends JsonDecoderInstances:
     * ```scala
     * case class Point(x: Int, y: Int) derives JsonDecoder
     * sealed trait Color derives JsonDecoder
-    * case object Red extends Color
+    * case object Red  extends Color
     * case object Blue extends Color
     * ```
     */
@@ -314,7 +326,8 @@ object JsonDecoder extends JsonDecoderInstances:
   object configured:
     /** Factory for decoder bundles bound to a specific [[JsonConfig]].
       *
-      * Use this to override default behavior like field naming or null handling.
+      * Use this to override default behavior like field naming or null
+      * handling.
       *
       * ```scala
       * val cfg = JsonConfig.default.copy(treatAbsentAsNull = false)

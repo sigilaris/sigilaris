@@ -14,7 +14,7 @@ final class HotStuffPolicySuite extends FunSuite:
         import org.sigilaris.node.jvm.runtime.consensus.hotstuff.*
         val shared = UInt256.fromHex("01").toOption.get
         val blockId: BlockId = ProposalId(shared)
-      """).nonEmpty
+      """).nonEmpty,
     )
     assert(
       compileErrors("""
@@ -22,7 +22,7 @@ final class HotStuffPolicySuite extends FunSuite:
         import org.sigilaris.node.jvm.runtime.consensus.hotstuff.*
         val shared = UInt256.fromHex("01").toOption.get
         val proposalId: ProposalId = BlockId(shared)
-      """).nonEmpty
+      """).nonEmpty,
     )
     assert(
       compileErrors("""
@@ -30,7 +30,7 @@ final class HotStuffPolicySuite extends FunSuite:
         import org.sigilaris.node.jvm.runtime.consensus.hotstuff.*
         val shared = UInt256.fromHex("01").toOption.get
         val blockId: BlockId = VoteId(shared)
-      """).nonEmpty
+      """).nonEmpty,
     )
     assert(
       compileErrors("""
@@ -38,7 +38,7 @@ final class HotStuffPolicySuite extends FunSuite:
         import org.sigilaris.node.jvm.runtime.consensus.hotstuff.*
         val shared = UInt256.fromHex("01").toOption.get
         val voteId: VoteId = BlockId(shared)
-      """).nonEmpty
+      """).nonEmpty,
     )
     assert(
       compileErrors("""
@@ -46,7 +46,7 @@ final class HotStuffPolicySuite extends FunSuite:
         import org.sigilaris.node.jvm.runtime.consensus.hotstuff.*
         val shared = UInt256.fromHex("01").toOption.get
         val proposalId: ProposalId = VoteId(shared)
-      """).nonEmpty
+      """).nonEmpty,
     )
     assert(
       compileErrors("""
@@ -54,10 +54,12 @@ final class HotStuffPolicySuite extends FunSuite:
         import org.sigilaris.node.jvm.runtime.consensus.hotstuff.*
         val shared = UInt256.fromHex("01").toOption.get
         val voteId: VoteId = ProposalId(shared)
-      """).nonEmpty
+      """).nonEmpty,
     )
 
-  test("window, quorum rule, request policy, and equivocation key lock the phase-0 baseline"):
+  test(
+    "window, quorum rule, request policy, and equivocation key lock the phase-0 baseline",
+  ):
     val validatorSetHash = ValidatorSetHash(UInt256.fromHex("01").toOption.get)
     val window = HotStuffWindow(
       chainId = ChainId.unsafe("chain-main"),
@@ -87,13 +89,16 @@ final class HotStuffPolicySuite extends FunSuite:
     assertEquals(HotStuffPolicy.requestPolicy.maxProposalRequestIds, 128)
     assertEquals(HotStuffPolicy.requestPolicy.maxVoteRequestIds, 512)
     assertEquals(HotStuffPolicy.requestPolicy.maxRetryAttemptsPerWindow, 2)
-    assertEquals(HotStuffPolicy.deploymentTarget.blockProductionInterval.toMillis, 100L)
+    assertEquals(
+      HotStuffPolicy.deploymentTarget.blockProductionInterval.toMillis,
+      100L,
+    )
 
   test("audit nodes cannot emit and dual active key holders are rejected"):
     val validatorA = ValidatorId.unsafe("validator-a")
     val validatorB = ValidatorId.unsafe("validator-b")
-    val nodeA = PeerIdentity.unsafe("node-a")
-    val nodeB = PeerIdentity.unsafe("node-b")
+    val nodeA      = PeerIdentity.unsafe("node-a")
+    val nodeB      = PeerIdentity.unsafe("node-b")
 
     val holders = Vector(
       ValidatorKeyHolder(validatorA, nodeA, ValidatorKeyHolderStatus.Active),
@@ -102,7 +107,8 @@ final class HotStuffPolicySuite extends FunSuite:
     )
 
     assertEquals(
-      HotStuffPolicy.canEmitLocally(LocalNodeRole.Validator, nodeA, validatorA, holders),
+      HotStuffPolicy
+        .canEmitLocally(LocalNodeRole.Validator, nodeA, validatorA, holders),
       Right(()),
     )
     assertEquals(
@@ -133,7 +139,10 @@ final class HotStuffPolicySuite extends FunSuite:
     )
 
     assertEquals(
-      HotStuffPolicy.ensureDistinctActiveKeyHolders(dualActive).left.map(_.reason),
+      HotStuffPolicy
+        .ensureDistinctActiveKeyHolders(dualActive)
+        .left
+        .map(_.reason),
       Left("dualActiveKeyHolder"),
     )
     assertEquals(
@@ -157,7 +166,9 @@ final class HotStuffPolicySuite extends FunSuite:
         .flatMap(_.detail)
     assert(dualActiveDetail.exists(_.contains("validator-a:node-a,node-b")))
 
-  test("window and equivocation key allow genesis height zero but reject negative progress values"):
+  test(
+    "window and equivocation key allow genesis height zero but reject negative progress values",
+  ):
     val genesisWindow =
       HotStuffWindow(
         chainId = ChainId.unsafe("chain-main"),
@@ -227,11 +238,15 @@ final class HotStuffPolicySuite extends FunSuite:
     assert(negativeRetries.getMessage.nonEmpty)
 
     val zeroInterval = intercept[IllegalArgumentException]:
-      HotStuffDeploymentTarget(blockProductionInterval = java.time.Duration.ZERO)
+      HotStuffDeploymentTarget(blockProductionInterval =
+        java.time.Duration.ZERO,
+      )
     assert(zeroInterval.getMessage.nonEmpty)
 
     val negativeInterval = intercept[IllegalArgumentException]:
-      HotStuffDeploymentTarget(blockProductionInterval = java.time.Duration.ofMillis(-1))
+      HotStuffDeploymentTarget(blockProductionInterval =
+        java.time.Duration.ofMillis(-1),
+      )
     assert(negativeInterval.getMessage.nonEmpty)
 
   private def height(

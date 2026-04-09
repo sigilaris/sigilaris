@@ -50,22 +50,29 @@ object StaticPeerTransportAuth:
   ): Either[String, StaticPeerTransportAuth] =
     val requiredPeers = topology.knownPeers + topology.localNodeIdentity
     for
-      parsedSecrets <- peerSecrets.toList.foldLeft[Either[String, Map[PeerIdentity, TransportSharedSecret]]](
-        Map.empty[PeerIdentity, TransportSharedSecret].asRight[String],
-      ):
-        case (acc, (peerRaw, secretRaw)) =>
-          for
-            current <- acc
-            peer <- PeerIdentity.parse(peerRaw)
-            secret <- TransportSharedSecret.fromUtf8(secretRaw)
-          yield current.updated(peer, secret)
-      missing = requiredPeers.diff(parsedSecrets.keySet).toVector.sortBy(_.value)
+      parsedSecrets <- peerSecrets.toList
+        .foldLeft[Either[String, Map[PeerIdentity, TransportSharedSecret]]](
+          Map.empty[PeerIdentity, TransportSharedSecret].asRight[String],
+        ):
+          case (acc, (peerRaw, secretRaw)) =>
+            for
+              current <- acc
+              peer    <- PeerIdentity.parse(peerRaw)
+              secret  <- TransportSharedSecret.fromUtf8(secretRaw)
+            yield current.updated(peer, secret)
+      missing = requiredPeers
+        .diff(parsedSecrets.keySet)
+        .toVector
+        .sortBy(_.value)
       _ <- Either.cond(
         missing.isEmpty,
         (),
         ss"missing transport secret for peers: ${missing.map(_.value).mkString(",")}",
       )
-      unknown = parsedSecrets.keySet.diff(requiredPeers).toVector.sortBy(_.value)
+      unknown = parsedSecrets.keySet
+        .diff(requiredPeers)
+        .toVector
+        .sortBy(_.value)
       _ <- Either.cond(
         unknown.isEmpty,
         (),
@@ -82,9 +89,10 @@ object StaticPeerTransportAuth:
     val peers = topology.knownPeers + topology.localNodeIdentity
     StaticPeerTransportAuth(
       localPeer = topology.localNodeIdentity,
-      peerSecrets = peers.iterator.map: peer =>
-        peer -> TransportSharedSecret.testing(
-          ss"sigilaris-test-secret:${peer.value}",
-        )
-      .toMap,
+      peerSecrets = peers.iterator
+        .map: peer =>
+          peer -> TransportSharedSecret.testing(
+            ss"sigilaris-test-secret:${peer.value}",
+          )
+        .toMap,
     )

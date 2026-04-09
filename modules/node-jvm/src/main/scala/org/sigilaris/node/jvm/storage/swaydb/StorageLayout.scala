@@ -28,8 +28,13 @@ object StorageLayout:
     StorageLayout(
       root = root,
       block = Block(blockRoot.resolve("best"), blockRoot.resolve("body")),
-      transaction = Transaction(txRoot.resolve("immutable"), txRoot.resolve("meta")),
-      batch = Batch(batchRoot.resolve("immutable"), batchRoot.resolve("pending"), batchRoot.resolve("committed")),
+      transaction =
+        Transaction(txRoot.resolve("immutable"), txRoot.resolve("meta")),
+      batch = Batch(
+        batchRoot.resolve("immutable"),
+        batchRoot.resolve("pending"),
+        batchRoot.resolve("committed"),
+      ),
       state = State(
         stateRoot.resolve("snapshot"),
         stateRoot.resolve("nodes"),

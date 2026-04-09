@@ -248,20 +248,26 @@ final case class BlockBody[TxRef, ResultRef, Event](
 )
 
 object BlockBody:
-  def canonicalEntries[TxRef: ByteEncoder, ResultRef: ByteEncoder, Event: ByteEncoder](
+  def canonicalEntries[
+      TxRef: ByteEncoder,
+      ResultRef: ByteEncoder,
+      Event: ByteEncoder,
+  ](
       body: BlockBody[TxRef, ResultRef, Event],
   ): Either[BlockValidationFailure, Vector[
     (BlockRecordHash, BlockRecord[TxRef, ResultRef, Event]),
   ]] =
     val sortedEntries =
-      body.records.toVector.map: record =>
-        BlockRecordHash.compute(record) -> record
-      .sortBy(_._1)
+      body.records.toVector
+        .map: record =>
+          BlockRecordHash.compute(record) -> record
+        .sortBy(_._1)
 
     sortedEntries
       .sliding(2)
       .collectFirst:
-        case Vector((recordHash, _), (nextHash, _)) if recordHash === nextHash =>
+        case Vector((recordHash, _), (nextHash, _))
+            if recordHash === nextHash =>
           recordHash
       .fold(
         sortedEntries.asRight[BlockValidationFailure],
@@ -269,27 +275,41 @@ object BlockBody:
         BlockValidationFailure(
           reason = "duplicateRecordHash",
           detail = Some(duplicate.toHexLower),
-        ).asLeft[Vector[(BlockRecordHash, BlockRecord[TxRef, ResultRef, Event])]]
+        ).asLeft[Vector[
+          (BlockRecordHash, BlockRecord[TxRef, ResultRef, Event]),
+        ]]
 
-  def bodyRootPreImage[TxRef: ByteEncoder, ResultRef: ByteEncoder, Event: ByteEncoder](
+  def bodyRootPreImage[
+      TxRef: ByteEncoder,
+      ResultRef: ByteEncoder,
+      Event: ByteEncoder,
+  ](
       body: BlockBody[TxRef, ResultRef, Event],
   ): Either[BlockValidationFailure, ByteVector] =
     canonicalEntries(body).map: entries =>
       BlockCanonicalEncoding.bodyRootPreImage(entries)
 
-  def computeBodyRoot[TxRef: ByteEncoder, ResultRef: ByteEncoder, Event: ByteEncoder](
+  def computeBodyRoot[
+      TxRef: ByteEncoder,
+      ResultRef: ByteEncoder,
+      Event: ByteEncoder,
+  ](
       body: BlockBody[TxRef, ResultRef, Event],
   ): Either[BlockValidationFailure, BodyRoot] =
     bodyRootPreImage(body).map: bytes =>
       BodyRoot(BlockCanonicalEncoding.bodyRoot(bytes))
 
-  def verifyBodyRoot[TxRef: ByteEncoder, ResultRef: ByteEncoder, Event: ByteEncoder](
+  def verifyBodyRoot[
+      TxRef: ByteEncoder,
+      ResultRef: ByteEncoder,
+      Event: ByteEncoder,
+  ](
       body: BlockBody[TxRef, ResultRef, Event],
       expectedRoot: BodyRoot,
   ): Either[BlockValidationFailure, Unit] =
     computeBodyRoot(body).flatMap: (actualRoot: BodyRoot) =>
-      val expectedHex: String = expectedRoot.toHexLower
-      val actualHex: String   = actualRoot.toHexLower
+      val expectedHex: String    = expectedRoot.toHexLower
+      val actualHex: String      = actualRoot.toHexLower
       val mismatchDetail: String = ss"expected=$expectedHex actual=$actualHex"
       Either.cond(
         actualRoot === expectedRoot,
@@ -351,7 +371,11 @@ private object BlockCanonicalEncoding:
       header = header,
     ).toBytes
 
-  def blockRecordHash[TxRef: ByteEncoder, ResultRef: ByteEncoder, Event: ByteEncoder](
+  def blockRecordHash[
+      TxRef: ByteEncoder,
+      ResultRef: ByteEncoder,
+      Event: ByteEncoder,
+  ](
       record: BlockRecord[TxRef, ResultRef, Event],
   ): UInt256 =
     hashEncoded(
@@ -367,7 +391,11 @@ private object BlockCanonicalEncoding:
   // fetched body without introducing a separate "hash list" body format.
   // Ordering/hash-scheme changes are versioned through the body root domain
   // string.
-  def bodyRootPreImage[TxRef: ByteEncoder, ResultRef: ByteEncoder, Event: ByteEncoder](
+  def bodyRootPreImage[
+      TxRef: ByteEncoder,
+      ResultRef: ByteEncoder,
+      Event: ByteEncoder,
+  ](
       entries: Vector[(BlockRecordHash, BlockRecord[TxRef, ResultRef, Event])],
   ): ByteVector =
     BlockBodyRootInput(

@@ -38,12 +38,14 @@ trait PeerRegistry:
 final case class StaticPeerRegistry(
     topology: StaticPeerTopology,
 ) extends PeerRegistry:
-  override val localPeer: PeerIdentity = topology.localNodeIdentity
-  override val knownPeers: Set[PeerIdentity] = topology.knownPeers
+  override val localPeer: PeerIdentity            = topology.localNodeIdentity
+  override val knownPeers: Set[PeerIdentity]      = topology.knownPeers
   override val directNeighbors: Set[PeerIdentity] = topology.directNeighbors
 
 trait PeerAuthenticator[F[_]]:
-  def authenticate(peer: PeerIdentity): F[Either[CanonicalRejection.HandshakeRejected, PeerIdentity]]
+  def authenticate(
+      peer: PeerIdentity,
+  ): F[Either[CanonicalRejection.HandshakeRejected, PeerIdentity]]
 
 final class StaticPeerAuthenticator[F[_]: Applicative](
     registry: PeerRegistry,
@@ -68,21 +70,30 @@ trait GossipTopicContractRegistry[A]:
   ): Either[CanonicalRejection.ArtifactContractRejected, GossipTopicContract[A]]
 
 object GossipTopicContractRegistry:
-  def single[A](contract: GossipTopicContract[A]): GossipTopicContractRegistry[A] =
+  def single[A](
+      contract: GossipTopicContract[A],
+  ): GossipTopicContractRegistry[A] =
     of(contract)
 
-  def of[A](contracts: GossipTopicContract[A]*): GossipTopicContractRegistry[A] =
-    val byTopic = contracts.iterator.map(contract => contract.topic -> contract).toMap
+  def of[A](
+      contracts: GossipTopicContract[A]*,
+  ): GossipTopicContractRegistry[A] =
+    val byTopic =
+      contracts.iterator.map(contract => contract.topic -> contract).toMap
     new GossipTopicContractRegistry[A]:
       override def contractFor(
           topic: GossipTopic,
-      ): Either[CanonicalRejection.ArtifactContractRejected, GossipTopicContract[A]] =
-        byTopic.get(topic).toRight(
-          CanonicalRejection.ArtifactContractRejected(
-            reason = "unsupportedTopic",
-            detail = Some(topic.value),
-          )
-        )
+      ): Either[
+        CanonicalRejection.ArtifactContractRejected,
+        GossipTopicContract[A],
+      ] =
+        byTopic
+          .get(topic)
+          .toRight:
+            CanonicalRejection.ArtifactContractRejected(
+              reason = "unsupportedTopic",
+              detail = Some(topic.value),
+            )
 
 trait GossipArtifactSource[F[_], A]:
   def readAfter(

@@ -4,7 +4,10 @@ import scala.Tuple.++
 
 import org.sigilaris.core.application.module.runtime.StateModule
 import org.sigilaris.core.application.state.{Entry, Tables}
-import org.sigilaris.core.application.support.compiletime.{DifferentNames, Lookup}
+import org.sigilaris.core.application.support.compiletime.{
+  DifferentNames,
+  Lookup,
+}
 
 /** Provider for external table dependencies.
   *
@@ -136,12 +139,12 @@ object TablesProvider:
     def tables: Tables[F, Schema] = module.tables
 
   @scala.annotation.implicitNotFound(
-"""Cannot merge provider schemas: overlapping tables detected.
+    """Cannot merge provider schemas: overlapping tables detected.
 Left schema: ${S1}
 Right schema: ${S2}
 
 Each Entry name must be unique across merged providers. Rename the tables or
-ensure dependent modules expose disjoint schemas before composing providers."""
+ensure dependent modules expose disjoint schemas before composing providers.""",
   )
   trait DisjointSchemas[S1 <: Tuple, S2 <: Tuple]
 
@@ -162,11 +165,11 @@ ensure dependent modules expose disjoint schemas before composing providers."""
       new DisjointSchemas[Entry[Name, K, V] *: T1, S2] {}
 
   @scala.annotation.implicitNotFound(
-"""Table ${E} already exists in schema ${S}.
+    """Table ${E} already exists in schema ${S}.
 
 Dependency schemas must not redefine the same table name. Remove the duplicate
 entry or refactor the module layout so that each table name is provided by a
-single module."""
+single module.""",
   )
   trait NotInSchema[E <: Entry[?, ?, ?], S <: Tuple]
 

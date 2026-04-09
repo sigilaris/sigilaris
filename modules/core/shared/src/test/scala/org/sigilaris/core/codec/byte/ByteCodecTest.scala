@@ -16,7 +16,8 @@ class ByteCodecTest extends HedgehogSuite:
         List(
           ByteLaws.roundTrip(boolean),
           ByteLaws.deterministicEncoding(boolean),
-          encoded ==== (if boolean then ByteVector(0x01.toByte) else ByteVector(0x00.toByte)),
+          encoded ==== (if boolean then ByteVector(0x01.toByte)
+                        else ByteVector(0x00.toByte)),
         ),
       )
 
@@ -25,37 +26,34 @@ class ByteCodecTest extends HedgehogSuite:
         .bytes(Range.linear(1, 64))
         .map(BigInt(_))
         .forAll
-    yield
-      Result.all(
-        List(
-          ByteLaws.roundTrip(bignat),
-          ByteLaws.deterministicEncoding(bignat),
-        ),
-      )
+    yield Result.all(
+      List(
+        ByteLaws.roundTrip(bignat),
+        ByteLaws.deterministicEncoding(bignat),
+      ),
+    )
 
   property("Byte roundtrip"):
     for byte <- Gen
         .byte(Range.linearFrom(0, Byte.MinValue, Byte.MaxValue))
         .forAll
-    yield
-      Result.all(
-        List(
-          ByteLaws.roundTrip(byte),
-          ByteLaws.deterministicEncoding(byte),
-        ),
-      )
+    yield Result.all(
+      List(
+        ByteLaws.roundTrip(byte),
+        ByteLaws.deterministicEncoding(byte),
+      ),
+    )
 
   property("Long roundtrip"):
     for long <- Gen
         .long(Range.linearFrom(0L, Long.MinValue, Long.MaxValue))
         .forAll
-    yield
-      Result.all(
-        List(
-          ByteLaws.roundTrip(long),
-          ByteLaws.deterministicEncoding(long),
-        ),
-      )
+    yield Result.all(
+      List(
+        ByteLaws.roundTrip(long),
+        ByteLaws.deterministicEncoding(long),
+      ),
+    )
 
   property("Instant roundtrip"):
     for epochMilli <- Gen
@@ -80,29 +78,27 @@ class ByteCodecTest extends HedgehogSuite:
         .long(Range.linearFrom(0L, Long.MinValue, Long.MaxValue))
         .option
         .forAll
-    yield
-      Result.all(
-        List(
-          ByteLaws.roundTrip(opt),
-          ByteLaws.deterministicEncoding(opt),
-        ),
-      )
+    yield Result.all(
+      List(
+        ByteLaws.roundTrip(opt),
+        ByteLaws.deterministicEncoding(opt),
+      ),
+    )
 
   property("Set[Byte] roundtrip"):
     for set <- Gen
         .list(
           Gen.byte(Range.linearFrom(0, Byte.MinValue, Byte.MaxValue)),
-          Range.linear(0, 20)
+          Range.linear(0, 20),
         )
         .map(_.toSet)
         .forAll
-    yield
-      Result.all(
-        List(
-          ByteLaws.roundTrip(set),
-          ByteLaws.deterministicEncoding(set),
-        ),
-      )
+    yield Result.all(
+      List(
+        ByteLaws.roundTrip(set),
+        ByteLaws.deterministicEncoding(set),
+      ),
+    )
 
   property("Map[Byte, Long] roundtrip"):
     for map <- Gen
@@ -111,14 +107,13 @@ class ByteCodecTest extends HedgehogSuite:
             k <- Gen.byte(Range.linearFrom(0, Byte.MinValue, Byte.MaxValue))
             v <- Gen.long(Range.linear(0L, 1000L))
           yield (k, v),
-          Range.linear(0, 10)
+          Range.linear(0, 10),
         )
         .map(_.toMap)
         .forAll
-    yield
-      Result.all(
-        List(
-          ByteLaws.roundTrip(map),
-          ByteLaws.deterministicEncoding(map),
-        ),
-      )
+    yield Result.all(
+      List(
+        ByteLaws.roundTrip(map),
+        ByteLaws.deterministicEncoding(map),
+      ),
+    )

@@ -8,8 +8,9 @@ package crypto
   * Platform-specific implementations exist for JS (via elliptic.js) and JVM
   * (via BouncyCastle).
   *
-  * @see [[org.sigilaris.core.crypto.CryptoOps]] for platform-specific
-  *      implementations
+  * @see
+  *   [[org.sigilaris.core.crypto.CryptoOps]] for platform-specific
+  *   implementations
   */
 trait CryptoOpsLike:
   /** Computes Keccak-256 hash of input bytes.
@@ -62,7 +63,10 @@ trait CryptoOpsLike:
     *   - Normalizes signatures to Low-S form
     *   - Includes recovery parameter (v = 27 + recId)
     */
-  def sign(keyPair: KeyPair, transactionHash: Array[Byte]): Either[failure.SigilarisFailure, Signature]
+  def sign(
+      keyPair: KeyPair,
+      transactionHash: Array[Byte],
+  ): Either[failure.SigilarisFailure, Signature]
 
   /** Recovers public key from signature and message hash.
     *
@@ -77,6 +81,7 @@ trait CryptoOpsLike:
     *   - Accepts both High-S and Low-S signatures
     *   - Recovery parameter (v) must be 27, 28, 29, or 30
     */
-  def recover(signature: Signature, hashArray: Array[Byte]): Either[failure.SigilarisFailure, PublicKey]
-
-
+  def recover(
+      signature: Signature,
+      hashArray: Array[Byte],
+  ): Either[failure.SigilarisFailure, PublicKey]

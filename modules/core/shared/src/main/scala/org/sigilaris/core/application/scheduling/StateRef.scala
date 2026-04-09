@@ -14,5 +14,5 @@ object StateRef:
     tablePrefix ++ encodedKey
 
   extension (stateRef: StateRef)
-    def bytes: ByteVector = stateRef
+    def bytes: ByteVector  = stateRef
     def toHexLower: String = stateRef.toHex

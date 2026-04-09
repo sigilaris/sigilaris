@@ -10,7 +10,9 @@ import org.sigilaris.core.datatype.{UInt256, Utf8}
 
 final class BlockModelSuite extends FunSuite:
 
-  test("block view validation rejects a body whose root does not match the header"):
+  test(
+    "block view validation rejects a body whose root does not match the header",
+  ):
     val canonicalBody =
       blockBody(
         blockRecord("tx-a", Some("result-a"), Vector("event-a")),
@@ -61,17 +63,20 @@ final class BlockModelSuite extends FunSuite:
 
     val roots =
       records.permutations
-        .map(permutation => BlockBody.computeBodyRoot(BlockBody(permutation.toSet)))
+        .map: permutation =>
+          BlockBody.computeBodyRoot(BlockBody(permutation.toSet))
         .toVector
 
     assertEquals(roots.distinct.size, 1)
     assert(roots.forall(_.isRight))
 
-  test("canonical body serialization follows record-hash lexicographic ordering"):
+  test(
+    "canonical body serialization follows record-hash lexicographic ordering",
+  ):
     val recordA = blockRecord("tx-a", Some("result-a"), Vector("event-a"))
     val recordB = blockRecord("tx-b", Some("result-b"), Vector("event-b"))
     val recordC = blockRecord("tx-c", Some("result-c"), Vector("event-c"))
-    val body = BlockBody(Set(recordB, recordC, recordA))
+    val body    = BlockBody(Set(recordB, recordC, recordA))
 
     val canonicalEntries = BlockBody.canonicalEntries(body).toOption.get
     val canonicalHashes  = canonicalEntries.map(_._1.toHexLower)
@@ -93,7 +98,9 @@ final class BlockModelSuite extends FunSuite:
     )
     assert(BlockBody.bodyRootPreImage(body).toOption.get.nonEmpty)
 
-  test("duplicate record hashes are rejected even when runtime set members are distinct"):
+  test(
+    "duplicate record hashes are rejected even when runtime set members are distinct",
+  ):
     val recordA =
       BlockRecord[CollisionTx, Utf8, Utf8](
         tx = CollisionTx("first"),
@@ -114,7 +121,9 @@ final class BlockModelSuite extends FunSuite:
       Left("duplicateRecordHash"),
     )
 
-  test("runtime collection distinctness does not replace canonical uniqueness checks"):
+  test(
+    "runtime collection distinctness does not replace canonical uniqueness checks",
+  ):
     val body = BlockBody(
       Set(
         BlockRecord[CollisionTx, Utf8, Utf8](
@@ -149,7 +158,7 @@ final class BlockModelSuite extends FunSuite:
     assert(BlockHeight.fromLong(-1L).isLeft)
 
   test("empty block bodies canonicalize deterministically"):
-    val emptyBody = blockBody()
+    val emptyBody     = blockBody()
     val emptyBodyRoot = BlockBody.computeBodyRoot(emptyBody).toOption.get
 
     assertEquals(
@@ -176,7 +185,9 @@ final class BlockModelSuite extends FunSuite:
     val differentHeight =
       baseline.copy(height = BlockHeight.unsafeFromLong(8L))
     val differentTimestamp =
-      baseline.copy(timestamp = BlockTimestamp.unsafeFromEpochMillis(1_712_345_678_001L))
+      baseline.copy(timestamp =
+        BlockTimestamp.unsafeFromEpochMillis(1_712_345_678_001L),
+      )
 
     assertNotEquals(
       BlockHeader.computeId(baseline),
@@ -187,7 +198,9 @@ final class BlockModelSuite extends FunSuite:
       BlockHeader.computeId(differentTimestamp),
     )
 
-  test("block id stays tied to the header even when block views carry different bodies"):
+  test(
+    "block id stays tied to the header even when block views carry different bodies",
+  ):
     val canonicalBody =
       blockBody(
         blockRecord("tx-a", Some("result-a"), Vector("event-a")),

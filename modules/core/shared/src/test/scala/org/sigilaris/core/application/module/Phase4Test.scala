@@ -3,7 +3,13 @@ package org.sigilaris.core.application.module
 import cats.effect.SyncIO
 import munit.FunSuite
 
-import org.sigilaris.core.application.state.{Entry, EntryTuple, StoreF, StoreState, Tables}
+import org.sigilaris.core.application.state.{
+  Entry,
+  EntryTuple,
+  StoreF,
+  StoreState,
+  Tables,
+}
 import org.sigilaris.core.application.support.compiletime.{Lookup, Requires}
 import org.sigilaris.core.codec.byte.ByteCodec
 
@@ -17,8 +23,8 @@ import org.sigilaris.core.codec.byte.ByteCodec
   *
   * Criteria:
   *   - A reducer that needs Accounts + Token compiles only when S includes both
-  *   - Lookup.table returns StateTable[F] { type Name = Name; type K = K; type V = V }
-  *     enabling branded key operations without unsafe casts
+  *   - Lookup.table returns StateTable[F] { type Name = Name; type K = K; type
+  *     V = V } enabling branded key operations without unsafe casts
   *   - Runtime: read from Accounts, write to Token using branded keys
   *
   * Note: Uses SyncIO for cross-platform compatibility (JVM + JS).
@@ -34,14 +40,15 @@ class Phase4Test extends FunSuite:
   type TokenInfo = Utf8
 
   // Define sample schemas
-  type AccountsSchema = Entry["accounts", Address, Account] *: Entry["balances", Address, BigNat] *: EmptyTuple
-  type TokenSchema = Entry["tokens", Address, TokenInfo] *: Entry["balances", Address, BigNat] *: EmptyTuple
+  type AccountsSchema = Entry["accounts", Address, Account] *:
+    Entry["balances", Address, BigNat] *: EmptyTuple
+  type TokenSchema = Entry["tokens", Address, TokenInfo] *:
+    Entry["balances", Address, BigNat] *: EmptyTuple
 
   // Combined schema (what would result from composition)
   type CombinedSchema = Entry["accounts", Address, Account] *:
-                         Entry["balances", Address, BigNat] *:
-                         Entry["tokens", Address, TokenInfo] *:
-                         EmptyTuple
+    Entry["balances", Address, BigNat] *: Entry["tokens", Address, TokenInfo] *:
+    EmptyTuple
 
   test("Requires evidence: empty tuple requires nothing"):
     // This should compile - EmptyTuple requires nothing from any schema
@@ -65,14 +72,20 @@ class Phase4Test extends FunSuite:
 
   test("Requires evidence: fails when entry missing from schema"):
     // These compile errors verify that Requires rejects schemas missing required entries
-    val err1 = compileErrors("summon[Requires[EntryTuple[\"tokens\", Address, TokenInfo], AccountsSchema]]")
-    assert(err1.contains("Cannot prove that all required tables are in the schema"))
+    val err1 = compileErrors:
+      "summon[Requires[EntryTuple[\"tokens\", Address, TokenInfo], AccountsSchema]]"
+    assert:
+      err1.contains("Cannot prove that all required tables are in the schema")
     assert(err1.contains("Required tables"))
     assert(err1.contains("Available schema"))
 
     val err2 = compileErrors("summon[Requires[TokenSchema, AccountsSchema]]")
-    assert(err2.contains("Cannot prove that all required tables are in the schema"))
-    assert(err2.contains("Transaction requires a table that doesn't exist in the module"))
+    assert:
+      err2.contains("Cannot prove that all required tables are in the schema")
+    assert:
+      err2.contains(
+        "Transaction requires a table that doesn't exist in the module",
+      )
 
   test("Lookup evidence: can lookup table at head of schema"):
     val lookup = summon[Lookup[AccountsSchema, "accounts", Address, Account]]
@@ -90,20 +103,24 @@ class Phase4Test extends FunSuite:
 
   test("Lookup evidence: fails when table name not in schema"):
     // These compile errors verify that Lookup rejects non-existent table names
-    val err1 = compileErrors("summon[Lookup[AccountsSchema, \"tokens\", Address, TokenInfo]]")
+    val err1 = compileErrors:
+      "summon[Lookup[AccountsSchema, \"tokens\", Address, TokenInfo]]"
     assert(err1.contains("Cannot find table"))
     assert(err1.contains("doesn't exist in the schema"))
 
-    val err2 = compileErrors("summon[Lookup[TokenSchema, \"accounts\", Address, Account]]")
+    val err2 = compileErrors:
+      "summon[Lookup[TokenSchema, \"accounts\", Address, Account]]"
     assert(err2.contains("Cannot find table"))
 
   test("Lookup evidence: fails when types mismatch"):
     // These compile errors verify that Lookup rejects type mismatches
-    val err1 = compileErrors("summon[Lookup[AccountsSchema, \"accounts\", Address, BigNat]]")
+    val err1 = compileErrors:
+      "summon[Lookup[AccountsSchema, \"accounts\", Address, BigNat]]"
     assert(err1.contains("Cannot find table"))
     assert(err1.contains("Table exists but with different key/value types"))
 
-    val err2 = compileErrors("summon[Lookup[AccountsSchema, \"balances\", Address, Account]]")
+    val err2 = compileErrors:
+      "summon[Lookup[AccountsSchema, \"balances\", Address, Account]]"
     assert(err2.contains("Cannot find table"))
     assert(err2.contains("Table exists but with different key/value types"))
 
@@ -114,7 +131,8 @@ class Phase4Test extends FunSuite:
     import cats.data.EitherT
 
     // Create a simple in-memory node store
-    val store = scala.collection.mutable.Map.empty[MerkleTrieNode.MerkleHash, MerkleTrieNode]
+    val store = scala.collection.mutable.Map
+      .empty[MerkleTrieNode.MerkleHash, MerkleTrieNode]
     given MerkleTrie.NodeStore[SyncIO] = Kleisli: hash =>
       EitherT.rightT[SyncIO, String](store.get(hash))
 
@@ -143,57 +161,70 @@ class Phase4Test extends FunSuite:
     import cats.data.EitherT
 
     // Create node store
-    val store = scala.collection.mutable.Map.empty[MerkleTrieNode.MerkleHash, MerkleTrieNode]
+    val store = scala.collection.mutable.Map
+      .empty[MerkleTrieNode.MerkleHash, MerkleTrieNode]
     given MerkleTrie.NodeStore[SyncIO] = Kleisli: hash =>
       EitherT.rightT[SyncIO, String](store.get(hash))
 
     // Helper to persist diff
     def saveNodes(state: org.sigilaris.core.merkle.MerkleTrieState): Unit =
-      state.diff.toMap.foreach { case (hash, (node, _)) =>
-        store.put(hash, node)
-      }
+      state.diff.toMap.foreach:
+        case (hash: MerkleTrieNode.MerkleHash, (node: MerkleTrieNode, _)) =>
+          store.put(hash, node)
 
     // Create tables for combined schema
     given cats.Monad[SyncIO] = cats.effect.Sync[SyncIO]
-    val accountsEntry = Entry["accounts", Address, Account]
-    val balancesEntry = Entry["balances", Address, BigNat]
-    val tokensEntry = Entry["tokens", Address, TokenInfo]
+    val accountsEntry        = Entry["accounts", Address, Account]
+    val balancesEntry        = Entry["balances", Address, BigNat]
+    val tokensEntry          = Entry["tokens", Address, TokenInfo]
 
     val accountsTable = accountsEntry.createTable[SyncIO](ByteVector(0x01))
     val balancesTable = balancesEntry.createTable[SyncIO](ByteVector(0x02))
-    val tokensTable = tokensEntry.createTable[SyncIO](ByteVector(0x03))
+    val tokensTable   = tokensEntry.createTable[SyncIO](ByteVector(0x03))
 
-    val tables: Tables[SyncIO, CombinedSchema] = (accountsTable, balancesTable, tokensTable)
+    val tables: Tables[SyncIO, CombinedSchema] =
+      (accountsTable, balancesTable, tokensTable)
 
     // Simulate a reducer that reads from Accounts and writes to Token
     // This demonstrates the Phase 4 requirement: "read from Accounts, write to Token using branded keys"
     def crossModuleOperation(using
-        accountsReq: Requires[EntryTuple["accounts", Address, Account], CombinedSchema],
-        balancesReq: Requires[EntryTuple["balances", Address, BigNat], CombinedSchema],
-        tokensReq: Requires[EntryTuple["tokens", Address, TokenInfo], CombinedSchema],
+        accountsReq: Requires[
+          EntryTuple["accounts", Address, Account],
+          CombinedSchema,
+        ],
+        balancesReq: Requires[
+          EntryTuple["balances", Address, BigNat],
+          CombinedSchema,
+        ],
+        tokensReq: Requires[
+          EntryTuple["tokens", Address, TokenInfo],
+          CombinedSchema,
+        ],
     )(using
         accountsLookup: Lookup[CombinedSchema, "accounts", Address, Account],
         balancesLookup: Lookup[CombinedSchema, "balances", Address, BigNat],
         tokensLookup: Lookup[CombinedSchema, "tokens", Address, TokenInfo],
-    ): StoreF[SyncIO][(Option[Account], Option[BigNat], Option[TokenInfo], Option[Account])] =
+    ): StoreF[SyncIO][
+      (Option[Account], Option[BigNat], Option[TokenInfo], Option[Account]),
+    ] =
       // Extract tables - now the types are preserved!
       val accounts = accountsLookup.table[SyncIO](tables)
       val balances = balancesLookup.table[SyncIO](tables)
-      val tokens = tokensLookup.table[SyncIO](tables)
+      val tokens   = tokensLookup.table[SyncIO](tables)
 
       // Create test data
       val addr1 = (Utf8("addr1"): Address)
       val addr2 = (Utf8("addr2"): Address)
 
-      val account1 = (Utf8("account_data_1"): Account)
-      val balance1 = BigNat.unsafeFromLong(1000L)
+      val account1  = (Utf8("account_data_1"): Account)
+      val balance1  = BigNat.unsafeFromLong(1000L)
       val tokenInfo = (Utf8("token_info_1"): TokenInfo)
 
       // Brand keys with table-specific types - this is compile-time safe!
       val accountKey1 = accounts.brand(addr1)
       val accountKey2 = accounts.brand(addr2)
       val balanceKey1 = balances.brand(addr1)
-      val tokenKey = tokens.brand(addr1)
+      val tokenKey    = tokens.brand(addr1)
 
       // The following would NOT compile (key type mismatch):
       // balances.get(accountKey1)  // Error: accountKey1 is branded for accounts table
@@ -220,7 +251,6 @@ class Phase4Test extends FunSuite:
 
         // Verify that non-existent keys return None
         notFound <- accounts.get(accountKey2)
-
       yield (maybeAccount, maybeBalance, maybeToken, notFound)
 
     // Execute the cross-module operation
@@ -228,7 +258,9 @@ class Phase4Test extends FunSuite:
     val result = crossModuleOperation.run(initialState).value.unsafeRunSync()
 
     result match
-      case Right((finalState, (maybeAccount, maybeBalance, maybeToken, notFound))) =>
+      case Right(
+            (finalState, (maybeAccount, maybeBalance, maybeToken, notFound)),
+          ) =>
         // Verify all results
         assertEquals(maybeAccount, Some[Account](Utf8("account_data_1")))
         assertEquals(maybeBalance, Some(BigNat.unsafeFromLong(1000L)))
@@ -239,13 +271,14 @@ class Phase4Test extends FunSuite:
         saveNodes(finalState.trieState)
 
         // Verify we can read the persisted data
-        val accountsLookup = summon[Lookup[CombinedSchema, "accounts", Address, Account]]
+        val accountsLookup =
+          summon[Lookup[CombinedSchema, "accounts", Address, Account]]
         val accounts = accountsLookup.table[SyncIO](tables)
-        val addr = (Utf8("addr1"): Address)
-        val key = accounts.brand(addr)
+        val addr     = (Utf8("addr1"): Address)
+        val key      = accounts.brand(addr)
 
         val verifyRead = accounts.get(key).runA(finalState).value
-        val verified = verifyRead.unsafeRunSync()
+        val verified   = verifyRead.unsafeRunSync()
 
         verified match
           case Right(Some(account)) =>

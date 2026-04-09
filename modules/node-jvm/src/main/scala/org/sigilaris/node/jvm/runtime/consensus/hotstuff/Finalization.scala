@@ -177,20 +177,17 @@ object HotStuffFinalizedAnchorVerifier:
     val grandchild = suggestion.finalizedProof.grandchild
 
     for
-      anchorProposalSetEither <- validatorSetLookup.validatorSetFor(anchor.window)
-      childProposalSetEither  <- validatorSetLookup.validatorSetFor(child.window)
-      grandchildProposalSetEither <- validatorSetLookup.validatorSetFor(
-        grandchild.window,
-      )
-      anchorQcSetEither <- validatorSetLookup.validatorSetFor(
-        anchor.justify.subject.window,
-      )
-      childQcSetEither <- validatorSetLookup.validatorSetFor(
-        child.justify.subject.window,
-      )
-      grandchildQcSetEither <- validatorSetLookup.validatorSetFor(
-        grandchild.justify.subject.window,
-      )
+      anchorProposalSetEither <- validatorSetLookup.validatorSetFor:
+        anchor.window
+      childProposalSetEither <- validatorSetLookup.validatorSetFor(child.window)
+      grandchildProposalSetEither <- validatorSetLookup.validatorSetFor:
+        grandchild.window
+      anchorQcSetEither <- validatorSetLookup.validatorSetFor:
+        anchor.justify.subject.window
+      childQcSetEither <- validatorSetLookup.validatorSetFor:
+        child.justify.subject.window
+      grandchildQcSetEither <- validatorSetLookup.validatorSetFor:
+        grandchild.justify.subject.window
     yield for
       anchorProposalSet <- anchorProposalSetEither.leftMap(
         FinalizedAnchorVerificationFailure.fromValidation,
@@ -393,13 +390,17 @@ private final class InMemoryProposalReplayService[F[_]: Sync](
     sink.snapshot.map: snapshot =>
       val proposalsByChainAndBlockId =
         snapshot.proposals.valuesIterator
-          .map(proposal => (proposal.window.chainId, proposal.targetBlockId) -> proposal)
+          .map(proposal =>
+            (proposal.window.chainId, proposal.targetBlockId) -> proposal,
+          )
           .toMap
       if !proposalsByChainAndBlockId.contains(chainId -> anchorBlockId) then
-        CanonicalRejection.BackfillUnavailable(
-          reason = "proposalReplayAnchorUnknown",
-          detail = Some(anchorBlockId.toHexLower),
-        ).asLeft[Vector[Proposal]]
+        CanonicalRejection
+          .BackfillUnavailable(
+            reason = "proposalReplayAnchorUnknown",
+            detail = Some(anchorBlockId.toHexLower),
+          )
+          .asLeft[Vector[Proposal]]
       else
         snapshot.proposals.valuesIterator
           .filter(_.window.chainId === chainId)
@@ -435,31 +436,38 @@ private final class InMemoryHistoricalBackfillService[F[_]: Sync](
         snapshot.proposals.valuesIterator.toVector.groupBy(_.targetBlockId)
       proposalsByBlockId.get(beforeBlockId) match
         case None =>
-          CanonicalRejection.BackfillUnavailable(
-            reason = "historicalBackfillAnchorUnknown",
-            detail = Some(beforeBlockId.toHexLower),
-          ).asLeft[Vector[Proposal]]
+          CanonicalRejection
+            .BackfillUnavailable(
+              reason = "historicalBackfillAnchorUnknown",
+              detail = Some(beforeBlockId.toHexLower),
+            )
+            .asLeft[Vector[Proposal]]
         case Some(candidates)
             if !candidates.exists(_.window.chainId === chainId) =>
-          CanonicalRejection.BackfillUnavailable(
-            reason = "historicalBackfillAnchorChainMismatch",
-            detail = Some(beforeBlockId.toHexLower),
-          ).asLeft[Vector[Proposal]]
+          CanonicalRejection
+            .BackfillUnavailable(
+              reason = "historicalBackfillAnchorChainMismatch",
+              detail = Some(beforeBlockId.toHexLower),
+            )
+            .asLeft[Vector[Proposal]]
         case Some(candidates) =>
           val proposalsByChainAndBlockId =
             snapshot.proposals.valuesIterator
-              .map(proposal => (proposal.window.chainId, proposal.targetBlockId) -> proposal)
+              .map(proposal =>
+                (proposal.window.chainId, proposal.targetBlockId) -> proposal,
+              )
               .toMap
           candidates.find(_.window.chainId === chainId) match
             case Some(beforeProposal) =>
               if beforeProposal.block.height =!= beforeHeight then
-                CanonicalRejection.BackfillUnavailable(
-                  reason = "historicalBackfillHeightMismatch",
-                  detail =
-                    Some(
+                CanonicalRejection
+                  .BackfillUnavailable(
+                    reason = "historicalBackfillHeightMismatch",
+                    detail = Some(
                       ss"expected=${beforeHeight.render} actual=${beforeProposal.block.height.render}",
                     ),
-                ).asLeft[Vector[Proposal]]
+                  )
+                  .asLeft[Vector[Proposal]]
               else
                 ancestorChain(
                   start = beforeProposal,
@@ -469,15 +477,20 @@ private final class InMemoryHistoricalBackfillService[F[_]: Sync](
                   .take(limit.max(0))
                   .asRight[CanonicalRejection]
             case None =>
-              CanonicalRejection.BackfillUnavailable(
-                reason = "historicalBackfillAnchorChainMismatch",
-                detail = Some(beforeBlockId.toHexLower),
-              ).asLeft[Vector[Proposal]]
+              CanonicalRejection
+                .BackfillUnavailable(
+                  reason = "historicalBackfillAnchorChainMismatch",
+                  detail = Some(beforeBlockId.toHexLower),
+                )
+                .asLeft[Vector[Proposal]]
 
 private def descendsFromAnchor(
     proposal: Proposal,
     anchorBlockId: org.sigilaris.node.jvm.runtime.block.BlockId,
-    proposalsByChainAndBlockId: Map[(ChainId, org.sigilaris.node.jvm.runtime.block.BlockId), Proposal],
+    proposalsByChainAndBlockId: Map[
+      (ChainId, org.sigilaris.node.jvm.runtime.block.BlockId),
+      Proposal,
+    ],
 ): Boolean =
   @tailrec
   def loop(
@@ -500,7 +513,10 @@ private def descendsFromAnchor(
 private def ancestorChain(
     start: Proposal,
     chainId: ChainId,
-    proposalsByChainAndBlockId: Map[(ChainId, org.sigilaris.node.jvm.runtime.block.BlockId), Proposal],
+    proposalsByChainAndBlockId: Map[
+      (ChainId, org.sigilaris.node.jvm.runtime.block.BlockId),
+      Proposal,
+    ],
 ): Vector[Proposal] =
   @tailrec
   def loop(
@@ -508,7 +524,9 @@ private def ancestorChain(
       acc: List[Proposal],
   ): List[Proposal] =
     current.block.parent
-      .flatMap(parentBlockId => proposalsByChainAndBlockId.get(chainId -> parentBlockId)) match
+      .flatMap(parentBlockId =>
+        proposalsByChainAndBlockId.get(chainId -> parentBlockId),
+      ) match
       case Some(parentProposal) =>
         loop(parentProposal, parentProposal :: acc)
       case None =>

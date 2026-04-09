@@ -31,10 +31,14 @@ final class GossipImportRuleSuite extends FunSuite:
     "swaydb",
   )
 
-  test("runtime gossip sources do not import transport or storage implementations"):
+  test(
+    "runtime gossip sources do not import transport or storage implementations",
+  ):
     val sources = Using.resource(Files.walk(gossipRoot)): stream =>
       stream.iterator.asScala
-        .filter(path => Files.isRegularFile(path) && path.toString.endsWith(".scala"))
+        .filter(path =>
+          Files.isRegularFile(path) && path.toString.endsWith(".scala"),
+        )
         .toList
 
     assert(sources.nonEmpty, s"Expected Scala sources under $gossipRoot")
@@ -42,7 +46,7 @@ final class GossipImportRuleSuite extends FunSuite:
     val violations =
       for
         source <- sources
-        line <- Files.readAllLines(source).asScala
+        line   <- Files.readAllLines(source).asScala
         banned <- bannedImports
         trimmed = line.trim
         if trimmed.startsWith("import ") && trimmed.contains(banned)

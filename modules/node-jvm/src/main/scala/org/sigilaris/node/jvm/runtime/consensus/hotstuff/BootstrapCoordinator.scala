@@ -11,7 +11,12 @@ import org.sigilaris.core.codec.byte.ByteEncoder
 import org.sigilaris.core.crypto.Hash
 import org.sigilaris.core.datatype.BigNat
 import org.sigilaris.node.jvm.runtime.block.{BlockHeight, BlockQuery}
-import org.sigilaris.node.jvm.runtime.gossip.{CanonicalRejection, ChainId, ControlBatch, StableArtifactId}
+import org.sigilaris.node.jvm.runtime.gossip.{
+  CanonicalRejection,
+  ChainId,
+  ControlBatch,
+  StableArtifactId,
+}
 import org.sigilaris.node.jvm.runtime.gossip.tx.TxRuntimePolicy
 
 final case class BootstrapRetryPolicy(
@@ -151,32 +156,34 @@ object ProposalCatchUpReadiness:
                 ).asLeft[ProposalCatchUpAssessment].pure[F]
               case Right(controlBatch) =>
                 ProposalCatchUpAssessment(
-                  voteReadiness = BootstrapVoteReadiness.Held("missingTxPayload"),
+                  voteReadiness =
+                    BootstrapVoteReadiness.Held("missingTxPayload"),
                   controlBatch = controlBatch,
                 ).asRight[BootstrapCoordinatorFailure].pure[F]
           else
-              HotStuffRuntimeScheduling
-                .validateProposalViewFromBlockQuery(
-                  proposal = proposal,
-                  validatorSet = validatorSet,
-                  blockQuery = blockQuery,
-                )(classifyTx)
-                .map:
-                  case Left(failure)
-                      if failure.reason === "proposalBlockViewUnavailable" =>
-                    ProposalCatchUpAssessment(
-                      voteReadiness =
-                        BootstrapVoteReadiness.Held("proposalViewUnavailable"),
-                      controlBatch = None,
-                    ).asRight[BootstrapCoordinatorFailure]
-                  case Left(failure) =>
-                    BootstrapCoordinatorFailure.fromValidation(failure)
-                      .asLeft[ProposalCatchUpAssessment]
-                  case Right(_) =>
-                    ProposalCatchUpAssessment(
-                      voteReadiness = BootstrapVoteReadiness.Ready,
-                      controlBatch = None,
-                    ).asRight[BootstrapCoordinatorFailure]
+            HotStuffRuntimeScheduling
+              .validateProposalViewFromBlockQuery(
+                proposal = proposal,
+                validatorSet = validatorSet,
+                blockQuery = blockQuery,
+              )(classifyTx)
+              .map:
+                case Left(failure)
+                    if failure.reason === "proposalBlockViewUnavailable" =>
+                  ProposalCatchUpAssessment(
+                    voteReadiness =
+                      BootstrapVoteReadiness.Held("proposalViewUnavailable"),
+                    controlBatch = None,
+                  ).asRight[BootstrapCoordinatorFailure]
+                case Left(failure) =>
+                  BootstrapCoordinatorFailure
+                    .fromValidation(failure)
+                    .asLeft[ProposalCatchUpAssessment]
+                case Right(_) =>
+                  ProposalCatchUpAssessment(
+                    voteReadiness = BootstrapVoteReadiness.Ready,
+                    controlBatch = None,
+                  ).asRight[BootstrapCoordinatorFailure]
 
 final case class ForwardCatchUpResult(
     applied: Vector[Proposal],
@@ -212,7 +219,7 @@ object HotStuffForwardCatchUp:
       val expectedHeight = increment(frontierHeight)
       remaining.find(proposal =>
         proposal.block.parent.contains(frontierBlockId) &&
-          proposal.block.height.toBigNat === expectedHeight.toBigNat
+          proposal.block.height.toBigNat === expectedHeight.toBigNat,
       ) match
         case None =>
           val readinessState =
@@ -220,49 +227,51 @@ object HotStuffForwardCatchUp:
             else BootstrapVoteReadiness.Held("proposalReplayGap")
           ForwardCatchUpResult(
             applied = applied,
-            queued =
-              remaining.sortBy(proposal =>
-                (proposal.block.height, proposal.proposalId.toHexLower)
-              ),
+            queued = remaining.sortBy(proposal =>
+              (proposal.block.height, proposal.proposalId.toHexLower),
+            ),
             controlBatches = controlBatches,
             frontierBlockId = frontierBlockId,
             frontierHeight = frontierHeight,
             voteReadiness = readinessState,
           ).asRight[BootstrapCoordinatorFailure].pure[F]
         case Some(nextProposal) =>
-          readiness.assess(nextProposal).flatMap:
-            case Left(error) =>
-              error.asLeft[ForwardCatchUpResult].pure[F]
-            case Right(assessment) =>
-              val nextRemaining =
-                remaining.filterNot(_.proposalId === nextProposal.proposalId)
-              val nextBatches =
-                assessment.controlBatch.fold(controlBatches)(controlBatches :+ _)
-              assessment.voteReadiness match
-                case held @ BootstrapVoteReadiness.Held(_) =>
-                  ForwardCatchUpResult(
-                    applied = applied,
-                    queued =
-                      (nextProposal +: nextRemaining)
+          readiness
+            .assess(nextProposal)
+            .flatMap:
+              case Left(error) =>
+                error.asLeft[ForwardCatchUpResult].pure[F]
+              case Right(assessment) =>
+                val nextRemaining =
+                  remaining.filterNot(_.proposalId === nextProposal.proposalId)
+                val nextBatches =
+                  assessment.controlBatch.fold(controlBatches)(
+                    controlBatches :+ _,
+                  )
+                assessment.voteReadiness match
+                  case held @ BootstrapVoteReadiness.Held(_) =>
+                    ForwardCatchUpResult(
+                      applied = applied,
+                      queued = (nextProposal +: nextRemaining)
                         .sortBy(proposal =>
                           (
                             proposal.block.height,
                             proposal.proposalId.toHexLower,
-                          )
+                          ),
                         ),
-                    controlBatches = nextBatches,
-                    frontierBlockId = frontierBlockId,
-                    frontierHeight = frontierHeight,
-                    voteReadiness = held,
-                  ).asRight[BootstrapCoordinatorFailure].pure[F]
-                case BootstrapVoteReadiness.Ready =>
-                  loop(
-                    frontierBlockId = nextProposal.targetBlockId,
-                    frontierHeight = nextProposal.block.height,
-                    remaining = nextRemaining,
-                    applied = applied :+ nextProposal,
-                    controlBatches = nextBatches,
-                  )
+                      controlBatches = nextBatches,
+                      frontierBlockId = frontierBlockId,
+                      frontierHeight = frontierHeight,
+                      voteReadiness = held,
+                    ).asRight[BootstrapCoordinatorFailure].pure[F]
+                  case BootstrapVoteReadiness.Ready =>
+                    loop(
+                      frontierBlockId = nextProposal.targetBlockId,
+                      frontierHeight = nextProposal.block.height,
+                      remaining = nextRemaining,
+                      applied = applied :+ nextProposal,
+                      controlBatches = nextBatches,
+                    )
 
     loop(
       frontierBlockId = anchor.anchorBlockId,
@@ -313,13 +322,14 @@ object HotStuffForwardCatchUp:
         acc: Vector[Proposal],
     ): Option[Vector[Proposal]] =
       if proposal.block.parent.contains(anchorBlockId) &&
-          proposal.block.height.toBigNat === increment(anchorHeight).toBigNat
-      then
-        (proposal +: acc).some
+        proposal.block.height.toBigNat === increment(anchorHeight).toBigNat
+      then (proposal +: acc).some
       else
         proposal.block.parent.flatMap(byBlockId.get) match
           case Some(parent)
-              if proposal.block.height.toBigNat === increment(parent.block.height).toBigNat =>
+              if proposal.block.height.toBigNat === increment(
+                parent.block.height,
+              ).toBigNat =>
             pathToAnchor(parent, proposal +: acc)
           case _ =>
             none[Vector[Proposal]]
@@ -329,13 +339,13 @@ object HotStuffForwardCatchUp:
         .flatMap(proposal => pathToAnchor(proposal, Vector.empty))
         .maxByOption(chain =>
           chain.lastOption.fold(
-            (anchorHeight, HotStuffView.unsafeFromLong(0L), "")
+            (anchorHeight, HotStuffView.unsafeFromLong(0L), ""),
           ): leaf =>
             (
               leaf.block.height,
               leaf.window.view,
               leaf.proposalId.toHexLower,
-            )
+            ),
         )
         .getOrElse(Vector.empty[Proposal])
 
@@ -346,7 +356,8 @@ object HotStuffForwardCatchUp:
     val unresolvedHigher =
       deduped.filter(proposal =>
         !canonicalIds.contains(proposal.proposalId) &&
-          Ordering[BlockHeight].gt(proposal.block.height, canonicalFrontierHeight),
+          Ordering[BlockHeight]
+            .gt(proposal.block.height, canonicalFrontierHeight),
       )
 
     canonicalChain ++ unresolvedHigher
@@ -482,27 +493,32 @@ private final class InMemoryBootstrapCoordinator[F[_]: Sync](
           error.asLeft[Option[FinalizedAnchorSuggestion]].pure[F]
       case Right(None) =>
         updateNoCandidate(chainId, now) *>
-          Option.empty[FinalizedAnchorSuggestion]
+          Option
+            .empty[FinalizedAnchorSuggestion]
             .asRight[BootstrapCoordinatorFailure]
             .pure[F]
       case Right(Some((suggestion, faults))) =>
-        ref.update: state =>
-          val chainState = state.chains.getOrElse(chainId, BootstrapCoordinatorChainState.empty)
-          state.copy(
-            chains = state.chains.updated(
+        ref
+          .update: state =>
+            val chainState = state.chains.getOrElse(
               chainId,
-              chainState.copy(
-                bestFinalized = Some(suggestion.snapshotAnchor),
-                finalizationSafetyFaults = faults,
+              BootstrapCoordinatorChainState.empty,
+            )
+            state.copy(
+              chains = state.chains.updated(
+                chainId,
+                chainState.copy(
+                  bestFinalized = Some(suggestion.snapshotAnchor),
+                  finalizationSafetyFaults = faults,
+                ),
               ),
-            ),
-            retryAttempts = 0,
-            nextRetryAt = None,
-            lastFailure = None,
-          )
-        *> suggestion.some
-          .asRight[BootstrapCoordinatorFailure]
-          .pure[F]
+              retryAttempts = 0,
+              nextRetryAt = None,
+              lastFailure = None,
+            )
+          *> suggestion.some
+            .asRight[BootstrapCoordinatorFailure]
+            .pure[F]
 
   override def bootstrap(
       chainId: ChainId,
@@ -524,7 +540,13 @@ private final class InMemoryBootstrapCoordinator[F[_]: Sync](
             ).asLeft[BootstrapCoordinatorResult].pure[F]
           case Right(Some(anchor)) =>
             pinAnchor(chainId, anchor) *>
-              runPinnedBootstrap(chainId, anchor, sessions, startedAt, liveProposals)
+              runPinnedBootstrap(
+                chainId,
+                anchor,
+                sessions,
+                startedAt,
+                liveProposals,
+              )
 
   private def runPinnedBootstrap(
       chainId: ChainId,
@@ -539,12 +561,24 @@ private final class InMemoryBootstrapCoordinator[F[_]: Sync](
         .flatMap:
           case Left(failure) =>
             val error = BootstrapCoordinatorFailure.fromSnapshotFailure(failure)
-            updateFailure(chainId, startedAt, error.reason, error.detail, Vector.empty) *>
+            updateFailure(
+              chainId,
+              startedAt,
+              error.reason,
+              error.detail,
+              Vector.empty,
+            ) *>
               error.asLeft[BootstrapCoordinatorResult].pure[F]
           case Right(snapshotResult) =>
             readReplay(chainId, anchor, sessions).flatMap:
               case Left(error) =>
-                updateFailure(chainId, startedAt, error.reason, error.detail, Vector.empty) *>
+                updateFailure(
+                  chainId,
+                  startedAt,
+                  error.reason,
+                  error.detail,
+                  Vector.empty,
+                ) *>
                   error.asLeft[BootstrapCoordinatorResult].pure[F]
               case Right(replayBatch) =>
                 HotStuffForwardCatchUp
@@ -632,13 +666,25 @@ private final class InMemoryBootstrapCoordinator[F[_]: Sync](
               BootstrapCoordinatorFailure(
                 reason = fault.reason,
                 detail = fault.detail,
-              ).asLeft[Option[(FinalizedAnchorSuggestion, Vector[
-                FinalizedAnchorSafetyFault,
-              ])]]
+              ).asLeft[Option[
+                (
+                    FinalizedAnchorSuggestion,
+                    Vector[
+                      FinalizedAnchorSafetyFault,
+                    ],
+                ),
+              ]]
             case Right(None) =>
-              Option.empty[(FinalizedAnchorSuggestion, Vector[
-                FinalizedAnchorSafetyFault,
-              ])].asRight[BootstrapCoordinatorFailure]
+              Option
+                .empty[
+                  (
+                      FinalizedAnchorSuggestion,
+                      Vector[
+                        FinalizedAnchorSafetyFault,
+                      ],
+                  ),
+                ]
+                .asRight[BootstrapCoordinatorFailure]
             case Right(Some(suggestion)) =>
               (suggestion, surfacedFaults).some
                 .asRight[BootstrapCoordinatorFailure]
@@ -682,15 +728,22 @@ private final class InMemoryBootstrapCoordinator[F[_]: Sync](
             batches.collect { case Right(proposals) =>
               dedupeReplayedProposals(proposals)
                 .filter(proposal =>
-                  Ordering[BlockHeight].gteq(proposal.block.height, replayStartHeight)
+                  Ordering[BlockHeight]
+                    .gteq(proposal.block.height, replayStartHeight),
                 )
-                .sortBy(proposal => (proposal.block.height, proposal.proposalId.toHexLower))
+                .sortBy(proposal =>
+                  (proposal.block.height, proposal.proposalId.toHexLower),
+                )
             }
           val successful =
             dedupeReplayedProposals(successfulBatches.flatten)
-              .sortBy(proposal => (proposal.block.height, proposal.proposalId.toHexLower))
+              .sortBy(proposal =>
+                (proposal.block.height, proposal.proposalId.toHexLower),
+              )
           val highestHeight =
-            successful.iterator.map(_.block.height).maxOption(using Ordering[BlockHeight])
+            successful.iterator
+              .map(_.block.height)
+              .maxOption(using Ordering[BlockHeight])
           val saturated =
             successfulBatches.exists(_.sizeCompare(limit) >= 0)
 
@@ -703,20 +756,23 @@ private final class InMemoryBootstrapCoordinator[F[_]: Sync](
             BootstrapCoordinatorFailure(
               reason = "proposalReplayPageBudgetExceeded",
               detail = Some(
-                highestHeight.getOrElse(replayStartHeight).render
+                highestHeight.getOrElse(replayStartHeight).render,
               ),
             ).asLeft[Vector[Proposal]].pure[F]
           else if batches.isEmpty || batches.exists {
               case Right(_) => true
               case Left(_)  => false
-            } then
-            successful.asRight[BootstrapCoordinatorFailure].pure[F]
+            }
+          then successful.asRight[BootstrapCoordinatorFailure].pure[F]
           else
             val firstFailure =
               batches.collectFirst { case Left(rejection) =>
                 BootstrapCoordinatorFailure(rejection.reason, rejection.detail)
               }
-            firstFailure.getOrElse(BootstrapCoordinatorFailure("proposalReplayUnavailable", None))
+            firstFailure
+              .getOrElse(
+                BootstrapCoordinatorFailure("proposalReplayUnavailable", None),
+              )
               .asLeft[Vector[Proposal]]
               .pure[F]
 
@@ -727,7 +783,8 @@ private final class InMemoryBootstrapCoordinator[F[_]: Sync](
       anchor: FinalizedAnchorSuggestion,
   ): F[Unit] =
     ref.update: state =>
-      val chainState = state.chains.getOrElse(chainId, BootstrapCoordinatorChainState.empty)
+      val chainState =
+        state.chains.getOrElse(chainId, BootstrapCoordinatorChainState.empty)
       state.copy(
         chains = state.chains.updated(
           chainId,
@@ -752,7 +809,8 @@ private final class InMemoryBootstrapCoordinator[F[_]: Sync](
       lastFailure: Option[String],
   ): F[Unit] =
     ref.update: state =>
-      val chainState = state.chains.getOrElse(chainId, BootstrapCoordinatorChainState.empty)
+      val chainState =
+        state.chains.getOrElse(chainId, BootstrapCoordinatorChainState.empty)
       state.copy(
         phase = phase,
         chains = state.chains.updated(chainId, chainState),
@@ -765,7 +823,8 @@ private final class InMemoryBootstrapCoordinator[F[_]: Sync](
       voteReadiness: BootstrapVoteReadiness,
   ): F[Unit] =
     ref.update: state =>
-      val chainState = state.chains.getOrElse(chainId, BootstrapCoordinatorChainState.empty)
+      val chainState =
+        state.chains.getOrElse(chainId, BootstrapCoordinatorChainState.empty)
       state.copy(
         phase = phase,
         chains = state.chains.updated(
@@ -784,7 +843,8 @@ private final class InMemoryBootstrapCoordinator[F[_]: Sync](
     ref.update: state =>
       val attempts  = state.retryAttempts + 1
       val nextRetry = Some(retryPolicy.nextRetryAt(now, attempts))
-      val chainState = state.chains.getOrElse(chainId, BootstrapCoordinatorChainState.empty)
+      val chainState =
+        state.chains.getOrElse(chainId, BootstrapCoordinatorChainState.empty)
       state.copy(
         phase = BootstrapPhase.Discovery,
         chains = state.chains.updated(
@@ -806,7 +866,8 @@ private final class InMemoryBootstrapCoordinator[F[_]: Sync](
     ref.update: state =>
       val attempts  = state.retryAttempts + 1
       val nextRetry = Some(retryPolicy.nextRetryAt(now, attempts))
-      val chainState = state.chains.getOrElse(chainId, BootstrapCoordinatorChainState.empty)
+      val chainState =
+        state.chains.getOrElse(chainId, BootstrapCoordinatorChainState.empty)
       state.copy(
         phase = BootstrapPhase.Discovery,
         chains = state.chains.updated(
@@ -824,15 +885,16 @@ private final class InMemoryBootstrapCoordinator[F[_]: Sync](
   ): BootstrapDiagnostics =
     BootstrapDiagnostics(
       phase = state.phase,
-      chains = state.chains.view.mapValues: chainState =>
-        BootstrapChainDiagnostics(
-          bestFinalized = chainState.bestFinalized,
-          selectedAnchor = chainState.selectedAnchor,
-          pinnedAnchor = chainState.pinnedAnchor,
-          voteReadiness = chainState.voteReadiness,
-          finalizationSafetyFaults = chainState.finalizationSafetyFaults,
-        )
-      .toMap,
+      chains = state.chains.view
+        .mapValues: chainState =>
+          BootstrapChainDiagnostics(
+            bestFinalized = chainState.bestFinalized,
+            selectedAnchor = chainState.selectedAnchor,
+            pinnedAnchor = chainState.pinnedAnchor,
+            voteReadiness = chainState.voteReadiness,
+            finalizationSafetyFaults = chainState.finalizationSafetyFaults,
+          )
+        .toMap,
       retryAttempts = state.retryAttempts,
       nextRetryAt = state.nextRetryAt,
       lastFailure = state.lastFailure,

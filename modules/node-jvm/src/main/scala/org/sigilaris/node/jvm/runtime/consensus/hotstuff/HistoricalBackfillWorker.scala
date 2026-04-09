@@ -17,8 +17,10 @@ import org.sigilaris.node.jvm.runtime.gossip.{CanonicalRejection, ChainId}
 final case class HistoricalBackfillPolicy(
     batchSize: Int,
     interBatchDelay: Duration,
-    priority: HistoricalBackfillPriority = HistoricalBackfillPriority.Background,
-    archiveSource: HistoricalArchiveSource = HistoricalArchiveSource.BackgroundBackfill,
+    priority: HistoricalBackfillPriority =
+      HistoricalBackfillPriority.Background,
+    archiveSource: HistoricalArchiveSource =
+      HistoricalArchiveSource.BackgroundBackfill,
     enabled: Boolean = true,
 ):
   require(batchSize > 0, "batchSize must be positive")
@@ -120,7 +122,9 @@ object HistoricalBackfillWorker:
       ).pure[F]
     else
       Ref
-        .of[F, HistoricalBackfillWorkerState](HistoricalBackfillWorkerState.empty)
+        .of[F, HistoricalBackfillWorkerState](
+          HistoricalBackfillWorkerState.empty,
+        )
         .flatMap: stateRef =>
           Semaphore[F](1).map: writeLock =>
             new InMemoryHistoricalBackfillWorker[F](
@@ -178,27 +182,25 @@ private final class InMemoryHistoricalBackfillWorker[F[_]: Async](
     if anchor.height === BlockHeight.Genesis then
       ref.set(
         HistoricalBackfillWorkerState(
-          status =
-            HistoricalBackfillStatus.Completed(
-              reason = "genesisReached",
-              progress = initialProgress,
-            ),
+          status = HistoricalBackfillStatus.Completed(
+            reason = "genesisReached",
+            progress = initialProgress,
+          ),
           runtime = None,
           generation = 0L,
-        )
+        ),
       )
     else if sessions.isEmpty then
       ref.set(
         HistoricalBackfillWorkerState(
-          status =
-            HistoricalBackfillStatus.Failed(
-              reason = "historicalBackfillNoPeersAvailable",
-              detail = None,
-              progress = initialProgress,
-            ),
+          status = HistoricalBackfillStatus.Failed(
+            reason = "historicalBackfillNoPeersAvailable",
+            detail = None,
+            progress = initialProgress,
+          ),
           runtime = None,
           generation = 0L,
-        )
+        ),
       )
     else
       ref
@@ -207,19 +209,17 @@ private final class InMemoryHistoricalBackfillWorker[F[_]: Async](
             case HistoricalBackfillStatus.Idle =>
               val nextGeneration = state.generation + 1L
               HistoricalBackfillWorkerState(
-                status =
-                  HistoricalBackfillStatus.Running(
+                status = HistoricalBackfillStatus.Running(
+                  progress = initialProgress,
+                  priority = policy.priority,
+                ),
+                runtime = Some(
+                  HistoricalBackfillRuntimeState(
+                    chainId = chainId,
+                    sessions = sessions,
                     progress = initialProgress,
-                    priority = policy.priority,
                   ),
-                runtime =
-                  Some(
-                    HistoricalBackfillRuntimeState(
-                      chainId = chainId,
-                      sessions = sessions,
-                      progress = initialProgress,
-                    )
-                  ),
+                ),
                 generation = nextGeneration,
               ) -> nextGeneration.some
             case _ =>
@@ -239,12 +239,11 @@ private final class InMemoryHistoricalBackfillWorker[F[_]: Async](
         state.status match
           case HistoricalBackfillStatus.Running(progress, priority) =>
             state.copy(
-              status =
-                HistoricalBackfillStatus.Paused(
-                  reason = reason,
-                  progress = progress.copy(lastUpdatedAt = pausedAt),
-                  priority = priority,
-                ),
+              status = HistoricalBackfillStatus.Paused(
+                reason = reason,
+                progress = progress.copy(lastUpdatedAt = pausedAt),
+                priority = priority,
+              ),
               generation = state.generation + 1L,
             )
           case _ =>
@@ -260,12 +259,13 @@ private final class InMemoryHistoricalBackfillWorker[F[_]: Async](
             case HistoricalBackfillStatus.Paused(_, progress, priority) =>
               val nextGeneration = state.generation + 1L
               state.copy(
-                status =
-                  HistoricalBackfillStatus.Running(
-                    progress = progress.copy(lastUpdatedAt = resumedAt),
-                    priority = priority,
-                  ),
-                runtime = state.runtime.map(_.copy(progress = progress.copy(lastUpdatedAt = resumedAt))),
+                status = HistoricalBackfillStatus.Running(
+                  progress = progress.copy(lastUpdatedAt = resumedAt),
+                  priority = priority,
+                ),
+                runtime = state.runtime.map(
+                  _.copy(progress = progress.copy(lastUpdatedAt = resumedAt)),
+                ),
                 generation = nextGeneration,
               ) -> nextGeneration.some
             case _ =>
@@ -294,12 +294,12 @@ private final class InMemoryHistoricalBackfillWorker[F[_]: Async](
                     ref.update: latest =>
                       if latest.generation === generation then
                         latest.copy(
-                          status =
-                            HistoricalBackfillStatus.Failed(
-                              reason = rejection.reason,
-                              detail = rejection.detail,
-                              progress = runtime.progress.copy(lastUpdatedAt = currentTime),
-                            ),
+                          status = HistoricalBackfillStatus.Failed(
+                            reason = rejection.reason,
+                            detail = rejection.detail,
+                            progress =
+                              runtime.progress.copy(lastUpdatedAt = currentTime),
+                          ),
                           runtime = None,
                         )
                       else latest
@@ -332,12 +332,11 @@ private final class InMemoryHistoricalBackfillWorker[F[_]: Async](
       .map: responses =>
         val successful =
           dedupeByProposalId(
-            responses.collect { case Right(proposals) => proposals }.flatten
+            responses.collect { case Right(proposals) => proposals }.flatten,
           )
             .sortWith(compareProposalDescending)
             .take(policy.batchSize)
-        if successful.nonEmpty then
-          successful.asRight[CanonicalRejection]
+        if successful.nonEmpty then successful.asRight[CanonicalRejection]
         else if runtime.progress.nextBeforeHeight === BlockHeight.Genesis then
           Vector.empty[Proposal].asRight[CanonicalRejection]
         else
@@ -359,22 +358,19 @@ private final class InMemoryHistoricalBackfillWorker[F[_]: Async](
     writeLock.permit.use: _ =>
       if batch.isEmpty then
         ref.modify: state =>
-          if state.generation =!= generation then
-            state -> false
+          if state.generation =!= generation then state -> false
           else
             val progress = runtime.progress.copy(lastUpdatedAt = currentTime)
             state.copy(
-              status =
-                HistoricalBackfillStatus.Completed(
-                  reason = "genesisReached",
-                  progress = progress,
-                ),
+              status = HistoricalBackfillStatus.Completed(
+                reason = "genesisReached",
+                progress = progress,
+              ),
               runtime = None,
             ) -> false
       else
         ref.get.flatMap: state =>
-          if state.generation =!= generation then
-            false.pure[F]
+          if state.generation =!= generation then false.pure[F]
           else
             archive
               .putAll(
@@ -385,32 +381,34 @@ private final class InMemoryHistoricalBackfillWorker[F[_]: Async](
               )
               .flatMap: storedProposalIds =>
                 ref.modify: latest =>
-                  if latest.generation =!= generation then
-                    latest -> false
+                  if latest.generation =!= generation then latest -> false
                   else
                     batch.lastOption.fold(latest -> false): oldest =>
                       val storedCount = storedProposalIds.size
                       if storedCount <= 0 then
                         latest.copy(
-                          status =
-                            HistoricalBackfillStatus.Failed(
-                              reason = "historicalBackfillDuplicateBatch",
-                              detail = Some(runtime.progress.nextBeforeBlockId.toHexLower),
-                              progress = runtime.progress.copy(lastUpdatedAt = currentTime),
+                          status = HistoricalBackfillStatus.Failed(
+                            reason = "historicalBackfillDuplicateBatch",
+                            detail = Some(
+                              runtime.progress.nextBeforeBlockId.toHexLower,
                             ),
+                            progress =
+                              runtime.progress.copy(lastUpdatedAt = currentTime),
+                          ),
                           runtime = None,
                         ) -> false
                       else if Ordering[BlockHeight].gteq(
-                        oldest.block.height,
-                        runtime.progress.nextBeforeHeight,
-                      ) then
+                          oldest.block.height,
+                          runtime.progress.nextBeforeHeight,
+                        )
+                      then
                         latest.copy(
-                          status =
-                            HistoricalBackfillStatus.Failed(
-                              reason = "historicalBackfillInvalidBatch",
-                              detail = Some(oldest.block.height.render),
-                              progress = runtime.progress.copy(lastUpdatedAt = currentTime),
-                            ),
+                          status = HistoricalBackfillStatus.Failed(
+                            reason = "historicalBackfillInvalidBatch",
+                            detail = Some(oldest.block.height.render),
+                            progress =
+                              runtime.progress.copy(lastUpdatedAt = currentTime),
+                          ),
                           runtime = None,
                         ) -> false
                       else
@@ -422,23 +420,23 @@ private final class InMemoryHistoricalBackfillWorker[F[_]: Async](
                               runtime.progress.fetchedProposalCount + batch.size.toLong,
                             lastUpdatedAt = currentTime,
                           )
-                        if oldest.block.height === BlockHeight.Genesis || oldest.block.parent.isEmpty then
+                        if oldest.block.height === BlockHeight.Genesis || oldest.block.parent.isEmpty
+                        then
                           latest.copy(
-                            status =
-                              HistoricalBackfillStatus.Completed(
-                                reason = "genesisReached",
-                                progress = updatedProgress,
-                              ),
+                            status = HistoricalBackfillStatus.Completed(
+                              reason = "genesisReached",
+                              progress = updatedProgress,
+                            ),
                             runtime = None,
                           ) -> false
                         else
                           latest.copy(
-                            status =
-                              HistoricalBackfillStatus.Running(
-                                progress = updatedProgress,
-                                priority = policy.priority,
-                              ),
-                            runtime = Some(runtime.copy(progress = updatedProgress)),
+                            status = HistoricalBackfillStatus.Running(
+                              progress = updatedProgress,
+                              priority = policy.priority,
+                            ),
+                            runtime =
+                              Some(runtime.copy(progress = updatedProgress)),
                           ) -> true
 
   private def compareProposalDescending(

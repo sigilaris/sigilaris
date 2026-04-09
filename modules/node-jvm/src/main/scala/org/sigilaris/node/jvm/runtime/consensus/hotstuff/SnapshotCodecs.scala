@@ -8,7 +8,14 @@ import org.sigilaris.core.codec.OrderedCodec.orderedByteVector
 import org.sigilaris.core.crypto.Signature
 import org.sigilaris.core.datatype.{BigNat as DataBigNat, UInt256, Utf8}
 import org.sigilaris.core.failure.DecodeFailure
-import org.sigilaris.node.jvm.runtime.block.{BlockHeader, BlockHeight, BlockId, BlockTimestamp, BodyRoot, StateRoot}
+import org.sigilaris.node.jvm.runtime.block.{
+  BlockHeader,
+  BlockHeight,
+  BlockId,
+  BlockTimestamp,
+  BodyRoot,
+  StateRoot,
+}
 import org.sigilaris.node.jvm.runtime.gossip.{ChainId, StableArtifactId}
 
 given ByteDecoder[ChainId] =
@@ -53,7 +60,9 @@ given ByteDecoder[BlockTimestamp] =
     BlockTimestamp.fromEpochMillis(value).left.map(DecodeFailure(_))
 
 given [A: ByteDecoder]: ByteDecoder[Vector[A]] =
-  ByteDecoder[DecoderBigNat].flatMap(ByteDecoder.sizedListDecoder[A]).map(_.toVector)
+  ByteDecoder[DecoderBigNat]
+    .flatMap(ByteDecoder.sizedListDecoder[A])
+    .map(_.toVector)
 
 given ByteDecoder[StableArtifactId] =
   ByteDecoder[scodec.bits.ByteVector].emap: bytes =>
@@ -71,20 +80,22 @@ given ByteDecoder[Signature] =
           )
 
 given ByteDecoder[QuorumCertificateSubject] = ByteDecoder.derived
-given ByteDecoder[Vote] = ByteDecoder.derived
-given ByteDecoder[QuorumCertificate] = ByteDecoder.derived
+given ByteDecoder[Vote]                     = ByteDecoder.derived
+given ByteDecoder[QuorumCertificate]        = ByteDecoder.derived
 given ByteDecoder[ProposalTxSet] =
   val proposalTxIdDecoder =
     ByteDecoder
       .fromFixedSizeBytes[ByteVector](UInt256.Size.toLong)(identity)
-      .emap(bytes => StableArtifactId.fromBytes(bytes).left.map(DecodeFailure(_)))
+      .emap(bytes =>
+        StableArtifactId.fromBytes(bytes).left.map(DecodeFailure(_)),
+      )
   ByteDecoder[DecoderBigNat]
     .flatMap: size =>
       given ByteDecoder[StableArtifactId] = proposalTxIdDecoder
       ByteDecoder.sizedListDecoder[StableArtifactId](size)
     .map(txIds => ProposalTxSet(txIds.toVector))
 given ByteDecoder[BlockHeader] = ByteDecoder.derived
-given ByteDecoder[Proposal] = ByteDecoder.derived
+given ByteDecoder[Proposal]    = ByteDecoder.derived
 
 given ByteEncoder[SnapshotStatus] =
   ByteEncoder[Utf8].contramap:
@@ -97,12 +108,18 @@ given ByteDecoder[SnapshotStatus] =
   ByteDecoder[Utf8].emap: status =>
     val decoded: Either[DecodeFailure, SnapshotStatus] =
       status.asString match
-        case "pending"  => Right[DecodeFailure, SnapshotStatus](SnapshotStatus.Pending)
-        case "syncing"  => Right[DecodeFailure, SnapshotStatus](SnapshotStatus.Syncing)
-        case "complete" => Right[DecodeFailure, SnapshotStatus](SnapshotStatus.Complete)
-        case "failed"   => Right[DecodeFailure, SnapshotStatus](SnapshotStatus.Failed)
+        case "pending" =>
+          Right[DecodeFailure, SnapshotStatus](SnapshotStatus.Pending)
+        case "syncing" =>
+          Right[DecodeFailure, SnapshotStatus](SnapshotStatus.Syncing)
+        case "complete" =>
+          Right[DecodeFailure, SnapshotStatus](SnapshotStatus.Complete)
+        case "failed" =>
+          Right[DecodeFailure, SnapshotStatus](SnapshotStatus.Failed)
         case other =>
-          Left[DecodeFailure, SnapshotStatus](DecodeFailure("unknown snapshot status: " + other))
+          Left[DecodeFailure, SnapshotStatus](
+            DecodeFailure("unknown snapshot status: " + other),
+          )
     decoded
 
 given ByteEncoder[SnapshotAnchor] = ByteEncoder.derived

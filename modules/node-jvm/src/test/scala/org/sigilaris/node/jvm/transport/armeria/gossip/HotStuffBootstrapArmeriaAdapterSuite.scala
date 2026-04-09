@@ -24,24 +24,34 @@ import org.sigilaris.core.crypto.Hash.ops.*
 import org.sigilaris.core.datatype.UInt256
 import org.sigilaris.core.merkle.MerkleTrieNode
 import org.sigilaris.core.merkle.Nibbles.*
-import org.sigilaris.node.jvm.runtime.block.{BlockHeader, BlockHeight, BlockId, BlockTimestamp, BodyRoot, StateRoot}
+import org.sigilaris.node.jvm.runtime.block.{
+  BlockHeader,
+  BlockHeight,
+  BlockId,
+  BlockTimestamp,
+  BodyRoot,
+  StateRoot,
+}
 import org.sigilaris.node.jvm.runtime.consensus.hotstuff.*
 import org.sigilaris.node.jvm.runtime.gossip.*
 import org.sigilaris.node.jvm.runtime.gossip.tx.*
 import org.sigilaris.node.jvm.storage.swaydb.StorageLayout
-import org.sigilaris.node.jvm.transport.armeria.{ArmeriaServer, ArmeriaServerConfig}
+import org.sigilaris.node.jvm.transport.armeria.{
+  ArmeriaServer,
+  ArmeriaServerConfig,
+}
 
 final class HotStuffBootstrapArmeriaAdapterSuite extends CatsEffectSuite:
 
-  private val chainId = ChainId.unsafe("chain-main")
-  private val startedAt = Instant.parse("2026-04-05T09:00:00Z")
+  private val chainId       = ChainId.unsafe("chain-main")
+  private val startedAt     = Instant.parse("2026-04-05T09:00:00Z")
   private val validatorKeys = Vector.fill(4)(CryptoOps.generate())
   private val validatorSet = ValidatorSet.unsafe(
     validatorKeys.zipWithIndex.map: (keyPair, index) =>
       ValidatorMember(
         id = ValidatorId.unsafe(s"validator-${index + 1}"),
         publicKey = keyPair.publicKey,
-      )
+      ),
   )
   private val subscription = SessionSubscription.unsafe(
     ChainTopic(chainId, GossipTopic.consensusProposal),
@@ -50,7 +60,11 @@ final class HotStuffBootstrapArmeriaAdapterSuite extends CatsEffectSuite:
 
   private def storageLayoutResource: Resource[IO, StorageLayout] =
     Resource
-      .make(IO.blocking(Files.createTempDirectory("sigilaris-bootstrap-http-storage"))) { root =>
+      .make(
+        IO.blocking(
+          Files.createTempDirectory("sigilaris-bootstrap-http-storage"),
+        ),
+      ) { root =>
         IO.blocking(deleteRecursively(root))
       }
       .map(StorageLayout.fromRoot)
@@ -124,7 +138,9 @@ final class HotStuffBootstrapArmeriaAdapterSuite extends CatsEffectSuite:
       .toOption
       .get
 
-  test("bootstrap transport serves finalized suggestion, snapshot nodes, replay, and backfill on an open session"):
+  test(
+    "bootstrap transport serves finalized suggestion, snapshot nodes, replay, and backfill on an open session",
+  ):
     (
       for
         client <- Harness.resource(
@@ -141,7 +157,7 @@ final class HotStuffBootstrapArmeriaAdapterSuite extends CatsEffectSuite:
         )
       yield (client, server)
     ).use: (client, server) =>
-      val graph = snapshotGraph("10")
+      val graph   = snapshotGraph("10")
       val history = historicalChain("1f")
       val anchor =
         finalizedSuggestionFromParent(
@@ -152,7 +168,11 @@ final class HotStuffBootstrapArmeriaAdapterSuite extends CatsEffectSuite:
         )
 
       for
-        _ <- server.seedSnapshot(graph.rootNode, graph.leftNode, graph.rightNode)
+        _ <- server.seedSnapshot(
+          graph.rootNode,
+          graph.leftNode,
+          graph.rightNode,
+        )
         _ <- server.seedProposals(
           Vector(
             history.genesis,
@@ -161,11 +181,14 @@ final class HotStuffBootstrapArmeriaAdapterSuite extends CatsEffectSuite:
             anchor.proposal,
             anchor.finalizedProof.child,
             anchor.finalizedProof.grandchild,
-          )
+          ),
         )
         session <- openOutboundViaHttp(client, server)
         transport = bootstrapTransport(server)
-        suggestion <- transport.finalizedAnchorSuggestions.bestFinalized(session, chainId)
+        suggestion <- transport.finalizedAnchorSuggestions.bestFinalized(
+          session,
+          chainId,
+        )
         nodes <- transport.snapshotNodeFetch.fetchNodes(
           session = session,
           chainId = chainId,
@@ -188,14 +211,17 @@ final class HotStuffBootstrapArmeriaAdapterSuite extends CatsEffectSuite:
         )
       yield
         assertEquals(suggestion, Right(Some(anchor)))
-        assertEquals(nodes.map(_.map(_.hash).toSet), Right(Set(graph.rootHash, graph.leftHash, graph.rightHash)))
+        assertEquals(
+          nodes.map(_.map(_.hash).toSet),
+          Right(Set(graph.rootHash, graph.leftHash, graph.rightHash)),
+        )
         assertEquals(
           replay.map(_.map(_.proposalId)),
           Right(
             Vector(
               anchor.finalizedProof.child.proposalId,
               anchor.finalizedProof.grandchild.proposalId,
-            )
+            ),
           ),
         )
         assertEquals(
@@ -205,11 +231,13 @@ final class HotStuffBootstrapArmeriaAdapterSuite extends CatsEffectSuite:
               history.proposal2.proposalId,
               history.proposal1.proposalId,
               history.genesis.proposalId,
-            )
+            ),
           ),
         )
 
-  test("bootstrap transport rejects requests after the parent session is disconnected"):
+  test(
+    "bootstrap transport rejects requests after the parent session is disconnected",
+  ):
     (
       for
         client <- Harness.resource(
@@ -235,28 +263,30 @@ final class HotStuffBootstrapArmeriaAdapterSuite extends CatsEffectSuite:
         )
 
       for
-        _ <- server.seedSnapshot(graph.rootNode, graph.leftNode, graph.rightNode)
+        _ <- server.seedSnapshot(
+          graph.rootNode,
+          graph.leftNode,
+          graph.rightNode,
+        )
         _ <- server.seedProposals(
           Vector(
             anchor.proposal,
             anchor.finalizedProof.child,
             anchor.finalizedProof.grandchild,
-          )
+          ),
         )
         session <- openOutboundViaHttp(client, server)
         _ <- server.postNoBody(
           s"/gossip/session/${session.sessionId.value}/disconnect",
           authenticatedPeer = Some(client.localNodeId),
         )
-        result <- bootstrapTransport(server)
-          .finalizedAnchorSuggestions
+        result <- bootstrapTransport(server).finalizedAnchorSuggestions
           .bestFinalized(session, chainId)
-      yield
-        result match
-          case Left(rejection: CanonicalRejection.HandshakeRejected) =>
-            assertEquals(rejection.reason, "sessionNotOpen")
-          case other =>
-            fail("expected handshake rejection but saw " + other.toString)
+      yield result match
+        case Left(rejection: CanonicalRejection.HandshakeRejected) =>
+          assertEquals(rejection.reason, "sessionNotOpen")
+        case other =>
+          fail("expected handshake rejection but saw " + other.toString)
 
   test("bootstrap endpoints require a session-bound capability header"):
     (
@@ -285,7 +315,9 @@ final class HotStuffBootstrapArmeriaAdapterSuite extends CatsEffectSuite:
           bootstrapCapability = None,
         )
         missingRejection <- IO.fromEither(
-          decode[RejectionWire](missingResponse.body).leftMap(new IllegalStateException(_))
+          decode[RejectionWire](missingResponse.body).leftMap(
+            new IllegalStateException(_),
+          ),
         )
         mismatchedResponse <- server.postNoBody(
           requestPath,
@@ -302,7 +334,8 @@ final class HotStuffBootstrapArmeriaAdapterSuite extends CatsEffectSuite:
           ),
         )
         mismatchedRejection <- IO.fromEither(
-          decode[RejectionWire](mismatchedResponse.body).leftMap(new IllegalStateException(_))
+          decode[RejectionWire](mismatchedResponse.body)
+            .leftMap(new IllegalStateException(_)),
         )
       yield
         assertEquals(missingResponse.status, 400)
@@ -310,10 +343,12 @@ final class HotStuffBootstrapArmeriaAdapterSuite extends CatsEffectSuite:
         assertEquals(mismatchedResponse.status, 400)
         assertEquals(mismatchedRejection.reason, "bootstrapCapabilityMismatch")
 
-  test("assembled runtime bootstrap can sync a snapshot from remote HTTP bootstrap peers"):
+  test(
+    "assembled runtime bootstrap can sync a snapshot from remote HTTP bootstrap peers",
+  ):
     (
       for
-        requesterClock <- Resource.eval(TestClock.create(startedAt))
+        requesterClock  <- Resource.eval(TestClock.create(startedAt))
         requesterLayout <- storageLayoutResource
         serverB <- Harness.resource(
           startedAt,
@@ -352,7 +387,7 @@ final class HotStuffBootstrapArmeriaAdapterSuite extends CatsEffectSuite:
               knownPeers = List("node-b", "node-c"),
               directNeighbors = List("node-b", "node-c"),
             )
-            .leftMap(new IllegalArgumentException(_))
+            .leftMap(new IllegalArgumentException(_)),
         )
         _ <- serverB.seedSnapshot(graph.rootNode, graph.leftNode)
         _ <- serverC.seedSnapshot(graph.rightNode)
@@ -361,14 +396,14 @@ final class HotStuffBootstrapArmeriaAdapterSuite extends CatsEffectSuite:
             anchor.proposal,
             anchor.finalizedProof.child,
             anchor.finalizedProof.grandchild,
-          )
+          ),
         )
         _ <- serverC.seedProposals(
           Vector(
             anchor.proposal,
             anchor.finalizedProof.child,
             anchor.finalizedProof.grandchild,
-          )
+          ),
         )
         bootstrapResult <- HotStuffRuntimeBootstrap
           .fromTopology[IO](
@@ -386,7 +421,7 @@ final class HotStuffBootstrapArmeriaAdapterSuite extends CatsEffectSuite:
                 transportAuth = StaticPeerTransportAuth.testing(topology),
                 proposalCatchUpReadiness =
                   Some(ProposalCatchUpReadiness.ready[IO]),
-              )
+              ),
             ),
           )
           .use: requesterEither =>
@@ -403,38 +438,53 @@ final class HotStuffBootstrapArmeriaAdapterSuite extends CatsEffectSuite:
                 liveProposals = Vector.empty,
               )
               diagnostics <- requester.consensus.currentBootstrapDiagnostics
-              storedRoot <- IO.fromOption(
-                requester.consensus.bootstrapLifecycle.flatMap(_.nodeStore.some),
-              )(new IllegalStateException("missingBootstrapLifecycle"))
+              storedRoot <- IO
+                .fromOption(
+                  requester.consensus.bootstrapLifecycle
+                    .flatMap(_.nodeStore.some),
+                )(new IllegalStateException("missingBootstrapLifecycle"))
                 .flatMap(_.get(graph.rootHash))
-              storedLeft <- IO.fromOption(
-                requester.consensus.bootstrapLifecycle.flatMap(_.nodeStore.some),
-              )(new IllegalStateException("missingBootstrapLifecycle"))
+              storedLeft <- IO
+                .fromOption(
+                  requester.consensus.bootstrapLifecycle
+                    .flatMap(_.nodeStore.some),
+                )(new IllegalStateException("missingBootstrapLifecycle"))
                 .flatMap(_.get(graph.leftHash))
-              storedRight <- IO.fromOption(
-                requester.consensus.bootstrapLifecycle.flatMap(_.nodeStore.some),
-              )(new IllegalStateException("missingBootstrapLifecycle"))
+              storedRight <- IO
+                .fromOption(
+                  requester.consensus.bootstrapLifecycle
+                    .flatMap(_.nodeStore.some),
+                )(new IllegalStateException("missingBootstrapLifecycle"))
                 .flatMap(_.get(graph.rightHash))
             yield (result, diagnostics, storedRoot, storedLeft, storedRight)
       yield
-        val (result, diagnostics, storedRoot, storedLeft, storedRight) = bootstrapResult
+        val (result, diagnostics, storedRoot, storedLeft, storedRight) =
+          bootstrapResult
         assertEquals(result.map(_.anchor), Right(anchor))
-        assertEquals(result.map(_.snapshot.metadata.status), Right(SnapshotStatus.Complete))
+        assertEquals(
+          result.map(_.snapshot.metadata.status),
+          Right(SnapshotStatus.Complete),
+        )
         assertEquals(result.map(_.snapshot.fetchedNodeCount), Right(3L))
         assertEquals(
           result.map(_.forwardCatchUp.voteReadiness),
           Right(BootstrapVoteReadiness.Ready),
         )
         assertEquals(diagnostics.phase, BootstrapPhase.Ready)
-        assertEquals(diagnostics.chains(chainId).pinnedAnchor, Some(anchor.snapshotAnchor))
+        assertEquals(
+          diagnostics.chains(chainId).pinnedAnchor,
+          Some(anchor.snapshotAnchor),
+        )
         assertEquals(storedRoot, Some(graph.rootNode.node))
         assertEquals(storedLeft, Some(graph.leftNode.node))
         assertEquals(storedRight, Some(graph.rightNode.node))
 
-  test("runtime with remote bootstrap transport still serves bootstrap endpoints from local state"):
+  test(
+    "runtime with remote bootstrap transport still serves bootstrap endpoints from local state",
+  ):
     (
       for
-        requesterClock <- Resource.eval(TestClock.create(startedAt))
+        requesterClock  <- Resource.eval(TestClock.create(startedAt))
         requesterLayout <- storageLayoutResource
         remote <- Harness.resource(
           startedAt,
@@ -480,15 +530,19 @@ final class HotStuffBootstrapArmeriaAdapterSuite extends CatsEffectSuite:
               knownPeers = List("node-b", "node-c"),
               directNeighbors = List("node-b", "node-c"),
             )
-            .leftMap(new IllegalArgumentException(_))
+            .leftMap(new IllegalArgumentException(_)),
         )
-        _ <- remote.seedSnapshot(remoteGraph.rootNode, remoteGraph.leftNode, remoteGraph.rightNode)
+        _ <- remote.seedSnapshot(
+          remoteGraph.rootNode,
+          remoteGraph.leftNode,
+          remoteGraph.rightNode,
+        )
         _ <- remote.seedProposals(
           Vector(
             remoteAnchor.proposal,
             remoteAnchor.finalizedProof.child,
             remoteAnchor.finalizedProof.grandchild,
-          )
+          ),
         )
         response <- HotStuffRuntimeBootstrap
           .fromTopology[IO](
@@ -501,7 +555,7 @@ final class HotStuffBootstrapArmeriaAdapterSuite extends CatsEffectSuite:
               HotStuffBootstrapHttpTransport.services[IO](
                 Map(PeerIdentity.unsafe("node-b") -> remote.baseUri),
                 transportAuth = StaticPeerTransportAuth.testing(topology),
-              )
+              ),
             ),
           )
           .use: requesterEither =>
@@ -516,31 +570,48 @@ final class HotStuffBootstrapArmeriaAdapterSuite extends CatsEffectSuite:
                   localAnchor.finalizedProof.child,
                   localAnchor.finalizedProof.grandchild,
                 ),
-                snapshotNodes =
-                  Vector(localGraph.rootNode, localGraph.leftNode, localGraph.rightNode),
+                snapshotNodes = Vector(
+                  localGraph.rootNode,
+                  localGraph.leftNode,
+                  localGraph.rightNode,
+                ),
               )
-              response <- RuntimeServer.resource(requester).use: requesterServer =>
-                for
-                  session <- openOutboundViaHttp(client.runtime, requesterServer)
-                  transport =
-                    HotStuffBootstrapHttpTransport.services[IO](
-                      Map(PeerIdentity.unsafe("node-a") -> requesterServer.baseUri),
-                      transportAuth = requesterServer.transportAuth,
+              response <- RuntimeServer
+                .resource(requester)
+                .use: requesterServer =>
+                  for
+                    session <- openOutboundViaHttp(
+                      client.runtime,
+                      requesterServer,
                     )
-                  suggestion <- transport.finalizedAnchorSuggestions.bestFinalized(session, chainId)
-                  nodes <- transport.snapshotNodeFetch.fetchNodes(
-                    session = session,
-                    chainId = chainId,
-                    stateRoot = localAnchor.stateRoot,
-                    hashes = Vector(localGraph.rootHash),
-                  )
-                yield suggestion -> nodes
+                    transport =
+                      HotStuffBootstrapHttpTransport.services[IO](
+                        Map(
+                          PeerIdentity
+                            .unsafe("node-a") -> requesterServer.baseUri,
+                        ),
+                        transportAuth = requesterServer.transportAuth,
+                      )
+                    suggestion <- transport.finalizedAnchorSuggestions
+                      .bestFinalized(session, chainId)
+                    nodes <- transport.snapshotNodeFetch.fetchNodes(
+                      session = session,
+                      chainId = chainId,
+                      stateRoot = localAnchor.stateRoot,
+                      hashes = Vector(localGraph.rootHash),
+                    )
+                  yield suggestion -> nodes
             yield response
       yield
         assertEquals(response._1, Right(Some(localAnchor)))
-        assertEquals(response._2.map(_.map(_.hash)), Right(Vector(localGraph.rootHash)))
+        assertEquals(
+          response._2.map(_.map(_.hash)),
+          Right(Vector(localGraph.rootHash)),
+        )
 
-  test("bootstrap http transport applies explicit request timeouts to outbound requests"):
+  test(
+    "bootstrap http transport applies explicit request timeouts to outbound requests",
+  ):
     val httpClient = RecordingHttpClient()
     httpClient.respondImmediately(
       200,
@@ -549,16 +620,14 @@ final class HotStuffBootstrapArmeriaAdapterSuite extends CatsEffectSuite:
     val session =
       BootstrapSessionBinding(
         peer = PeerIdentity.unsafe("node-b"),
-        sessionId =
-          DirectionalSessionId
-            .parse("aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa")
-            .toOption
-            .get,
+        sessionId = DirectionalSessionId
+          .parse("aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa")
+          .toOption
+          .get,
         authenticatedPeer = PeerIdentity.unsafe("node-a"),
       )
 
-    for
-      result <- HotStuffBootstrapHttpTransport
+    for result <- HotStuffBootstrapHttpTransport
         .services[IO](
           peerBaseUris = Map(session.peer -> "http://bootstrap.test"),
           transportAuth = transportAuthFor(
@@ -577,11 +646,15 @@ final class HotStuffBootstrapArmeriaAdapterSuite extends CatsEffectSuite:
         Vector(Some(Duration.ofMillis(250L))),
       )
       assertEquals(
-        httpClient.recordedHeaderValues(GossipTransportAuth.AuthenticatedPeerHeaderName),
+        httpClient.recordedHeaderValues(
+          GossipTransportAuth.AuthenticatedPeerHeaderName,
+        ),
         Vector(Some("node-a")),
       )
       assertEquals(
-        httpClient.recordedHeaderValues(GossipTransportAuth.BootstrapCapabilityHeaderName),
+        httpClient.recordedHeaderValues(
+          GossipTransportAuth.BootstrapCapabilityHeaderName,
+        ),
         Vector(
           Some(
             bootstrapCapability(
@@ -593,7 +666,7 @@ final class HotStuffBootstrapArmeriaAdapterSuite extends CatsEffectSuite:
                 s"/gossip/bootstrap/finalized/${session.sessionId.value}/${chainId.value}",
               body = "",
             ),
-          )
+          ),
         ),
       )
 
@@ -602,44 +675,46 @@ final class HotStuffBootstrapArmeriaAdapterSuite extends CatsEffectSuite:
     val session =
       BootstrapSessionBinding(
         peer = PeerIdentity.unsafe("node-b"),
-        sessionId =
-          DirectionalSessionId
-            .parse("bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb")
-            .toOption
-            .get,
+        sessionId = DirectionalSessionId
+          .parse("bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb")
+          .toOption
+          .get,
         authenticatedPeer = PeerIdentity.unsafe("node-a"),
       )
     val transport =
       HotStuffBootstrapHttpTransport.services[IO](
         peerBaseUris = Map(session.peer -> "http://bootstrap.test"),
-        transportAuth =
-          transportAuthFor(
-            localNodeId = session.authenticatedPeer.value,
-            knownPeers = List(session.peer.value),
-          ),
+        transportAuth = transportAuthFor(
+          localNodeId = session.authenticatedPeer.value,
+          knownPeers = List(session.peer.value),
+        ),
         httpClient = httpClient,
         maxConcurrentRequests = 1,
       )
 
     for
-      fiber1 <- transport.finalizedAnchorSuggestions.bestFinalized(session, chainId).start
+      fiber1 <- transport.finalizedAnchorSuggestions
+        .bestFinalized(session, chainId)
+        .start
       _ <- IO.blocking(httpClient.awaitStartedCount(1))
-      fiber2 <- transport.finalizedAnchorSuggestions.bestFinalized(session, chainId).start
-      _ <- IO.sleep(100.millis)
-      startedBeforeRelease <- IO(httpClient.startedCount)
+      fiber2 <- transport.finalizedAnchorSuggestions
+        .bestFinalized(session, chainId)
+        .start
+      _                      <- IO.sleep(100.millis)
+      startedBeforeRelease   <- IO(httpClient.startedCount)
       maxActiveBeforeRelease <- IO(httpClient.maxActiveCount)
       _ <- IO.blocking(
         httpClient.completeNext(
           200,
           FinalizedSuggestionResponseWire(None).asJson.noSpaces,
-        )
+        ),
       )
       _ <- IO.blocking(httpClient.awaitStartedCount(2))
       _ <- IO.blocking(
         httpClient.completeNext(
           200,
           FinalizedSuggestionResponseWire(None).asJson.noSpaces,
-        )
+        ),
       )
       result1 <- fiber1.joinWithNever
       result2 <- fiber2.joinWithNever
@@ -674,7 +749,9 @@ final class HotStuffBootstrapArmeriaAdapterSuite extends CatsEffectSuite:
         subscription,
       )
       proposal <- IO.fromEither(
-        proposalEither.leftMap(rejection => new IllegalStateException(rejection.reason))
+        proposalEither.leftMap(rejection =>
+          new IllegalStateException(rejection.reason),
+        ),
       )
       response <- to.postJson(
         "/gossip/session/open",
@@ -682,17 +759,24 @@ final class HotStuffBootstrapArmeriaAdapterSuite extends CatsEffectSuite:
         authenticatedPeer = Some(proposal.initiator.value),
       )
       ackWire <- IO.fromEither(
-        decode[SessionOpenAckWire](response.body).leftMap(new IllegalStateException(_))
+        decode[SessionOpenAckWire](response.body).leftMap(
+          new IllegalStateException(_),
+        ),
       )
-      ack <- IO.fromEither(toAck(ackWire).leftMap(new IllegalArgumentException(_)))
+      ack <- IO.fromEither(
+        toAck(ackWire).leftMap(new IllegalArgumentException(_)),
+      )
       applied <- from.applyHandshakeAck(ack)
-      _ <- IO.fromEither(applied.leftMap(rejection => new IllegalStateException(rejection.reason)))
-    yield
-      BootstrapSessionBinding(
-        peer = PeerIdentity.unsafe(to.localNodeId),
-        sessionId = proposal.sessionId,
-        authenticatedPeer = proposal.initiator,
+      _ <- IO.fromEither(
+        applied.leftMap(rejection =>
+          new IllegalStateException(rejection.reason),
+        ),
       )
+    yield BootstrapSessionBinding(
+      peer = PeerIdentity.unsafe(to.localNodeId),
+      sessionId = proposal.sessionId,
+      authenticatedPeer = proposal.initiator,
+    )
 
   private def openOutboundViaHttp(
       from: TxGossipRuntime[IO, HotStuffGossipArtifact],
@@ -704,7 +788,9 @@ final class HotStuffBootstrapArmeriaAdapterSuite extends CatsEffectSuite:
         subscription,
       )
       proposal <- IO.fromEither(
-        proposalEither.leftMap(rejection => new IllegalStateException(rejection.reason))
+        proposalEither.leftMap(rejection =>
+          new IllegalStateException(rejection.reason),
+        ),
       )
       response <- to.postJson(
         "/gossip/session/open",
@@ -712,17 +798,24 @@ final class HotStuffBootstrapArmeriaAdapterSuite extends CatsEffectSuite:
         authenticatedPeer = Some(proposal.initiator.value),
       )
       ackWire <- IO.fromEither(
-        decode[SessionOpenAckWire](response.body).leftMap(new IllegalStateException(_))
+        decode[SessionOpenAckWire](response.body).leftMap(
+          new IllegalStateException(_),
+        ),
       )
-      ack <- IO.fromEither(toAck(ackWire).leftMap(new IllegalArgumentException(_)))
+      ack <- IO.fromEither(
+        toAck(ackWire).leftMap(new IllegalArgumentException(_)),
+      )
       applied <- from.applyHandshakeAck(ack)
-      _ <- IO.fromEither(applied.leftMap(rejection => new IllegalStateException(rejection.reason)))
-    yield
-      BootstrapSessionBinding(
-        peer = PeerIdentity.unsafe(to.localNodeId),
-        sessionId = proposal.sessionId,
-        authenticatedPeer = proposal.initiator,
+      _ <- IO.fromEither(
+        applied.leftMap(rejection =>
+          new IllegalStateException(rejection.reason),
+        ),
       )
+    yield BootstrapSessionBinding(
+      peer = PeerIdentity.unsafe(to.localNodeId),
+      sessionId = proposal.sessionId,
+      authenticatedPeer = proposal.initiator,
+    )
 
   private def toProposalWire(
       proposal: SessionOpenProposal,
@@ -732,25 +825,28 @@ final class HotStuffBootstrapArmeriaAdapterSuite extends CatsEffectSuite:
       peerCorrelationId = proposal.peerCorrelationId.value,
       initiator = proposal.initiator.value,
       acceptor = proposal.acceptor.value,
-      subscriptions = proposal.subscriptions.values.toVector.map(ct => ChainTopicWire(ct.chainId.value, ct.topic.value)),
+      subscriptions = proposal.subscriptions.values.toVector.map(ct =>
+        ChainTopicWire(ct.chainId.value, ct.topic.value),
+      ),
       heartbeatIntervalMs = proposal.heartbeatInterval.map(_.toMillis),
       livenessTimeoutMs = proposal.livenessTimeout.map(_.toMillis),
-      maxControlRetryIntervalMs = proposal.maxControlRetryInterval.map(_.toMillis),
+      maxControlRetryIntervalMs =
+        proposal.maxControlRetryInterval.map(_.toMillis),
     )
 
   private def toAck(
       wire: SessionOpenAckWire,
   ): Either[String, SessionOpenAck] =
     for
-      sessionId <- DirectionalSessionId.parse(wire.sessionId)
+      sessionId         <- DirectionalSessionId.parse(wire.sessionId)
       peerCorrelationId <- PeerCorrelationId.parse(wire.peerCorrelationId)
-      initiator <- PeerIdentity.parse(wire.initiator)
-      acceptor <- PeerIdentity.parse(wire.acceptor)
+      initiator         <- PeerIdentity.parse(wire.initiator)
+      acceptor          <- PeerIdentity.parse(wire.acceptor)
       subscriptions <- wire.subscriptions.toVector
         .traverse: entry =>
           for
             chainId <- ChainId.parse(entry.chainId)
-            topic <- GossipTopic.parse(entry.topic)
+            topic   <- GossipTopic.parse(entry.topic)
           yield ChainTopic(chainId, topic)
         .map(_.toSet)
         .flatMap(SessionSubscription.fromSet)
@@ -763,7 +859,8 @@ final class HotStuffBootstrapArmeriaAdapterSuite extends CatsEffectSuite:
       negotiated = NegotiatedSessionParameters(
         heartbeatInterval = Duration.ofMillis(wire.heartbeatIntervalMs),
         livenessTimeout = Duration.ofMillis(wire.livenessTimeoutMs),
-        maxControlRetryInterval = Duration.ofMillis(wire.maxControlRetryIntervalMs),
+        maxControlRetryInterval =
+          Duration.ofMillis(wire.maxControlRetryIntervalMs),
       ),
     )
 
@@ -780,7 +877,7 @@ final class HotStuffBootstrapArmeriaAdapterSuite extends CatsEffectSuite:
         ByteVector.empty.toNibbles,
         ByteVector.fromHexDescriptive(seed + "bb").toOption.get,
       )
-    val leftHash = leftLeaf.toHash
+    val leftHash  = leftLeaf.toHash
     val rightHash = rightLeaf.toHash
     val children =
       MerkleTrieNode.Children.empty
@@ -809,7 +906,8 @@ final class HotStuffBootstrapArmeriaAdapterSuite extends CatsEffectSuite:
   ): FinalizedAnchorSuggestion =
     val baseHeight = anchorHeight - 1L
     val bootstrapSubject = QuorumCertificateSubject(
-      window = HotStuffWindow(chainId, baseHeight, baseHeight, validatorSet.hash),
+      window =
+        HotStuffWindow(chainId, baseHeight, baseHeight, validatorSet.hash),
       proposalId = ProposalId(hex(seed + "01")),
       blockId = BlockId(hex(seed + "02")),
     )
@@ -833,7 +931,12 @@ final class HotStuffBootstrapArmeriaAdapterSuite extends CatsEffectSuite:
       Proposal
         .sign(
           UnsignedProposal(
-            window = HotStuffWindow(chainId, anchorHeight, anchorHeight, validatorSet.hash),
+            window = HotStuffWindow(
+              chainId,
+              anchorHeight,
+              anchorHeight,
+              validatorSet.hash,
+            ),
             proposer = validatorSet.members.head.id,
             targetBlockId = BlockHeader.computeId(anchorBlock),
             block = anchorBlock,
@@ -886,7 +989,7 @@ final class HotStuffBootstrapArmeriaAdapterSuite extends CatsEffectSuite:
   private def historicalChain(
       seed: String,
   ): HistoricalChain =
-    val genesis = genesisProposal(seed + "00")
+    val genesis   = genesisProposal(seed + "00")
     val proposal1 = childProposal(genesis, seed + "10", 1L)
     val proposal2 = childProposal(proposal1, seed + "20", 2L)
     HistoricalChain(
@@ -995,18 +1098,21 @@ final class HotStuffBootstrapArmeriaAdapterSuite extends CatsEffectSuite:
       window: HotStuffWindow,
       proposalId: ProposalId,
   ): Vector[Vote] =
-    validatorSet.members.take(3).zipWithIndex.map: (member, index) =>
-      Vote
-        .sign(
-          UnsignedVote(
-            window = window,
-            voter = member.id,
-            targetProposalId = proposalId,
-          ),
-          validatorKeys(index),
-        )
-        .toOption
-        .get
+    validatorSet.members
+      .take(3)
+      .zipWithIndex
+      .map: (member, index) =>
+        Vote
+          .sign(
+            UnsignedVote(
+              window = window,
+              voter = member.id,
+              targetProposalId = proposalId,
+            ),
+            validatorKeys(index),
+          )
+          .toOption
+          .get
 
   private def block(
       parent: Option[BlockId],
@@ -1102,7 +1208,8 @@ final class HotStuffBootstrapArmeriaAdapterSuite extends CatsEffectSuite:
           builder
             .POST(HttpRequest.BodyPublishers.ofString(body))
             .build()
-        val response = client.send(request, HttpResponse.BodyHandlers.ofString())
+        val response =
+          client.send(request, HttpResponse.BodyHandlers.ofString())
         Response(response.statusCode(), response.body())
 
     def postNoBody(
@@ -1147,7 +1254,8 @@ final class HotStuffBootstrapArmeriaAdapterSuite extends CatsEffectSuite:
           builder
             .POST(HttpRequest.BodyPublishers.noBody())
             .build()
-        val response = client.send(request, HttpResponse.BodyHandlers.ofString())
+        val response =
+          client.send(request, HttpResponse.BodyHandlers.ofString())
         Response(response.statusCode(), response.body())
 
     def seedProposals(
@@ -1160,15 +1268,17 @@ final class HotStuffBootstrapArmeriaAdapterSuite extends CatsEffectSuite:
             startedAt.plusSeconds(index.toLong),
           )
           .flatMap: event =>
-            sink.applyEvent(event).flatMap:
-              case Left(rejection) =>
-                IO.raiseError(new IllegalStateException(rejection.reason))
-              case Right(_) =>
-                IO.unit
+            sink
+              .applyEvent(event)
+              .flatMap:
+                case Left(rejection) =>
+                  IO.raiseError(new IllegalStateException(rejection.reason))
+                case Right(_) =>
+                  IO.unit
       }
 
     def seedSnapshot(
-        nodes: SnapshotTrieNode*
+        nodes: SnapshotTrieNode*,
     ): IO[Unit] =
       nodeStore.putAll(nodes.toVector)
 
@@ -1188,10 +1298,10 @@ final class HotStuffBootstrapArmeriaAdapterSuite extends CatsEffectSuite:
                 knownPeers = knownPeers,
                 directNeighbors = directNeighbors,
               )
-              .leftMap(new IllegalArgumentException(_))
-          )
+              .leftMap(new IllegalArgumentException(_)),
+          ),
         )
-        registry = StaticPeerRegistry(topology)
+        registry      = StaticPeerRegistry(topology)
         transportAuth = StaticPeerTransportAuth.testing(topology)
         authenticator = StaticPeerAuthenticator[IO](registry)
         clock <- Resource.eval(TestClock.create(start))
@@ -1202,12 +1312,12 @@ final class HotStuffBootstrapArmeriaAdapterSuite extends CatsEffectSuite:
             validatorSet = validatorSet,
             relayPolicy = HotStuffRelayPolicy(relayValidatedArtifacts = false),
             relayPublisher = source,
-          )
+          ),
         )
         stateStore <- Resource.eval(
           TxGossipStateStore.inMemory[IO](
             GossipSessionEngine(registry.localPeer, topology),
-          )
+          ),
         )
         nodeStore <- Resource.eval(SnapshotNodeStore.inMemory[IO])
         runtime = TxGossipRuntime.default[IO, HotStuffGossipArtifact](
@@ -1223,16 +1333,19 @@ final class HotStuffBootstrapArmeriaAdapterSuite extends CatsEffectSuite:
             validatorSet = validatorSet,
             sink = sink,
             snapshotNodeStore = nodeStore.some,
-            diagnostics = BootstrapDiagnosticsSource.const[IO](BootstrapDiagnostics.empty),
+            diagnostics =
+              BootstrapDiagnosticsSource.const[IO](BootstrapDiagnostics.empty),
           )
         server <- ArmeriaServer.resource[IO](
           ArmeriaServerConfig(port = 0),
-          TxGossipArmeriaAdapter.endpoints[IO, HotStuffGossipArtifact](runtime, transportAuth) ++
-            HotStuffBootstrapArmeriaAdapter.endpoints[IO, HotStuffGossipArtifact](
-              sessionRuntime = runtime,
-              bootstrapServices = bootstrapServices,
-              transportAuth = transportAuth,
-            ),
+          TxGossipArmeriaAdapter
+            .endpoints[IO, HotStuffGossipArtifact](runtime, transportAuth) ++
+            HotStuffBootstrapArmeriaAdapter
+              .endpoints[IO, HotStuffGossipArtifact](
+                sessionRuntime = runtime,
+                bootstrapServices = bootstrapServices,
+                transportAuth = transportAuth,
+              ),
         )
       yield Harness(
         localNodeId = localNodeId,
@@ -1293,7 +1406,8 @@ final class HotStuffBootstrapArmeriaAdapterSuite extends CatsEffectSuite:
           builder
             .POST(HttpRequest.BodyPublishers.ofString(body))
             .build()
-        val response = client.send(request, HttpResponse.BodyHandlers.ofString())
+        val response =
+          client.send(request, HttpResponse.BodyHandlers.ofString())
         Response(response.statusCode(), response.body())
 
   private object RuntimeServer:
@@ -1335,14 +1449,17 @@ final class HotStuffBootstrapArmeriaAdapterSuite extends CatsEffectSuite:
             startedAt.plusSeconds(index.toLong),
           )
           .flatMap: event =>
-            sink.applyEvent(event).flatMap:
-              case Left(rejection) =>
-                IO.raiseError(new IllegalStateException(rejection.reason))
-              case Right(_) =>
-                IO.unit
+            sink
+              .applyEvent(event)
+              .flatMap:
+                case Left(rejection) =>
+                  IO.raiseError(new IllegalStateException(rejection.reason))
+                case Right(_) =>
+                  IO.unit
       } *> lifecycle.nodeStore.putAll(snapshotNodes)
 
-  private final class TestClock private (ref: Ref[IO, Instant]) extends GossipClock[IO]:
+  private final class TestClock private (ref: Ref[IO, Instant])
+      extends GossipClock[IO]:
     override def now: IO[Instant] =
       ref.get
 
@@ -1357,7 +1474,7 @@ final class HotStuffBootstrapArmeriaAdapterSuite extends CatsEffectSuite:
       new java.util.concurrent.CopyOnWriteArrayList[HttpRequest]()
     private val pendingResponses =
       new java.util.concurrent.LinkedBlockingQueue[
-        CompletableFuture[HttpResponse[String]]
+        CompletableFuture[HttpResponse[String]],
       ]()
     private val startedRef =
       new java.util.concurrent.atomic.AtomicInteger(0)
@@ -1367,7 +1484,7 @@ final class HotStuffBootstrapArmeriaAdapterSuite extends CatsEffectSuite:
       new java.util.concurrent.atomic.AtomicInteger(0)
     private val immediateResponseRef =
       new java.util.concurrent.atomic.AtomicReference[
-        Option[(Int, String)]
+        Option[(Int, String)],
       ](None)
 
     def respondImmediately(
@@ -1483,7 +1600,7 @@ final class HotStuffBootstrapArmeriaAdapterSuite extends CatsEffectSuite:
             pendingResponses.put(pending)
             pending
       future.whenComplete((_: HttpResponse[String], _: Throwable) =>
-        activeRef.decrementAndGet(): Unit
+        activeRef.decrementAndGet(): Unit,
       )
       future
 

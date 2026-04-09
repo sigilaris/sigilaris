@@ -26,5 +26,3 @@ final class CirceJsonOpsSuite extends FunSuite:
     res match
       case Left(_: org.sigilaris.core.failure.ParseFailure) => assert(true)
       case other => fail("expected ParseFailure, got: " + other)
-
-

@@ -25,7 +25,8 @@ final case class TxEnvelope(
     networkId: NetworkId,
     createdAt: Instant,
     memo: Option[Utf8],
-) derives ByteEncoder, ByteDecoder
+) derives ByteEncoder,
+      ByteDecoder
 
 object TxEnvelope:
   given Eq[TxEnvelope] = Eq.fromUniversalEquals

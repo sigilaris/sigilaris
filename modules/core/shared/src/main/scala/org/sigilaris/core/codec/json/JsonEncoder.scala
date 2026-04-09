@@ -19,38 +19,48 @@ import util.SafeStringInterp.*
   * products and sums when appropriate givens are in scope.
   *
   * @example
-  * ```scala
-  * case class User(name: String, age: Int) derives JsonEncoder
-  * val user = User("Alice", 30)
-  * val json = JsonEncoder[User].encode(user)
-  * ```
+  *   ```scala
+  *   case class User(name: String, age: Int) derives JsonEncoder
+  *   val user = User("Alice", 30)
+  *   val json = JsonEncoder[User].encode(user)
+  *   ```
   *
-  * @note Encoding is deterministic: the same value always produces the same JSON structure.
-  *       However, object field order may vary. Use sorted encoding if field order matters.
+  * @note
+  *   Encoding is deterministic: the same value always produces the same JSON
+  *   structure. However, object field order may vary. Use sorted encoding if
+  *   field order matters.
   *
-  * @see [[JsonDecoder]] for the inverse operation
-  * @see [[JsonCodec]] for bidirectional encoding and decoding
-  * @see [[JsonConfig]] for configuration options
+  * @see
+  *   [[JsonDecoder]] for the inverse operation
+  * @see
+  *   [[JsonCodec]] for bidirectional encoding and decoding
+  * @see
+  *   [[JsonConfig]] for configuration options
   */
 trait JsonEncoder[A]:
   self =>
+
   /** Encodes a Scala value to a JSON value.
     *
-    * @param value the value to encode
-    * @return the JSON representation
+    * @param value
+    *   the value to encode
+    * @return
+    *   the JSON representation
     */
   def encode(value: A): JsonValue
 
   /** Creates a new encoder by applying a function before encoding.
     *
-    * @param f the preprocessing function
-    * @return a new encoder for type B
+    * @param f
+    *   the preprocessing function
+    * @return
+    *   a new encoder for type B
     *
     * @example
-    * ```scala
-    * val intEncoder: JsonEncoder[Int] = JsonEncoder[Int]
-    * val lengthEncoder: JsonEncoder[String] = intEncoder.contramap(_.length)
-    * ```
+    *   ```scala
+    *   val intEncoder: JsonEncoder[Int]       = JsonEncoder[Int]
+    *   val lengthEncoder: JsonEncoder[String] = intEncoder.contramap(_.length)
+    *   ```
     */
   def contramap[B](f: B => A): JsonEncoder[B] = new JsonEncoder[B]:
     def encode(value: B): JsonValue =
@@ -85,7 +95,8 @@ trait JsonEncoderInstances:
     p match
       case FieldNamingPolicy.Identity => name
       case FieldNamingPolicy.CamelCase =>
-        if name.isEmpty then name else ss"${name.head.toLower.toString}${name.tail}"
+        if name.isEmpty then name
+        else ss"${name.head.toLower.toString}${name.tail}"
       case FieldNamingPolicy.SnakeCase =>
         name.replaceAll("([a-z0-9])([A-Z])", "$1_$2").toLowerCase(Locale.ROOT)
       case FieldNamingPolicy.KebabCase =>
@@ -204,7 +215,7 @@ object JsonEncoder extends JsonEncoderInstances:
     * ```scala
     * case class Point(x: Int, y: Int) derives JsonEncoder
     * sealed trait Color derives JsonEncoder
-    * case object Red extends Color
+    * case object Red  extends Color
     * case object Blue extends Color
     * ```
     */
@@ -219,7 +230,8 @@ object JsonEncoder extends JsonEncoderInstances:
   object configured:
     /** Factory for encoder bundles bound to a specific [[JsonConfig]].
       *
-      * Use this to override default behavior like field naming or null handling.
+      * Use this to override default behavior like field naming or null
+      * handling.
       *
       * ```scala
       * val cfg = JsonConfig.default.copy(dropNullValues = false)

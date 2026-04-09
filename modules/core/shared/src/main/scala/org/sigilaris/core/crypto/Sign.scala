@@ -27,9 +27,12 @@ import org.sigilaris.core.failure.SigilarisFailure
   *   val sig2 = hash.signBy(keyPair)
   *   ```
   *
-  * @see [[Hash]] for hashing values
-  * @see [[Signature]] for the signature representation
-  * @see [[CryptoOps.sign]] for the underlying signing operation
+  * @see
+  *   [[Hash]] for hashing values
+  * @see
+  *   [[Signature]] for the signature representation
+  * @see
+  *   [[CryptoOps.sign]] for the underlying signing operation
   */
 trait Sign[A]:
   /** Signs a value after hashing it.
@@ -123,5 +126,3 @@ object Sign:
       def signBy(keyPair: KeyPair)(using
           sign: Sign[A],
       ): Either[SigilarisFailure, Signature] = sign.byHash(hashValue, keyPair)
-
-

@@ -11,7 +11,6 @@ import Nibbles.*
 import hedgehog.*
 import hedgehog.munit.HedgehogSuite
 
-
 class NibblesTest extends HedgehogSuite:
 
   property("roundtrip of nibbles byte codec"):
@@ -24,8 +23,8 @@ class NibblesTest extends HedgehogSuite:
       )
     yield bits.assumeNibbles
 
-    nibblesGen.forAll.map: nibbles =>      
-      val encoded = nibbles.toBytes
+    nibblesGen.forAll.map: nibbles =>
+      val encoded       = nibbles.toBytes
       val decodedEither = ByteDecoder[Nibbles].decode(encoded)
 
       decodedEither match

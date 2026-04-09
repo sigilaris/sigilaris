@@ -12,13 +12,20 @@ import org.sigilaris.core.crypto.Hash.ops.*
 import org.sigilaris.core.datatype.UInt256
 import org.sigilaris.core.merkle.MerkleTrieNode
 import org.sigilaris.core.merkle.Nibbles.*
-import org.sigilaris.node.jvm.runtime.block.{BlockHeader, BlockHeight, BlockId, BlockTimestamp, BodyRoot, StateRoot}
+import org.sigilaris.node.jvm.runtime.block.{
+  BlockHeader,
+  BlockHeight,
+  BlockId,
+  BlockTimestamp,
+  BodyRoot,
+  StateRoot,
+}
 import org.sigilaris.node.jvm.runtime.gossip.ChainId
 
 final class HotStuffBootstrapLifecycleSuite extends CatsEffectSuite:
 
-  private val chainId = ChainId.unsafe("chain-main")
-  private val startedAt = Instant.parse("2026-04-05T05:00:00Z")
+  private val chainId       = ChainId.unsafe("chain-main")
+  private val startedAt     = Instant.parse("2026-04-05T05:00:00Z")
   private val validatorKeys = Vector.fill(4)(CryptoOps.generate())
   private val validatorSet = ValidatorSet.unsafe(
     validatorKeys.zipWithIndex.map: (keyPair, index) =>
@@ -28,7 +35,9 @@ final class HotStuffBootstrapLifecycleSuite extends CatsEffectSuite:
       ),
   )
 
-  test("concurrent bootstrap calls share a single coordinator build for the same chain"):
+  test(
+    "concurrent bootstrap calls share a single coordinator build for the same chain",
+  ):
     val services = HotStuffBootstrapServices.static[IO](validatorSet)
     val readiness = ProposalCatchUpReadiness.static[IO](
       ProposalCatchUpAssessment(
@@ -39,10 +48,10 @@ final class HotStuffBootstrapLifecycleSuite extends CatsEffectSuite:
 
     for
       metadataStore <- SnapshotMetadataStore.inMemory[IO]
-      nodeStore <- SnapshotNodeStore.inMemory[IO]
-      entered <- Deferred[IO, Unit]
-      release <- Deferred[IO, Unit]
-      hookCalls <- Ref.of[IO, Int](0)
+      nodeStore     <- SnapshotNodeStore.inMemory[IO]
+      entered       <- Deferred[IO, Unit]
+      release       <- Deferred[IO, Unit]
+      hookCalls     <- Ref.of[IO, Int](0)
       lifecycle <- HotStuffBootstrapLifecycle.inMemory[IO](
         metadataStore = metadataStore,
         nodeStore = nodeStore,
@@ -80,16 +89,24 @@ final class HotStuffBootstrapLifecycleSuite extends CatsEffectSuite:
           liveProposals = Vector.empty,
         )
         .start
-      _ <- release.complete(())
+      _       <- release.complete(())
       result1 <- bootstrap1.joinWithNever
       result2 <- bootstrap2.joinWithNever
-      count <- hookCalls.get
+      count   <- hookCalls.get
     yield
       assertEquals(count, 1)
-      assertEquals(result1.left.map(_.reason), Left("noVerifiableFinalizedAnchor"))
-      assertEquals(result2.left.map(_.reason), Left("noVerifiableFinalizedAnchor"))
+      assertEquals(
+        result1.left.map(_.reason),
+        Left("noVerifiableFinalizedAnchor"),
+      )
+      assertEquals(
+        result2.left.map(_.reason),
+        Left("noVerifiableFinalizedAnchor"),
+      )
 
-  test("bootstrap lifecycle removes a failed building slot so a later retry can rebuild"):
+  test(
+    "bootstrap lifecycle removes a failed building slot so a later retry can rebuild",
+  ):
     val services = HotStuffBootstrapServices.static[IO](validatorSet)
     val readiness = ProposalCatchUpReadiness.static[IO](
       ProposalCatchUpAssessment(
@@ -100,8 +117,8 @@ final class HotStuffBootstrapLifecycleSuite extends CatsEffectSuite:
 
     for
       metadataStore <- SnapshotMetadataStore.inMemory[IO]
-      nodeStore <- SnapshotNodeStore.inMemory[IO]
-      failFirst <- Ref.of[IO, Boolean](true)
+      nodeStore     <- SnapshotNodeStore.inMemory[IO]
+      failFirst     <- Ref.of[IO, Boolean](true)
       lifecycle <- HotStuffBootstrapLifecycle.inMemory[IO](
         metadataStore = metadataStore,
         nodeStore = nodeStore,
@@ -116,12 +133,14 @@ final class HotStuffBootstrapLifecycleSuite extends CatsEffectSuite:
         retryPolicy = BootstrapRetryPolicy.boundedDefault,
         historicalBackfillPolicy = HistoricalBackfillPolicy.backgroundDefault,
         beforeCoordinatorBuild = Some(_ =>
-          failFirst.modify: shouldFail =>
-            if shouldFail then false -> IO.raiseError[Unit](
-              new IllegalStateException("bootstrapBuildFailed"),
-            )
-            else false -> IO.unit
-          .flatten,
+          failFirst
+            .modify: shouldFail =>
+              if shouldFail then
+                false -> IO.raiseError[Unit](
+                  new IllegalStateException("bootstrapBuildFailed"),
+                )
+              else false -> IO.unit
+            .flatten,
         ),
         currentInstant = IO.pure(startedAt),
       )
@@ -149,15 +168,17 @@ final class HotStuffBootstrapLifecycleSuite extends CatsEffectSuite:
         Left("noVerifiableFinalizedAnchor"),
       )
 
-  test("bootstrap lifecycle can recover from discovery failure and clear the vote hold after a later successful bootstrap"):
+  test(
+    "bootstrap lifecycle can recover from discovery failure and clear the vote hold after a later successful bootstrap",
+  ):
     val session = Vector(
       BootstrapSessionBinding(
-        peer = org.sigilaris.node.jvm.runtime.gossip.PeerIdentity.unsafe("node-b"),
-        sessionId =
-          org.sigilaris.node.jvm.runtime.gossip.DirectionalSessionId
-            .parse("aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa")
-            .toOption
-            .get,
+        peer =
+          org.sigilaris.node.jvm.runtime.gossip.PeerIdentity.unsafe("node-b"),
+        sessionId = org.sigilaris.node.jvm.runtime.gossip.DirectionalSessionId
+          .parse("aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa")
+          .toOption
+          .get,
       ),
     )
     val root =
@@ -166,11 +187,11 @@ final class HotStuffBootstrapLifecycleSuite extends CatsEffectSuite:
         MerkleTrieNode.Children.empty,
       )
     val rootHash = root.toHash
-    val anchor = finalizedSuggestion("a1", StateRoot(rootHash.toUInt256))
+    val anchor   = finalizedSuggestion("a1", StateRoot(rootHash.toUInt256))
 
     for
-      metadataStore <- SnapshotMetadataStore.inMemory[IO]
-      nodeStore <- SnapshotNodeStore.inMemory[IO]
+      metadataStore       <- SnapshotMetadataStore.inMemory[IO]
+      nodeStore           <- SnapshotNodeStore.inMemory[IO]
       suggestionAvailable <- Ref.of[IO, Boolean](false)
       lifecycle <- HotStuffBootstrapLifecycle.inMemory[IO](
         metadataStore = metadataStore,
@@ -186,10 +207,11 @@ final class HotStuffBootstrapLifecycleSuite extends CatsEffectSuite:
             org.sigilaris.node.jvm.runtime.gossip.CanonicalRejection,
             Option[FinalizedAnchorSuggestion],
           ]] =
-            suggestionAvailable.get.map:
-              enabled => Option.when(enabled)(anchor)
+            suggestionAvailable.get.map: enabled =>
+              Option
+                .when(enabled)(anchor)
                 .asRight[
-                  org.sigilaris.node.jvm.runtime.gossip.CanonicalRejection
+                  org.sigilaris.node.jvm.runtime.gossip.CanonicalRejection,
                 ]
         ,
         snapshotNodeFetch = new SnapshotNodeFetchService[IO]:
@@ -207,7 +229,7 @@ final class HotStuffBootstrapLifecycleSuite extends CatsEffectSuite:
                 .filter(_ === rootHash)
                 .map(_ => SnapshotTrieNode(rootHash, root))
                 .asRight[
-                  org.sigilaris.node.jvm.runtime.gossip.CanonicalRejection
+                  org.sigilaris.node.jvm.runtime.gossip.CanonicalRejection,
                 ],
             )
         ,
@@ -257,7 +279,7 @@ final class HotStuffBootstrapLifecycleSuite extends CatsEffectSuite:
         liveProposals = Vector.empty,
       )
       heldAfterFailure <- lifecycle.voteReadiness(chainId)
-      _ <- suggestionAvailable.set(true)
+      _                <- suggestionAvailable.set(true)
       secondAttempt <- lifecycle.bootstrap(
         chainId = chainId,
         sessions = session,
@@ -270,19 +292,24 @@ final class HotStuffBootstrapLifecycleSuite extends CatsEffectSuite:
         firstAttempt.left.map(_.reason),
         Left("noVerifiableFinalizedAnchor"),
       )
-      assertEquals(heldAfterFailure, BootstrapVoteReadiness.Held("snapshotPending"))
+      assertEquals(
+        heldAfterFailure,
+        BootstrapVoteReadiness.Held("snapshotPending"),
+      )
       assert(secondAttempt.isRight)
       assertEquals(readinessAfterSuccess, BootstrapVoteReadiness.Ready)
 
-  test("bootstrap lifecycle can disable historical sync without calling the backfill transport"):
+  test(
+    "bootstrap lifecycle can disable historical sync without calling the backfill transport",
+  ):
     val session = Vector(
       BootstrapSessionBinding(
-        peer = org.sigilaris.node.jvm.runtime.gossip.PeerIdentity.unsafe("node-b"),
-        sessionId =
-          org.sigilaris.node.jvm.runtime.gossip.DirectionalSessionId
-            .parse("bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb")
-            .toOption
-            .get,
+        peer =
+          org.sigilaris.node.jvm.runtime.gossip.PeerIdentity.unsafe("node-b"),
+        sessionId = org.sigilaris.node.jvm.runtime.gossip.DirectionalSessionId
+          .parse("bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb")
+          .toOption
+          .get,
       ),
     )
     val root =
@@ -291,11 +318,11 @@ final class HotStuffBootstrapLifecycleSuite extends CatsEffectSuite:
         MerkleTrieNode.Children.empty,
       )
     val rootHash = root.toHash
-    val anchor = finalizedSuggestion("b1", StateRoot(rootHash.toUInt256))
+    val anchor   = finalizedSuggestion("b1", StateRoot(rootHash.toUInt256))
 
     for
       metadataStore <- SnapshotMetadataStore.inMemory[IO]
-      nodeStore <- SnapshotNodeStore.inMemory[IO]
+      nodeStore     <- SnapshotNodeStore.inMemory[IO]
       backfillCalls <- Ref.of[IO, Int](0)
       lifecycle <- HotStuffBootstrapLifecycle.inMemory[IO](
         metadataStore = metadataStore,
@@ -313,7 +340,7 @@ final class HotStuffBootstrapLifecycleSuite extends CatsEffectSuite:
           ]] =
             IO.pure(
               Option(anchor).asRight[
-                org.sigilaris.node.jvm.runtime.gossip.CanonicalRejection
+                org.sigilaris.node.jvm.runtime.gossip.CanonicalRejection,
               ],
             )
         ,
@@ -332,7 +359,7 @@ final class HotStuffBootstrapLifecycleSuite extends CatsEffectSuite:
                 .filter(_ === rootHash)
                 .map(_ => SnapshotTrieNode(rootHash, root))
                 .asRight[
-                  org.sigilaris.node.jvm.runtime.gossip.CanonicalRejection
+                  org.sigilaris.node.jvm.runtime.gossip.CanonicalRejection,
                 ],
             )
         ,
@@ -383,7 +410,7 @@ final class HotStuffBootstrapLifecycleSuite extends CatsEffectSuite:
         liveProposals = Vector.empty,
       )
       diagnostics <- lifecycle.current
-      calls <- backfillCalls.get
+      calls       <- backfillCalls.get
     yield
       assert(result.isRight)
       assertEquals(calls, 0)
@@ -443,7 +470,8 @@ final class HotStuffBootstrapLifecycleSuite extends CatsEffectSuite:
             targetBlockId = BlockHeader.computeId(
               block(Some(anchor.targetBlockId), 2L, stateRoot, seed + "20"),
             ),
-            block = block(Some(anchor.targetBlockId), 2L, stateRoot, seed + "20"),
+            block =
+              block(Some(anchor.targetBlockId), 2L, stateRoot, seed + "20"),
             txSet = ProposalTxSet.empty,
             justify = qcFor(anchor),
           ),
@@ -460,7 +488,8 @@ final class HotStuffBootstrapLifecycleSuite extends CatsEffectSuite:
             targetBlockId = BlockHeader.computeId(
               block(Some(child.targetBlockId), 3L, stateRoot, seed + "30"),
             ),
-            block = block(Some(child.targetBlockId), 3L, stateRoot, seed + "30"),
+            block =
+              block(Some(child.targetBlockId), 3L, stateRoot, seed + "30"),
             txSet = ProposalTxSet.empty,
             justify = qcFor(child),
           ),
@@ -518,7 +547,8 @@ final class HotStuffBootstrapLifecycleSuite extends CatsEffectSuite:
       height = BlockHeight.unsafeFromLong(height),
       stateRoot = stateRoot,
       bodyRoot = BodyRoot(hex(bodyHex)),
-      timestamp = BlockTimestamp.unsafeFromEpochMillis(startedAt.toEpochMilli + height),
+      timestamp =
+        BlockTimestamp.unsafeFromEpochMillis(startedAt.toEpochMilli + height),
     )
 
   private def hex(

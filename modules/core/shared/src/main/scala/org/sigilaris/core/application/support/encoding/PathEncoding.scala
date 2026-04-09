@@ -210,5 +210,8 @@ def encodePathRuntime(path: List[String]): ByteVector =
   * @return
   *   the full table prefix
   */
-def tablePrefixRuntimeFromList(path: List[String], tableName: String): ByteVector =
+def tablePrefixRuntimeFromList(
+    path: List[String],
+    tableName: String,
+): ByteVector =
   encodePathRuntime(path) ++ encodeSegmentRuntime(tableName)

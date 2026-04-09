@@ -40,8 +40,7 @@ class MerkleTrieNodeTest extends HedgehogSuite:
       list.toVector.assume[MerkleTrieNode.ChildrenCondition]
 
   def genValue: Gen[ByteVector] =
-    Gen.sized(size =>
-      Gen.bytes(Range.linear(0, size.value.abs)),
+    Gen.sized(size => Gen.bytes(Range.linear(0, size.value.abs)),
     ) map ByteVector.view
 
   def genLeaf: Gen[MerkleTrieNode] = for

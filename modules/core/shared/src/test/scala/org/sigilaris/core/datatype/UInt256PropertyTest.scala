@@ -17,23 +17,19 @@ final class UInt256PropertyTest extends HedgehogSuite:
     genUInt256Bytes.map(_.toHex)
 
   property("ByteCodec[UInt256] roundtrip (fixed 32 bytes)"):
-    for
-      raw <- genUInt256Bytes.forAll
+    for raw <- genUInt256Bytes.forAll
     yield
-      val u = UInt256.fromBytesBE(raw).toOption.get
+      val u     = UInt256.fromBytesBE(raw).toOption.get
       val bytes = ByteEncoder[UInt256].encode(u)
       ByteDecoder[UInt256].decode(bytes) match
         case Right(decoded) => decoded.value ==== u
         case _              => Result.failure
 
   property("JsonCodec[UInt256] roundtrip (hex string)"):
-    for
-      hex <- genHex.forAll
+    for hex <- genHex.forAll
     yield
-      val u = UInt256.fromHex(hex).toOption.get
+      val u  = UInt256.fromHex(hex).toOption.get
       val js = JsonEncoder[UInt256].encode(u)
       JsonDecoder[UInt256].decode(js) match
         case Right(decoded) => decoded ==== u
         case _              => Result.failure
-
-

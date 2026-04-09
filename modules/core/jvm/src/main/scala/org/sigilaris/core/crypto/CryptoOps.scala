@@ -38,8 +38,8 @@ import util.SafeStringInterp.*
   *
   *   // Hash and sign
   *   val message = "hello".getBytes
-  *   val hash = CryptoOps.keccak256(message)
-  *   val sig = CryptoOps.sign(keyPair, hash).toOption.get
+  *   val hash    = CryptoOps.keccak256(message)
+  *   val sig     = CryptoOps.sign(keyPair, hash).toOption.get
   *
   *   // Recover public key
   *   val recovered = CryptoOps.recover(sig, hash)
@@ -50,17 +50,19 @@ import util.SafeStringInterp.*
   *   This is the JVM-specific implementation. Cross-platform code should use
   *   [[CryptoOpsLike]] interface.
   *
-  * @see [[CryptoOpsLike]] for the cross-platform interface
-  * @see [[org.sigilaris.core.crypto.internal.CryptoParams]] for curve
-  *      parameters
-  * @see [[org.sigilaris.core.crypto.internal.KeccakPool]] for hashing
-  *      implementation
+  * @see
+  *   [[CryptoOpsLike]] for the cross-platform interface
+  * @see
+  *   [[org.sigilaris.core.crypto.internal.CryptoParams]] for curve parameters
+  * @see
+  *   [[org.sigilaris.core.crypto.internal.KeccakPool]] for hashing
+  *   implementation
   */
 object CryptoOps extends CryptoOpsLike:
   // Initialize BouncyCastle provider once at startup
-  private val _ = java.security.Security.addProvider(
+  private val _ = java.security.Security.addProvider:
     new org.bouncycastle.jce.provider.BouncyCastleProvider()
-  )
+
   /** Computes Keccak-256 hash using thread-local digest pool.
     *
     * @param input
@@ -77,9 +79,11 @@ object CryptoOps extends CryptoOpsLike:
     kecc.digest()
 
   // Use shared domain parameters from CryptoParams
-  private inline def CurveParams: X9ECParameters = internal.CryptoParams.curveParams
-  private inline def Curve: ECDomainParameters   = internal.CryptoParams.curve
-  private inline def HalfCurveOrder: BigInteger  = internal.CryptoParams.halfCurveOrder
+  private inline def CurveParams: X9ECParameters =
+    internal.CryptoParams.curveParams
+  private inline def Curve: ECDomainParameters = internal.CryptoParams.curve
+  private inline def HalfCurveOrder: BigInteger =
+    internal.CryptoParams.halfCurveOrder
 
   /** Non-deterministic source for key generation (JVM default provider). */
   val secureRandom: SecureRandom = new SecureRandom()

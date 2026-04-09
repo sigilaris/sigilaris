@@ -15,7 +15,9 @@ object HashStore:
   given fromKeyValueStore[F[_], A: Hash](using
       kvStore: KeyValueStore[F, Hash.Value[A], A],
   ): HashStore[F, A] = new HashStore[F, A]:
-    override def get(hash: Hash.Value[A]): EitherT[F, DecodeFailure, Option[A]] =
+    override def get(
+        hash: Hash.Value[A],
+    ): EitherT[F, DecodeFailure, Option[A]] =
       kvStore.get(hash)
 
     override def put(a: A): F[Unit] =

@@ -23,7 +23,9 @@ trait HotStuffBootstrapLifecycle[F[_]] extends BootstrapDiagnosticsSource[F]:
       sessions: Vector[BootstrapSessionBinding],
       startedAt: Instant,
       liveProposals: Vector[Proposal],
-  )(using Async[F]): F[Either[BootstrapCoordinatorFailure, BootstrapCoordinatorResult]]
+  )(using
+      Async[F],
+  ): F[Either[BootstrapCoordinatorFailure, BootstrapCoordinatorResult]]
 
   def voteReadiness(
       chainId: ChainId,
@@ -119,7 +121,9 @@ private final class InMemoryHotStuffBootstrapLifecycle[F[_]: Sync](
       sessions: Vector[BootstrapSessionBinding],
       startedAt: Instant,
       liveProposals: Vector[Proposal],
-  )(using Async[F]): F[Either[BootstrapCoordinatorFailure, BootstrapCoordinatorResult]] =
+  )(using
+      Async[F],
+  ): F[Either[BootstrapCoordinatorFailure, BootstrapCoordinatorResult]] =
     coordinatorFor(chainId)
       .flatMap(_.bootstrap(chainId, sessions, startedAt, liveProposals))
 
@@ -128,7 +132,9 @@ private final class InMemoryHotStuffBootstrapLifecycle[F[_]: Sync](
   ): F[BootstrapVoteReadiness] =
     ref.get.flatMap:
       _.get(chainId) match
-        case Some(HotStuffBootstrapLifecycle.CoordinatorSlot.Ready(coordinator)) =>
+        case Some(
+              HotStuffBootstrapLifecycle.CoordinatorSlot.Ready(coordinator),
+            ) =>
           coordinator.current.map:
             _.chains
               .get(chainId)
@@ -143,7 +149,10 @@ private final class InMemoryHotStuffBootstrapLifecycle[F[_]: Sync](
     ref.get.map:
       _.iterator
         .collect {
-          case (chainId, HotStuffBootstrapLifecycle.CoordinatorSlot.Ready(coordinator)) =>
+          case (
+                chainId,
+                HotStuffBootstrapLifecycle.CoordinatorSlot.Ready(coordinator),
+              ) =>
             chainId -> coordinator
         }
         .toVector
@@ -152,36 +161,39 @@ private final class InMemoryHotStuffBootstrapLifecycle[F[_]: Sync](
   private def coordinatorFor(
       chainId: ChainId,
   )(using Async[F]): F[BootstrapCoordinator[F]] =
-    Deferred[F, Either[Throwable, BootstrapCoordinator[F]]].flatMap:
-      promise =>
-        ref
-          .modify: state =>
-            state.get(chainId) match
-              case Some(HotStuffBootstrapLifecycle.CoordinatorSlot.Ready(coordinator)) =>
-                state -> HotStuffBootstrapLifecycle.CoordinatorLookup.Use(
-                  coordinator,
-                )
-              case Some(HotStuffBootstrapLifecycle.CoordinatorSlot.Building(existing)) =>
-                state -> HotStuffBootstrapLifecycle.CoordinatorLookup.Await(
-                  existing,
-                )
-              case None =>
-                state.updated(
-                  chainId,
-                  HotStuffBootstrapLifecycle.CoordinatorSlot.Building(promise),
-                ) -> HotStuffBootstrapLifecycle.CoordinatorLookup.Build(
-                  promise,
-                )
-          .flatMap:
-            case HotStuffBootstrapLifecycle.CoordinatorLookup.Use(coordinator) =>
-              coordinator.pure[F]
-            case HotStuffBootstrapLifecycle.CoordinatorLookup.Await(existing) =>
-              existing.get.flatMap(Async[F].fromEither)
-            case HotStuffBootstrapLifecycle.CoordinatorLookup.Build(current) =>
-              beforeCoordinatorBuild(chainId)
-                .flatMap(_ => buildCoordinator(chainId))
-                .attempt
-                .flatMap:
+    Deferred[F, Either[Throwable, BootstrapCoordinator[F]]].flatMap: promise =>
+      ref
+        .modify: state =>
+          state.get(chainId) match
+            case Some(
+                  HotStuffBootstrapLifecycle.CoordinatorSlot.Ready(coordinator),
+                ) =>
+              state -> HotStuffBootstrapLifecycle.CoordinatorLookup.Use(
+                coordinator,
+              )
+            case Some(
+                  HotStuffBootstrapLifecycle.CoordinatorSlot.Building(existing),
+                ) =>
+              state -> HotStuffBootstrapLifecycle.CoordinatorLookup.Await(
+                existing,
+              )
+            case None =>
+              state.updated(
+                chainId,
+                HotStuffBootstrapLifecycle.CoordinatorSlot.Building(promise),
+              ) -> HotStuffBootstrapLifecycle.CoordinatorLookup.Build(
+                promise,
+              )
+        .flatMap:
+          case HotStuffBootstrapLifecycle.CoordinatorLookup.Use(coordinator) =>
+            coordinator.pure[F]
+          case HotStuffBootstrapLifecycle.CoordinatorLookup.Await(existing) =>
+            existing.get.flatMap(Async[F].fromEither)
+          case HotStuffBootstrapLifecycle.CoordinatorLookup.Build(current) =>
+            beforeCoordinatorBuild(chainId)
+              .flatMap(_ => buildCoordinator(chainId))
+              .attempt
+              .flatMap:
                 case Right(coordinator) =>
                   ref.update(
                     _.updated(
@@ -191,11 +203,16 @@ private final class InMemoryHotStuffBootstrapLifecycle[F[_]: Sync](
                       ),
                     ),
                   ) *>
-                    current.complete(coordinator.asRight[Throwable]).void.as(
-                      coordinator,
-                    )
+                    current
+                      .complete(coordinator.asRight[Throwable])
+                      .void
+                      .as(
+                        coordinator,
+                      )
                 case Left(error) =>
-                  current.complete(error.asLeft[BootstrapCoordinator[F]]).void *>
+                  current
+                    .complete(error.asLeft[BootstrapCoordinator[F]])
+                    .void *>
                     ref.update(_ - chainId) *>
                     Async[F].raiseError[BootstrapCoordinator[F]](error)
 
@@ -234,51 +251,45 @@ private final class InMemoryHotStuffBootstrapLifecycle[F[_]: Sync](
     else
       val diagnostics = diagnosticsByChain.map(_._2)
       BootstrapDiagnostics(
-        phase =
-          diagnostics.iterator
-            .map(_.phase)
-            .foldLeft(BootstrapPhase.Ready): (current, next) =>
-              if phaseRank(next) < phaseRank(current) then next else current,
+        phase = diagnostics.iterator
+          .map(_.phase)
+          .foldLeft(BootstrapPhase.Ready): (current, next) =>
+            if phaseRank(next) < phaseRank(current) then next else current,
         chains =
           diagnostics.foldLeft(Map.empty[ChainId, BootstrapChainDiagnostics]):
-            (acc, next) => acc ++ next.chains,
+            (acc, next) => acc ++ next.chains
+        ,
         retryAttempts =
           diagnostics.iterator.map(_.retryAttempts).maxOption.getOrElse(0),
-        nextRetryAt =
-          diagnostics
-            .iterator
-            .flatMap(_.nextRetryAt)
-            .minOption,
+        nextRetryAt = diagnostics.iterator
+          .flatMap(_.nextRetryAt)
+          .minOption,
         lastFailure =
-          diagnosticsByChain
-            .iterator
-            .flatMap { case (chainId, diagnostic) =>
-              diagnostic.lastFailure match
-                case Some(failure: String) =>
-                  val rendered: String = chainId.value + ":" + failure
-                  List[String](rendered)
-                case None =>
-                  List.empty[String]
-            }
-            .toVector match
-            case Vector()      => None
-            case Vector(one)   => Some(one)
-            case manyFailures  => Some(manyFailures.mkString("; ")),
-        historicalBackfill =
-          diagnostics
-            .iterator
-            .map(_.historicalBackfill)
-            .find:
-              case HistoricalBackfillStatus.Idle => false
-              case _                            => true
-            .getOrElse(HistoricalBackfillStatus.Idle),
+          diagnosticsByChain.iterator.flatMap { case (chainId, diagnostic) =>
+            diagnostic.lastFailure match
+              case Some(failure: String) =>
+                val rendered: String = chainId.value + ":" + failure
+                List[String](rendered)
+              case None =>
+                List.empty[String]
+          }.toVector match
+            case Vector()     => None
+            case Vector(one)  => Some(one)
+            case manyFailures => Some(manyFailures.mkString("; "))
+        ,
+        historicalBackfill = diagnostics.iterator
+          .map(_.historicalBackfill)
+          .find:
+            case HistoricalBackfillStatus.Idle => false
+            case _                             => true
+          .getOrElse(HistoricalBackfillStatus.Idle),
       )
 
   private def phaseRank(
       phase: BootstrapPhase,
   ): Int =
     phase match
-      case BootstrapPhase.Discovery     => 0
-      case BootstrapPhase.SnapshotSync  => 1
+      case BootstrapPhase.Discovery      => 0
+      case BootstrapPhase.SnapshotSync   => 1
       case BootstrapPhase.ForwardCatchUp => 2
-      case BootstrapPhase.Ready         => 3
+      case BootstrapPhase.Ready          => 3

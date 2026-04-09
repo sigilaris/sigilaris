@@ -3,18 +3,21 @@ package org.sigilaris.core.assembly
 /** Convenience extensions for deriving table providers from mounted modules.
   *
   * These helpers bridge the gap between module mounting (which yields a
-  * [[org.sigilaris.core.application.module.runtime.StateModule]] exposing its owned tables)
-  * and downstream modules that depend on those tables via
+  * [[org.sigilaris.core.application.module.runtime.StateModule]] exposing its
+  * owned tables) and downstream modules that depend on those tables via
   * [[org.sigilaris.core.application.module.provider.TablesProvider]].
   *
-  * They simply forward to `TablesProvider.fromModule`, but live in the assembly package
-  * so that higher level assembly DSLs can import a single package and gain access to
-  * the standard helpers.
+  * They simply forward to `TablesProvider.fromModule`, but live in the assembly
+  * package so that higher level assembly DSLs can import a single package and
+  * gain access to the standard helpers.
   *
-  * @see [[org.sigilaris.core.application.module.provider.TablesProvider.fromModule]]
+  * @see
+  *   [[org.sigilaris.core.application.module.provider.TablesProvider.fromModule]]
   */
 object TablesProviderOps:
-  extension[F[_], Path <: Tuple, Owns <: Tuple, Needs <: Tuple, Txs <: Tuple, R](
+  extension [F[
+      _,
+  ], Path <: Tuple, Owns <: Tuple, Needs <: Tuple, Txs <: Tuple, R](
       module: org.sigilaris.core.application.module.runtime.StateModule[F, Path, Owns, Needs, Txs, R]
   )
     /** Derive a `TablesProvider` for the module's owned schema.
@@ -24,5 +27,10 @@ object TablesProviderOps:
       * live tables, so the caller should treat it as an immutable capability
       * and avoid leaking it beyond the intended assembly scope.
       */
-    def toTablesProvider: org.sigilaris.core.application.module.provider.TablesProvider[F, Owns] =
-      org.sigilaris.core.application.module.provider.TablesProvider.fromModule(module)
+    def toTablesProvider
+        : org.sigilaris.core.application.module.provider.TablesProvider[
+          F,
+          Owns,
+        ] =
+      org.sigilaris.core.application.module.provider.TablesProvider
+        .fromModule(module)

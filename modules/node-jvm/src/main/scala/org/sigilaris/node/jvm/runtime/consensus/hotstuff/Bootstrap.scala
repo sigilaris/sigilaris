@@ -7,7 +7,12 @@ import cats.syntax.all.*
 
 import org.sigilaris.core.merkle.MerkleTrieNode
 import org.sigilaris.node.jvm.runtime.block.{BlockHeight, BlockId, StateRoot}
-import org.sigilaris.node.jvm.runtime.gossip.{CanonicalRejection, ChainId, DirectionalSessionId, PeerIdentity}
+import org.sigilaris.node.jvm.runtime.gossip.{
+  CanonicalRejection,
+  ChainId,
+  DirectionalSessionId,
+  PeerIdentity,
+}
 
 sealed trait BootstrapTrustRoot:
   def validatorSet: ValidatorSet
@@ -21,14 +26,14 @@ object BootstrapTrustRoot:
   final case class StaticValidatorSet(
       validatorSet: ValidatorSet,
   ) extends BootstrapTrustRoot:
-    override val anchorWindow: Option[HotStuffWindow] = None
+    override val anchorWindow: Option[HotStuffWindow]        = None
     override val weakSubjectivityFreshUntil: Option[Instant] = None
 
   final case class TrustedCheckpoint(
       window: HotStuffWindow,
       validatorSet: ValidatorSet,
   ) extends BootstrapTrustRoot:
-    override val anchorWindow: Option[HotStuffWindow] = Some(window)
+    override val anchorWindow: Option[HotStuffWindow]        = Some(window)
     override val weakSubjectivityFreshUntil: Option[Instant] = None
 
   final case class WeakSubjectivityAnchor(
@@ -36,7 +41,7 @@ object BootstrapTrustRoot:
       validatorSet: ValidatorSet,
       freshUntil: Instant,
   ) extends BootstrapTrustRoot:
-    override val anchorWindow: Option[HotStuffWindow] = Some(window)
+    override val anchorWindow: Option[HotStuffWindow]        = Some(window)
     override val weakSubjectivityFreshUntil: Option[Instant] = Some(freshUntil)
 
   private def validateRootWindow(
@@ -333,7 +338,8 @@ object HotStuffBootstrapServices:
             session: BootstrapSessionBinding,
             chainId: ChainId,
         ): F[Either[CanonicalRejection, Option[FinalizedAnchorSuggestion]]] =
-          Option.empty[FinalizedAnchorSuggestion]
+          Option
+            .empty[FinalizedAnchorSuggestion]
             .asRight[CanonicalRejection]
             .pure[F]
       ,
@@ -366,5 +372,6 @@ object HotStuffBootstrapServices:
         ): F[Either[CanonicalRejection, Vector[Proposal]]] =
           Vector.empty[Proposal].asRight[CanonicalRejection].pure[F]
       ,
-      diagnostics = BootstrapDiagnosticsSource.const[F](BootstrapDiagnostics.empty),
+      diagnostics =
+        BootstrapDiagnosticsSource.const[F](BootstrapDiagnostics.empty),
     )

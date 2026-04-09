@@ -2,7 +2,12 @@ package org.sigilaris.node.jvm.runtime.consensus.hotstuff
 
 import cats.syntax.all.*
 
-import org.sigilaris.node.jvm.runtime.gossip.{CanonicalRejection, ControlBatch, ControlOp, StableArtifactId}
+import org.sigilaris.node.jvm.runtime.gossip.{
+  CanonicalRejection,
+  ControlBatch,
+  ControlOp,
+  StableArtifactId,
+}
 import org.sigilaris.node.jvm.runtime.gossip.tx.TxRuntimePolicy
 
 object HotStuffProposalTxSync:

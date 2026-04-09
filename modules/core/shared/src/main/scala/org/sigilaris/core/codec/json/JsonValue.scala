@@ -8,12 +8,12 @@ package codec.json
   * are handled by encoders/decoders and derivation, not by this ADT.
   *
   * The six cases cover all JSON types:
-  * - `JNull`: JSON null
-  * - `JBool`: JSON boolean
-  * - `JNumber`: JSON number (stored as BigDecimal for precision)
-  * - `JString`: JSON string
-  * - `JArray`: JSON array
-  * - `JObject`: JSON object (field map)
+  *   - `JNull`: JSON null
+  *   - `JBool`: JSON boolean
+  *   - `JNumber`: JSON number (stored as BigDecimal for precision)
+  *   - `JString`: JSON string
+  *   - `JArray`: JSON array
+  *   - `JObject`: JSON object (field map)
   */
 enum JsonValue:
   /** JSON null value. */
@@ -21,31 +21,36 @@ enum JsonValue:
 
   /** JSON boolean value.
     *
-    * @param value the boolean
+    * @param value
+    *   the boolean
     */
   case JBool(value: Boolean)
 
   /** JSON number value.
     *
-    * @param value the numeric value (BigDecimal for arbitrary precision)
+    * @param value
+    *   the numeric value (BigDecimal for arbitrary precision)
     */
   case JNumber(value: BigDecimal)
 
   /** JSON string value.
     *
-    * @param value the string content
+    * @param value
+    *   the string content
     */
   case JString(value: String)
 
   /** JSON array value.
     *
-    * @param values the array elements
+    * @param values
+    *   the array elements
     */
   case JArray(values: Vector[JsonValue])
 
   /** JSON object value.
     *
-    * @param fields the object fields (key-value pairs)
+    * @param fields
+    *   the object fields (key-value pairs)
     */
   case JObject(fields: Map[String, JsonValue])
 
@@ -58,7 +63,7 @@ object JsonValue:
     * ```scala
     * val person = JsonValue.obj(
     *   "name" -> JString("Alice"),
-    *   "age"  -> JNumber(30)
+    *   "age"  -> JNumber(30),
     * )
     * ```
     */
@@ -73,5 +78,3 @@ object JsonValue:
     */
   def arr(values: JsonValue*): JsonValue =
     JArray(values.toVector)
-
-

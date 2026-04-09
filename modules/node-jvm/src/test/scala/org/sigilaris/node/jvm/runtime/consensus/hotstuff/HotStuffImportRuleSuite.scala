@@ -10,12 +10,15 @@ import munit.FunSuite
 final class HotStuffImportRuleSuite extends FunSuite:
 
   private val moduleRoot =
-    val workingDir = Path.of(sys.props.getOrElse("user.dir", ".")).toAbsolutePath.normalize
+    val workingDir =
+      Path.of(sys.props.getOrElse("user.dir", ".")).toAbsolutePath.normalize
     val directModuleRoot = workingDir
     val nestedModuleRoot = workingDir.resolve("modules").resolve("node-jvm")
 
-    if Files.isDirectory(directModuleRoot.resolve("src").resolve("main").resolve("scala")) then
-      directModuleRoot
+    if Files.isDirectory(
+        directModuleRoot.resolve("src").resolve("main").resolve("scala"),
+      )
+    then directModuleRoot
     else nestedModuleRoot
 
   private val gossipRoots = List(
@@ -24,8 +27,26 @@ final class HotStuffImportRuleSuite extends FunSuite:
   )
 
   private val hotStuffRoots = List(
-    sourceRoot("main", "org", "sigilaris", "node", "jvm", "runtime", "consensus", "hotstuff"),
-    sourceRoot("test", "org", "sigilaris", "node", "jvm", "runtime", "consensus", "hotstuff"),
+    sourceRoot(
+      "main",
+      "org",
+      "sigilaris",
+      "node",
+      "jvm",
+      "runtime",
+      "consensus",
+      "hotstuff",
+    ),
+    sourceRoot(
+      "test",
+      "org",
+      "sigilaris",
+      "node",
+      "jvm",
+      "runtime",
+      "consensus",
+      "hotstuff",
+    ),
   )
 
   private val gossipBannedImports = List(
@@ -46,7 +67,9 @@ final class HotStuffImportRuleSuite extends FunSuite:
   test("runtime gossip sources do not import consensus runtime packages"):
     assertNoImportViolations(gossipRoots, gossipBannedImports)
 
-  test("hotstuff consensus sources do not import transport or storage implementations"):
+  test(
+    "hotstuff consensus sources do not import transport or storage implementations",
+  ):
     assertNoImportViolations(hotStuffRoots, hotStuffBannedImports)
 
   test("import parser detects comma-separated and grouped import targets"):
@@ -70,7 +93,9 @@ final class HotStuffImportRuleSuite extends FunSuite:
       ),
     )
 
-  test("import parser assembles multi-line imports and ignores exclusion selectors"):
+  test(
+    "import parser assembles multi-line imports and ignores exclusion selectors",
+  ):
     val source =
       """package test
         |
@@ -91,11 +116,15 @@ final class HotStuffImportRuleSuite extends FunSuite:
         List("org.sigilaris.node.jvm.storage.memory.MemStore"),
       )
       assertEquals(
-        normalizedImportTargets("org.sigilaris.node.jvm.runtime.consensus.{hotstuff as _}"),
+        normalizedImportTargets(
+          "org.sigilaris.node.jvm.runtime.consensus.{hotstuff as _}",
+        ),
         Nil,
       )
       assertEquals(
-        normalizedImportTargets("org.sigilaris.node.jvm.runtime.consensus.{hotstuff => _}"),
+        normalizedImportTargets(
+          "org.sigilaris.node.jvm.runtime.consensus.{hotstuff => _}",
+        ),
         Nil,
       )
     finally
@@ -103,41 +132,58 @@ final class HotStuffImportRuleSuite extends FunSuite:
       ()
 
   private def sourceRoot(scope: String, segments: String*): Path =
-    segments.foldLeft(moduleRoot.resolve("src").resolve(scope).resolve("scala"))(_.resolve(_))
+    segments.foldLeft(
+      moduleRoot.resolve("src").resolve(scope).resolve("scala"),
+    )(_.resolve(_))
 
-  private def assertNoImportViolations(roots: List[Path], bannedImports: List[String]): Unit =
+  private def assertNoImportViolations(
+      roots: List[Path],
+      bannedImports: List[String],
+  ): Unit =
     val existingRoots = roots.filter(root => Files.isDirectory(root))
-    assert(existingRoots.nonEmpty, s"Expected source roots to exist: ${roots.mkString(", ")}")
+    assert(
+      existingRoots.nonEmpty,
+      s"Expected source roots to exist: ${roots.mkString(", ")}",
+    )
 
     val sources = existingRoots.flatMap: root =>
       Using.resource(Files.walk(root)): stream =>
         stream.iterator.asScala
-          .filter(path => Files.isRegularFile(path) && path.toString.endsWith(".scala"))
+          .filter(path =>
+            Files.isRegularFile(path) && path.toString.endsWith(".scala"),
+          )
           .toList
 
-    assert(sources.nonEmpty, s"Expected Scala sources under ${existingRoots.mkString(", ")}")
+    assert(
+      sources.nonEmpty,
+      s"Expected Scala sources under ${existingRoots.mkString(", ")}",
+    )
 
     val violations =
       for
-        source <- sources
+        source                        <- sources
         (lineNumber, importStatement) <- collectedImportStatements(source)
         importTargets = normalizedImportTargets(importStatement)
         matchedBannedImports = bannedImports.filter: banned =>
-          importTargets.exists(target => target == banned || target.startsWith(s"$banned."))
+          importTargets.exists(target =>
+            target == banned || target.startsWith(s"$banned."),
+          )
         if matchedBannedImports.nonEmpty
-      yield s"${moduleRoot.relativize(source)}:${lineNumber} imports ${matchedBannedImports.distinct.mkString(", ")}"
+      yield s"${moduleRoot.relativize(source)}:${lineNumber} imports ${matchedBannedImports.distinct
+          .mkString(", ")}"
 
     assert(
       violations.isEmpty,
-      s"roots=${roots.mkString(", ")} banned=${bannedImports.mkString(", ")} violations=${violations.mkString("; ")}",
+      s"roots=${roots.mkString(", ")} banned=${bannedImports
+          .mkString(", ")} violations=${violations.mkString("; ")}",
     )
 
   private def collectedImportStatements(source: Path): List[(Int, String)] =
-    val lines = Files.readAllLines(source).asScala.toList
+    val lines      = Files.readAllLines(source).asScala.toList
     val statements = scala.collection.mutable.ListBuffer.empty[(Int, String)]
     var currentStartLine: Option[Int] = None
-    var currentParts = List.empty[String]
-    var braceDepth = 0
+    var currentParts                  = List.empty[String]
+    var braceDepth                    = 0
 
     def flushCurrent(): Unit =
       currentStartLine.foreach: startLine =>
@@ -171,12 +217,17 @@ final class HotStuffImportRuleSuite extends FunSuite:
       splitTopLevel(importStatement).flatMap: body =>
         if body.contains("{") && body.contains("}") then
           val prefix = body.takeWhile(_ != '{').trim.stripSuffix(".")
-          val selectorBody = body.dropWhile(_ != '{').drop(1).takeWhile(_ != '}')
-          splitTopLevel(selectorBody).flatMap(selector => normalizeImportSelector(prefix, selector.trim))
-        else
-          normalizeSimpleImport(body).toList
+          val selectorBody =
+            body.dropWhile(_ != '{').drop(1).takeWhile(_ != '}')
+          splitTopLevel(selectorBody).flatMap(selector =>
+            normalizeImportSelector(prefix, selector.trim),
+          )
+        else normalizeSimpleImport(body).toList
 
-  private def normalizeImportSelector(prefix: String, selector: String): Option[String] =
+  private def normalizeImportSelector(
+      prefix: String,
+      selector: String,
+  ): Option[String] =
     val arrowParts = selector.split("=>", 2).map(_.trim)
     val arrowSelector =
       if arrowParts.length == 2 && arrowParts(1) == "_" then None
@@ -189,10 +240,11 @@ final class HotStuffImportRuleSuite extends FunSuite:
 
     selectorRoot.flatMap:
       case "_" | "*" => Some(prefix)
-      case root      => Some(s"$prefix.${root.stripSuffix(".*").stripSuffix("._")}")
+      case root => Some(s"$prefix.${root.stripSuffix(".*").stripSuffix("._")}")
 
   private def normalizeSimpleImport(body: String): Option[String] =
-    val importRoot = body.split("\\s+as\\s+", 2).headOption.map(_.trim).getOrElse("")
+    val importRoot =
+      body.split("\\s+as\\s+", 2).headOption.map(_.trim).getOrElse("")
     val normalized = importRoot.stripSuffix(".*").stripSuffix("._")
 
     Option.when(normalized.nonEmpty)(normalized)
@@ -202,8 +254,8 @@ final class HotStuffImportRuleSuite extends FunSuite:
     withoutInlineComment.count(_ == '{') - withoutInlineComment.count(_ == '}')
 
   private def splitTopLevel(text: String): List[String] =
-    val parts = scala.collection.mutable.ListBuffer.empty[String]
-    val current = new StringBuilder
+    val parts      = scala.collection.mutable.ListBuffer.empty[String]
+    val current    = new StringBuilder
     var braceDepth = 0
 
     text.foreach:

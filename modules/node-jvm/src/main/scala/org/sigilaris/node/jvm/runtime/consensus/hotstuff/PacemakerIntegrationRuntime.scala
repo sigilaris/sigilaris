@@ -10,7 +10,13 @@ import org.sigilaris.core.codec.byte.ByteEncoder
 import org.sigilaris.core.codec.byte.ByteEncoder.ops.*
 import org.sigilaris.core.crypto.{CryptoOps, KeyPair}
 import org.sigilaris.core.datatype.{UInt256, Utf8}
-import org.sigilaris.node.jvm.runtime.block.{BlockHeader, BlockHeight, BlockTimestamp, BodyRoot, StateRoot}
+import org.sigilaris.node.jvm.runtime.block.{
+  BlockHeader,
+  BlockHeight,
+  BlockTimestamp,
+  BodyRoot,
+  StateRoot,
+}
 import org.sigilaris.node.jvm.runtime.gossip.*
 
 final case class HotStuffPacemakerKey(
@@ -88,11 +94,13 @@ private final class HotStuffPacemakerAwareSink[F[_]: Sync](
   ): F[
     Either[CanonicalRejection.ArtifactContractRejected, ArtifactApplyResult],
   ] =
-    underlying.applyEvent(event).flatTap:
-      case Right(result) if result.applied =>
-        observeApplied(event)
-      case _ =>
-        Sync[F].unit
+    underlying
+      .applyEvent(event)
+      .flatTap:
+        case Right(result) if result.applied =>
+          observeApplied(event)
+        case _ =>
+          Sync[F].unit
 
 private final class InMemoryHotStuffPacemakerDriver[F[_]: Sync](
     bootstrapInput: HotStuffRuntimeBootstrapInput,
@@ -122,10 +130,8 @@ private final class InMemoryHotStuffPacemakerDriver[F[_]: Sync](
       .modify: queue =>
         val updated =
           queue.copy(pending = queue.pending :+ event)
-        if queue.processing then
-          updated -> false
-        else
-          updated.copy(processing = true) -> true
+        if queue.processing then updated     -> false
+        else updated.copy(processing = true) -> true
       .flatMap:
         case true =>
           // Derived artifacts are queued and drained in FIFO order after the
@@ -146,11 +152,12 @@ private final class InMemoryHotStuffPacemakerDriver[F[_]: Sync](
           case ObservedEventQueue(true, Vector()) =>
             ObservedEventQueue(
               processing = false,
-              pending =
-                Vector.empty[GossipEvent[HotStuffGossipArtifact]],
+              pending = Vector.empty[GossipEvent[HotStuffGossipArtifact]],
             ) -> none[GossipEvent[HotStuffGossipArtifact]]
           case queue =>
-            queue.copy(processing = false) -> none[GossipEvent[HotStuffGossipArtifact]]
+            queue.copy(processing = false) -> none[GossipEvent[
+              HotStuffGossipArtifact,
+            ]]
         .flatMap:
           case Some(event) =>
             processObservedEvent(event).as(Left[Unit, Unit](()))
@@ -165,9 +172,9 @@ private final class InMemoryHotStuffPacemakerDriver[F[_]: Sync](
         case HotStuffGossipArtifact.ProposalArtifact(proposal) =>
           activateFromProposal(proposal, now) *>
             (if isExpectedLeaderProposal(proposal) then
-              markObservedLeaderProposal(proposal) *>
-                (if automaticConsensus then autoVoteOnProposal(proposal, now)
-                 else Sync[F].unit)
+               markObservedLeaderProposal(proposal) *>
+                 (if automaticConsensus then autoVoteOnProposal(proposal, now)
+                  else Sync[F].unit)
              else Sync[F].unit)
         case HotStuffGossipArtifact.VoteArtifact(vote) =>
           activateFromQc(vote, now)
@@ -178,9 +185,13 @@ private final class InMemoryHotStuffPacemakerDriver[F[_]: Sync](
 
   def drivePending: F[Unit] =
     clock.now.flatMap: now =>
-      stateRef.get.map(_.keys.toVector.sortBy(key =>
-        (key.chainId.value, key.localValidator.value),
-      )).flatMap(_.traverse_(driveEntry(_, now)))
+      stateRef.get
+        .map(
+          _.keys.toVector.sortBy(key =>
+            (key.chainId.value, key.localValidator.value),
+          ),
+        )
+        .flatMap(_.traverse_(driveEntry(_, now)))
 
   private def driveEntry(
       key: HotStuffPacemakerKey,
@@ -206,12 +217,16 @@ private final class InMemoryHotStuffPacemakerDriver[F[_]: Sync](
           snapshot =>
             snapshot.state match
               case Some(existing)
-                  if compareWindow(proposal.window, existing.activeWindow).isEmpty =>
+                  if compareWindow(
+                    proposal.window,
+                    existing.activeWindow,
+                  ).isEmpty =>
                 None
               case Some(existing)
-                  if compareWindow(proposal.window, existing.activeWindow).exists(
-                    _ <= 0,
-                  ) =>
+                  if compareWindow(proposal.window, existing.activeWindow)
+                    .exists(
+                      _ <= 0,
+                    ) =>
                 None
               case _ =>
                 Some(
@@ -238,21 +253,23 @@ private final class InMemoryHotStuffPacemakerDriver[F[_]: Sync](
           Sync[F].unit
         case Some(proposal) =>
           val highestKnownQc =
-            snapshot.qcs.get(vote.targetProposalId).orElse:
-              QuorumCertificateAssembler
-                .assemble(
-                  QuorumCertificateSubject(
-                    window = proposal.window,
-                    proposalId = proposal.proposalId,
-                    blockId = proposal.targetBlockId,
-                  ),
-                  snapshot.accumulator.votesFor(
-                    proposal.window,
-                    proposal.proposalId,
-                  ),
-                  bootstrapInput.validatorSet,
-                )
-                .toOption
+            snapshot.qcs
+              .get(vote.targetProposalId)
+              .orElse:
+                QuorumCertificateAssembler
+                  .assemble(
+                    QuorumCertificateSubject(
+                      window = proposal.window,
+                      proposalId = proposal.proposalId,
+                      blockId = proposal.targetBlockId,
+                    ),
+                    snapshot.accumulator.votesFor(
+                      proposal.window,
+                      proposal.proposalId,
+                    ),
+                    bootstrapInput.validatorSet,
+                  )
+                  .toOption
           highestKnownQc.fold(Sync[F].unit): qc =>
             val nextWindow =
               proposal.window.copy(
@@ -261,34 +278,35 @@ private final class InMemoryHotStuffPacemakerDriver[F[_]: Sync](
               )
             bootstrapHoldReason(nextWindow.chainId).flatMap: holdReason =>
               localValidators.traverse_ { validatorId =>
-                updateEntry(HotStuffPacemakerKey(nextWindow.chainId, validatorId)):
-                  snapshot =>
-                    snapshot.state match
-                      case Some(existing)
-                          if compareWindow(
-                            nextWindow,
-                            existing.activeWindow,
-                          ).contains(-1) =>
-                        None
-                      case Some(existing)
-                          if existing.activeWindow === nextWindow &&
-                            existing.highestKnownQc.subject === qc.subject =>
-                        None
-                      case Some(existing)
-                          if compareWindow(
-                            nextWindow,
-                            existing.activeWindow,
-                          ).isEmpty =>
-                        None
-                      case _ =>
-                        Some(
-                          runtimeFor(validatorId).start(
-                            activeWindow = nextWindow,
-                            highestKnownQc = qc,
-                            now = now,
-                            bootstrapHoldReason = holdReason,
-                          ),
-                        )
+                updateEntry(
+                  HotStuffPacemakerKey(nextWindow.chainId, validatorId),
+                ): snapshot =>
+                  snapshot.state match
+                    case Some(existing)
+                        if compareWindow(
+                          nextWindow,
+                          existing.activeWindow,
+                        ).contains(-1) =>
+                      None
+                    case Some(existing)
+                        if existing.activeWindow === nextWindow &&
+                          existing.highestKnownQc.subject === qc.subject =>
+                      None
+                    case Some(existing)
+                        if compareWindow(
+                          nextWindow,
+                          existing.activeWindow,
+                        ).isEmpty =>
+                      None
+                    case _ =>
+                      Some(
+                        runtimeFor(validatorId).start(
+                          activeWindow = nextWindow,
+                          highestKnownQc = qc,
+                          now = now,
+                          bootstrapHoldReason = holdReason,
+                        ),
+                      )
               }
 
   private def observeTimeoutVote(
@@ -299,7 +317,9 @@ private final class InMemoryHotStuffPacemakerDriver[F[_]: Sync](
         HotStuffPacemakerKey(timeoutVote.subject.window.chainId, validatorId)
       updateEntry(key): snapshot =>
         snapshot.state.flatMap(state =>
-          runtimeFor(validatorId).observeTimeoutVote(state, timeoutVote).toOption,
+          runtimeFor(validatorId)
+            .observeTimeoutVote(state, timeoutVote)
+            .toOption,
         )
     }
 
@@ -347,8 +367,8 @@ private final class InMemoryHotStuffPacemakerDriver[F[_]: Sync](
   ): F[Unit] =
     stateRef
       .modify: entries =>
-        val existing = entries.get(key)
-        val current = existing.getOrElse(HotStuffPacemakerEntrySnapshot.empty)
+        val existing  = entries.get(key)
+        val current   = existing.getOrElse(HotStuffPacemakerEntrySnapshot.empty)
         val maybeStep = stepFor(current)
         val nextEntries =
           maybeStep match
@@ -386,8 +406,7 @@ private final class InMemoryHotStuffPacemakerDriver[F[_]: Sync](
   ): F[Unit] =
     command match
       case HotStuffPacemakerCommand.ActivateLeader(window, leader) =>
-        if automaticConsensus then
-          emitLeaderProposal(window, leader, now)
+        if automaticConsensus then emitLeaderProposal(window, leader, now)
         else Sync[F].unit
       case HotStuffPacemakerCommand.EmitTimeoutVote(
             voter,
@@ -437,8 +456,7 @@ private final class InMemoryHotStuffPacemakerDriver[F[_]: Sync](
       now: Instant,
   ): F[Unit] =
     entryFor(HotStuffPacemakerKey(window.chainId, leader)).flatMap:
-      case Some(entry)
-          if entry.emittedProposalWindow.contains(window) =>
+      case Some(entry) if entry.emittedProposalWindow.contains(window) =>
         Sync[F].unit
       case Some(entry)
           if entry.state.exists(state =>
@@ -447,8 +465,8 @@ private final class InMemoryHotStuffPacemakerDriver[F[_]: Sync](
               state.bootstrapHoldReason.isEmpty,
           ) =>
         entry.state.fold(Sync[F].unit): state =>
-          automaticProposalStateRoot(window, leader, state.highestKnownQc).flatMap:
-            stateRoot =>
+          automaticProposalStateRoot(window, leader, state.highestKnownQc)
+            .flatMap: stateRoot =>
               withLocalSigner(leader): keyPair =>
                 BlockTimestamp.fromInstant(now) match
                   case Left(_) =>
@@ -461,7 +479,11 @@ private final class InMemoryHotStuffPacemakerDriver[F[_]: Sync](
                           else Some(state.highestKnownQc.subject.blockId),
                         height = BlockHeight(window.height.toBigNat),
                         stateRoot = stateRoot,
-                        bodyRoot = automaticBodyRoot(window, leader, state.highestKnownQc),
+                        bodyRoot = automaticBodyRoot(
+                          window,
+                          leader,
+                          state.highestKnownQc,
+                        ),
                         timestamp = timestamp,
                       )
                     Proposal
@@ -498,7 +520,10 @@ private final class InMemoryHotStuffPacemakerDriver[F[_]: Sync](
     val nextWindow =
       HotStuffPacemaker.nextWindowAfter(timeoutCertificate.subject.window)
     val nextLeader =
-      HotStuffPacemaker.deterministicLeader(nextWindow, bootstrapInput.validatorSet)
+      HotStuffPacemaker.deterministicLeader(
+        nextWindow,
+        bootstrapInput.validatorSet,
+      )
     stateFor(HotStuffPacemakerKey(nextWindow.chainId, sender)).flatMap:
       case Some(state) if state.bootstrapHoldReason.isEmpty =>
         withLocalSigner(sender): keyPair =>
@@ -527,7 +552,9 @@ private final class InMemoryHotStuffPacemakerDriver[F[_]: Sync](
       proposal: Proposal,
       now: Instant,
   ): F[Unit] =
-    localValidators.traverse_(validatorId => emitVote(validatorId, proposal, now))
+    localValidators.traverse_(validatorId =>
+      emitVote(validatorId, proposal, now),
+    )
 
   private def emitVote(
       voter: ValidatorId,
@@ -568,12 +595,16 @@ private final class InMemoryHotStuffPacemakerDriver[F[_]: Sync](
       artifact: HotStuffGossipArtifact,
       now: Instant,
   ): F[Unit] =
-    publisher.append(artifact, now).flatMap: event =>
-      sink.applyEvent(event).flatMap:
-        case Right(result) if result.applied =>
-          observeApplied(event)
-        case _ =>
-          Sync[F].unit
+    publisher
+      .append(artifact, now)
+      .flatMap: event =>
+        sink
+          .applyEvent(event)
+          .flatMap:
+            case Right(result) if result.applied =>
+              observeApplied(event)
+            case _ =>
+              Sync[F].unit
 
   private def withLocalSigner(
       validatorId: ValidatorId,
@@ -626,7 +657,7 @@ private final class InMemoryHotStuffPacemakerDriver[F[_]: Sync](
       step.copy(
         commands = step.commands.filter:
           case HotStuffPacemakerCommand.ActivateLeader(_, _) => false
-          case _                                            => true,
+          case _                                             => true,
       )
     else step
 
@@ -717,12 +748,13 @@ private final class InMemoryHotStuffPacemakerDriver[F[_]: Sync](
         bootstrapInput.holders,
       )
       .flatMap(_ =>
-        bootstrapInput.localKeys.get(validatorId).toRight(
-          HotStuffPolicyViolation(
-            reason = "localValidatorKeyUnavailable",
-            detail = Some(validatorId.value),
-          ),
-        ),
+        bootstrapInput.localKeys
+          .get(validatorId)
+          .toRight:
+            HotStuffPolicyViolation(
+              reason = "localValidatorKeyUnavailable",
+              detail = Some(validatorId.value),
+            ),
       )
 
   private def bootstrapHoldReason(
@@ -730,16 +762,21 @@ private final class InMemoryHotStuffPacemakerDriver[F[_]: Sync](
   ): F[Option[String]] =
     bootstrapLifecycle match
       case Some(lifecycle) if bootstrapInput.role === LocalNodeRole.Validator =>
-        lifecycle.voteReadiness(chainId).map:
-          case BootstrapVoteReadiness.Ready        => None
-          case BootstrapVoteReadiness.Held(reason) => Some(reason)
+        lifecycle
+          .voteReadiness(chainId)
+          .map:
+            case BootstrapVoteReadiness.Ready        => None
+            case BootstrapVoteReadiness.Held(reason) => Some(reason)
       case _ =>
         None.pure[F]
 
   private def runtimeFor(
       localValidator: ValidatorId,
   ): HotStuffPacemakerRuntime =
-    HotStuffPacemakerRuntime.default(localValidator, bootstrapInput.validatorSet)
+    HotStuffPacemakerRuntime.default(
+      localValidator,
+      bootstrapInput.validatorSet,
+    )
 
   private def compareWindow(
       left: HotStuffWindow,
@@ -771,7 +808,9 @@ private object InMemoryHotStuffPacemakerDriver:
           Ref.of[F, Map[HotStuffPacemakerKey, HotStuffPacemakerEntrySnapshot]](
             Map.empty,
           ),
-          Ref.of[F, ObservedEventQueue](ObservedEventQueue(false, Vector.empty)),
+          Ref.of[F, ObservedEventQueue](
+            ObservedEventQueue(false, Vector.empty),
+          ),
         ).mapN: (stateRef, observationRef) =>
           val driver =
             new InMemoryHotStuffPacemakerDriver[F](
@@ -794,11 +833,10 @@ private object InMemoryHotStuffPacemakerDriver:
               driver.observeApplied,
             )
           runtime.copy(
-            services =
-              runtime.services.copy(
-                source = wrappedSource,
-                sink = wrappedSink,
-              ),
+            services = runtime.services.copy(
+              source = wrappedSource,
+              sink = wrappedSink,
+            ),
             pacemakerSnapshot = driver.snapshot.some,
           )
       case _ =>

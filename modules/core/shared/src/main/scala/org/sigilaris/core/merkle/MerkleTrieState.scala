@@ -8,15 +8,20 @@ import util.SafeStringInterp.*
 
 /** Represents the state of a Merkle Trie with change tracking.
   *
-  * Tracks the current root, base root, and accumulated differences
-  * to enable efficient state transitions and merging.
+  * Tracks the current root, base root, and accumulated differences to enable
+  * efficient state transitions and merging.
   *
-  * @param root current root hash
-  * @param base base root hash (for tracking changes)
-  * @param diff accumulated differences from base
+  * @param root
+  *   current root hash
+  * @param base
+  *   base root hash (for tracking changes)
+  * @param diff
+  *   accumulated differences from base
   *
-  * @see [[MerkleTrieStateDiff]] for difference tracking
-  * @see [[MerkleTrieNode.MerkleRoot]] for root hash type
+  * @see
+  *   [[MerkleTrieStateDiff]] for difference tracking
+  * @see
+  *   [[MerkleTrieNode.MerkleRoot]] for root hash type
   */
 final case class MerkleTrieState(
     root: Option[MerkleRoot],
@@ -27,8 +32,10 @@ final case class MerkleTrieState(
     *
     * Combines the differences when both states share the same base.
     *
-    * @param that the state to rebase onto
-    * @return rebased state or error if bases don't match
+    * @param that
+    *   the state to rebase onto
+    * @return
+    *   rebased state or error if bases don't match
     */
   def rebase(that: MerkleTrieState): Either[String, MerkleTrieState] =
     def right: MerkleTrieState =
@@ -67,8 +74,10 @@ object MerkleTrieState:
     *
     * Sets both root and base to the given hash with empty diff.
     *
-    * @param root the root hash
-    * @return new state
+    * @param root
+    *   the root hash
+    * @return
+    *   new state
     */
   def fromRoot(root: MerkleRoot): MerkleTrieState = MerkleTrieState(
     root = Some(root),
@@ -80,8 +89,10 @@ object MerkleTrieState:
     *
     * Sets both root and base to the given option with empty diff.
     *
-    * @param root the optional root hash
-    * @return new state
+    * @param root
+    *   the optional root hash
+    * @return
+    *   new state
     */
   def fromRootOption(root: Option[MerkleRoot]): MerkleTrieState =
     MerkleTrieState(

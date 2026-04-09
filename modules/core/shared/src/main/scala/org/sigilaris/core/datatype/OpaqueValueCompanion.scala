@@ -8,9 +8,9 @@ import org.sigilaris.core.codec.json.{JsonDecoder, JsonEncoder, JsonKeyCodec}
 
 /** Reusable companion mix-in for opaque values backed by a representation type.
   *
-  * The companion only needs to define how to wrap the representation and how
-  * to project an opaque value back to that representation. The common `Eq`,
-  * byte codec, and JSON codec instances are forwarded from the representation.
+  * The companion only needs to define how to wrap the representation and how to
+  * project an opaque value back to that representation. The common `Eq`, byte
+  * codec, and JSON codec instances are forwarded from the representation.
   */
 trait OpaqueValueCompanion[A, Repr]:
   protected def wrap(repr: Repr): A

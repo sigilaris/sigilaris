@@ -22,7 +22,9 @@ final class HotStuffPacemakerRuntimeSuite extends FunSuite:
       ),
   )
 
-  test("local leader activation and timeout backoff are deterministic across timeout windows"):
+  test(
+    "local leader activation and timeout backoff are deterministic across timeout windows",
+  ):
     val runtime =
       HotStuffPacemakerRuntime.default(
         localValidator = validatorSet.members(1).id,
@@ -43,7 +45,7 @@ final class HotStuffPacemakerRuntimeSuite extends FunSuite:
         HotStuffPacemakerCommand.ActivateLeader(
           window = activeWindow,
           leader = validatorSet.members(1).id,
-        )
+        ),
       ),
     )
     assertEquals(
@@ -65,11 +67,13 @@ final class HotStuffPacemakerRuntimeSuite extends FunSuite:
           voter = validatorSet.members(1).id,
           window = activeWindow,
           highestKnownQc = bootstrapQc(),
-        )
+        ),
       ),
     )
     assert(
-      runtime.timeoutFor(activeWindow, 1).compareTo(runtime.timeoutFor(activeWindow, 0)) > 0,
+      runtime
+        .timeoutFor(activeWindow, 1)
+        .compareTo(runtime.timeoutFor(activeWindow, 0)) > 0,
     )
 
     val advanced = runtime.observeNewView(
@@ -78,7 +82,10 @@ final class HotStuffPacemakerRuntimeSuite extends FunSuite:
       timedOut.state.timeoutDeadline.plusMillis(1),
     )
 
-    assertEquals(advanced.map(_.outcome), Right(HotStuffPacemakerStepOutcome.AdvancedWindow))
+    assertEquals(
+      advanced.map(_.outcome),
+      Right(HotStuffPacemakerStepOutcome.AdvancedWindow),
+    )
     assertEquals(advanced.map(_.state.activeWindow), Right(expectedNextWindow))
     assertEquals(
       advanced.map(_.proposalEligibility),
@@ -122,7 +129,7 @@ final class HotStuffPacemakerRuntimeSuite extends FunSuite:
         HotStuffPacemakerDiagnostic.BootstrapHoldBlockedTimeout(
           window = activeWindow,
           reason = "forwardCatchUpUnavailable",
-        )
+        ),
       ),
     )
 
@@ -135,7 +142,7 @@ final class HotStuffPacemakerRuntimeSuite extends FunSuite:
         HotStuffPacemakerCommand.ActivateLeader(
           window = activeWindow,
           leader = validatorSet.members.head.id,
-        )
+        ),
       ),
     )
     assertEquals(
@@ -145,13 +152,15 @@ final class HotStuffPacemakerRuntimeSuite extends FunSuite:
       ),
     )
 
-  test("homogeneous timeout quorum emits new-view while divergent subjects surface diagnostics"):
+  test(
+    "homogeneous timeout quorum emits new-view while divergent subjects surface diagnostics",
+  ):
     val runtime =
       HotStuffPacemakerRuntime.default(
         localValidator = validatorSet.members.head.id,
         validatorSet = validatorSet,
       )
-    val activeWindow = HotStuffWindow(chainId, 1L, 1L, validatorSet.hash)
+    val activeWindow   = HotStuffWindow(chainId, 1L, 1L, validatorSet.hash)
     val highestKnownQc = bootstrapQc()
     val alternateHighestKnownQc = alternateQc()
     val initial =
@@ -159,14 +168,18 @@ final class HotStuffPacemakerRuntimeSuite extends FunSuite:
 
     val ticked = runtime.tick(initial.state, initial.state.timeoutDeadline)
 
-    val localVote = signedTimeoutVoteFor(activeWindow, highestKnownQc, 0)
+    val localVote   = signedTimeoutVoteFor(activeWindow, highestKnownQc, 0)
     val remoteVote2 = signedTimeoutVoteFor(activeWindow, highestKnownQc, 1)
     val remoteVote3 = signedTimeoutVoteFor(activeWindow, highestKnownQc, 2)
-    val divergentVote = signedTimeoutVoteFor(activeWindow, alternateHighestKnownQc, 3)
+    val divergentVote =
+      signedTimeoutVoteFor(activeWindow, alternateHighestKnownQc, 3)
 
-    val afterLocal = runtime.observeTimeoutVote(ticked.state, localVote).toOption.get
-    val afterSecond = runtime.observeTimeoutVote(afterLocal.state, remoteVote2).toOption.get
-    val afterThird = runtime.observeTimeoutVote(afterSecond.state, remoteVote3).toOption.get
+    val afterLocal =
+      runtime.observeTimeoutVote(ticked.state, localVote).toOption.get
+    val afterSecond =
+      runtime.observeTimeoutVote(afterLocal.state, remoteVote2).toOption.get
+    val afterThird =
+      runtime.observeTimeoutVote(afterSecond.state, remoteVote3).toOption.get
     val afterDivergent =
       runtime.observeTimeoutVote(afterThird.state, divergentVote).toOption.get
 
@@ -176,8 +189,9 @@ final class HotStuffPacemakerRuntimeSuite extends FunSuite:
         HotStuffPacemakerCommand.EmitNewView(
           sender = validatorSet.members.head.id,
           highestKnownQc = highestKnownQc,
-          timeoutCertificate = timeoutCertificateFor(activeWindow, highestKnownQc),
-        )
+          timeoutCertificate =
+            timeoutCertificateFor(activeWindow, highestKnownQc),
+        ),
       ),
     )
     assertEquals(
@@ -189,7 +203,7 @@ final class HotStuffPacemakerRuntimeSuite extends FunSuite:
             highestKnownQc.subject,
             alternateHighestKnownQc.subject,
           ),
-        )
+        ),
       ),
     )
     assertEquals(
@@ -197,7 +211,9 @@ final class HotStuffPacemakerRuntimeSuite extends FunSuite:
       Some(TimeoutVoteSubject(activeWindow, highestKnownQc.subject)),
     )
 
-  test("wrong-window new-view is rejected and already advanced windows are dropped as stale"):
+  test(
+    "wrong-window new-view is rejected and already advanced windows are dropped as stale",
+  ):
     val runtime =
       HotStuffPacemakerRuntime.default(
         localValidator = validatorSet.members.head.id,
@@ -215,16 +231,31 @@ final class HotStuffPacemakerRuntimeSuite extends FunSuite:
       )
 
     val advanced =
-      runtime.observeNewView(initial.state, validNewView, startedAt.plusMillis(1))
+      runtime.observeNewView(
+        initial.state,
+        validNewView,
+        startedAt.plusMillis(1),
+      )
     val stale =
       advanced.flatMap(step =>
-        runtime.observeNewView(step.state, validNewView, startedAt.plusMillis(2)),
+        runtime
+          .observeNewView(step.state, validNewView, startedAt.plusMillis(2)),
       )
     val wrongWindow =
-      runtime.observeNewView(initial.state, jumpedNewView, startedAt.plusMillis(1))
+      runtime.observeNewView(
+        initial.state,
+        jumpedNewView,
+        startedAt.plusMillis(1),
+      )
 
-    assertEquals(advanced.map(_.outcome), Right(HotStuffPacemakerStepOutcome.AdvancedWindow))
-    assertEquals(stale.map(_.outcome), Right(HotStuffPacemakerStepOutcome.Stale))
+    assertEquals(
+      advanced.map(_.outcome),
+      Right(HotStuffPacemakerStepOutcome.AdvancedWindow),
+    )
+    assertEquals(
+      stale.map(_.outcome),
+      Right(HotStuffPacemakerStepOutcome.Stale),
+    )
     assertEquals(wrongWindow.left.map(_.reason), Left("wrongPacemakerWindow"))
 
   private def bootstrapQc(): QuorumCertificate =
@@ -327,7 +358,8 @@ final class HotStuffPacemakerRuntimeSuite extends FunSuite:
         UnsignedNewView(
           window = nextWindow,
           sender = validatorSet.members(senderIndex).id,
-          nextLeader = HotStuffPacemaker.deterministicLeader(nextWindow, validatorSet),
+          nextLeader =
+            HotStuffPacemaker.deterministicLeader(nextWindow, validatorSet),
           highestKnownQc = highestKnownQc,
           timeoutCertificate = timeoutCertificate,
         ),

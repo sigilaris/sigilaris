@@ -8,35 +8,61 @@ import munit.CatsEffectSuite
 
 import org.sigilaris.core.crypto.CryptoOps
 import org.sigilaris.core.datatype.UInt256
-import org.sigilaris.node.jvm.runtime.block.{BlockHeader, BlockHeight, BlockId, BlockTimestamp, BodyRoot, StateRoot}
-import org.sigilaris.node.jvm.runtime.gossip.{CanonicalRejection, ChainId, ControlBatch, ControlOp, DirectionalSessionId, GossipClock, PeerIdentity}
+import org.sigilaris.node.jvm.runtime.block.{
+  BlockHeader,
+  BlockHeight,
+  BlockId,
+  BlockTimestamp,
+  BodyRoot,
+  StateRoot,
+}
+import org.sigilaris.node.jvm.runtime.gossip.{
+  CanonicalRejection,
+  ChainId,
+  ControlBatch,
+  ControlOp,
+  DirectionalSessionId,
+  GossipClock,
+  PeerIdentity,
+}
 
 final class HotStuffReplayBackfillMaterializationSuite extends CatsEffectSuite:
 
-  private val chainId = ChainId.unsafe("chain-main")
-  private val startedAt = Instant.parse("2026-04-05T18:00:00Z")
+  private val chainId       = ChainId.unsafe("chain-main")
+  private val startedAt     = Instant.parse("2026-04-05T18:00:00Z")
   private val validatorKeys = Vector.fill(4)(CryptoOps.generate())
   private val validatorSet = ValidatorSet.unsafe(
     validatorKeys.zipWithIndex.map: (keyPair, index) =>
       ValidatorMember(
         id = ValidatorId.unsafe(s"validator-${index + 1}"),
         publicKey = keyPair.publicKey,
-      )
+      ),
   )
-  private val session1 = session("11111111-1111-4111-8111-111111111111", "node-b")
+  private val session1 =
+    session("11111111-1111-4111-8111-111111111111", "node-b")
 
-  test("in-memory replay/backfill services follow anchor ancestry instead of height-only filtering"):
-    val genesis = genesisProposal("10")
+  test(
+    "in-memory replay/backfill services follow anchor ancestry instead of height-only filtering",
+  ):
+    val genesis   = genesisProposal("10")
     val proposal1 = childProposal(genesis, "11", 1L)
     val proposal2 = childProposal(proposal1, "12", 2L)
-    val anchor = childProposal(proposal2, "13", 3L)
-    val replay1 = childProposal(anchor, "14", 4L)
-    val replay2 = childProposal(replay1, "15", 5L)
+    val anchor    = childProposal(proposal2, "13", 3L)
+    val replay1   = childProposal(anchor, "14", 4L)
+    val replay2   = childProposal(replay1, "15", 5L)
     val unrelated = childProposal(proposal1, "16", 4L)
 
     for
       services <- bootstrapServices(
-        Vector(genesis, proposal1, proposal2, anchor, replay1, replay2, unrelated),
+        Vector(
+          genesis,
+          proposal1,
+          proposal2,
+          anchor,
+          replay1,
+          replay2,
+          unrelated,
+        ),
       )
       replay <- services.proposalReplay.readNext(
         session = session1,
@@ -67,18 +93,31 @@ final class HotStuffReplayBackfillMaterializationSuite extends CatsEffectSuite:
         limit = 16,
       )
     yield
-      assertEquals(replay.map(_.map(_.proposalId)), Right(Vector(replay1.proposalId, replay2.proposalId)))
+      assertEquals(
+        replay.map(_.map(_.proposalId)),
+        Right(Vector(replay1.proposalId, replay2.proposalId)),
+      )
       assertEquals(
         backfill.map(_.map(_.proposalId)),
-        Right(Vector(proposal2.proposalId, proposal1.proposalId, genesis.proposalId)),
+        Right(
+          Vector(proposal2.proposalId, proposal1.proposalId, genesis.proposalId),
+        ),
       )
-      assertEquals(unknown.left.map(_.reason), Left("historicalBackfillAnchorUnknown"))
-      assertEquals(replayUnknown.left.map(_.reason), Left("proposalReplayAnchorUnknown"))
+      assertEquals(
+        unknown.left.map(_.reason),
+        Left("historicalBackfillAnchorUnknown"),
+      )
+      assertEquals(
+        replayUnknown.left.map(_.reason),
+        Left("proposalReplayAnchorUnknown"),
+      )
 
-  test("bootstrap coordinator materializes forward catch-up state into the runtime-owned store"):
-    val anchor = finalizedSuggestion("20", 2L)
-    val replay1 = childProposal(anchor.proposal, "21", 3L)
-    val replay2 = childProposal(replay1, "22", 4L)
+  test(
+    "bootstrap coordinator materializes forward catch-up state into the runtime-owned store",
+  ):
+    val anchor         = finalizedSuggestion("20", 2L)
+    val replay1        = childProposal(anchor.proposal, "21", 3L)
+    val replay2        = childProposal(replay1, "22", 4L)
     val forwardStoreIO = ForwardCatchUpStore.inMemory[IO]
     val readiness =
       new ProposalCatchUpReadiness[IO]:
@@ -93,59 +132,90 @@ final class HotStuffReplayBackfillMaterializationSuite extends CatsEffectSuite:
           else
             ProposalCatchUpAssessment(
               voteReadiness = BootstrapVoteReadiness.Held("missingTxPayload"),
-              controlBatch =
-                Some(
-                  ControlBatch.create(
+              controlBatch = Some(
+                ControlBatch
+                  .create(
                     "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
                     Vector(
                       ControlOp.RequestByIdTx(
                         chainId,
-                        Vector(replay2.txSet.txIds.headOption.getOrElse(proposalIdAsTxId(replay2.proposalId))),
-                      )
+                        Vector(
+                          replay2.txSet.txIds.headOption.getOrElse(
+                            proposalIdAsTxId(replay2.proposalId),
+                          ),
+                        ),
+                      ),
                     ),
-                  ).toOption.get,
-                ),
+                  )
+                  .toOption
+                  .get,
+              ),
             ).asRight[BootstrapCoordinatorFailure].pure[IO]
 
     for
       forwardStore <- forwardStoreIO
       coordinator <- BootstrapCoordinator.create[IO](
         retryPolicy = BootstrapRetryPolicy.boundedDefault,
-        validatorSetLookup = ValidatorSetLookup.static[IO](BootstrapTrustRoot.staticValidatorSet(validatorSet)),
+        validatorSetLookup = ValidatorSetLookup.static[IO](
+          BootstrapTrustRoot.staticValidatorSet(validatorSet),
+        ),
         finalizedAnchorSuggestions = suggestionService(Right(Some(anchor))),
         snapshotCoordinator = completedSnapshotCoordinator,
         proposalReplay = replayService(Vector(replay1, replay2)),
         readiness = readiness,
         forwardStore = forwardStore,
       )
-      result <- coordinator.bootstrap(chainId, Vector(session1), startedAt, Vector.empty)
+      result <- coordinator.bootstrap(
+        chainId,
+        Vector(session1),
+        startedAt,
+        Vector.empty,
+      )
       stored <- forwardStore.current(chainId)
     yield
-      assertEquals(result.map(_.forwardCatchUp.applied.map(_.proposalId)), Right(Vector(replay1.proposalId)))
-      assertEquals(result.map(_.forwardCatchUp.queued.map(_.proposalId)), Right(Vector(replay2.proposalId)))
+      assertEquals(
+        result.map(_.forwardCatchUp.applied.map(_.proposalId)),
+        Right(Vector(replay1.proposalId)),
+      )
+      assertEquals(
+        result.map(_.forwardCatchUp.queued.map(_.proposalId)),
+        Right(Vector(replay2.proposalId)),
+      )
       stored match
         case Some(materialized) =>
           assertEquals(materialized.anchor, anchor.snapshotAnchor)
-          assertEquals(materialized.applied.map(_.proposalId), Vector(replay1.proposalId))
-          assertEquals(materialized.queued.map(_.proposalId), Vector(replay2.proposalId))
+          assertEquals(
+            materialized.applied.map(_.proposalId),
+            Vector(replay1.proposalId),
+          )
+          assertEquals(
+            materialized.queued.map(_.proposalId),
+            Vector(replay2.proposalId),
+          )
           assertEquals(materialized.controlBatches.size, 1)
-          assertEquals(materialized.voteReadiness, BootstrapVoteReadiness.Held("missingTxPayload"))
+          assertEquals(
+            materialized.voteReadiness,
+            BootstrapVoteReadiness.Held("missingTxPayload"),
+          )
         case None =>
           fail("expected materialized forward catch-up state")
 
-  test("historical backfill archives unique proposals and fails duplicate batches explicitly"):
-    val anchor = finalizedSuggestion("30", 3L)
-    val genesis = genesisProposal("31")
+  test(
+    "historical backfill archives unique proposals and fails duplicate batches explicitly",
+  ):
+    val anchor    = finalizedSuggestion("30", 3L)
+    val genesis   = genesisProposal("31")
     val proposal1 = childProposal(genesis, "32", 1L)
     val proposal2 = childProposal(proposal1, "33", 2L)
 
     for
-      responses <- Ref.of[IO, Vector[Either[CanonicalRejection, Vector[Proposal]]]](
-        Vector(
-          Right(Vector(proposal2)),
-          Right(Vector(proposal2)),
+      responses <- Ref
+        .of[IO, Vector[Either[CanonicalRejection, Vector[Proposal]]]](
+          Vector(
+            Right(Vector(proposal2)),
+            Right(Vector(proposal2)),
+          ),
         )
-      )
       archive <- HistoricalProposalArchive.inMemory[IO]
       worker <- HistoricalBackfillWorker.createWithNow[IO](
         policy = HistoricalBackfillPolicy(
@@ -156,9 +226,18 @@ final class HotStuffReplayBackfillMaterializationSuite extends CatsEffectSuite:
         archive = archive,
         now = IO.pure(startedAt),
       )
-      _ <- worker.start(chainId, Vector(session1), anchor.snapshotAnchor, startedAt)
+      _ <- worker.start(
+        chainId,
+        Vector(session1),
+        anchor.snapshotAnchor,
+        startedAt,
+      )
       failed <- awaitValue(worker.current, attempts = 40):
-        case HistoricalBackfillStatus.Failed("historicalBackfillDuplicateBatch", _, _) =>
+        case HistoricalBackfillStatus.Failed(
+              "historicalBackfillDuplicateBatch",
+              _,
+              _,
+            ) =>
           true
         case _ =>
           false
@@ -171,7 +250,10 @@ final class HotStuffReplayBackfillMaterializationSuite extends CatsEffectSuite:
           assertEquals(progress.fetchedProposalCount, 1L)
         case other =>
           fail("expected duplicate-batch failure but saw " + other.toString)
-      assertEquals(archived.map(_.proposal.proposalId), Vector(proposal2.proposalId))
+      assertEquals(
+        archived.map(_.proposal.proposalId),
+        Vector(proposal2.proposalId),
+      )
 
   private def bootstrapServices(
       proposals: Vector[Proposal],
@@ -191,11 +273,13 @@ final class HotStuffReplayBackfillMaterializationSuite extends CatsEffectSuite:
             startedAt.plusSeconds(index.toLong),
           )
           .flatMap: event =>
-            sink.applyEvent(event).flatMap:
-              case Left(rejection) =>
-                IO.raiseError(new IllegalStateException(rejection.reason))
-              case Right(_) =>
-                IO.unit
+            sink
+              .applyEvent(event)
+              .flatMap:
+                case Left(rejection) =>
+                  IO.raiseError(new IllegalStateException(rejection.reason))
+                case Right(_) =>
+                  IO.unit
       }
     yield HotStuffBootstrapServicesRuntime.inMemory[IO](validatorSet, sink)
 
@@ -227,8 +311,8 @@ final class HotStuffReplayBackfillMaterializationSuite extends CatsEffectSuite:
                 lastUpdatedAt = startedAt,
               ),
               fetchedNodeCount = 1L,
-            )
-          )
+            ),
+          ),
         )
 
   private def replayService(
@@ -265,7 +349,8 @@ final class HotStuffReplayBackfillMaterializationSuite extends CatsEffectSuite:
   private def awaitValue[A](
       effect: IO[A],
       attempts: Int,
-      delay: scala.concurrent.duration.FiniteDuration = scala.concurrent.duration.DurationInt(25).millis,
+      delay: scala.concurrent.duration.FiniteDuration =
+        scala.concurrent.duration.DurationInt(25).millis,
   )(
       predicate: A => Boolean,
   ): IO[A] =
@@ -273,8 +358,7 @@ final class HotStuffReplayBackfillMaterializationSuite extends CatsEffectSuite:
       if predicate(value) then IO.pure(value)
       else if attempts <= 1 then
         IO.raiseError(new IllegalStateException("condition not met"))
-      else
-        IO.sleep(delay) *> awaitValue(effect, attempts - 1, delay)(predicate)
+      else IO.sleep(delay) *> awaitValue(effect, attempts - 1, delay)(predicate)
 
   private def session(
       sessionId: String,
@@ -291,7 +375,8 @@ final class HotStuffReplayBackfillMaterializationSuite extends CatsEffectSuite:
   ): FinalizedAnchorSuggestion =
     val baseHeight = anchorHeight - 1L
     val bootstrapSubject = QuorumCertificateSubject(
-      window = HotStuffWindow(chainId, baseHeight, baseHeight, validatorSet.hash),
+      window =
+        HotStuffWindow(chainId, baseHeight, baseHeight, validatorSet.hash),
       proposalId = ProposalId(hex(seed + "01")),
       blockId = BlockId(hex(seed + "02")),
     )
@@ -315,7 +400,12 @@ final class HotStuffReplayBackfillMaterializationSuite extends CatsEffectSuite:
       Proposal
         .sign(
           UnsignedProposal(
-            window = HotStuffWindow(chainId, anchorHeight, anchorHeight, validatorSet.hash),
+            window = HotStuffWindow(
+              chainId,
+              anchorHeight,
+              anchorHeight,
+              validatorSet.hash,
+            ),
             proposer = validatorSet.members.head.id,
             targetBlockId = BlockHeader.computeId(anchorBlock),
             block = anchorBlock,
@@ -326,7 +416,7 @@ final class HotStuffReplayBackfillMaterializationSuite extends CatsEffectSuite:
         )
         .toOption
         .get
-    val child = childProposal(anchor, seed + "20", anchorHeight + 1L)
+    val child      = childProposal(anchor, seed + "20", anchorHeight + 1L)
     val grandchild = childProposal(child, seed + "30", anchorHeight + 2L)
 
     FinalizedAnchorSuggestion(
@@ -421,18 +511,21 @@ final class HotStuffReplayBackfillMaterializationSuite extends CatsEffectSuite:
       window: HotStuffWindow,
       proposalId: ProposalId,
   ): Vector[Vote] =
-    validatorSet.members.take(3).zipWithIndex.map: (member, index) =>
-      Vote
-        .sign(
-          UnsignedVote(
-            window = window,
-            voter = member.id,
-            targetProposalId = proposalId,
-          ),
-          validatorKeys(index),
-        )
-        .toOption
-        .get
+    validatorSet.members
+      .take(3)
+      .zipWithIndex
+      .map: (member, index) =>
+        Vote
+          .sign(
+            UnsignedVote(
+              window = window,
+              voter = member.id,
+              targetProposalId = proposalId,
+            ),
+            validatorKeys(index),
+          )
+          .toOption
+          .get
 
   private def block(
       parent: Option[BlockId],
@@ -445,14 +538,15 @@ final class HotStuffReplayBackfillMaterializationSuite extends CatsEffectSuite:
       height = BlockHeight.unsafeFromLong(height),
       stateRoot = StateRoot(hex(stateRootHex)),
       bodyRoot = BodyRoot(hex(bodyRootHex)),
-      timestamp = BlockTimestamp.unsafeFromEpochMillis(startedAt.toEpochMilli + height),
+      timestamp =
+        BlockTimestamp.unsafeFromEpochMillis(startedAt.toEpochMilli + height),
     )
 
   private def proposalIdAsTxId(
       proposalId: ProposalId,
   ): org.sigilaris.node.jvm.runtime.gossip.StableArtifactId =
     org.sigilaris.node.jvm.runtime.gossip.StableArtifactId.unsafeFromBytes(
-      proposalId.toUInt256.bytes
+      proposalId.toUInt256.bytes,
     )
 
   private def hex(

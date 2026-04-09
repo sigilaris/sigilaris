@@ -69,12 +69,12 @@ final case class UInt256TooLong(actualBytes: Long, maxBytes: Int)
 
 case object UInt256NegativeValue extends UInt256Failure:
   override val code: FailureCode = FailureCode.UInt256.NegativeValue
-  val msg: String = "Negative value for UInt256"
+  val msg: String                = "Negative value for UInt256"
 
 final case class UInt256Overflow(detail: String) extends UInt256Failure:
   override val code: FailureCode = FailureCode.UInt256.Overflow
-  def msg: String = detail
+  def msg: String                = detail
 
 final case class UInt256InvalidHex(detail: String) extends UInt256Failure:
   override val code: FailureCode = FailureCode.UInt256.InvalidHex
-  def msg: String = detail
+  def msg: String                = detail

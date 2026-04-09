@@ -131,8 +131,8 @@ object HotStuffHeight:
       case Left(error)   => throw new IllegalArgumentException(error)
 
   extension (height: HotStuffHeight)
-    def toBigNat: BigNat                   = height
-    def render: String                     = height.toBigNat.toBigInt.toString
+    def toBigNat: BigNat = height
+    def render: String   = height.toBigNat.toBigInt.toString
     def <(other: HotStuffHeight): Boolean =
       BigNat.bignatOrdering.lt(height.toBigNat, other.toBigNat)
     def <=(other: HotStuffHeight): Boolean =
@@ -181,8 +181,8 @@ object HotStuffView:
       case Left(error) => throw new IllegalArgumentException(error)
 
   extension (view: HotStuffView)
-    def toBigNat: BigNat                 = view
-    def render: String                   = view.toBigNat.toBigInt.toString
+    def toBigNat: BigNat = view
+    def render: String   = view.toBigNat.toBigInt.toString
     def <(other: HotStuffView): Boolean =
       BigNat.bignatOrdering.lt(view.toBigNat, other.toBigNat)
     def <=(other: HotStuffView): Boolean =

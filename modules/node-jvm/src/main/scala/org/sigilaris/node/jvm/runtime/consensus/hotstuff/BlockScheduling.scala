@@ -2,11 +2,24 @@ package org.sigilaris.node.jvm.runtime.consensus.hotstuff
 
 import cats.syntax.all.*
 
-import org.sigilaris.core.application.scheduling.{AggregateFootprint, CompatibilityReason, ConflictKind, SchedulingClassification, StateRef}
+import org.sigilaris.core.application.scheduling.{
+  AggregateFootprint,
+  CompatibilityReason,
+  ConflictKind,
+  SchedulingClassification,
+  StateRef,
+}
 import org.sigilaris.core.codec.byte.ByteEncoder
 import org.sigilaris.core.crypto.Hash
 import org.sigilaris.core.util.SafeStringInterp.*
-import org.sigilaris.node.jvm.runtime.block.{BlockBody, BlockHeader, BlockRecord, BlockRecordHash, BlockValidationFailure, BlockView}
+import org.sigilaris.node.jvm.runtime.block.{
+  BlockBody,
+  BlockHeader,
+  BlockRecord,
+  BlockRecordHash,
+  BlockValidationFailure,
+  BlockView,
+}
 
 enum BlockRecordRejectionReason:
   case Compatibility(reason: CompatibilityReason)
@@ -25,7 +38,8 @@ final case class ConflictFreeBlockBodySelection[TxRef, ResultRef, Event](
   def aggregateFootprint =
     aggregate.footprint
 
-  def toBody: Either[HotStuffValidationFailure, BlockBody[TxRef, ResultRef, Event]] =
+  def toBody
+      : Either[HotStuffValidationFailure, BlockBody[TxRef, ResultRef, Event]] =
     val body = BlockBody(accepted.toSet)
     Either.cond(
       body.records.sizeCompare(accepted) == 0,
@@ -44,29 +58,27 @@ object ConflictFreeBlockBodySelector:
         accepted = Vector.empty[BlockRecord[TxRef, ResultRef, Event]],
         rejected = Vector.empty[RejectedBlockRecord[TxRef, ResultRef, Event]],
         aggregate = AggregateFootprint.empty,
-      )
+      ),
     ): (selection, record) =>
       classifyTx(record.tx) match
         case SchedulingClassification.Compatibility(reason) =>
           selection.copy(
-            rejected =
-              selection.rejected :+ RejectedBlockRecord(
-                record = record,
-                reason = BlockRecordRejectionReason.Compatibility(reason),
-              ),
+            rejected = selection.rejected :+ RejectedBlockRecord(
+              record = record,
+              reason = BlockRecordRejectionReason.Compatibility(reason),
+            ),
           )
         case SchedulingClassification.Schedulable(footprint) =>
           selection.aggregate.accept(record, footprint) match
             case Left(conflict) =>
               selection.copy(
-                rejected =
-                  selection.rejected :+ RejectedBlockRecord(
-                    record = record,
-                    reason = BlockRecordRejectionReason.Conflict(
-                      stateRef = conflict.stateRef,
-                      kind = conflict.kind,
-                    ),
+                rejected = selection.rejected :+ RejectedBlockRecord(
+                  record = record,
+                  reason = BlockRecordRejectionReason.Conflict(
+                    stateRef = conflict.stateRef,
+                    kind = conflict.kind,
                   ),
+                ),
               )
             case Right(updatedAggregate) =>
               selection.copy(
@@ -75,7 +87,11 @@ object ConflictFreeBlockBodySelector:
               )
 
 object HotStuffBlockBodyVerifier:
-  def validateBody[TxRef: ByteEncoder, ResultRef: ByteEncoder, Event: ByteEncoder](
+  def validateBody[
+      TxRef: ByteEncoder,
+      ResultRef: ByteEncoder,
+      Event: ByteEncoder,
+  ](
       body: BlockBody[TxRef, ResultRef, Event],
   )(
       classifyTx: TxRef => SchedulingClassification,
@@ -92,14 +108,25 @@ object HotStuffBlockBodyVerifier:
             val (recordHash, record) = entry
             classifyTx(record.tx) match
               case SchedulingClassification.Compatibility(reason) =>
-                compatibilityFailure(recordHash, reason).asLeft[AggregateFootprint]
+                compatibilityFailure(recordHash, reason)
+                  .asLeft[AggregateFootprint]
               case SchedulingClassification.Schedulable(footprint) =>
-                aggregate.accept(recordHash, footprint).leftMap: conflict =>
-                  conflictFailure(recordHash, conflict.stateRef, conflict.kind)
+                aggregate
+                  .accept(recordHash, footprint)
+                  .leftMap: conflict =>
+                    conflictFailure(
+                      recordHash,
+                      conflict.stateRef,
+                      conflict.kind,
+                    )
         .void
     yield ()
 
-  def validateView[TxRef: ByteEncoder, ResultRef: ByteEncoder, Event: ByteEncoder](
+  def validateView[
+      TxRef: ByteEncoder,
+      ResultRef: ByteEncoder,
+      Event: ByteEncoder,
+  ](
       view: BlockView[TxRef, ResultRef, Event],
   )(
       classifyTx: TxRef => SchedulingClassification,
@@ -126,7 +153,8 @@ object HotStuffBlockBodyVerifier:
     HotStuffValidationFailure(
       reason = "compatibilityTransactionInBlockBody",
       detail = Some:
-        ss"record=${recordHash.toHexLower} reason=${reason.reason}${reason.detail.fold("")(detail => ss" detail=$detail")}"
+        ss"record=${recordHash.toHexLower} reason=${reason.reason}${reason.detail
+            .fold("")(detail => ss" detail=$detail")}",
     )
 
   private def conflictFailure(
@@ -140,11 +168,15 @@ object HotStuffBlockBodyVerifier:
     HotStuffValidationFailure(
       reason = "conflictingBlockBodyTransaction",
       detail = Some:
-        ss"record=${recordHash.toHexLower} kind=$kindLabel stateRef=${stateRef.toHexLower}"
+        ss"record=${recordHash.toHexLower} kind=$kindLabel stateRef=${stateRef.toHexLower}",
     )
 
 object HotStuffProposalViewValidator:
-  def validateProposalView[TxRef: ByteEncoder: Hash, ResultRef: ByteEncoder, Event: ByteEncoder](
+  def validateProposalView[
+      TxRef: ByteEncoder: Hash,
+      ResultRef: ByteEncoder,
+      Event: ByteEncoder,
+  ](
       proposal: Proposal,
       view: BlockView[TxRef, ResultRef, Event],
       validatorSet: ValidatorSet,
@@ -161,7 +193,7 @@ object HotStuffProposalViewValidator:
         HotStuffValidationFailure(
           reason = "proposalBlockViewMismatch",
           detail = Some:
-            ss"proposal=${proposalBlockId.toHexLower} view=${viewBlockId.toHexLower}"
+            ss"proposal=${proposalBlockId.toHexLower} view=${viewBlockId.toHexLower}",
         ),
       )
       _ <- Either.cond(

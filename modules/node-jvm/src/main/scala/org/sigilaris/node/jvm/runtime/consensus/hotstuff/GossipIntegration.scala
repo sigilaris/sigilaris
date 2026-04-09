@@ -40,7 +40,8 @@ object HotStuffGossipArtifact:
       case HotStuffGossipArtifact.VoteArtifact(_) => GossipTopic.consensusVote
       case HotStuffGossipArtifact.TimeoutVoteArtifact(_) =>
         GossipTopic.consensusTimeoutVote
-      case HotStuffGossipArtifact.NewViewArtifact(_) => GossipTopic.consensusNewView
+      case HotStuffGossipArtifact.NewViewArtifact(_) =>
+        GossipTopic.consensusNewView
 
   def stableIdOf(
       artifact: HotStuffGossipArtifact,
@@ -169,7 +170,7 @@ object HotStuffTopic:
         chainId = chainId,
         topic = topic,
         windowKey = HotStuffWindowKey.fromWindow(window),
-      )
+      ),
     )
 
   def proposalContract(
@@ -220,7 +221,7 @@ object HotStuffTopic:
         event.payload match
           case HotStuffGossipArtifact.ProposalArtifact(proposal) =>
             scopeForWindow(topic, proposal.window.chainId, proposal.window)
-            .asRight[CanonicalRejection.ArtifactContractRejected]
+              .asRight[CanonicalRejection.ArtifactContractRejected]
           case _ =>
             CanonicalRejection
               .ArtifactContractRejected(
@@ -277,7 +278,7 @@ object HotStuffTopic:
         event.payload match
           case HotStuffGossipArtifact.VoteArtifact(vote) =>
             scopeForWindow(topic, vote.window.chainId, vote.window)
-            .asRight[CanonicalRejection.ArtifactContractRejected]
+              .asRight[CanonicalRejection.ArtifactContractRejected]
           case _ =>
             CanonicalRejection
               .ArtifactContractRejected(
@@ -394,7 +395,7 @@ object HotStuffTopic:
         event.payload match
           case HotStuffGossipArtifact.NewViewArtifact(newView) =>
             scopeForWindow(topic, newView.window.chainId, newView.window)
-            .asRight[CanonicalRejection.ArtifactContractRejected]
+              .asRight[CanonicalRejection.ArtifactContractRejected]
           case _ =>
             CanonicalRejection
               .ArtifactContractRejected(
@@ -442,7 +443,8 @@ object InMemoryHotStuffSinkSnapshot:
       timeoutAccumulator = TimeoutVoteAccumulator.empty,
       timeoutCertificates = Map.empty[TimeoutVoteSubject, TimeoutCertificate],
       newViews = Map.empty[NewViewId, NewView],
-      newViewsBySenderWindow = Map.empty[(HotStuffWindow, ValidatorId), NewView],
+      newViewsBySenderWindow =
+        Map.empty[(HotStuffWindow, ValidatorId), NewView],
       qcs = Map.empty[ProposalId, QuorumCertificate],
       finalization = Map.empty[ChainId, FinalizationTrackerSnapshot],
       duplicates = Vector.empty[GossipEvent[HotStuffGossipArtifact]],
@@ -801,8 +803,7 @@ final class InMemoryHotStuffArtifactSink[F[_]: Sync] private (
         else
           val senderWindowKey = (newView.window, newView.sender)
           snapshot.newViewsBySenderWindow.get(senderWindowKey) match
-            case Some(existing)
-                if existing.newViewId =!= newView.newViewId =>
+            case Some(existing) if existing.newViewId =!= newView.newViewId =>
               snapshot -> CanonicalRejection
                 .ArtifactContractRejected(
                   reason = "conflictingNewView",
@@ -825,7 +826,8 @@ final class InMemoryHotStuffArtifactSink[F[_]: Sync] private (
                       Some(event.payload -> event.ts)
                     else Option.empty[RelayEnvelope]
                   snapshot.copy(
-                    newViews = snapshot.newViews.updated(newView.newViewId, newView),
+                    newViews =
+                      snapshot.newViews.updated(newView.newViewId, newView),
                     newViewsBySenderWindow =
                       snapshot.newViewsBySenderWindow.updated(
                         senderWindowKey,
@@ -1024,7 +1026,9 @@ final case class HotStuffNodeRuntime[F[_]: Sync](
       sessions: Vector[BootstrapSessionBinding],
       startedAt: Instant,
       liveProposals: Vector[Proposal],
-  )(using Async[F]): F[Either[BootstrapCoordinatorFailure, BootstrapCoordinatorResult]] =
+  )(using
+      Async[F],
+  ): F[Either[BootstrapCoordinatorFailure, BootstrapCoordinatorResult]] =
     bootstrapLifecycle match
       case Some(lifecycle) =>
         lifecycle.bootstrap(
@@ -1064,13 +1068,15 @@ final case class HotStuffNodeRuntime[F[_]: Sync](
             reason = "proposalSigningFailed",
             detail = Some(
               ss"${error.reason}:${error.detail.getOrElse("")}",
-            )
+            ),
           ).asLeft[GossipEvent[HotStuffGossipArtifact]].pure[F]
         case Right(proposal) =>
-          services.publisher.append(
-            HotStuffGossipArtifact.ProposalArtifact(proposal),
-            ts,
-          ).map(_.asRight[HotStuffPolicyViolation])
+          services.publisher
+            .append(
+              HotStuffGossipArtifact.ProposalArtifact(proposal),
+              ts,
+            )
+            .map(_.asRight[HotStuffPolicyViolation])
 
   def signTimeoutVote(
       voter: ValidatorId,
@@ -1093,7 +1099,7 @@ final case class HotStuffNodeRuntime[F[_]: Sync](
             reason = "timeoutVoteSigningFailed",
             detail = Some(
               ss"${error.reason}:${error.detail.getOrElse("")}",
-            )
+            ),
           ).asLeft[TimeoutVote].pure[F]
         case Right(timeoutVote) =>
           timeoutVote.asRight[HotStuffPolicyViolation].pure[F]
@@ -1108,10 +1114,12 @@ final case class HotStuffNodeRuntime[F[_]: Sync](
       case Left(rejection) =>
         rejection.asLeft[GossipEvent[HotStuffGossipArtifact]].pure[F]
       case Right(timeoutVote) =>
-        services.publisher.append(
-          HotStuffGossipArtifact.TimeoutVoteArtifact(timeoutVote),
-          ts,
-        ).map(_.asRight[HotStuffPolicyViolation])
+        services.publisher
+          .append(
+            HotStuffGossipArtifact.TimeoutVoteArtifact(timeoutVote),
+            ts,
+          )
+          .map(_.asRight[HotStuffPolicyViolation])
 
   def signNewView(
       sender: ValidatorId,
@@ -1138,7 +1146,7 @@ final case class HotStuffNodeRuntime[F[_]: Sync](
             reason = "newViewSigningFailed",
             detail = Some(
               ss"${error.reason}:${error.detail.getOrElse("")}",
-            )
+            ),
           ).asLeft[NewView].pure[F]
         case Right(newView) =>
           newView.asRight[HotStuffPolicyViolation].pure[F]
@@ -1153,10 +1161,12 @@ final case class HotStuffNodeRuntime[F[_]: Sync](
       case Left(rejection) =>
         rejection.asLeft[GossipEvent[HotStuffGossipArtifact]].pure[F]
       case Right(newView) =>
-        services.publisher.append(
-          HotStuffGossipArtifact.NewViewArtifact(newView),
-          ts,
-        ).map(_.asRight[HotStuffPolicyViolation])
+        services.publisher
+          .append(
+            HotStuffGossipArtifact.NewViewArtifact(newView),
+            ts,
+          )
+          .map(_.asRight[HotStuffPolicyViolation])
 
   def emitProposalFromCandidates[
       TxRef: ByteEncoder: Hash,
@@ -1259,13 +1269,15 @@ final case class HotStuffNodeRuntime[F[_]: Sync](
             reason = "voteSigningFailed",
             detail = Some(
               ss"${error.reason}:${error.detail.getOrElse("")}",
-            )
+            ),
           ).asLeft[GossipEvent[HotStuffGossipArtifact]].pure[F]
         case Right(vote) =>
-          services.publisher.append(
-            HotStuffGossipArtifact.VoteArtifact(vote),
-            ts,
-          ).map(_.asRight[HotStuffPolicyViolation])
+          services.publisher
+            .append(
+              HotStuffGossipArtifact.VoteArtifact(vote),
+              ts,
+            )
+            .map(_.asRight[HotStuffPolicyViolation])
 
   def emitVoteForProposalView[
       TxRef: ByteEncoder: Hash,
@@ -1314,14 +1326,16 @@ final case class HotStuffNodeRuntime[F[_]: Sync](
   private def resolveSigner(
       validatorId: ValidatorId,
   ): Either[HotStuffPolicyViolation, KeyPair] =
-    HotStuffPolicy.canEmitLocally(role, localPeer, validatorId, holders).flatMap:
-      _ =>
-        localKeys.get(validatorId).toRight(
-          HotStuffPolicyViolation(
-            reason = "localValidatorKeyUnavailable",
-            detail = Some(ss"${validatorId.value}@${localPeer.value}"),
-          ),
-        )
+    HotStuffPolicy
+      .canEmitLocally(role, localPeer, validatorId, holders)
+      .flatMap: _ =>
+        localKeys
+          .get(validatorId)
+          .toRight:
+            HotStuffPolicyViolation(
+              reason = "localValidatorKeyUnavailable",
+              detail = Some(ss"${validatorId.value}@${localPeer.value}"),
+            )
 
   private def ensureQuorumParticipationReadiness(
       chainId: ChainId,

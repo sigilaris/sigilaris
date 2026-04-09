@@ -37,7 +37,8 @@ final class BatchPlanningSuite extends FunSuite:
       ],
   )
 
-  private given FootprintDeriver[Candidate] = FootprintDeriver.instance(_.derived)
+  private given FootprintDeriver[Candidate] =
+    FootprintDeriver.instance(_.derived)
 
   private def schedulableCandidate(
       id: String,
@@ -70,17 +71,21 @@ final class BatchPlanningSuite extends FunSuite:
   ): Candidate =
     Candidate(
       id = id,
-      derived = Left(FootprintDerivationFailure(reason = reason, detail = detail)),
+      derived =
+        Left(FootprintDerivationFailure(reason = reason, detail = detail)),
       actual = Right(ConflictFootprint.empty),
     )
 
   private def accessLogFor(
       footprint: ConflictFootprint,
   ): AccessLog =
-    val withReads = footprint.reads.foldLeft(AccessLog.empty): (acc, stateRef) =>
-      acc.recordRead(tablePrefixesByRef(stateRef), stateRef.bytes)
-    footprint.writes.foldLeft(withReads): (acc, stateRef) =>
+    val withReads = footprint.reads.foldLeft(AccessLog.empty) {
+      (acc, stateRef) =>
+        acc.recordRead(tablePrefixesByRef(stateRef), stateRef.bytes)
+    }
+    footprint.writes.foldLeft(withReads) { (acc, stateRef) =>
       acc.recordWrite(tablePrefixesByRef(stateRef), stateRef.bytes)
+    }
 
   private def executionFor(
       actual: Either[
@@ -101,7 +106,8 @@ final class BatchPlanningSuite extends FunSuite:
       case Left(violation) =>
         TxExecution(
           nextTrieState = nextTrieState,
-          actualAccessLog = AccessLog.empty.recordWrite(violation.tablePrefix, violation.key),
+          actualAccessLog =
+            AccessLog.empty.recordWrite(violation.tablePrefix, violation.key),
           actualFootprint = Left(violation),
           result = (),
           events = Nil,
@@ -113,7 +119,7 @@ final class BatchPlanningSuite extends FunSuite:
     MerkleTrieState.fromRoot(
       Hash.Value[MerkleTrieNode](
         UInt256.unsafeFromBytesBE(ByteVector.fill(32)(marker)),
-      )
+      ),
     )
 
   private def executionFor(
@@ -137,7 +143,9 @@ final class BatchPlanningSuite extends FunSuite:
       case other =>
         fail(s"Expected schedulable plan, got: $other")
 
-  test("BatchPlanner produces a schedulable plan for an all-schedulable conflict-free batch"):
+  test(
+    "BatchPlanner produces a schedulable plan for an all-schedulable conflict-free batch",
+  ):
     val candidates = Vector(
       schedulableCandidate(
         "tx-a",
@@ -160,7 +168,9 @@ final class BatchPlanningSuite extends FunSuite:
       ),
     )
 
-  test("BatchPlanner rejects conflicting all-schedulable batches before execution"):
+  test(
+    "BatchPlanner rejects conflicting all-schedulable batches before execution",
+  ):
     val result = BatchPlanner.planWithDeriver(
       Vector(
         schedulableCandidate(
@@ -174,10 +184,9 @@ final class BatchPlanningSuite extends FunSuite:
       ),
     )
 
-    assertEquals(
-      result.left.map(conflict => (conflict.item.id, conflict.kind, conflict.stateRef)),
-      Left(("tx-b", ConflictKind.ReadWrite, refA1)),
-    )
+    val normalized = result.left.map: conflict =>
+      (conflict.item.id, conflict.kind, conflict.stateRef)
+    assertEquals(normalized, Left(("tx-b", ConflictKind.ReadWrite, refA1)))
 
   test("BatchPlanner rejects W∩W conflicts before execution"):
     val result = BatchPlanner.planWithDeriver(
@@ -193,10 +202,9 @@ final class BatchPlanningSuite extends FunSuite:
       ),
     )
 
-    assertEquals(
-      result.left.map(conflict => (conflict.item.id, conflict.kind, conflict.stateRef)),
-      Left(("tx-b", ConflictKind.WriteWrite, refA1)),
-    )
+    val normalized = result.left.map: conflict =>
+      (conflict.item.id, conflict.kind, conflict.stateRef)
+    assertEquals(normalized, Left(("tx-b", ConflictKind.WriteWrite, refA1)))
 
   test("BatchPlanner rejects read-before-write conflicts before execution"):
     val result = BatchPlanner.planWithDeriver(
@@ -212,12 +220,13 @@ final class BatchPlanningSuite extends FunSuite:
       ),
     )
 
-    assertEquals(
-      result.left.map(conflict => (conflict.item.id, conflict.kind, conflict.stateRef)),
-      Left(("tx-b", ConflictKind.ReadWrite, refA1)),
-    )
+    val normalized = result.left.map: conflict =>
+      (conflict.item.id, conflict.kind, conflict.stateRef)
+    assertEquals(normalized, Left(("tx-b", ConflictKind.ReadWrite, refA1)))
 
-  test("BatchPlanner routes mixed batches to compatibility mode without partially scheduling a subset"):
+  test(
+    "BatchPlanner routes mixed batches to compatibility mode without partially scheduling a subset",
+  ):
     val result = BatchPlanner.planWithDeriver(
       Vector(
         schedulableCandidate(
@@ -278,7 +287,9 @@ final class BatchPlanningSuite extends FunSuite:
       case other =>
         fail(s"Expected empty schedulable plan, got: $other")
 
-  test("SchedulableBatchExecutor chains via nextState so trie state and witness logs propagate correctly"):
+  test(
+    "SchedulableBatchExecutor chains via nextState so trie state and witness logs propagate correctly",
+  ):
     val plan = expectSchedulable(
       BatchPlanner.planWithDeriver(
         Vector(
@@ -293,7 +304,7 @@ final class BatchPlanningSuite extends FunSuite:
         ),
       ),
     )
-    val seenLogs = ArrayBuffer.empty[AccessLog]
+    val seenLogs       = ArrayBuffer.empty[AccessLog]
     val seenTrieStates = ArrayBuffer.empty[MerkleTrieState]
     val nextTrieStates = Map(
       "tx-a" -> trieState(1),
@@ -309,7 +320,7 @@ final class BatchPlanningSuite extends FunSuite:
             executionFor(
               candidate.actual,
               nextTrieState = nextTrieStates(candidate.id),
-            )
+            ),
           )
 
     assert(result.isRight)
@@ -319,13 +330,18 @@ final class BatchPlanningSuite extends FunSuite:
       Vector(StoreState.empty.trieState, nextTrieStates("tx-a")),
     )
     assertEquals(result.toOption.get.nextState.accessLog, AccessLog.empty)
-    assertEquals(result.toOption.get.nextState.trieState, nextTrieStates("tx-b"))
+    assertEquals(
+      result.toOption.get.nextState.trieState,
+      nextTrieStates("tx-b"),
+    )
     assertEquals(
       result.toOption.get.items.map(_.planned.item.id),
       Vector("tx-a", "tx-b"),
     )
 
-  test("SchedulableBatchExecutor rejects actual accesses outside the declared footprint"):
+  test(
+    "SchedulableBatchExecutor rejects actual accesses outside the declared footprint",
+  ):
     val declared = ConflictFootprint(
       reads = Set(refA1),
       writes = Set.empty,
@@ -335,12 +351,12 @@ final class BatchPlanningSuite extends FunSuite:
       writes = Set.empty,
     )
     val candidate = schedulableCandidate("tx-a", declared, Right(actual))
-    val plan = expectSchedulable(BatchPlanner.planWithDeriver(Vector(candidate)))
+    val plan =
+      expectSchedulable(BatchPlanner.planWithDeriver(Vector(candidate)))
 
     val result =
       SchedulableBatchExecutor.executeSequentially(StoreState.empty, plan):
-        (state, scheduled) =>
-          Right(executionFor(state, scheduled.actual))
+        (state, scheduled) => Right(executionFor(state, scheduled.actual))
 
     result match
       case Left(SchedulableExecutionFailure.ConformanceFailed(item, failure)) =>
@@ -355,7 +371,9 @@ final class BatchPlanningSuite extends FunSuite:
       case other =>
         fail(s"Expected conformance failure, got: $other")
 
-  test("SchedulableBatchExecutor accepts actual footprints that are strict subsets of the declaration"):
+  test(
+    "SchedulableBatchExecutor accepts actual footprints that are strict subsets of the declaration",
+  ):
     val declared = ConflictFootprint(
       reads = Set(refA1, refB1),
       writes = Set(refA2),
@@ -365,17 +383,22 @@ final class BatchPlanningSuite extends FunSuite:
       writes = Set.empty,
     )
     val candidate = schedulableCandidate("tx-a", declared, Right(actual))
-    val plan = expectSchedulable(BatchPlanner.planWithDeriver(Vector(candidate)))
+    val plan =
+      expectSchedulable(BatchPlanner.planWithDeriver(Vector(candidate)))
 
     val result =
       SchedulableBatchExecutor.executeSequentially(StoreState.empty, plan):
-        (state, scheduled) =>
-          Right(executionFor(state, scheduled.actual))
+        (state, scheduled) => Right(executionFor(state, scheduled.actual))
 
     assert(result.isRight)
-    assertEquals(result.toOption.get.items.map(_.planned.item.id), Vector("tx-a"))
+    assertEquals(
+      result.toOption.get.items.map(_.planned.item.id),
+      Vector("tx-a"),
+    )
 
-  test("SchedulableBatchExecutor rejects unexpected writes outside the declared footprint"):
+  test(
+    "SchedulableBatchExecutor rejects unexpected writes outside the declared footprint",
+  ):
     val declared = ConflictFootprint(
       reads = Set.empty,
       writes = Set(refA1),
@@ -385,12 +408,12 @@ final class BatchPlanningSuite extends FunSuite:
       writes = Set(refA1, refB1),
     )
     val candidate = schedulableCandidate("tx-a", declared, Right(actual))
-    val plan = expectSchedulable(BatchPlanner.planWithDeriver(Vector(candidate)))
+    val plan =
+      expectSchedulable(BatchPlanner.planWithDeriver(Vector(candidate)))
 
     val result =
       SchedulableBatchExecutor.executeSequentially(StoreState.empty, plan):
-        (state, scheduled) =>
-          Right(executionFor(state, scheduled.actual))
+        (state, scheduled) => Right(executionFor(state, scheduled.actual))
 
     result match
       case Left(SchedulableExecutionFailure.ConformanceFailed(item, failure)) =>
@@ -405,7 +428,9 @@ final class BatchPlanningSuite extends FunSuite:
       case other =>
         fail(s"Expected write-side conformance failure, got: $other")
 
-  test("SchedulableBatchExecutor stops on a second-item failure and attributes it to the failing item"):
+  test(
+    "SchedulableBatchExecutor stops on a second-item failure and attributes it to the failing item",
+  ):
     val first = schedulableCandidate(
       "tx-a",
       ConflictFootprint(reads = Set(refA1), writes = Set.empty),
@@ -421,7 +446,9 @@ final class BatchPlanningSuite extends FunSuite:
       "tx-c",
       ConflictFootprint(reads = Set.empty, writes = Set(refA2)),
     )
-    val plan = expectSchedulable(BatchPlanner.planWithDeriver(Vector(first, second, third)))
+    val plan = expectSchedulable(
+      BatchPlanner.planWithDeriver(Vector(first, second, third)),
+    )
     val executedIds = ArrayBuffer.empty[String]
 
     val result =
@@ -444,7 +471,9 @@ final class BatchPlanningSuite extends FunSuite:
       case other =>
         fail(s"Expected second-item conformance failure, got: $other")
 
-  test("SchedulableBatchExecutor stops on a second-item unexpected-write failure"):
+  test(
+    "SchedulableBatchExecutor stops on a second-item unexpected-write failure",
+  ):
     val first = schedulableCandidate(
       "tx-a",
       ConflictFootprint(reads = Set(refA1), writes = Set.empty),
@@ -460,7 +489,9 @@ final class BatchPlanningSuite extends FunSuite:
       "tx-c",
       ConflictFootprint(reads = Set.empty, writes = Set(refA2)),
     )
-    val plan = expectSchedulable(BatchPlanner.planWithDeriver(Vector(first, second, third)))
+    val plan = expectSchedulable(
+      BatchPlanner.planWithDeriver(Vector(first, second, third)),
+    )
     val executedIds = ArrayBuffer.empty[String]
 
     val result =
@@ -481,9 +512,12 @@ final class BatchPlanningSuite extends FunSuite:
           ),
         )
       case other =>
-        fail(s"Expected second-item write-side conformance failure, got: $other")
+        fail:
+          s"Expected second-item write-side conformance failure, got: $other"
 
-  test("SchedulableBatchExecutor surfaces actual-footprint invariant violations"):
+  test(
+    "SchedulableBatchExecutor surfaces actual-footprint invariant violations",
+  ):
     val violation = ConflictFootprint.AccessLogInvariantViolation(
       tablePrefix = prefixB,
       key = refA1.bytes,
@@ -493,31 +527,38 @@ final class BatchPlanningSuite extends FunSuite:
       declared = ConflictFootprint(reads = Set.empty, writes = Set(refA1)),
       actual = Left(violation),
     )
-    val plan = expectSchedulable(BatchPlanner.planWithDeriver(Vector(candidate)))
+    val plan =
+      expectSchedulable(BatchPlanner.planWithDeriver(Vector(candidate)))
 
     val result =
       SchedulableBatchExecutor.executeSequentially(StoreState.empty, plan):
-        (state, scheduled) =>
-          Right(executionFor(state, scheduled.actual))
+        (state, scheduled) => Right(executionFor(state, scheduled.actual))
 
     result match
-      case Left(SchedulableExecutionFailure.ActualFootprintUnavailable(item, actualViolation)) =>
+      case Left(
+            SchedulableExecutionFailure.ActualFootprintUnavailable(
+              item,
+              actualViolation,
+            ),
+          ) =>
         assertEquals(item.id, "tx-a")
         assertEquals(actualViolation, violation)
       case other =>
         fail(s"Expected invariant violation, got: $other")
 
-  test("SchedulableBatchExecutor propagates execution failures without masking the item"):
+  test(
+    "SchedulableBatchExecutor propagates execution failures without masking the item",
+  ):
     val candidate = schedulableCandidate(
       "tx-a",
       declared = ConflictFootprint(reads = Set(refA1), writes = Set.empty),
     )
-    val plan = expectSchedulable(BatchPlanner.planWithDeriver(Vector(candidate)))
+    val plan =
+      expectSchedulable(BatchPlanner.planWithDeriver(Vector(candidate)))
 
     val result =
       SchedulableBatchExecutor.executeSequentially(StoreState.empty, plan):
-        (_, scheduled) =>
-          Left(s"boom:${scheduled.id}")
+        (_, scheduled) => Left(s"boom:${scheduled.id}")
 
     result match
       case Left(SchedulableExecutionFailure.ExecutionFailed(item, cause)) =>
@@ -526,7 +567,9 @@ final class BatchPlanningSuite extends FunSuite:
       case other =>
         fail(s"Expected execution failure, got: $other")
 
-  test("SchedulableBatchExecutor stops on a second-item execution callback failure"):
+  test(
+    "SchedulableBatchExecutor stops on a second-item execution callback failure",
+  ):
     val first = schedulableCandidate(
       "tx-a",
       ConflictFootprint(reads = Set(refA1), writes = Set.empty),
@@ -539,7 +582,9 @@ final class BatchPlanningSuite extends FunSuite:
       "tx-c",
       ConflictFootprint(reads = Set.empty, writes = Set(refA2)),
     )
-    val plan = expectSchedulable(BatchPlanner.planWithDeriver(Vector(first, second, third)))
+    val plan = expectSchedulable(
+      BatchPlanner.planWithDeriver(Vector(first, second, third)),
+    )
     val executedIds = ArrayBuffer.empty[String]
 
     val result =

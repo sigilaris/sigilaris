@@ -1,8 +1,6 @@
 package org.sigilaris.node.jvm.runtime.consensus
 
-import org.sigilaris.node.jvm.runtime.block.{
-  BlockId as CanonicalBlockId,
-}
+import org.sigilaris.node.jvm.runtime.block.{BlockId as CanonicalBlockId}
 
 package object hotstuff:
   type BlockId = CanonicalBlockId

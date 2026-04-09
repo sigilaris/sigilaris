@@ -356,8 +356,7 @@ final class TxGossipRuntime[F[_]: Sync, A](
                 .asLeft[DirectionalSession]
           case Some(session) =>
             touchSessionActivity(currentState, sessionId, now).fold(
-              rejection =>
-                currentState -> rejection.asLeft[DirectionalSession],
+              rejection => currentState -> rejection.asLeft[DirectionalSession],
               updatedState =>
                 updatedState ->
                   session.asRight[CanonicalRejection.HandshakeRejected],
@@ -426,7 +425,8 @@ final class TxGossipRuntime[F[_]: Sync, A](
                 // Defensive reaping: state may have changed since snapshotAt(now).
                 val currentState = expireState(state, now)
                 openOutboundProducerSession(currentState, sessionId).fold(
-                  rejection => currentState -> rejection.asLeft[ControlBatchOutcome],
+                  rejection =>
+                    currentState -> rejection.asLeft[ControlBatchOutcome],
                   (_, sessionState) =>
                     applyControlBatch(now, batch, sessionState).fold(
                       rejection =>
@@ -592,7 +592,8 @@ final class TxGossipRuntime[F[_]: Sync, A](
                     currentState -> rejection.asLeft[EventStreamMessage[A]],
                   updatedState =>
                     updatedState ->
-                      EventStreamMessage.KeepAlive(sessionId, now)
+                      EventStreamMessage
+                        .KeepAlive(sessionId, now)
                         .asRight[HandshakeRejected],
                 ),
           )
@@ -633,7 +634,8 @@ final class TxGossipRuntime[F[_]: Sync, A](
                       ).asLeft[ControlChannelMessage],
                   updatedState =>
                     updatedState ->
-                      ControlChannelMessage.Ack(sessionId, now)
+                      ControlChannelMessage
+                        .Ack(sessionId, now)
                         .asRight[CanonicalRejection.ControlBatchRejected],
                 ),
           )
@@ -997,7 +999,9 @@ final class TxGossipRuntime[F[_]: Sync, A](
                   .map:
                     case Left(rejection) =>
                       rejection
-                        .asLeft[(TxProducerSessionState, Vector[GossipEvent[A]])]
+                        .asLeft[
+                          (TxProducerSessionState, Vector[GossipEvent[A]]),
+                        ]
                     case Right((updatedState, chainEvents)) =>
                       (updatedState -> (emitted ++ chainEvents))
                         .asRight[CanonicalRejection]
@@ -1037,11 +1041,10 @@ final class TxGossipRuntime[F[_]: Sync, A](
       cascadeStrategy
         .selectLiveEvents(
           filter = sessionState.filters.get(chainTopic.chainId),
-          exactKnownIds =
-            sessionState.exactKnownIds.getOrElse(
-              chainTopic.chainId,
-              Set.empty[StableArtifactId],
-            ),
+          exactKnownIds = sessionState.exactKnownIds.getOrElse(
+            chainTopic.chainId,
+            Set.empty[StableArtifactId],
+          ),
           candidates = liveCandidates.map(_.event),
         )
         .map: selectedLiveEvents =>
@@ -1289,9 +1292,8 @@ final class TxGossipRuntime[F[_]: Sync, A](
       )
       sessionState <- state.outboundSessions
         .get(sessionId)
-        .toRight(
-          controlRejected("unknownSessionState", sessionId.value),
-        )
+        .toRight:
+          controlRejected("unknownSessionState", sessionId.value)
     yield session -> sessionState
 
   private def openOutboundEventSession(

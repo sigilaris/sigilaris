@@ -17,7 +17,9 @@ trait BlockQuery[F[_], TxRef, ResultRef, Event]:
 
   def getView(
       blockId: BlockId,
-  ): EitherT[F, BlockValidationFailure, Option[BlockView[TxRef, ResultRef, Event]]]
+  ): EitherT[F, BlockValidationFailure, Option[
+    BlockView[TxRef, ResultRef, Event],
+  ]]
 
 trait BlockStore[F[_], TxRef, ResultRef, Event]
     extends BlockQuery[F, TxRef, ResultRef, Event]:
@@ -40,14 +42,18 @@ trait BlockStore[F[_], TxRef, ResultRef, Event]
   ): EitherT[F, BlockValidationFailure, BlockId]
 
 object BlockStore:
-  def inMemory[F[_]: Sync, TxRef: ByteEncoder, ResultRef: ByteEncoder, Event: ByteEncoder]
+  def inMemory[F[_]
+    : Sync, TxRef: ByteEncoder, ResultRef: ByteEncoder, Event: ByteEncoder]
       : F[BlockStore[F, TxRef, ResultRef, Event]] =
     for
       headers <- Ref.of[F, Map[BlockId, BlockHeader]](Map.empty)
-      bodies <- Ref.of[F, Map[BlockId, BlockBody[TxRef, ResultRef, Event]]](Map.empty)
+      bodies <- Ref.of[F, Map[BlockId, BlockBody[TxRef, ResultRef, Event]]](
+        Map.empty,
+      )
     yield InMemoryBlockStore(headers, bodies)
 
-  private final class InMemoryBlockStore[F[_]: Sync, TxRef: ByteEncoder, ResultRef: ByteEncoder, Event: ByteEncoder](
+  private final class InMemoryBlockStore[F[_]
+    : Sync, TxRef: ByteEncoder, ResultRef: ByteEncoder, Event: ByteEncoder](
       headers: Ref[F, Map[BlockId, BlockHeader]],
       bodies: Ref[F, Map[BlockId, BlockBody[TxRef, ResultRef, Event]]],
   ) extends BlockStore[F, TxRef, ResultRef, Event]:
@@ -64,7 +70,9 @@ object BlockStore:
 
     override def getView(
         blockId: BlockId,
-    ): EitherT[F, BlockValidationFailure, Option[BlockView[TxRef, ResultRef, Event]]] =
+    ): EitherT[F, BlockValidationFailure, Option[
+      BlockView[TxRef, ResultRef, Event],
+    ]] =
       EitherT
         .right[BlockValidationFailure](
           (getHeader(blockId), getBody(blockId)).tupled,
@@ -74,7 +82,8 @@ object BlockStore:
             val view = BlockView(header = header, body = body)
             BlockView.validate(view).map(_ => Some(view))
           case _ =>
-            Option.empty[BlockView[TxRef, ResultRef, Event]]
+            Option
+              .empty[BlockView[TxRef, ResultRef, Event]]
               .asRight[BlockValidationFailure]
 
     override def putHeader(
@@ -88,11 +97,13 @@ object BlockStore:
         body: BlockBody[TxRef, ResultRef, Event],
     ): EitherT[F, BlockValidationFailure, Unit] =
       for
-        _ <- EitherT.fromEither[F](BlockBody.computeBodyRoot(body).void)
+        _ <- EitherT.fromEither[F]:
+          BlockBody.computeBodyRoot(body).void
         maybeHeader <- EitherT.right[BlockValidationFailure](getHeader(blockId))
         _ <- maybeHeader match
           case Some(header) =>
-            EitherT.fromEither[F](BlockBody.verifyBodyRoot(body, header.bodyRoot))
+            EitherT.fromEither[F]:
+              BlockBody.verifyBodyRoot(body, header.bodyRoot)
           case None =>
             EitherT.rightT[F, BlockValidationFailure](())
         _ <- EitherT.right[BlockValidationFailure](
@@ -103,11 +114,11 @@ object BlockStore:
     override def putView(
         view: BlockView[TxRef, ResultRef, Event],
     ): EitherT[F, BlockValidationFailure, BlockId] =
-      EitherT
-        .fromEither[F](BlockView.validate(view))
-        .semiflatMap: _ =>
-          val blockId = BlockHeader.computeId(view.header)
-          (
-            headers.update(_.updated(blockId, view.header)),
-            bodies.update(_.updated(blockId, view.body)),
-          ).tupled.as(blockId)
+      (EitherT.fromEither[F]:
+          BlockView.validate(view)
+      ).semiflatMap: _ =>
+        val blockId = BlockHeader.computeId(view.header)
+        (
+          headers.update(_.updated(blockId, view.header)),
+          bodies.update(_.updated(blockId, view.body)),
+        ).tupled.as(blockId)

@@ -17,17 +17,14 @@ class RequiresAutoSuite extends FunSuite:
     assert(evidence ne null)
 
   test("derive emits descriptive error when requirement absent"):
-    val errors = compileErrors(
+    val errors = compileErrors:
       "RequiresAuto.derive[Entry[\"baz\", Utf8, Utf8] *: EmptyTuple, Schema]"
-    )
     assert(clue(errors).contains("Requires derivation failed."))
-    assert(
+    assert:
       clue(errors).contains(
         "Needs: org.sigilaris.core.application.state.Entry[\"baz\", org.sigilaris.core.datatype.Utf8$package.Utf8, org.sigilaris.core.datatype.Utf8$package.Utf8]"
       )
-    )
-    assert(
+    assert:
       clue(errors).contains(
         "Schema: org.sigilaris.core.application.state.Entry[\"foo\", org.sigilaris.core.datatype.Utf8$package.Utf8, org.sigilaris.core.datatype.Utf8$package.Utf8] *: org.sigilaris.core.application.state.Entry[\"bar\", org.sigilaris.core.datatype.Utf8$package.Utf8, org.sigilaris.core.datatype.Utf8$package.Utf8]"
       )
-    )

@@ -243,7 +243,9 @@ object HistoricalProposalArchive:
           override def list(
               chainId: ChainId,
           ): F[Vector[HistoricalArchiveEntry]] =
-            ref.get.map(_.getOrElse(chainId, Vector.empty[HistoricalArchiveEntry]))
+            ref.get.map(
+              _.getOrElse(chainId, Vector.empty[HistoricalArchiveEntry]),
+            )
 
           override def contains(
               chainId: ChainId,
@@ -271,7 +273,9 @@ object HistoricalProposalArchive:
                       source = source,
                       storedAt = storedAt,
                     )
-              current.updated(chainId, existing ++ appended) -> appended.map(_.proposal.proposalId)
+              current.updated(chainId, existing ++ appended) -> appended.map(
+                _.proposal.proposalId,
+              )
 
           override def removeAll(
               chainId: ChainId,
@@ -282,181 +286,212 @@ object HistoricalProposalArchive:
                 current.getOrElse(chainId, Vector.empty[HistoricalArchiveEntry])
               val idsToRemove = proposalIds.toSet
               val retained =
-                existing.filterNot(entry => idsToRemove.contains(entry.proposal.proposalId))
-              current.updated(chainId, retained) -> (existing.size - retained.size)
+                existing.filterNot(entry =>
+                  idsToRemove.contains(entry.proposal.proposalId),
+                )
+              current.updated(
+                chainId,
+                retained,
+              ) -> (existing.size - retained.size)
 
   def swaydb[F[_]: Async: LiftIO](
       layout: StorageLayout,
   ): F[HistoricalProposalArchive[F]] =
     given Bag.Async[IO] = Bag.global
-    val archiveDir = layout.state.historicalArchive
+    val archiveDir      = layout.state.historicalArchive
     for
       sharedStore <- LiftIO[F].liftIO(
         SharedHistoricalArchiveStores.acquire(archiveDir),
       )
-      metadataRef <- Ref.of[F, Map[HistoricalArchiveKey, HistoricalArchiveMetadata]](Map.empty)
-      closedRef   <- Ref.of[F, Boolean](false)
+      metadataRef <- Ref
+        .of[F, Map[HistoricalArchiveKey, HistoricalArchiveMetadata]](Map.empty)
+      closedRef     <- Ref.of[F, Boolean](false)
       lifecycleLock <- Semaphore[F](1)
-    yield
-      new HistoricalProposalArchive[F]:
-            private def ensureOpen: F[Unit] =
-              closedRef.get.flatMap: closed =>
-                if closed then Async[F].raiseError[Unit](archiveFailure("historicalArchiveClosed"))
+    yield new HistoricalProposalArchive[F]:
+      private def ensureOpen: F[Unit] =
+        closedRef.get.flatMap: closed =>
+          if closed then
+            Async[F].raiseError[Unit](archiveFailure("historicalArchiveClosed"))
+          else
+            LiftIO[F]
+              .liftIO(sharedStore.isCurrent)
+              .flatMap: current =>
+                if current then Async[F].unit
                 else
-                  LiftIO[F]
-                    .liftIO(sharedStore.isCurrent)
-                    .flatMap: current =>
-                      if current then Async[F].unit
-                      else
-                        closedRef.set(true) *>
-                          Async[F].raiseError[Unit](
-                            archiveFailure("historicalArchiveClosed"),
-                          )
-
-            override def close: F[Unit] =
-              lifecycleLock.permit.use { _ =>
-                closedRef
-                  .modify(closed => true -> !closed)
-                  .flatMap: shouldRelease =>
-                    if shouldRelease then LiftIO[F].liftIO(sharedStore.release)
-                    else Async[F].unit
-              }
-
-            override def list(
-                chainId: ChainId,
-            ): F[Vector[HistoricalArchiveEntry]] =
-              lifecycleLock.permit.use { _ =>
-                for
-                  _        <- ensureOpen
-                  metadata <- metadataRef.get
-                  stored <- LiftIO[F].liftIO:
-                    listEntries(sharedStore.store, chainId)
-                  decoded <- stored.traverse: (key, bytes) =>
-                    Async[F].fromEither:
-                      decodeStoredProposal(bytes).map: proposal =>
-                        val recovered =
-                          metadata.getOrElse(
-                            key,
-                            HistoricalArchiveMetadata(
-                              source = HistoricalArchiveSource.ArchiveSync,
-                              storedAt = RecoveredStoredAt,
-                            ),
-                          )
-                        HistoricalArchiveEntry(
-                          proposal = proposal,
-                          source = recovered.source,
-                          storedAt = recovered.storedAt,
-                        )
-                yield
-                  decoded.sortBy: entry =>
-                    (
-                      entry.proposal.window.height,
-                      entry.proposal.window.view,
-                      entry.proposal.proposalId.toHexLower,
+                  closedRef.set(true) *>
+                    Async[F].raiseError[Unit](
+                      archiveFailure("historicalArchiveClosed"),
                     )
-              }
 
-            override def contains(
-                chainId: ChainId,
-                proposalId: ProposalId,
-            ): F[Boolean] =
-              lifecycleLock.permit.use { _ =>
-                ensureOpen *> LiftIO[F].liftIO:
+      override def close: F[Unit] =
+        lifecycleLock.permit.use { _ =>
+          closedRef
+            .modify(closed => true -> !closed)
+            .flatMap: shouldRelease =>
+              if shouldRelease then LiftIO[F].liftIO(sharedStore.release)
+              else Async[F].unit
+        }
+
+      override def list(
+          chainId: ChainId,
+      ): F[Vector[HistoricalArchiveEntry]] =
+        lifecycleLock.permit.use { _ =>
+          for
+            _        <- ensureOpen
+            metadata <- metadataRef.get
+            stored <- LiftIO[F].liftIO:
+              listEntries(sharedStore.store, chainId)
+            decoded <- stored.traverse: (key, bytes) =>
+              Async[F].fromEither:
+                decodeStoredProposal(bytes).map: proposal =>
+                  val recovered =
+                    metadata.getOrElse(
+                      key,
+                      HistoricalArchiveMetadata(
+                        source = HistoricalArchiveSource.ArchiveSync,
+                        storedAt = RecoveredStoredAt,
+                      ),
+                    )
+                  HistoricalArchiveEntry(
+                    proposal = proposal,
+                    source = recovered.source,
+                    storedAt = recovered.storedAt,
+                  )
+          yield decoded.sortBy: entry =>
+            (
+              entry.proposal.window.height,
+              entry.proposal.window.view,
+              entry.proposal.proposalId.toHexLower,
+            )
+        }
+
+      override def contains(
+          chainId: ChainId,
+          proposalId: ProposalId,
+      ): F[Boolean] =
+        lifecycleLock.permit.use { _ =>
+          ensureOpen *> LiftIO[F].liftIO:
+            sharedStore.store
+              .get(HistoricalArchiveKey(chainId, proposalId))
+              .value
+              .flatMap:
+                case Left(error) =>
+                  failIo[Boolean](
+                    "historicalArchiveCorruptOrIncompatible: " + error.msg,
+                  )
+                case Right(None) =>
+                  IO.pure(false)
+                case Right(Some(bytes)) =>
+                  IO.fromEither(decodeStoredProposal(bytes)).as(true)
+        }
+
+      override def putAll(
+          chainId: ChainId,
+          proposals: Vector[Proposal],
+          source: HistoricalArchiveSource,
+          storedAt: Instant,
+      ): F[Vector[ProposalId]] =
+        lifecycleLock.permit.use { _ =>
+          for
+            _ <- ensureOpen
+            writeResult <- LiftIO[F].liftIO:
+              proposals
+                .foldLeftM(
+                  (
+                    Vector.empty[ProposalId],
+                    Set.empty[ProposalId],
+                    Vector
+                      .empty[(HistoricalArchiveKey, HistoricalArchiveMetadata)],
+                  ),
+                ):
+                  case ((written, seen, metadataUpdates), proposal) =>
+                    if seen.contains(proposal.proposalId) then
+                      IO.pure((written, seen, metadataUpdates))
+                    else
+                      val key =
+                        HistoricalArchiveKey(
+                          chainId = chainId,
+                          proposalId = proposal.proposalId,
+                        )
+                      sharedStore.store
+                        .get(key)
+                        .value
+                        .flatMap:
+                          case Left(error) =>
+                            failIo[
+                              (
+                                  Vector[ProposalId],
+                                  Set[ProposalId],
+                                  Vector[
+                                    (
+                                        HistoricalArchiveKey,
+                                        HistoricalArchiveMetadata,
+                                    ),
+                                  ],
+                              ),
+                            ](
+                              "historicalArchiveCorruptOrIncompatible: " + error.msg,
+                            )
+                          case Right(Some(bytes)) =>
+                            IO.fromEither(decodeStoredProposal(bytes))
+                              .as(
+                                (
+                                  written,
+                                  seen + proposal.proposalId,
+                                  metadataUpdates,
+                                ),
+                              )
+                          case Right(None) =>
+                            sharedStore.store
+                              .put(key, encodeStoredProposal(proposal))
+                              .as(
+                                (
+                                  written :+ proposal.proposalId,
+                                  seen + proposal.proposalId,
+                                  metadataUpdates :+ (
+                                    key -> HistoricalArchiveMetadata(
+                                      source,
+                                      storedAt,
+                                    )
+                                  ),
+                                ),
+                              )
+            _ <- metadataRef.update(_ ++ writeResult._3)
+          yield writeResult._1
+        }
+
+      override def removeAll(
+          chainId: ChainId,
+          proposalIds: Vector[ProposalId],
+      ): F[Int] =
+        val dedupedIds = proposalIds.distinct
+        lifecycleLock.permit.use { _ =>
+          for
+            _ <- ensureOpen
+            removed <- LiftIO[F].liftIO:
+              dedupedIds
+                .traverse: proposalId =>
+                  val key = HistoricalArchiveKey(chainId, proposalId)
                   sharedStore.store
-                    .get(HistoricalArchiveKey(chainId, proposalId))
+                    .get(key)
                     .value
                     .flatMap:
                       case Left(error) =>
-                        failIo[Boolean]("historicalArchiveCorruptOrIncompatible: " + error.msg)
+                        failIo[Boolean](
+                          "historicalArchiveCorruptOrIncompatible: " + error.msg,
+                        )
                       case Right(None) =>
                         IO.pure(false)
                       case Right(Some(bytes)) =>
-                        IO.fromEither(decodeStoredProposal(bytes)).as(true)
-              }
-
-            override def putAll(
-                chainId: ChainId,
-                proposals: Vector[Proposal],
-                source: HistoricalArchiveSource,
-                storedAt: Instant,
-            ): F[Vector[ProposalId]] =
-              lifecycleLock.permit.use { _ =>
-                for
-                  _ <- ensureOpen
-                  writeResult <- LiftIO[F].liftIO:
-                    proposals
-                      .foldLeftM(
-                        (
-                          Vector.empty[ProposalId],
-                          Set.empty[ProposalId],
-                          Vector.empty[(HistoricalArchiveKey, HistoricalArchiveMetadata)],
-                        )
-                      ):
-                        case ((written, seen, metadataUpdates), proposal) =>
-                          if seen.contains(proposal.proposalId) then
-                            IO.pure((written, seen, metadataUpdates))
-                          else
-                            val key =
-                              HistoricalArchiveKey(
-                                chainId = chainId,
-                                proposalId = proposal.proposalId,
-                              )
-                            sharedStore.store.get(key).value.flatMap:
-                              case Left(error) =>
-                                failIo[
-                                  (
-                                      Vector[ProposalId],
-                                      Set[ProposalId],
-                                      Vector[(HistoricalArchiveKey, HistoricalArchiveMetadata)],
-                                  )
-                                ]("historicalArchiveCorruptOrIncompatible: " + error.msg)
-                              case Right(Some(bytes)) =>
-                                IO.fromEither(decodeStoredProposal(bytes)).as(
-                                  (written, seen + proposal.proposalId, metadataUpdates),
-                                )
-                              case Right(None) =>
-                                sharedStore.store.put(key, encodeStoredProposal(proposal)).as(
-                                  (
-                                    written :+ proposal.proposalId,
-                                    seen + proposal.proposalId,
-                                    metadataUpdates :+ (
-                                      key -> HistoricalArchiveMetadata(source, storedAt)
-                                    ),
-                                  ),
-                                )
-                  _ <- metadataRef.update(_ ++ writeResult._3)
-                yield writeResult._1
-              }
-
-            override def removeAll(
-                chainId: ChainId,
-                proposalIds: Vector[ProposalId],
-            ): F[Int] =
-              val dedupedIds = proposalIds.distinct
-              lifecycleLock.permit.use { _ =>
-                for
-                  _ <- ensureOpen
-                  removed <- LiftIO[F].liftIO:
-                    dedupedIds
-                      .traverse: proposalId =>
-                        val key = HistoricalArchiveKey(chainId, proposalId)
-                        sharedStore.store.get(key).value.flatMap:
-                          case Left(error) =>
-                            failIo[Boolean](
-                              "historicalArchiveCorruptOrIncompatible: " + error.msg,
-                            )
-                          case Right(None) =>
-                            IO.pure(false)
-                          case Right(Some(bytes)) =>
-                            IO
-                              .fromEither(decodeStoredProposal(bytes))
-                              .flatMap(_ => sharedStore.store.remove(key).as(true))
-                      .map(_.count(identity))
-                  _ <- metadataRef.update: current =>
-                    dedupedIds.foldLeft(current): (acc, proposalId) =>
-                      acc - HistoricalArchiveKey(chainId, proposalId)
-                yield removed
-              }
+                        IO
+                          .fromEither(decodeStoredProposal(bytes))
+                          .flatMap(_ => sharedStore.store.remove(key).as(true))
+                .map(_.count(identity))
+            _ <- metadataRef.update: current =>
+              dedupedIds.foldLeft(current): (acc, proposalId) =>
+                acc - HistoricalArchiveKey(chainId, proposalId)
+          yield removed
+        }
 
   private[node] def resetSharedStoresForTesting: IO[Unit] =
     SharedHistoricalArchiveStores.reset
@@ -475,11 +510,10 @@ object HistoricalProposalArchive:
     ]
     Monad[IO].tailRecM(
       HistoricalArchiveScanState(
-        cursor =
-          HistoricalArchiveKey(
-            chainId = chainId,
-            proposalId = ScanStartProposalId,
-          ),
+        cursor = HistoricalArchiveKey(
+          chainId = chainId,
+          proposalId = ScanStartProposalId,
+        ),
         offset = 0,
         acc = Vector.empty[(HistoricalArchiveKey, ByteVector)],
       ),
@@ -502,9 +536,17 @@ object HistoricalProposalArchive:
             val pageShort          = page.sizeCompare(ListPageSize) < 0
             sameChain.lastOption match
               case None =>
-                IO.pure(Right[HistoricalArchiveScanState, Vector[(HistoricalArchiveKey, ByteVector)]](updated))
+                IO.pure(
+                  Right[HistoricalArchiveScanState, Vector[
+                    (HistoricalArchiveKey, ByteVector),
+                  ]](updated),
+                )
               case Some((lastKey, _)) if crossedChainBounds || pageShort =>
-                IO.pure(Right[HistoricalArchiveScanState, Vector[(HistoricalArchiveKey, ByteVector)]](updated))
+                IO.pure(
+                  Right[HistoricalArchiveScanState, Vector[
+                    (HistoricalArchiveKey, ByteVector),
+                  ]](updated),
+                )
               case Some((lastKey, _)) =>
                 IO.pure(
                   Left[
@@ -529,7 +571,8 @@ object HistoricalProposalArchive:
   ): Either[Throwable, Proposal] =
     bytes.headOption match
       case None =>
-        archiveFailure("historicalArchiveCorruptOrIncompatible: emptyRecord").asLeft[Proposal]
+        archiveFailure("historicalArchiveCorruptOrIncompatible: emptyRecord")
+          .asLeft[Proposal]
       case Some(version) if version =!= SchemaVersionV1 =>
         archiveFailure(
           "historicalArchiveUnknownSchemaVersion: 0x" + renderByteHex(version),
@@ -546,7 +589,9 @@ object HistoricalProposalArchive:
             Either.cond(
               decoded.remainder.isEmpty,
               decoded.value,
-              archiveFailure("historicalArchiveCorruptOrIncompatible: decoded value has remainder"),
+              archiveFailure(
+                "historicalArchiveCorruptOrIncompatible: decoded value has remainder",
+              ),
             )
 
   private def archiveFailure(
@@ -564,7 +609,9 @@ object HistoricalProposalArchive:
   ): String =
     val alphabet = "0123456789abcdef"
     val unsigned = value.toInt & 0xff
-    String.valueOf(Array(alphabet.charAt(unsigned >>> 4), alphabet.charAt(unsigned & 0x0f)))
+    String.valueOf(
+      Array(alphabet.charAt(unsigned >>> 4), alphabet.charAt(unsigned & 0x0f)),
+    )
 
   @SuppressWarnings(
     Array(
@@ -573,9 +620,10 @@ object HistoricalProposalArchive:
     ),
   )
   private object SharedHistoricalArchiveStores:
-    private var stores: Map[java.nio.file.Path, SharedHistoricalArchiveSlot] = Map.empty
-    private var generation: Long                                             = 0L
-    private var nextOpeningToken: Long                                       = 0L
+    private var stores: Map[java.nio.file.Path, SharedHistoricalArchiveSlot] =
+      Map.empty
+    private var generation: Long       = 0L
+    private var nextOpeningToken: Long = 0L
 
     @SuppressWarnings(Array("org.wartremover.warts.Recursion"))
     def acquire(

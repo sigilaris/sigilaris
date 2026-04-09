@@ -11,7 +11,8 @@ final class StaticPeerBootstrapHttpTransportConfigSuite extends FunSuite:
   private val topology =
     StaticPeerTopology(
       localNodeIdentity = PeerIdentity.unsafe("node-a"),
-      knownPeers = Set(PeerIdentity.unsafe("node-b"), PeerIdentity.unsafe("node-c")),
+      knownPeers =
+        Set(PeerIdentity.unsafe("node-b"), PeerIdentity.unsafe("node-c")),
       directNeighbors = Set(PeerIdentity.unsafe("node-b")),
     )
 

@@ -29,10 +29,10 @@ import org.sigilaris.node.jvm.runtime.gossip.ChainId
 final class HotStuffHistoricalArchiveSuite extends CatsEffectSuite:
   private given Bag.Async[IO] = Bag.global
 
-  private val chainId   = ChainId.unsafe("chain-main")
+  private val chainId      = ChainId.unsafe("chain-main")
   private val otherChainId = ChainId.unsafe("chain-other")
-  private val startedAt = Instant.parse("2026-04-07T02:00:00Z")
-  private val validators = Vector.fill(4)(CryptoOps.generate())
+  private val startedAt    = Instant.parse("2026-04-07T02:00:00Z")
+  private val validators   = Vector.fill(4)(CryptoOps.generate())
   private val validatorSet = ValidatorSet.unsafe(
     validators.zipWithIndex.map: (keyPair, index) =>
       ValidatorMember(
@@ -56,7 +56,9 @@ final class HotStuffHistoricalArchiveSuite extends CatsEffectSuite:
   private given ByteDecoder[ProposalId] =
     ByteDecoder[UInt256].map(ProposalId(_))
   private given ByteEncoder[ArchiveKeyWire] =
-    key => ByteEncoder[ChainId].encode(key.chainId) ++ ByteEncoder[ProposalId].encode(key.proposalId)
+    key =>
+      ByteEncoder[ChainId].encode(key.chainId) ++ ByteEncoder[ProposalId]
+        .encode(key.proposalId)
   private given ByteDecoder[ArchiveKeyWire] =
     ByteDecoder[ChainId].flatMap: chainId =>
       ByteDecoder[ProposalId].map: proposalId =>
@@ -66,15 +68,21 @@ final class HotStuffHistoricalArchiveSuite extends CatsEffectSuite:
     DecodeResult(bytes, ByteVector.empty).asRight[DecodeFailure]
 
   private def tempDirResource: Resource[IO, Path] =
-    Resource.make(IO.blocking(Files.createTempDirectory("sigilaris-historical-archive"))) { dir =>
+    Resource.make(
+      IO.blocking(Files.createTempDirectory("sigilaris-historical-archive")),
+    ) { dir =>
       IO.blocking(deleteRecursively(dir))
     }
 
-  test("durable archive persists proposals across reopen, dedupes duplicates, and reorders list output canonically"):
+  test(
+    "durable archive persists proposals across reopen, dedupes duplicates, and reorders list output canonically",
+  ):
     val initialStoredAt = startedAt.minusSeconds(5L)
     val bootstrap       = bootstrapQc()
-    val proposalView2   = proposal(height = 1L, view = 2L, seed = "10", justify = bootstrap)
-    val proposalView1   = proposal(height = 1L, view = 1L, seed = "11", justify = bootstrap)
+    val proposalView2 =
+      proposal(height = 1L, view = 2L, seed = "10", justify = bootstrap)
+    val proposalView1 =
+      proposal(height = 1L, view = 1L, seed = "11", justify = bootstrap)
     val proposalHeight2 =
       proposal(
         height = 2L,
@@ -103,23 +111,37 @@ final class HotStuffHistoricalArchiveSuite extends CatsEffectSuite:
         )
         _ <- archive1.putAll(
           chainId = otherChainId,
-          proposals = Vector(proposal(height = 9L, view = 1L, seed = "99", justify = bootstrap)),
+          proposals = Vector(
+            proposal(height = 9L, view = 1L, seed = "99", justify = bootstrap),
+          ),
           source = HistoricalArchiveSource.BackgroundBackfill,
           storedAt = initialStoredAt,
         )
         listedBeforeReopen <- archive1.list(chainId)
         containsBefore <- archive1.contains(chainId, proposalView1.proposalId)
-        _ <- archive1.close
-        _ <- IO.blocking(copyRecursively(layout.state.historicalArchive, reopenLayout.state.historicalArchive))
-        archive2 <- HistoricalProposalArchive.swaydb[IO](reopenLayout)
+        _              <- archive1.close
+        _ <- IO.blocking(
+          copyRecursively(
+            layout.state.historicalArchive,
+            reopenLayout.state.historicalArchive,
+          ),
+        )
+        archive2          <- HistoricalProposalArchive.swaydb[IO](reopenLayout)
         listedAfterReopen <- archive2.list(chainId)
         removed <- archive2.removeAll(
           chainId,
-          Vector(proposalView1.proposalId, proposalView1.proposalId, ProposalId(hex("ff"))),
+          Vector(
+            proposalView1.proposalId,
+            proposalView1.proposalId,
+            ProposalId(hex("ff")),
+          ),
         )
-        containsAfterRemove <- archive2.contains(chainId, proposalView1.proposalId)
+        containsAfterRemove <- archive2.contains(
+          chainId,
+          proposalView1.proposalId,
+        )
         remaining <- archive2.list(chainId)
-        _ <- archive2.close
+        _         <- archive2.close
       yield
         assertEquals(
           appended,
@@ -174,22 +196,32 @@ final class HotStuffHistoricalArchiveSuite extends CatsEffectSuite:
           ),
         )
 
-  test("durable archive fails fast when the archive path cannot be opened as a store"):
+  test(
+    "durable archive fails fast when the archive path cannot be opened as a store",
+  ):
     tempDirResource.use: root =>
       val layout = StorageLayout.fromRoot(root)
       for
-        _ <- IO.blocking(Files.createDirectories(layout.state.historicalArchive.getParent))
-        _ <- IO.blocking(Files.writeString(layout.state.historicalArchive, "blocked"))
+        _ <- IO.blocking(
+          Files.createDirectories(layout.state.historicalArchive.getParent),
+        )
+        _ <- IO.blocking(
+          Files.writeString(layout.state.historicalArchive, "blocked"),
+        )
         result <- HistoricalProposalArchive.swaydb[IO](layout).attempt
       yield
         assert(result.isLeft)
         assert(
-          result.leftMap(_.getMessage).swap.exists(_.contains("historical-archive")),
+          result
+            .leftMap(_.getMessage)
+            .swap
+            .exists(_.contains("historical-archive")),
         )
 
   test("durable archive supports concurrent open on the same backing path"):
     val bootstrap = bootstrapQc()
-    val stored    = proposal(height = 1L, view = 1L, seed = "15", justify = bootstrap)
+    val stored =
+      proposal(height = 1L, view = 1L, seed = "15", justify = bootstrap)
 
     tempDirResource.use: root =>
       val layout = StorageLayout.fromRoot(root)
@@ -206,17 +238,19 @@ final class HotStuffHistoricalArchiveSuite extends CatsEffectSuite:
           storedAt = startedAt,
         )
         listed <- archiveB.list(chainId)
-        _ <- archiveA.close
-        _ <- archiveB.close
-      yield
-        assertEquals(
-          listed.map(_.proposal.proposalId),
-          Vector(stored.proposalId),
-        )
+        _      <- archiveA.close
+        _      <- archiveB.close
+      yield assertEquals(
+        listed.map(_.proposal.proposalId),
+        Vector(stored.proposalId),
+      )
 
-  test("durable archive close is idempotent and closed handles reject further operations clearly"):
+  test(
+    "durable archive close is idempotent and closed handles reject further operations clearly",
+  ):
     val bootstrap = bootstrapQc()
-    val stored    = proposal(height = 1L, view = 1L, seed = "20", justify = bootstrap)
+    val stored =
+      proposal(height = 1L, view = 1L, seed = "20", justify = bootstrap)
 
     tempDirResource.use: root =>
       val layout = StorageLayout.fromRoot(root)
@@ -228,8 +262,8 @@ final class HotStuffHistoricalArchiveSuite extends CatsEffectSuite:
           source = HistoricalArchiveSource.BackgroundBackfill,
           storedAt = startedAt,
         )
-        _ <- archive.close
-        _ <- archive.close
+        _          <- archive.close
+        _          <- archive.close
         listResult <- archive.list(chainId).attempt
         putResult <- archive
           .putAll(
@@ -242,20 +276,27 @@ final class HotStuffHistoricalArchiveSuite extends CatsEffectSuite:
       yield
         assert(listResult.isLeft)
         assert(
-          listResult.leftMap(_.getMessage).swap.exists(
-            _.contains("historicalArchiveClosed"),
-          ),
+          listResult
+            .leftMap(_.getMessage)
+            .swap
+            .exists(
+              _.contains("historicalArchiveClosed"),
+            ),
         )
         assert(putResult.isLeft)
         assert(
-          putResult.leftMap(_.getMessage).swap.exists(
-            _.contains("historicalArchiveClosed"),
-          ),
+          putResult
+            .leftMap(_.getMessage)
+            .swap
+            .exists(
+              _.contains("historicalArchiveClosed"),
+            ),
         )
 
   test("resetting shared archive stores invalidates live handles cleanly"):
     val bootstrap = bootstrapQc()
-    val stored    = proposal(height = 1L, view = 1L, seed = "21", justify = bootstrap)
+    val stored =
+      proposal(height = 1L, view = 1L, seed = "21", justify = bootstrap)
 
     tempDirResource.use: root =>
       val layout = StorageLayout.fromRoot(root)
@@ -267,20 +308,26 @@ final class HotStuffHistoricalArchiveSuite extends CatsEffectSuite:
           source = HistoricalArchiveSource.BackgroundBackfill,
           storedAt = startedAt,
         )
-        _ <- HistoricalProposalArchive.resetSharedStoresForTesting
+        _      <- HistoricalProposalArchive.resetSharedStoresForTesting
         result <- archive.list(chainId).attempt
-        _ <- archive.close
+        _      <- archive.close
       yield
         assert(result.isLeft)
         assert(
-          result.leftMap(_.getMessage).swap.exists(
-            _.contains("historicalArchiveClosed"),
-          ),
+          result
+            .leftMap(_.getMessage)
+            .swap
+            .exists(
+              _.contains("historicalArchiveClosed"),
+            ),
         )
 
-  test("durable archive treats unknown schema versions as fatal archive incompatibility"):
+  test(
+    "durable archive treats unknown schema versions as fatal archive incompatibility",
+  ):
     val bootstrap = bootstrapQc()
-    val stored     = proposal(height = 1L, view = 1L, seed = "30", justify = bootstrap)
+    val stored =
+      proposal(height = 1L, view = 1L, seed = "30", justify = bootstrap)
 
     tempDirResource.use: root =>
       val corruptLayout =
@@ -289,24 +336,32 @@ final class HotStuffHistoricalArchiveSuite extends CatsEffectSuite:
         StorageLayout.fromRoot(root.resolve("reopen"))
       for
         _ <- SwayStores
-          .storeIndex[ArchiveKeyWire, ByteVector](corruptLayout.state.historicalArchive)
+          .storeIndex[ArchiveKeyWire, ByteVector](
+            corruptLayout.state.historicalArchive,
+          )
           .use: store =>
             store.put(
               ArchiveKeyWire(chainId, stored.proposalId),
               ByteVector(0x02.toByte) ++ ByteEncoder[Proposal].encode(stored),
             )
         _ <- IO.blocking(
-          copyRecursively(corruptLayout.state.historicalArchive, reopenLayout.state.historicalArchive),
+          copyRecursively(
+            corruptLayout.state.historicalArchive,
+            reopenLayout.state.historicalArchive,
+          ),
         )
         archive <- HistoricalProposalArchive.swaydb[IO](reopenLayout)
-        result <- archive.list(chainId).attempt
-        _ <- archive.close
+        result  <- archive.list(chainId).attempt
+        _       <- archive.close
       yield
         assert(result.isLeft)
         assert(
-          result.leftMap(_.getMessage).swap.exists(
-            _.contains("historicalArchiveUnknownSchemaVersion"),
-          ),
+          result
+            .leftMap(_.getMessage)
+            .swap
+            .exists(
+              _.contains("historicalArchiveUnknownSchemaVersion"),
+            ),
         )
 
   private def deleteRecursively(
@@ -317,22 +372,21 @@ final class HotStuffHistoricalArchiveSuite extends CatsEffectSuite:
         stream.iterator.asScala.toList.reverse.foreach(Files.deleteIfExists)
 
   override def afterAll(): Unit =
-    val _ = HistoricalProposalArchive.resetSharedStoresForTesting.attempt.unsafeRunSync()
+    val _ = HistoricalProposalArchive.resetSharedStoresForTesting.attempt
+      .unsafeRunSync()
     super.afterAll()
 
   private def copyRecursively(
       source: Path,
       destination: Path,
   ): Unit =
-    if Files.exists(destination) then
-      deleteRecursively(destination)
+    if Files.exists(destination) then deleteRecursively(destination)
     Files.createDirectories(destination)
     Using.resource(Files.walk(source)): stream =>
       stream.iterator.asScala.foreach: current =>
         val relative = source.relativize(current)
         val target   = destination.resolve(relative.toString)
-        if Files.isDirectory(current) then
-          Files.createDirectories(target)
+        if Files.isDirectory(current) then Files.createDirectories(target)
         else
           Files.createDirectories(target.getParent)
           Files.copy(current, target)
@@ -355,7 +409,10 @@ final class HotStuffHistoricalArchiveSuite extends CatsEffectSuite:
         proposalId = proposal.proposalId,
         blockId = proposal.targetBlockId,
       )
-    QuorumCertificate(subject, quorumVotes(proposal.window, proposal.proposalId))
+    QuorumCertificate(
+      subject,
+      quorumVotes(proposal.window, proposal.proposalId),
+    )
 
   private def proposal(
       height: Long,
@@ -412,7 +469,8 @@ final class HotStuffHistoricalArchiveSuite extends CatsEffectSuite:
       height = BlockHeight.unsafeFromLong(height),
       stateRoot = stateRoot,
       bodyRoot = BodyRoot(hex(bodyHex)),
-      timestamp = BlockTimestamp.unsafeFromEpochMillis(startedAt.toEpochMilli + height),
+      timestamp =
+        BlockTimestamp.unsafeFromEpochMillis(startedAt.toEpochMilli + height),
     )
 
   private def hex(

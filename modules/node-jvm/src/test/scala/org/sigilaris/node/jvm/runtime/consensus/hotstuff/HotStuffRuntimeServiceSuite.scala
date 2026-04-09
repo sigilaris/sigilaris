@@ -327,8 +327,7 @@ final class HotStuffRuntimeServiceSuite extends CatsEffectSuite:
           storageLayout = storageLayout,
         )
         .use: bootstrapEither =>
-          for
-            bootstrap <- IO.fromEither(
+          for bootstrap <- IO.fromEither(
               bootstrapEither.leftMap(new IllegalArgumentException(_)),
             )
           yield
@@ -438,8 +437,12 @@ final class HotStuffRuntimeServiceSuite extends CatsEffectSuite:
 
   private def tempStorageLayoutResource: Resource[IO, StorageLayout] =
     Resource
-      .make(IO.blocking(Files.createTempDirectory("sigilaris-runtime-service-bootstrap"))) {
-        root => IO.blocking(deleteRecursively(root))
+      .make(
+        IO.blocking(
+          Files.createTempDirectory("sigilaris-runtime-service-bootstrap"),
+        ),
+      ) { root =>
+        IO.blocking(deleteRecursively(root))
       }
       .map(StorageLayout.fromRoot)
 

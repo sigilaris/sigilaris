@@ -30,7 +30,9 @@ final class KeyValueSwayStore[K, V: ByteEncoder: ByteDecoder](
           EitherT.fromEither[IO]:
             ByteDecoder[V]
               .decode(ByteVector.view(bytes))
-              .flatMap(result => StoreIndexSwayInterpreter.ensureNoRemainder(result, "decoded value has remainder"))
+              .flatMap: result =>
+                StoreIndexSwayInterpreter
+                  .ensureNoRemainder(result, "decoded value has remainder")
               .map(Some(_))
         case None =>
           EitherT.rightT[IO, DecodeFailure](None)
@@ -52,13 +54,16 @@ object KeyValueSwayStore:
     given KeyOrder[Slice[Byte]] = KeyOrder.default
     given KeyOrder[K] with
       override def compare(left: K, right: K): Int =
-        Ordering[ByteVector].compare(ByteEncoder[K].encode(left), ByteEncoder[K].encode(right))
+        Ordering[ByteVector].compare(
+          ByteEncoder[K].encode(left),
+          ByteEncoder[K].encode(right),
+        )
     given ExecutionContext =
       swaydb.configs.level.DefaultExecutionContext.compactionEC
 
     swaydb.persistent.Map[K, Array[Byte], Nothing, IO](dir)
 
   def apply[K: ByteEncoder: ByteDecoder, V: ByteEncoder: ByteDecoder](
-      dir: Path
+      dir: Path,
   )(using Bag.Async[IO]): IO[KeyValueSwayStore[K, V]] =
     openMap[K](dir).map(new KeyValueSwayStore[K, V](_))

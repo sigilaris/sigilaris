@@ -12,7 +12,10 @@ import cats.syntax.all.*
 import munit.CatsEffectSuite
 import scodec.bits.ByteVector
 
-import org.sigilaris.core.application.scheduling.{ConflictFootprint, SchedulingClassification}
+import org.sigilaris.core.application.scheduling.{
+  ConflictFootprint,
+  SchedulingClassification,
+}
 import org.sigilaris.core.codec.byte.ByteEncoder
 import org.sigilaris.core.crypto.CryptoOps
 import org.sigilaris.core.crypto.Hash
@@ -38,7 +41,9 @@ final class HotStuffPacemakerBootstrapHoldSuite extends CatsEffectSuite:
   ) derives ByteEncoder
   private given Hash[TestTx] = Hash.build
 
-  test("automatic pacemaker suppresses timeout emission while bootstrap vote-readiness is held and releases it once ready"):
+  test(
+    "automatic pacemaker suppresses timeout emission while bootstrap vote-readiness is held and releases it once ready",
+  ):
     tempDirResource.use: root =>
       val merkleRoot =
         MerkleTrieNode.branch(
@@ -66,8 +71,8 @@ final class HotStuffPacemakerBootstrapHoldSuite extends CatsEffectSuite:
           Set(child.txSet.txIds.head),
         )
         blockStore <- BlockStore.inMemory[IO, TestTx, Utf8, Utf8]
-        _ <- putProposalView(blockStore, child, Vector(childTx))
-        _ <- putProposalView(blockStore, grandchild, Vector(grandchildTx))
+        _          <- putProposalView(blockStore, child, Vector(childTx))
+        _     <- putProposalView(blockStore, grandchild, Vector(grandchildTx))
         clock <- TestClock.create(startedAt)
         topology = staticTopology("node-a", Vector("node-b"))
         bootstrapEither <- HotStuffRuntimeBootstrap
@@ -76,23 +81,26 @@ final class HotStuffPacemakerBootstrapHoldSuite extends CatsEffectSuite:
             transportAuth = StaticPeerTransportAuth.testing(topology),
             consensusConfig = validatorConfig(),
             clock = clock,
-            bootstrapTransport =
-              Some(
-                proposalTransport(
-                  anchor = anchor,
-                  replayed = Vector(child, grandchild),
-                  snapshotRoot = merkleRootHash -> merkleRoot,
-                  proposalCatchUpReadiness =
-                    Some(
-                      HotStuffRuntimeBootstrap
-                        .proposalCatchUpReadinessFromBlockQuery[IO, TestTx, Utf8, Utf8](
-                          validatorSet = validatorSet,
-                          knownTxIds = knownTxIds.get,
-                          blockQuery = blockStore,
-                        )(_ => schedulable()),
-                    ),
+            bootstrapTransport = Some(
+              proposalTransport(
+                anchor = anchor,
+                replayed = Vector(child, grandchild),
+                snapshotRoot = merkleRootHash -> merkleRoot,
+                proposalCatchUpReadiness = Some(
+                  HotStuffRuntimeBootstrap
+                    .proposalCatchUpReadinessFromBlockQuery[
+                      IO,
+                      TestTx,
+                      Utf8,
+                      Utf8,
+                    ](
+                      validatorSet = validatorSet,
+                      knownTxIds = knownTxIds.get,
+                      blockQuery = blockStore,
+                    )(_ => schedulable()),
                 ),
               ),
+            ),
             storageLayout = StorageLayout.fromRoot(root),
           )
           .use(IO.pure)
@@ -102,11 +110,10 @@ final class HotStuffPacemakerBootstrapHoldSuite extends CatsEffectSuite:
         session =
           BootstrapSessionBinding(
             peer = PeerIdentity.unsafe("node-b"),
-            sessionId =
-              DirectionalSessionId
-                .parse("bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb")
-                .toOption
-                .get,
+            sessionId = DirectionalSessionId
+              .parse("bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb")
+              .toOption
+              .get,
           )
         first <- bootstrap.consensus.bootstrap(
           chainId = chainId,
@@ -118,15 +125,19 @@ final class HotStuffPacemakerBootstrapHoldSuite extends CatsEffectSuite:
           HotStuffGossipArtifact.ProposalArtifact(grandchild),
           startedAt.plusSeconds(10L),
         )
-        _ <- bootstrap.consensus.sink.applyEvent(proposalEvent).flatMap(result =>
-          IO.fromEither(
-            result.leftMap(rejection =>
-              new IllegalStateException(rejection.reason),
-            ),
-          ).void,
-        )
+        _ <- bootstrap.consensus.sink
+          .applyEvent(proposalEvent)
+          .flatMap(result =>
+            IO.fromEither(
+              result.leftMap(rejection =>
+                new IllegalStateException(rejection.reason),
+              ),
+            ).void,
+          )
         _ <- clock.advance(
-          HotStuffPacemakerPolicy.default.baseTimeout.plus(Duration.ofSeconds(1L)),
+          HotStuffPacemakerPolicy.default.baseTimeout.plus(
+            Duration.ofSeconds(1L),
+          ),
         )
         heldTimeoutVotes <- bootstrap.consensus.source
           .readAfter(chainId, GossipTopic.consensusTimeoutVote, None)
@@ -138,7 +149,7 @@ final class HotStuffPacemakerBootstrapHoldSuite extends CatsEffectSuite:
             ),
           )
         heldPacemaker <- bootstrap.consensus.currentPacemakerSnapshot
-        _ <- knownTxIds.update(_ + grandchildTxId)
+        _             <- knownTxIds.update(_ + grandchildTxId)
         second <- bootstrap.consensus.bootstrap(
           chainId = chainId,
           sessions = Vector(session),
@@ -146,7 +157,9 @@ final class HotStuffPacemakerBootstrapHoldSuite extends CatsEffectSuite:
           liveProposals = Vector.empty,
         )
         _ <- clock.advance(
-          HotStuffPacemakerPolicy.default.baseTimeout.plus(Duration.ofSeconds(1L)),
+          HotStuffPacemakerPolicy.default.baseTimeout.plus(
+            Duration.ofSeconds(1L),
+          ),
         )
         readyTimeoutVotes <- bootstrap.consensus.source
           .readAfter(chainId, GossipTopic.consensusTimeoutVote, None)
@@ -203,7 +216,8 @@ final class HotStuffPacemakerBootstrapHoldSuite extends CatsEffectSuite:
         )
 
   override def afterAll(): Unit =
-    val _ = HistoricalProposalArchive.resetSharedStoresForTesting.attempt.unsafeRunSync()
+    val _ = HistoricalProposalArchive.resetSharedStoresForTesting.attempt
+      .unsafeRunSync()
     super.afterAll()
 
   private def validatorSet: ValidatorSet =
@@ -384,10 +398,9 @@ final class HotStuffPacemakerBootstrapHoldSuite extends CatsEffectSuite:
             height = BlockHeight.unsafeFromLong(height),
             stateRoot = stateRoot,
             bodyRoot = bodyRoot,
-            timestamp =
-              BlockTimestamp.unsafeFromEpochMillis(
-                startedAt.toEpochMilli + height,
-              ),
+            timestamp = BlockTimestamp.unsafeFromEpochMillis(
+              startedAt.toEpochMilli + height,
+            ),
           )
     Proposal
       .sign(
@@ -535,9 +548,9 @@ final class HotStuffPacemakerBootstrapHoldSuite extends CatsEffectSuite:
     UInt256.fromHex(value).toOption.get
 
   private def tempDirResource: Resource[IO, Path] =
-    Resource.make(IO.blocking(Files.createTempDirectory("sigilaris-pacemaker-bootstrap")))(dir =>
-      IO.blocking(deleteRecursively(dir)),
-    )
+    Resource.make(
+      IO.blocking(Files.createTempDirectory("sigilaris-pacemaker-bootstrap")),
+    )(dir => IO.blocking(deleteRecursively(dir)))
 
   private def deleteRecursively(
       path: Path,

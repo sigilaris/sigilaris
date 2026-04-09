@@ -254,7 +254,8 @@ final case class GossipSessionEngine(
                   ),
                 )
                 copy(relationships =
-                  relationships.updated(proposal.initiator, updatedRelationship),
+                  relationships
+                    .updated(proposal.initiator, updatedRelationship),
                 ) ->
                   InboundHandshakeResult.Accepted(ack, superseded)
               else
@@ -293,7 +294,8 @@ final case class GossipSessionEngine(
                   ),
                 )
                 copy(relationships =
-                  relationships.updated(proposal.initiator, updatedRelationship),
+                  relationships
+                    .updated(proposal.initiator, updatedRelationship),
                 ) ->
                   InboundHandshakeResult.Accepted(ack, None)
             case None =>
@@ -314,21 +316,19 @@ final case class GossipSessionEngine(
     val peer = ack.acceptor
     relationships
       .get(peer)
-      .toRight(
+      .toRight:
         HandshakeRejected(
           reason = "unknownSession",
           detail = Some(ack.sessionId.value),
-        ),
-      )
+        )
       .flatMap: relationship =>
         relationship.outbound
           .filter(_.sessionId === ack.sessionId)
-          .toRight(
+          .toRight:
             HandshakeRejected(
               reason = "unknownSession",
               detail = Some(ack.sessionId.value),
-            ),
-          )
+            )
           .flatMap: outbound =>
             Either
               .cond(
@@ -373,12 +373,11 @@ final case class GossipSessionEngine(
       case Some((peer, relationship)) =>
         relationship
           .session(sessionId)
-          .toRight(
+          .toRight:
             HandshakeRejected(
               reason = "unknownSession",
               detail = Some(sessionId.value),
-            ),
-          )
+            )
           .flatMap:
             case session
                 if session.status === DirectionalSessionStatus.Opening =>
@@ -424,14 +423,16 @@ final case class GossipSessionEngine(
             detail = Some(session.sessionId.value),
           ).asLeft[DirectionalSession]
         case _ =>
-          session.copy(status = DirectionalSessionStatus.Closed)
+          session
+            .copy(status = DirectionalSessionStatus.Closed)
             .asRight[HandshakeRejected]
 
   def markSessionDead(
       sessionId: DirectionalSessionId,
   ): Either[HandshakeRejected, GossipSessionEngine] =
     updateSession(sessionId)(session =>
-      session.copy(status = DirectionalSessionStatus.Dead)
+      session
+        .copy(status = DirectionalSessionStatus.Dead)
         .asRight[HandshakeRejected],
     )
 
@@ -503,7 +504,9 @@ final case class GossipSessionEngine(
     val outboundAlive = relationship.outbound.exists(_.isAlive)
     val inboundAlive  = relationship.inbound.exists(_.isAlive)
     val bothOpen =
-      relationship.outbound.exists(_.status === DirectionalSessionStatus.Open) &&
+      relationship.outbound.exists(
+        _.status === DirectionalSessionStatus.Open,
+      ) &&
         relationship.inbound.exists(_.status === DirectionalSessionStatus.Open)
     val wasBidirectionalOpen = relationship.wasBidirectionalOpen || bothOpen
     val nextStatus =
@@ -540,12 +543,11 @@ final case class GossipSessionEngine(
       case Some((peer, relationship)) =>
         relationship
           .session(sessionId)
-          .toRight(
+          .toRight:
             HandshakeRejected(
               reason = "unknownSession",
               detail = Some(sessionId.value),
-            ),
-          )
+            )
           .flatMap(transform)
           .map: updatedSession =>
             val updatedRelationship =

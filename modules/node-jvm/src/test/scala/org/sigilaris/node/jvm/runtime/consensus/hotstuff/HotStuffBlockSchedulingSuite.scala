@@ -3,22 +3,37 @@ package org.sigilaris.node.jvm.runtime.consensus.hotstuff
 import munit.FunSuite
 import scodec.bits.ByteVector
 
-import org.sigilaris.core.application.scheduling.{CompatibilityReason, ConflictFootprint, ConflictKind, SchedulingClassification, StateRef}
+import org.sigilaris.core.application.scheduling.{
+  CompatibilityReason,
+  ConflictFootprint,
+  ConflictKind,
+  SchedulingClassification,
+  StateRef,
+}
 import org.sigilaris.core.codec.byte.ByteEncoder
 import org.sigilaris.core.crypto.{CryptoOps, Hash}
 import org.sigilaris.core.datatype.{UInt256, Utf8}
-import org.sigilaris.node.jvm.runtime.block.{BlockBody, BlockHeader, BlockHeight, BlockRecord, BlockTimestamp, BlockView, BodyRoot, StateRoot}
+import org.sigilaris.node.jvm.runtime.block.{
+  BlockBody,
+  BlockHeader,
+  BlockHeight,
+  BlockRecord,
+  BlockTimestamp,
+  BlockView,
+  BodyRoot,
+  StateRoot,
+}
 import org.sigilaris.node.jvm.runtime.gossip.ChainId
 
 final class HotStuffBlockSchedulingSuite extends FunSuite:
-  private val chainId = ChainId.unsafe("chain-main")
+  private val chainId       = ChainId.unsafe("chain-main")
   private val validatorKeys = Vector.fill(4)(CryptoOps.generate())
   private val validatorSet = ValidatorSet.unsafe(
     validatorKeys.zipWithIndex.map: (keyPair, index) =>
       ValidatorMember(
         id = ValidatorId.unsafe(s"validator-${index + 1}"),
         publicKey = keyPair.publicKey,
-      )
+      ),
   )
 
   private final case class TestTxRef(
@@ -29,7 +44,9 @@ final class HotStuffBlockSchedulingSuite extends FunSuite:
 
   private type TestRecord = BlockRecord[TestTxRef, Utf8, Utf8]
 
-  test("ConflictFreeBlockBodySelector keeps only schedulable conflict-free records"):
+  test(
+    "ConflictFreeBlockBodySelector keeps only schedulable conflict-free records",
+  ):
     val recordA = record("a")
     val recordB = record("b")
     val recordC = record("c")
@@ -42,31 +59,43 @@ final class HotStuffBlockSchedulingSuite extends FunSuite:
     )
 
     val selection =
-      ConflictFreeBlockBodySelector.select(Vector(recordA, recordB, recordC, recordD)):
-        tx => classification(tx)
+      ConflictFreeBlockBodySelector.select(
+        Vector(recordA, recordB, recordC, recordD),
+      ): tx =>
+        classification(tx)
 
     assertEquals(selection.accepted.map(_.tx.id.asString), Vector("a", "d"))
-    assertEquals(selection.rejected.map(_.record.tx.id.asString), Vector("b", "c"))
+    assertEquals(
+      selection.rejected.map(_.record.tx.id.asString),
+      Vector("b", "c"),
+    )
     assertEquals(
       selection.rejected.map(_.reason),
       Vector(
-        BlockRecordRejectionReason.Compatibility(CompatibilityReason("dynamicDiscovery", None)),
-        BlockRecordRejectionReason.Conflict(stateRef = stateRef("alpha"), kind = ConflictKind.ReadWrite),
+        BlockRecordRejectionReason.Compatibility(
+          CompatibilityReason("dynamicDiscovery", None),
+        ),
+        BlockRecordRejectionReason.Conflict(
+          stateRef = stateRef("alpha"),
+          kind = ConflictKind.ReadWrite,
+        ),
       ),
     )
     assertEquals(selection.toBody.map(_.records.size), Right(2))
 
-  test("ConflictFreeBlockBodySelector rejects write-write conflicts explicitly"):
-    val first = record("first")
+  test(
+    "ConflictFreeBlockBodySelector rejects write-write conflicts explicitly",
+  ):
+    val first  = record("first")
     val second = record("second")
     val classification = Map(
-      first.tx -> schedulable(writes = Set("shared")),
+      first.tx  -> schedulable(writes = Set("shared")),
       second.tx -> schedulable(writes = Set("shared")),
     )
 
     val selection =
-      ConflictFreeBlockBodySelector.select(Vector(first, second)):
-        tx => classification(tx)
+      ConflictFreeBlockBodySelector.select(Vector(first, second)): tx =>
+        classification(tx)
 
     assertEquals(selection.accepted.map(_.tx.id.asString), Vector("first"))
     assertEquals(
@@ -75,17 +104,20 @@ final class HotStuffBlockSchedulingSuite extends FunSuite:
         BlockRecordRejectionReason.Conflict(
           stateRef = stateRef("shared"),
           kind = ConflictKind.WriteWrite,
-        )
+        ),
       ),
     )
 
-  test("ConflictFreeBlockBodySelection rejects duplicate selected records when materializing a body"):
+  test(
+    "ConflictFreeBlockBodySelection rejects duplicate selected records when materializing a body",
+  ):
     val duplicate = record("duplicate")
     val selection =
       ConflictFreeBlockBodySelection(
         accepted = Vector(duplicate, duplicate),
         rejected = Vector.empty[RejectedBlockRecord[TestTxRef, Utf8, Utf8]],
-        aggregate = org.sigilaris.core.application.scheduling.AggregateFootprint.empty,
+        aggregate =
+          org.sigilaris.core.application.scheduling.AggregateFootprint.empty,
       )
 
     assertEquals(
@@ -93,11 +125,13 @@ final class HotStuffBlockSchedulingSuite extends FunSuite:
       Left("duplicateSelectedBlockRecord"),
     )
 
-  test("HotStuffBlockBodyVerifier accepts a conflict-free body and canonicalizes set order"):
+  test(
+    "HotStuffBlockBodyVerifier accepts a conflict-free body and canonicalizes set order",
+  ):
     val recordA = record("a")
     val recordB = record("b")
-    val body = BlockBody(Set(recordB, recordA))
-    val view = blockView(body, rootHex = "51")
+    val body    = BlockBody(Set(recordB, recordA))
+    val view    = blockView(body, rootHex = "51")
     val classification = Map(
       recordA.tx -> schedulable(reads = Set("shared")),
       recordB.tx -> schedulable(writes = Set("owned")),
@@ -108,29 +142,40 @@ final class HotStuffBlockSchedulingSuite extends FunSuite:
       Right(()),
     )
 
-  test("HotStuffBlockBodyVerifier rejects compatibility transactions in a block body"):
+  test(
+    "HotStuffBlockBodyVerifier rejects compatibility transactions in a block body",
+  ):
     val compatRecord = record("compat")
-    val body = BlockBody(Set(compatRecord))
+    val body         = BlockBody(Set(compatRecord))
 
     val result =
       HotStuffBlockBodyVerifier.validateBody(body): _ =>
         compatibility("automaticInputSelection", Some("missing explicit refs"))
 
-    assertEquals(result.left.map(_.reason), Left("compatibilityTransactionInBlockBody"))
-    assert(result.left.toOption.flatMap(_.detail).exists(_.contains("automaticInputSelection")))
+    assertEquals(
+      result.left.map(_.reason),
+      Left("compatibilityTransactionInBlockBody"),
+    )
+    assert(
+      result.left.toOption
+        .flatMap(_.detail)
+        .exists(_.contains("automaticInputSelection")),
+    )
 
   test("HotStuffBlockBodyVerifier accepts the empty block body"):
     val emptyBody = BlockBody(Set.empty[TestRecord])
 
     assertEquals(
-      HotStuffBlockBodyVerifier.validateBody(emptyBody)(_ => compatibility("unreachable")),
+      HotStuffBlockBodyVerifier.validateBody(emptyBody)(_ =>
+        compatibility("unreachable"),
+      ),
       Right(()),
     )
 
   test("HotStuffBlockBodyVerifier rejects conflicting block bodies"):
     val writer = record("writer")
     val reader = record("reader")
-    val body = BlockBody(Set(writer, reader))
+    val body   = BlockBody(Set(writer, reader))
     val classification = Map(
       writer.tx -> schedulable(writes = Set("shared")),
       reader.tx -> schedulable(reads = Set("shared")),
@@ -140,14 +185,23 @@ final class HotStuffBlockSchedulingSuite extends FunSuite:
       HotStuffBlockBodyVerifier.validateBody(body): tx =>
         classification(tx)
 
-    assertEquals(result.left.map(_.reason), Left("conflictingBlockBodyTransaction"))
-    assert(result.left.toOption.flatMap(_.detail).exists(_.contains(stateRef("shared").toHexLower)))
+    assertEquals(
+      result.left.map(_.reason),
+      Left("conflictingBlockBodyTransaction"),
+    )
+    assert(
+      result.left.toOption
+        .flatMap(_.detail)
+        .exists(_.contains(stateRef("shared").toHexLower)),
+    )
 
-  test("HotStuffBlockBodyVerifier is ordering-independent for equivalent conflicting bodies"):
+  test(
+    "HotStuffBlockBodyVerifier is ordering-independent for equivalent conflicting bodies",
+  ):
     val writer = record("writer")
     val reader = record("reader")
-    val bodyA = BlockBody(Set(writer, reader))
-    val bodyB = BlockBody(Set(reader, writer))
+    val bodyA  = BlockBody(Set(writer, reader))
+    val bodyB  = BlockBody(Set(reader, writer))
     val classification = Map(
       writer.tx -> schedulable(writes = Set("shared")),
       reader.tx -> schedulable(reads = Set("shared")),
@@ -162,11 +216,13 @@ final class HotStuffBlockSchedulingSuite extends FunSuite:
 
     assertEquals(resultA, resultB)
 
-  test("HotStuffProposalViewValidator rejects conflicting bodies before proposal acceptance"):
-    val writer = record("writer")
-    val reader = record("reader")
-    val body = BlockBody(Set(writer, reader))
-    val view = blockView(body, rootHex = "61")
+  test(
+    "HotStuffProposalViewValidator rejects conflicting bodies before proposal acceptance",
+  ):
+    val writer   = record("writer")
+    val reader   = record("reader")
+    val body     = BlockBody(Set(writer, reader))
+    val view     = blockView(body, rootHex = "61")
     val proposal = signedProposal(view.header, body)
     val classification = Map(
       writer.tx -> schedulable(writes = Set("shared")),
@@ -181,14 +237,24 @@ final class HotStuffBlockSchedulingSuite extends FunSuite:
       ): tx =>
         classification(tx)
 
-    assertEquals(result.left.map(_.reason), Left("conflictingBlockBodyTransaction"))
+    assertEquals(
+      result.left.map(_.reason),
+      Left("conflictingBlockBodyTransaction"),
+    )
 
-  test("HotStuffProposalViewValidator rejects proposal and block-view header mismatches"):
+  test(
+    "HotStuffProposalViewValidator rejects proposal and block-view header mismatches",
+  ):
     val body = BlockBody(Set(record("ok")))
-    val proposalHeader = blockHeader(body, rootHex = "71", timestampMillis = 1_712_345_678_000L)
+    val proposalHeader =
+      blockHeader(body, rootHex = "71", timestampMillis = 1_712_345_678_000L)
     val mismatchedView =
       BlockView(
-        header = blockHeader(body, rootHex = "71", timestampMillis = 1_712_345_679_000L),
+        header = blockHeader(
+          body,
+          rootHex = "71",
+          timestampMillis = 1_712_345_679_000L,
+        ),
         body = body,
       )
     val proposal = signedProposal(proposalHeader, body)
@@ -203,9 +269,11 @@ final class HotStuffBlockSchedulingSuite extends FunSuite:
 
     assertEquals(result.left.map(_.reason), Left("proposalBlockViewMismatch"))
 
-  test("HotStuffProposalViewValidator rejects proposal tx-set mismatches before body validation"):
-    val body = BlockBody(Set(record("only")))
-    val view = blockView(body, rootHex = "72")
+  test(
+    "HotStuffProposalViewValidator rejects proposal tx-set mismatches before body validation",
+  ):
+    val body     = BlockBody(Set(record("only")))
+    val view     = blockView(body, rootHex = "72")
     val proposal = signedProposal(view.header, body, Some(ProposalTxSet.empty))
 
     val result =
@@ -235,7 +303,7 @@ final class HotStuffBlockSchedulingSuite extends FunSuite:
       ConflictFootprint(
         reads = reads.map(stateRef),
         writes = writes.map(stateRef),
-      )
+      ),
     )
 
   private def compatibility(
@@ -279,8 +347,8 @@ final class HotStuffBlockSchedulingSuite extends FunSuite:
       body: BlockBody[TestTxRef, Utf8, Utf8],
       txSet: Option[ProposalTxSet] = None,
   ): Proposal =
-    val parentBlock = parentHeader()
-    val parentWindow = HotStuffWindow(chainId, 0L, 0L, validatorSet.hash)
+    val parentBlock      = parentHeader()
+    val parentWindow     = HotStuffWindow(chainId, 0L, 0L, validatorSet.hash)
     val parentProposalId = ProposalId(hex("10"))
     val subject = QuorumCertificateSubject(
       window = parentWindow,
@@ -307,7 +375,9 @@ final class HotStuffBlockSchedulingSuite extends FunSuite:
           proposer = validatorSet.members.head.id,
           targetBlockId = BlockHeader.computeId(block),
           block = block,
-          txSet = txSet.getOrElse(ProposalTxSet.fromTxs(body.records.toVector.map(_.tx))),
+          txSet = txSet.getOrElse(
+            ProposalTxSet.fromTxs(body.records.toVector.map(_.tx)),
+          ),
           justify = justify,
         ),
         validatorKeys.head,

@@ -330,10 +330,9 @@ object CursorToken:
         token,
         CanonicalRejection.StaleCursor(
           reason = "cursorTokenVersionMismatch",
-          detail =
-            Some(
-              ss"expected=${expected.toString} actual=${version.toString}",
-            ),
+          detail = Some(
+            ss"expected=${expected.toString} actual=${version.toString}",
+          ),
         ),
       )
 
@@ -394,12 +393,11 @@ object ControlOpKind:
   ): Either[CanonicalRejection.ControlBatchRejected, ControlOpKind] =
     ControlOpKind.values
       .find(_.wireName === value)
-      .toRight(
+      .toRight:
         CanonicalRejection.ControlBatchRejected(
           reason = "unknownControlOpKind",
           detail = Some(value),
-        ),
-      )
+        )
 
 enum SessionConfigKey(val wireName: String):
   case TxMaxBatchItems   extends SessionConfigKey("tx.maxBatchItems")
@@ -411,12 +409,11 @@ object SessionConfigKey:
   ): Either[CanonicalRejection.ControlBatchRejected, SessionConfigKey] =
     SessionConfigKey.values
       .find(_.wireName === value)
-      .toRight(
+      .toRight:
         CanonicalRejection.ControlBatchRejected(
           reason = "unsupportedConfigKey",
           detail = Some(value),
-        ),
-      )
+        )
 
 enum ControlOp:
   case SetFilter(chainId: ChainId, topic: GossipTopic, filter: GossipFilter)
@@ -499,7 +496,7 @@ final case class HandshakePolicy(
       CanonicalRejection.ControlBatchRejected(
         reason = "invalidControlRetryHorizon",
         detail = Some(
-          ss"minimum=${minimum.toString} maximum=${maximum.toString} actual=${retryHorizon.toString}"
+          ss"minimum=${minimum.toString} maximum=${maximum.toString} actual=${retryHorizon.toString}",
         ),
       ),
     )

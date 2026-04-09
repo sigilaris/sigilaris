@@ -17,7 +17,9 @@ class FailureMessageTest extends FunSuite:
     assertEquals(key.rendered, "not_found.accounts.account_not_found")
     assertEquals(key.code, code)
 
-  test("ClientFailureMessage falls back to safe key for invalid domain or reason"):
+  test(
+    "ClientFailureMessage falls back to safe key for invalid domain or reason",
+  ):
     val message = ClientFailureMessage.invalidRequest(
       domain = "Bad-Domain",
       reason = "invalid reason",
@@ -25,7 +27,10 @@ class FailureMessageTest extends FunSuite:
       detail = None,
     )
 
-    assertEquals(message, "invalid_request.unknown.invalid_error_key: broken input")
+    assertEquals(
+      message,
+      "invalid_request.unknown.invalid_error_key: broken input",
+    )
 
   test("ClientFailureMessage preserves kind when falling back to a safe key"):
     val message = ClientFailureMessage.notFound(
@@ -35,7 +40,10 @@ class FailureMessageTest extends FunSuite:
       detail = None,
     )
 
-    assertEquals(message, "not_found.unknown.invalid_error_key: missing account")
+    assertEquals(
+      message,
+      "not_found.unknown.invalid_error_key: missing account",
+    )
 
   test("ClientFailureMessage supports forbidden kind"):
     val message = ClientFailureMessage.forbidden(
@@ -45,9 +53,14 @@ class FailureMessageTest extends FunSuite:
       detail = Some("name=alice"),
     )
 
-    assertEquals(message, "forbidden.accounts.unauthorized: access denied | name=alice")
+    assertEquals(
+      message,
+      "forbidden.accounts.unauthorized: access denied | name=alice",
+    )
 
-  test("ClientFailureMessage omits blank detail and supports empty message branch"):
+  test(
+    "ClientFailureMessage omits blank detail and supports empty message branch",
+  ):
     val message = ClientFailureMessage.notFound(
       domain = "accounts",
       reason = "account_not_found",
@@ -86,11 +99,15 @@ class FailureMessageTest extends FunSuite:
     assertEquals(key.code, code)
     assertEquals(message, "conflict.groups.group_already_exists: duplicate")
 
-  test("SigilarisFailure exposes stable failure codes without changing messages"):
+  test(
+    "SigilarisFailure exposes stable failure codes without changing messages",
+  ):
     val failure = DecodeFailure("broken")
     assertEquals(failure.msg, "broken")
     assertEquals(failure.code, FailureCode.Decode)
 
   test("FailureCode rejects non-machine-readable values"):
-    interceptMessage[IllegalArgumentException]("requirement failed: Invalid FailureCode: bad code"):
+    interceptMessage[IllegalArgumentException](
+      "requirement failed: Invalid FailureCode: bad code",
+    ):
       FailureCode("bad code")

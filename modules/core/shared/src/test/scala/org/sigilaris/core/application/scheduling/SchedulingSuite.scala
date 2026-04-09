@@ -44,9 +44,9 @@ final class SchedulingSuite extends FunSuite:
     )
 
   test("ConflictFootprint.combine has empty identity and is associative"):
-    val first = ConflictFootprint(reads = Set(refA1), writes = Set(refA2))
+    val first  = ConflictFootprint(reads = Set(refA1), writes = Set(refA2))
     val second = ConflictFootprint(reads = Set(refB1), writes = Set.empty)
-    val third = ConflictFootprint(reads = Set.empty, writes = Set(refB2))
+    val third  = ConflictFootprint(reads = Set.empty, writes = Set(refB2))
 
     assertEquals(first.combine(ConflictFootprint.empty), first)
     assertEquals(ConflictFootprint.empty.combine(first), first)
@@ -56,9 +56,9 @@ final class SchedulingSuite extends FunSuite:
     )
 
   test("ConflictFootprint.conflictsWith allows R∩R and rejects W∩W / R∩W"):
-    val readOnlyA = ConflictFootprint(reads = Set(refA1), writes = Set.empty)
-    val readOnlyB = ConflictFootprint(reads = Set(refA1), writes = Set.empty)
-    val writeSame = ConflictFootprint(reads = Set.empty, writes = Set(refA1))
+    val readOnlyA  = ConflictFootprint(reads = Set(refA1), writes = Set.empty)
+    val readOnlyB  = ConflictFootprint(reads = Set(refA1), writes = Set.empty)
+    val writeSame  = ConflictFootprint(reads = Set.empty, writes = Set(refA1))
     val writeOther = ConflictFootprint(reads = Set.empty, writes = Set(refB1))
 
     assertEquals(readOnlyA.conflictsWith(readOnlyB), false)
@@ -67,25 +67,34 @@ final class SchedulingSuite extends FunSuite:
     assertEquals(writeSame.conflictsWith(writeOther), false)
 
   test("ConflictFootprint.conflictsWith is symmetric"):
-    val left = ConflictFootprint(reads = Set(refA1), writes = Set.empty)
+    val left  = ConflictFootprint(reads = Set(refA1), writes = Set.empty)
     val right = ConflictFootprint(reads = Set.empty, writes = Set(refA1))
 
     assertEquals(left.conflictsWith(right), right.conflictsWith(left))
 
-  test("ConflictFootprint.conflictsWith stays symmetric for mixed read-write footprints"):
-    val left = ConflictFootprint(reads = Set(refA1), writes = Set(refA2))
+  test(
+    "ConflictFootprint.conflictsWith stays symmetric for mixed read-write footprints",
+  ):
+    val left  = ConflictFootprint(reads = Set(refA1), writes = Set(refA2))
     val right = ConflictFootprint(reads = Set(refA2), writes = Set(refA1))
 
     assertEquals(left.conflictsWith(right), right.conflictsWith(left))
 
-  test("ConflictFootprint.conflictsWith treats empty footprints as non-conflicting"):
+  test(
+    "ConflictFootprint.conflictsWith treats empty footprints as non-conflicting",
+  ):
     val footprint = ConflictFootprint(reads = Set(refA1), writes = Set(refA2))
 
-    assertEquals(ConflictFootprint.empty.conflictsWith(ConflictFootprint.empty), false)
+    assertEquals(
+      ConflictFootprint.empty.conflictsWith(ConflictFootprint.empty),
+      false,
+    )
     assertEquals(footprint.conflictsWith(ConflictFootprint.empty), false)
     assertEquals(ConflictFootprint.empty.conflictsWith(footprint), false)
 
-  test("ConflictFootprint.conflictsWith matches the aggregate verifier for two-item batches"):
+  test(
+    "ConflictFootprint.conflictsWith matches the aggregate verifier for two-item batches",
+  ):
     val candidates = Vector(
       ConflictFootprint.empty,
       ConflictFootprint(reads = Set(refA1), writes = Set.empty),
@@ -95,17 +104,21 @@ final class SchedulingSuite extends FunSuite:
       ConflictFootprint(reads = Set.empty, writes = Set(refB1)),
     )
 
-    candidates.combinations(2).foreach:
-      case Vector(left, right) =>
-        val verifierResult =
-          ConflictFootprintVerifier.verifyAll(
-            Vector("left" -> left, "right" -> right),
-          )
-        assertEquals(left.conflictsWith(right), verifierResult.isLeft)
-      case _ =>
-        fail("expected two footprints per combination")
+    candidates
+      .combinations(2)
+      .foreach:
+        case Vector(left, right) =>
+          val verifierResult =
+            ConflictFootprintVerifier.verifyAll(
+              Vector("left" -> left, "right" -> right),
+            )
+          assertEquals(left.conflictsWith(right), verifierResult.isLeft)
+        case _ =>
+          fail("expected two footprints per combination")
 
-  test("ConflictFootprint.fromAccessLog lifts full accessed keys into StateRef sets"):
+  test(
+    "ConflictFootprint.fromAccessLog lifts full accessed keys into StateRef sets",
+  ):
     val accessLog = AccessLog.empty
       .recordRead(prefixA, refA1.bytes)
       .recordWrite(prefixA, refA2.bytes)
@@ -117,11 +130,13 @@ final class SchedulingSuite extends FunSuite:
         ConflictFootprint(
           reads = Set(refA1),
           writes = Set(refA2, refB1),
-        )
+        ),
       ),
     )
 
-  test("ConflictFootprint.fromAccessLog keeps the same key in both reads and writes when needed"):
+  test(
+    "ConflictFootprint.fromAccessLog keeps the same key in both reads and writes when needed",
+  ):
     val accessLog = AccessLog.empty
       .recordRead(prefixA, refA1.bytes)
       .recordWrite(prefixA, refA1.bytes)
@@ -132,17 +147,21 @@ final class SchedulingSuite extends FunSuite:
         ConflictFootprint(
           reads = Set(refA1),
           writes = Set(refA1),
-        )
+        ),
       ),
     )
 
-  test("ConflictFootprint.fromAccessLog maps the empty log to the empty footprint"):
+  test(
+    "ConflictFootprint.fromAccessLog maps the empty log to the empty footprint",
+  ):
     assertEquals(
       ConflictFootprint.fromAccessLog(AccessLog.empty),
       Right(ConflictFootprint.empty),
     )
 
-  test("ConflictFootprint.fromAccessLog preserves reads across multiple keys and prefixes"):
+  test(
+    "ConflictFootprint.fromAccessLog preserves reads across multiple keys and prefixes",
+  ):
     val accessLog = AccessLog.empty
       .recordRead(prefixA, refA1.bytes)
       .recordRead(prefixA, refA2.bytes)
@@ -154,11 +173,13 @@ final class SchedulingSuite extends FunSuite:
         ConflictFootprint(
           reads = Set(refA1, refA2, refB1),
           writes = Set.empty,
-        )
+        ),
       ),
     )
 
-  test("ConflictFootprint.fromAccessLog rejects keys that do not carry the recorded prefix"):
+  test(
+    "ConflictFootprint.fromAccessLog rejects keys that do not carry the recorded prefix",
+  ):
     val malformedKey = refA1.bytes
     val accessLog = AccessLog(
       reads = Map(prefixB -> Set(malformedKey)),
@@ -171,11 +192,13 @@ final class SchedulingSuite extends FunSuite:
         ConflictFootprint.AccessLogInvariantViolation(
           tablePrefix = prefixB,
           key = malformedKey,
-        )
+        ),
       ),
     )
 
-  test("ConflictFootprint.fromAccessLog rejects malformed keys in writes as well"):
+  test(
+    "ConflictFootprint.fromAccessLog rejects malformed keys in writes as well",
+  ):
     val malformedKey = refA1.bytes
     val accessLog = AccessLog(
       reads = Map.empty,
@@ -188,11 +211,13 @@ final class SchedulingSuite extends FunSuite:
         ConflictFootprint.AccessLogInvariantViolation(
           tablePrefix = prefixB,
           key = malformedKey,
-        )
+        ),
       ),
     )
 
-  test("ConflictFootprint.fromAccessLog rejects the first malformed prefix deterministically"):
+  test(
+    "ConflictFootprint.fromAccessLog rejects the first malformed prefix deterministically",
+  ):
     val malformedKey = refA1.bytes
     val accessLog = AccessLog(
       reads = Map(
@@ -208,18 +233,21 @@ final class SchedulingSuite extends FunSuite:
         ConflictFootprint.AccessLogInvariantViolation(
           tablePrefix = prefixB,
           key = malformedKey,
-        )
+        ),
       ),
     )
 
-  test("ConflictFootprintVerifier accepts non-conflicting footprints regardless of scan order"):
+  test(
+    "ConflictFootprintVerifier accepts non-conflicting footprints regardless of scan order",
+  ):
     val candidates = Vector(
       "tx-a" -> ConflictFootprint(reads = Set(refA1), writes = Set.empty),
       "tx-b" -> ConflictFootprint(reads = Set.empty, writes = Set(refA2)),
       "tx-c" -> ConflictFootprint(reads = Set(refB1), writes = Set.empty),
     )
 
-    val results = candidates.permutations.map(ConflictFootprintVerifier.verifyAll).toVector
+    val results =
+      candidates.permutations.map(ConflictFootprintVerifier.verifyAll).toVector
 
     assert(results.forall(_.isRight))
     assertEquals(
@@ -228,7 +256,7 @@ final class SchedulingSuite extends FunSuite:
         ConflictFootprint(
           reads = Set(refA1, refB1),
           writes = Set(refA2),
-        )
+        ),
       ),
     )
 
@@ -239,7 +267,8 @@ final class SchedulingSuite extends FunSuite:
       "tx-c" -> ConflictFootprint(reads = Set.empty, writes = Set(refB2)),
     )
 
-    val results = candidates.permutations.map(ConflictFootprintVerifier.verifyAll).toVector
+    val results =
+      candidates.permutations.map(ConflictFootprintVerifier.verifyAll).toVector
 
     assert(results.forall(_.isRight))
     assertEquals(
@@ -248,37 +277,57 @@ final class SchedulingSuite extends FunSuite:
         ConflictFootprint(
           reads = Set(refA1, refB1),
           writes = Set(refA2, refB2),
-        )
+        ),
       ),
     )
 
-  test("ConflictFootprintVerifier rejects conflicting footprints regardless of scan order"):
+  test(
+    "ConflictFootprintVerifier rejects conflicting footprints regardless of scan order",
+  ):
     val conflicts = Vector(
       "tx-a" -> ConflictFootprint(reads = Set.empty, writes = Set(refA1)),
       "tx-b" -> ConflictFootprint(reads = Set(refA1), writes = Set.empty),
       "tx-c" -> ConflictFootprint(reads = Set.empty, writes = Set(refB1)),
     )
 
-    val results = conflicts.permutations.map(ConflictFootprintVerifier.verifyAll).toVector
+    val results =
+      conflicts.permutations.map(ConflictFootprintVerifier.verifyAll).toVector
 
     assert(results.forall(_.isLeft))
-    assertEquals(results.flatMap(_.left.toOption.map(_.kind)).toSet, Set(ConflictKind.ReadWrite))
-    assertEquals(results.flatMap(_.left.toOption.map(_.stateRef)).toSet, Set(refA1))
+    assertEquals(
+      results.flatMap(_.left.toOption.map(_.kind)).toSet,
+      Set(ConflictKind.ReadWrite),
+    )
+    assertEquals(
+      results.flatMap(_.left.toOption.map(_.stateRef)).toSet,
+      Set(refA1),
+    )
 
-  test("ConflictFootprintVerifier rejects W∩W conflicts regardless of scan order"):
+  test(
+    "ConflictFootprintVerifier rejects W∩W conflicts regardless of scan order",
+  ):
     val conflicts = Vector(
       "tx-a" -> ConflictFootprint(reads = Set.empty, writes = Set(refA1)),
       "tx-b" -> ConflictFootprint(reads = Set.empty, writes = Set(refA1)),
       "tx-c" -> ConflictFootprint(reads = Set(refB1), writes = Set.empty),
     )
 
-    val results = conflicts.permutations.map(ConflictFootprintVerifier.verifyAll).toVector
+    val results =
+      conflicts.permutations.map(ConflictFootprintVerifier.verifyAll).toVector
 
     assert(results.forall(_.isLeft))
-    assertEquals(results.flatMap(_.left.toOption.map(_.kind)).toSet, Set(ConflictKind.WriteWrite))
-    assertEquals(results.flatMap(_.left.toOption.map(_.stateRef)).toSet, Set(refA1))
+    assertEquals(
+      results.flatMap(_.left.toOption.map(_.kind)).toSet,
+      Set(ConflictKind.WriteWrite),
+    )
+    assertEquals(
+      results.flatMap(_.left.toOption.map(_.stateRef)).toSet,
+      Set(refA1),
+    )
 
-  test("AggregateFootprint.accept prefers W∩W when one candidate hits both conflict kinds"):
+  test(
+    "AggregateFootprint.accept prefers W∩W when one candidate hits both conflict kinds",
+  ):
     val conflicts = Vector(
       "tx-a" -> ConflictFootprint(reads = Set.empty, writes = Set(refA1)),
       "tx-b" -> ConflictFootprint(reads = Set(refA2), writes = Set(refA2)),
@@ -296,39 +345,51 @@ final class SchedulingSuite extends FunSuite:
       Left(ConflictKind.WriteWrite),
     )
 
-  test("ConflictFootprintVerifier returns the empty aggregate for an empty batch"):
+  test(
+    "ConflictFootprintVerifier returns the empty aggregate for an empty batch",
+  ):
     assertEquals(
-      ConflictFootprintVerifier.verifyAll(Vector.empty[(String, ConflictFootprint)]),
+      ConflictFootprintVerifier.verifyAll(
+        Vector.empty[(String, ConflictFootprint)],
+      ),
       Right(AggregateFootprint.empty),
     )
 
   test("ConflictFootprintVerifier accepts a single-item batch"):
     assertEquals(
       ConflictFootprintVerifier.verifyAll(
-        Vector("tx-a" -> ConflictFootprint(reads = Set(refA1), writes = Set(refA2))),
+        Vector(
+          "tx-a" -> ConflictFootprint(reads = Set(refA1), writes = Set(refA2)),
+        ),
       ),
       Right(
         AggregateFootprint(
           readsSeen = Set(refA1),
           writesSeen = Set(refA2),
-        )
+        ),
       ),
     )
 
-  test("ConflictFootprintVerifier accepts a single-item batch that both reads and writes one ref"):
+  test(
+    "ConflictFootprintVerifier accepts a single-item batch that both reads and writes one ref",
+  ):
     assertEquals(
       ConflictFootprintVerifier.verifyAll(
-        Vector("tx-a" -> ConflictFootprint(reads = Set(refA1), writes = Set(refA1))),
+        Vector(
+          "tx-a" -> ConflictFootprint(reads = Set(refA1), writes = Set(refA1)),
+        ),
       ),
       Right(
         AggregateFootprint(
           readsSeen = Set(refA1),
           writesSeen = Set(refA1),
-        )
+        ),
       ),
     )
 
-  test("ConflictFootprintConformance accepts actual subsets of the declared footprint"):
+  test(
+    "ConflictFootprintConformance accepts actual subsets of the declared footprint",
+  ):
     val declared = ConflictFootprint(
       reads = Set(refA1, refA2),
       writes = Set(refB1),
@@ -338,7 +399,10 @@ final class SchedulingSuite extends FunSuite:
       writes = Set(refB1),
     )
 
-    assertEquals(ConflictFootprintConformance.validate(actual, declared), Right(()))
+    assertEquals(
+      ConflictFootprintConformance.validate(actual, declared),
+      Right(()),
+    )
 
   test("ConflictFootprintConformance accepts exact matches"):
     val footprint = ConflictFootprint(
@@ -346,7 +410,10 @@ final class SchedulingSuite extends FunSuite:
       writes = Set(refA2, refB2),
     )
 
-    assertEquals(ConflictFootprintConformance.validate(footprint, footprint), Right(()))
+    assertEquals(
+      ConflictFootprintConformance.validate(footprint, footprint),
+      Right(()),
+    )
 
   test("ConflictFootprintConformance reports unexpected reads and writes"):
     val declared = ConflictFootprint(
@@ -364,11 +431,13 @@ final class SchedulingSuite extends FunSuite:
         FootprintConformanceFailure(
           unexpectedReads = Set(refB1),
           unexpectedWrites = Set(refB1),
-        )
+        ),
       ),
     )
 
-  test("ConflictFootprintConformance rejects reads that were only declared as writes"):
+  test(
+    "ConflictFootprintConformance rejects reads that were only declared as writes",
+  ):
     val declared = ConflictFootprint(
       reads = Set.empty,
       writes = Set(refA1),
@@ -384,11 +453,13 @@ final class SchedulingSuite extends FunSuite:
         FootprintConformanceFailure(
           unexpectedReads = Set(refA1),
           unexpectedWrites = Set.empty,
-        )
+        ),
       ),
     )
 
-  test("ConflictFootprintConformance reports unexpected writes without unexpected reads"):
+  test(
+    "ConflictFootprintConformance reports unexpected writes without unexpected reads",
+  ):
     val declared = ConflictFootprint(
       reads = Set(refA1),
       writes = Set.empty,
@@ -404,11 +475,13 @@ final class SchedulingSuite extends FunSuite:
         FootprintConformanceFailure(
           unexpectedReads = Set.empty,
           unexpectedWrites = Set(refA2),
-        )
+        ),
       ),
     )
 
-  test("ConflictFootprintConformance accepts empty actual footprints against declared supersets"):
+  test(
+    "ConflictFootprintConformance accepts empty actual footprints against declared supersets",
+  ):
     assertEquals(
       ConflictFootprintConformance.validate(
         actual = ConflictFootprint.empty,
@@ -420,7 +493,9 @@ final class SchedulingSuite extends FunSuite:
       Right(()),
     )
 
-  test("ConflictFootprintConformance accepts empty actual footprints against empty declarations"):
+  test(
+    "ConflictFootprintConformance accepts empty actual footprints against empty declarations",
+  ):
     assertEquals(
       ConflictFootprintConformance.validate(
         actual = ConflictFootprint.empty,
@@ -438,7 +513,7 @@ final class SchedulingSuite extends FunSuite:
           FootprintDerivationFailure(
             reason = "unsupportedTx",
             detail = Some(other),
-          )
+          ),
         )
 
     assertEquals(
@@ -451,11 +526,13 @@ final class SchedulingSuite extends FunSuite:
         FootprintDerivationFailure(
           reason = "unsupportedTx",
           detail = Some("unsupported"),
-        )
+        ),
       ),
     )
 
-  test("FootprintDeriver.contramap reuses the underlying deterministic derivation"):
+  test(
+    "FootprintDeriver.contramap reuses the underlying deterministic derivation",
+  ):
     val base = FootprintDeriver.instance[String]:
       case "42" =>
         Right(ConflictFootprint(reads = Set(refA1), writes = Set.empty))
@@ -464,7 +541,7 @@ final class SchedulingSuite extends FunSuite:
           FootprintDerivationFailure(
             reason = "unsupportedTx",
             detail = Some(other),
-          )
+          ),
         )
     val derived = base.contramap[Int](_.toString)
 
@@ -474,7 +551,7 @@ final class SchedulingSuite extends FunSuite:
         ConflictFootprint(
           reads = Set(refA1),
           writes = Set.empty,
-        )
+        ),
       ),
     )
 

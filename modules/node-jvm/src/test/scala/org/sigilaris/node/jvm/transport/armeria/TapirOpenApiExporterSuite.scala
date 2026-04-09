@@ -20,7 +20,7 @@ final class TapirOpenApiExporterSuite extends CatsEffectSuite:
         IO.blocking:
           Files.deleteIfExists(dir.resolve("spec.yaml"))
           Files.deleteIfExists(dir)
-          ()
+          (),
       )
       .use: dir =>
         TapirOpenApiExporter
@@ -41,11 +41,12 @@ final class TapirOpenApiExporterSuite extends CatsEffectSuite:
 
   test("write emits an OpenAPI json file for provided endpoints"):
     Resource
-      .make(IO.blocking(Files.createTempDirectory("sigilaris-openapi-json")))(dir =>
-        IO.blocking:
-          Files.deleteIfExists(dir.resolve("spec.json"))
-          Files.deleteIfExists(dir)
-          ()
+      .make(IO.blocking(Files.createTempDirectory("sigilaris-openapi-json")))(
+        dir =>
+          IO.blocking:
+            Files.deleteIfExists(dir.resolve("spec.json"))
+            Files.deleteIfExists(dir)
+            (),
       )
       .use: dir =>
         TapirOpenApiExporter
@@ -64,7 +65,9 @@ final class TapirOpenApiExporterSuite extends CatsEffectSuite:
               assert(rendered.trim.startsWith("{"))
               assert(rendered.contains("\"openapi\""))
 
-  test("document applies the enrichment callback without mutating endpoint generation"):
+  test(
+    "document applies the enrichment callback without mutating endpoint generation",
+  ):
     IO:
       val docs = TapirOpenApiExporter.document(
         title = "Sigilaris Node JVM",

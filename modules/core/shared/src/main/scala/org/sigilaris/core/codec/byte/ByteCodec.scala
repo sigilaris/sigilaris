@@ -28,9 +28,11 @@ trait ByteCodec[A] extends ByteDecoder[A] with ByteEncoder[A]:
     */
   def imap[B](to: A => B, from: B => A): ByteCodec[B] = new ByteCodec[B]:
     def decode(bytes: ByteVector): Either[DecodeFailure, DecodeResult[B]] =
-      self.decode(bytes).map:
-        case DecodeResult(value, remainder) =>
-          DecodeResult(to(value), remainder)
+      self
+        .decode(bytes)
+        .map:
+          case DecodeResult(value, remainder) =>
+            DecodeResult(to(value), remainder)
 
     def encode(value: B): ByteVector =
       self.encode(from(value))
@@ -53,15 +55,15 @@ object ByteCodec:
 
   /** Automatic derivation when both encoder and decoder are available.
     *
-    * For any type A with both ByteEncoder[A] and ByteDecoder[A], a
-    * ByteCodec[A] is automatically available.
+    * For any type A with both ByteEncoder[A] and ByteDecoder[A], a ByteCodec[A]
+    * is automatically available.
     *
     * @example
-    * ```scala
-    * case class User(id: Long, name: String)
-    * // ByteCodec[User] is automatically available via derivation
-    * val codec = ByteCodec[User]
-    * ```
+    *   ```scala
+    *   case class User(id: Long, name: String)
+    *   // ByteCodec[User] is automatically available via derivation
+    *   val codec = ByteCodec[User]
+    *   ```
     */
   given [A: ByteDecoder: ByteEncoder]: ByteCodec[A] with
     def decode(bytes: ByteVector): Either[DecodeFailure, DecodeResult[A]] =

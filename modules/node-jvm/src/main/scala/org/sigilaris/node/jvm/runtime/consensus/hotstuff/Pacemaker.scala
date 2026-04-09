@@ -380,8 +380,6 @@ object HotStuffPacemakerCanonicalEncoding:
       .foldLeft((Set.empty[ValidatorId], Vector.empty[A])):
         case ((seen, acc), vote) =>
           val validatorId = validatorOf(vote)
-          if seen.contains(validatorId) then
-            (seen, acc)
-          else
-            (seen + validatorId, acc :+ vote)
+          if seen.contains(validatorId) then (seen, acc)
+          else (seen + validatorId, acc :+ vote)
       ._2

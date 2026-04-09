@@ -13,14 +13,20 @@ final class CirceJsonOpsPropertySuite extends HedgehogSuite:
       Gen.choice1(
         Gen.constant(JsonValue.JNull),
         Gen.boolean.map(JsonValue.JBool.apply),
-        Gen.int(Range.linear(-1000, 1000)).map(n => JsonValue.JNumber(BigDecimal(n))),
-        Gen.string(Gen.unicode, Range.linear(0, 16)).map(JsonValue.JString.apply),
+        Gen
+          .int(Range.linear(-1000, 1000))
+          .map(n => JsonValue.JNumber(BigDecimal(n))),
+        Gen
+          .string(Gen.unicode, Range.linear(0, 16))
+          .map(JsonValue.JString.apply),
       )
 
     def genArray(depth: Int): Gen[JsonValue] =
       for
         size <- Gen.int(Range.linear(0, 5))
-        els  <- Gen.list(genJson(depth + 1), Range.linear(0, size)).map(_.toVector)
+        els <- Gen
+          .list(genJson(depth + 1), Range.linear(0, size))
+          .map(_.toVector)
       yield JsonValue.JArray(els)
 
     def genObject(depth: Int): Gen[JsonValue] =

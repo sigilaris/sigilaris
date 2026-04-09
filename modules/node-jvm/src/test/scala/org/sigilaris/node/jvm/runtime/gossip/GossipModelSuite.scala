@@ -7,13 +7,16 @@ import scodec.bits.ByteVector
 
 final class GossipModelSuite extends FunSuite:
 
-  private val localPeer = PeerIdentity.unsafe("node-a")
+  private val localPeer  = PeerIdentity.unsafe("node-a")
   private val remotePeer = PeerIdentity.unsafe("node-b")
-  private val chainId = ChainId.unsafe("chain-main")
-  private val txSubscription = SessionSubscription.unsafe(ChainTopic(chainId, GossipTopic.tx))
+  private val chainId    = ChainId.unsafe("chain-main")
+  private val txSubscription =
+    SessionSubscription.unsafe(ChainTopic(chainId, GossipTopic.tx))
   private val openingNow = Instant.parse("2026-03-31T10:15:30Z")
 
-  test("directional session id and peer correlation id require lowercase canonical UUIDv4"):
+  test(
+    "directional session id and peer correlation id require lowercase canonical UUIDv4",
+  ):
     val valid = "9b746bd2-3b0f-4d66-bd67-cba72d6628f8"
     assertEquals(DirectionalSessionId.parse(valid).map(_.value), Right(valid))
     assertEquals(PeerCorrelationId.parse(valid).map(_.value), Right(valid))
@@ -21,16 +24,28 @@ final class GossipModelSuite extends FunSuite:
     assert(DirectionallyInvalid("9b746bd2-3b0f-1d66-bd67-cba72d6628f8"))
 
   test("peer correlation ids use lexicographic tiebreak"):
-    val smaller = PeerCorrelationId.parse("11111111-1111-4111-8111-111111111111").toOption.get
-    val larger = PeerCorrelationId.parse("22222222-2222-4222-8222-222222222222").toOption.get
+    val smaller = PeerCorrelationId
+      .parse("11111111-1111-4111-8111-111111111111")
+      .toOption
+      .get
+    val larger = PeerCorrelationId
+      .parse("22222222-2222-4222-8222-222222222222")
+      .toOption
+      .get
 
     assert(PeerCorrelationId.lexicographicCompare(smaller, larger) < 0)
     assert(PeerCorrelationId.lexicographicCompare(larger, smaller) > 0)
 
   test("handshake negotiation applies defaults and validates ranges"):
     val proposal = SessionOpenProposal(
-      sessionId = DirectionalSessionId.parse("aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa").toOption.get,
-      peerCorrelationId = PeerCorrelationId.parse("bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb").toOption.get,
+      sessionId = DirectionalSessionId
+        .parse("aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa")
+        .toOption
+        .get,
+      peerCorrelationId = PeerCorrelationId
+        .parse("bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb")
+        .toOption
+        .get,
       initiator = localPeer,
       acceptor = remotePeer,
       subscriptions = txSubscription,
@@ -47,7 +62,7 @@ final class GossipModelSuite extends FunSuite:
           heartbeatInterval = Duration.ofSeconds(10),
           livenessTimeout = Duration.ofSeconds(30),
           maxControlRetryInterval = Duration.ofSeconds(30),
-        )
+        ),
       ),
     )
 
@@ -57,10 +72,18 @@ final class GossipModelSuite extends FunSuite:
     )
     assert(SessionNegotiation.resolveProposal(invalid).isLeft)
 
-  test("handshake ack bundled invalid payload is rejected at the first structural mismatch"):
+  test(
+    "handshake ack bundled invalid payload is rejected at the first structural mismatch",
+  ):
     val proposal = SessionOpenProposal(
-      sessionId = DirectionalSessionId.parse("aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa").toOption.get,
-      peerCorrelationId = PeerCorrelationId.parse("bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb").toOption.get,
+      sessionId = DirectionalSessionId
+        .parse("aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa")
+        .toOption
+        .get,
+      peerCorrelationId = PeerCorrelationId
+        .parse("bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb")
+        .toOption
+        .get,
       initiator = localPeer,
       acceptor = remotePeer,
       subscriptions = txSubscription,
@@ -103,8 +126,14 @@ final class GossipModelSuite extends FunSuite:
 
   test("validateAck rejects subscription mismatch independently"):
     val proposal = SessionOpenProposal(
-      sessionId = DirectionalSessionId.parse("aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa").toOption.get,
-      peerCorrelationId = PeerCorrelationId.parse("bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb").toOption.get,
+      sessionId = DirectionalSessionId
+        .parse("aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa")
+        .toOption
+        .get,
+      peerCorrelationId = PeerCorrelationId
+        .parse("bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb")
+        .toOption
+        .get,
       initiator = localPeer,
       acceptor = remotePeer,
       subscriptions = txSubscription,
@@ -136,8 +165,14 @@ final class GossipModelSuite extends FunSuite:
 
   test("validateAck rejects session id mismatch independently"):
     val proposal = SessionOpenProposal(
-      sessionId = DirectionalSessionId.parse("aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa").toOption.get,
-      peerCorrelationId = PeerCorrelationId.parse("bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb").toOption.get,
+      sessionId = DirectionalSessionId
+        .parse("aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa")
+        .toOption
+        .get,
+      peerCorrelationId = PeerCorrelationId
+        .parse("bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb")
+        .toOption
+        .get,
       initiator = localPeer,
       acceptor = remotePeer,
       subscriptions = txSubscription,
@@ -147,7 +182,10 @@ final class GossipModelSuite extends FunSuite:
     )
 
     val ack = SessionOpenAck(
-      sessionId = DirectionalSessionId.parse("cccccccc-cccc-4ccc-8ccc-cccccccccccc").toOption.get,
+      sessionId = DirectionalSessionId
+        .parse("cccccccc-cccc-4ccc-8ccc-cccccccccccc")
+        .toOption
+        .get,
       peerCorrelationId = proposal.peerCorrelationId,
       initiator = proposal.initiator,
       acceptor = proposal.acceptor,
@@ -166,8 +204,14 @@ final class GossipModelSuite extends FunSuite:
 
   test("validateAck rejects peer correlation mismatch independently"):
     val proposal = SessionOpenProposal(
-      sessionId = DirectionalSessionId.parse("aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa").toOption.get,
-      peerCorrelationId = PeerCorrelationId.parse("bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb").toOption.get,
+      sessionId = DirectionalSessionId
+        .parse("aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa")
+        .toOption
+        .get,
+      peerCorrelationId = PeerCorrelationId
+        .parse("bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb")
+        .toOption
+        .get,
       initiator = localPeer,
       acceptor = remotePeer,
       subscriptions = txSubscription,
@@ -178,7 +222,10 @@ final class GossipModelSuite extends FunSuite:
 
     val ack = SessionOpenAck(
       sessionId = proposal.sessionId,
-      peerCorrelationId = PeerCorrelationId.parse("cccccccc-cccc-4ccc-8ccc-cccccccccccc").toOption.get,
+      peerCorrelationId = PeerCorrelationId
+        .parse("cccccccc-cccc-4ccc-8ccc-cccccccccccc")
+        .toOption
+        .get,
       initiator = proposal.initiator,
       acceptor = proposal.acceptor,
       subscriptions = proposal.subscriptions,
@@ -196,8 +243,14 @@ final class GossipModelSuite extends FunSuite:
 
   test("validateAck rejects initiator mismatch independently"):
     val proposal = SessionOpenProposal(
-      sessionId = DirectionalSessionId.parse("aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa").toOption.get,
-      peerCorrelationId = PeerCorrelationId.parse("bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb").toOption.get,
+      sessionId = DirectionalSessionId
+        .parse("aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa")
+        .toOption
+        .get,
+      peerCorrelationId = PeerCorrelationId
+        .parse("bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb")
+        .toOption
+        .get,
       initiator = localPeer,
       acceptor = remotePeer,
       subscriptions = txSubscription,
@@ -226,8 +279,14 @@ final class GossipModelSuite extends FunSuite:
 
   test("validateAck rejects acceptor mismatch independently"):
     val proposal = SessionOpenProposal(
-      sessionId = DirectionalSessionId.parse("aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa").toOption.get,
-      peerCorrelationId = PeerCorrelationId.parse("bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb").toOption.get,
+      sessionId = DirectionalSessionId
+        .parse("aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa")
+        .toOption
+        .get,
+      peerCorrelationId = PeerCorrelationId
+        .parse("bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb")
+        .toOption
+        .get,
       initiator = localPeer,
       acceptor = remotePeer,
       subscriptions = txSubscription,
@@ -256,8 +315,14 @@ final class GossipModelSuite extends FunSuite:
 
   test("validateAck rejects heartbeat interval widening independently"):
     val proposal = SessionOpenProposal(
-      sessionId = DirectionalSessionId.parse("aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa").toOption.get,
-      peerCorrelationId = PeerCorrelationId.parse("bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb").toOption.get,
+      sessionId = DirectionalSessionId
+        .parse("aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa")
+        .toOption
+        .get,
+      peerCorrelationId = PeerCorrelationId
+        .parse("bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb")
+        .toOption
+        .get,
       initiator = localPeer,
       acceptor = remotePeer,
       subscriptions = txSubscription,
@@ -284,10 +349,18 @@ final class GossipModelSuite extends FunSuite:
       Left("invalidNegotiationValue"),
     )
 
-  test("validateAck rejects liveness timeout below heartbeat floor independently"):
+  test(
+    "validateAck rejects liveness timeout below heartbeat floor independently",
+  ):
     val proposal = SessionOpenProposal(
-      sessionId = DirectionalSessionId.parse("aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa").toOption.get,
-      peerCorrelationId = PeerCorrelationId.parse("bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb").toOption.get,
+      sessionId = DirectionalSessionId
+        .parse("aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa")
+        .toOption
+        .get,
+      peerCorrelationId = PeerCorrelationId
+        .parse("bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb")
+        .toOption
+        .get,
       initiator = localPeer,
       acceptor = remotePeer,
       subscriptions = txSubscription,
@@ -316,8 +389,14 @@ final class GossipModelSuite extends FunSuite:
 
   test("validateAck rejects control retry interval widening independently"):
     val proposal = SessionOpenProposal(
-      sessionId = DirectionalSessionId.parse("aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa").toOption.get,
-      peerCorrelationId = PeerCorrelationId.parse("bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb").toOption.get,
+      sessionId = DirectionalSessionId
+        .parse("aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa")
+        .toOption
+        .get,
+      peerCorrelationId = PeerCorrelationId
+        .parse("bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb")
+        .toOption
+        .get,
       initiator = localPeer,
       acceptor = remotePeer,
       subscriptions = txSubscription,
@@ -344,7 +423,9 @@ final class GossipModelSuite extends FunSuite:
       Left("invalidNegotiationValue"),
     )
 
-  test("control retry horizon must stay within 2x to 10x of negotiated max retry"):
+  test(
+    "control retry horizon must stay within 2x to 10x of negotiated max retry",
+  ):
     val policy = HandshakePolicy.default
     val negotiated = NegotiatedSessionParameters(
       heartbeatInterval = Duration.ofSeconds(10),
@@ -352,12 +433,30 @@ final class GossipModelSuite extends FunSuite:
       maxControlRetryInterval = Duration.ofSeconds(20),
     )
 
-    assert(policy.validateControlRetryHorizon(Duration.ofSeconds(40), negotiated).isRight)
-    assert(policy.validateControlRetryHorizon(Duration.ofSeconds(200), negotiated).isRight)
-    assert(policy.validateControlRetryHorizon(Duration.ofSeconds(39), negotiated).isLeft)
-    assert(policy.validateControlRetryHorizon(Duration.ofSeconds(201), negotiated).isLeft)
+    assert(
+      policy
+        .validateControlRetryHorizon(Duration.ofSeconds(40), negotiated)
+        .isRight,
+    )
+    assert(
+      policy
+        .validateControlRetryHorizon(Duration.ofSeconds(200), negotiated)
+        .isRight,
+    )
+    assert(
+      policy
+        .validateControlRetryHorizon(Duration.ofSeconds(39), negotiated)
+        .isLeft,
+    )
+    assert(
+      policy
+        .validateControlRetryHorizon(Duration.ofSeconds(201), negotiated)
+        .isLeft,
+    )
 
-  test("static peer topology parses local node, known peers, and direct neighbors"):
+  test(
+    "static peer topology parses local node, known peers, and direct neighbors",
+  ):
     val topology = StaticPeerTopology.parse(
       localNodeIdentity = "node-a",
       knownPeers = List("node-b", "node-c"),
@@ -368,16 +467,22 @@ final class GossipModelSuite extends FunSuite:
       Right(
         StaticPeerTopology(
           localNodeIdentity = PeerIdentity.unsafe("node-a"),
-          knownPeers = Set(PeerIdentity.unsafe("node-b"), PeerIdentity.unsafe("node-c")),
+          knownPeers =
+            Set(PeerIdentity.unsafe("node-b"), PeerIdentity.unsafe("node-c")),
           directNeighbors = Set(PeerIdentity.unsafe("node-b")),
-        )
+        ),
       ),
     )
-    assert(StaticPeerTopology.parse("node-a", List("node-b"), List("node-z")).isLeft)
+    assert(
+      StaticPeerTopology.parse("node-a", List("node-b"), List("node-z")).isLeft,
+    )
 
-  test("composite cursor treats missing keys as origin replay and validates version prefixes"):
-    val token = CursorToken.issue(ByteVector.encodeUtf8("cursor-a").toOption.get)
-    val txKey = ChainTopic(chainId, GossipTopic.tx)
+  test(
+    "composite cursor treats missing keys as origin replay and validates version prefixes",
+  ):
+    val token =
+      CursorToken.issue(ByteVector.encodeUtf8("cursor-a").toOption.get)
+    val txKey  = ChainTopic(chainId, GossipTopic.tx)
     val cursor = CompositeCursor(Map(txKey -> token))
 
     assertEquals(cursor.tokenFor(txKey), Some(token))
@@ -391,20 +496,41 @@ final class GossipModelSuite extends FunSuite:
     intercept[IllegalArgumentException]:
       CursorToken.issue(ByteVector.empty, version = 256)
 
-  test("control batch structural validation rejects invalid idempotency keys and unknown op kinds"):
+  test(
+    "control batch structural validation rejects invalid idempotency keys and unknown op kinds",
+  ):
     assert(ControlBatch.create("not-a-uuid", Vector.empty).isLeft)
     assert(ControlOpKind.parse("unknown-op").isLeft)
-    assert(ControlBatch.create("aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa", Vector.empty).isRight)
+    assert(
+      ControlBatch
+        .create("aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa", Vector.empty)
+        .isRight,
+    )
 
-  test("event stream keepalive and control keepalive ack are runtime typed messages"):
-    val sessionId = DirectionalSessionId.parse("aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa").toOption.get
-    val eventKeepAlive = EventStreamMessage.KeepAlive[String](sessionId, openingNow)
-    val controlKeepAlive = ControlChannelMessage.KeepAlive(sessionId, openingNow)
+  test(
+    "event stream keepalive and control keepalive ack are runtime typed messages",
+  ):
+    val sessionId = DirectionalSessionId
+      .parse("aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa")
+      .toOption
+      .get
+    val eventKeepAlive =
+      EventStreamMessage.KeepAlive[String](sessionId, openingNow)
+    val controlKeepAlive =
+      ControlChannelMessage.KeepAlive(sessionId, openingNow)
     val controlAck = ControlChannelMessage.Ack(sessionId, openingNow)
 
-    assertEquals(eventKeepAlive, EventStreamMessage.KeepAlive[String](sessionId, openingNow))
-    assertEquals(controlKeepAlive, ControlChannelMessage.KeepAlive(sessionId, openingNow))
+    assertEquals(
+      eventKeepAlive,
+      EventStreamMessage.KeepAlive[String](sessionId, openingNow),
+    )
+    assertEquals(
+      controlKeepAlive,
+      ControlChannelMessage.KeepAlive(sessionId, openingNow),
+    )
     assertEquals(controlAck, ControlChannelMessage.Ack(sessionId, openingNow))
 
   private def DirectionallyInvalid(value: String): Boolean =
-    DirectionalSessionId.parse(value).isLeft && PeerCorrelationId.parse(value).isLeft
+    DirectionalSessionId.parse(value).isLeft && PeerCorrelationId
+      .parse(value)
+      .isLeft

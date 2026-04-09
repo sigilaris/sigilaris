@@ -6,15 +6,30 @@ import cats.syntax.eq.*
 import org.sigilaris.core.codec.byte.{ByteDecoder, ByteEncoder}
 import org.sigilaris.core.codec.byte.ByteEncoder.ops.*
 import org.sigilaris.core.datatype.{BigNat, Utf8}
-import org.sigilaris.core.failure.{ClientFailureMessage, ConflictMessage, CryptoFailure, FailureCode, TrieFailure}
+import org.sigilaris.core.failure.{
+  ClientFailureMessage,
+  ConflictMessage,
+  CryptoFailure,
+  FailureCode,
+  TrieFailure,
+}
 import org.sigilaris.core.application.feature.accounts.domain.*
 import org.sigilaris.core.application.feature.accounts.transactions.*
-import org.sigilaris.core.application.module.blueprint.{ModuleBlueprint, StateReducer0}
+import org.sigilaris.core.application.module.blueprint.{
+  ModuleBlueprint,
+  StateReducer0,
+}
 import org.sigilaris.core.application.module.provider.TablesProvider
 import org.sigilaris.core.application.security.SignatureVerifier
 import org.sigilaris.core.application.state.{Entry, StoreF, Tables}
 import org.sigilaris.core.application.support.compiletime.Requires
-import org.sigilaris.core.application.transactions.{AccountSignature, ReducerCoverage, Signed, Tx, TxRegistry}
+import org.sigilaris.core.application.transactions.{
+  AccountSignature,
+  ReducerCoverage,
+  Signed,
+  Tx,
+  TxRegistry,
+}
 
 /** Accounts module schema.
   *
@@ -29,19 +44,23 @@ object AccountsSchema:
 
   given tupleByteDecoder: ByteDecoder[(Utf8, KeyId20)] = bytes =>
     for
-      nameResult <- ByteDecoder[Utf8].decode(bytes)
+      nameResult  <- ByteDecoder[Utf8].decode(bytes)
       keyIdResult <- ByteDecoder[KeyId20].decode(nameResult.remainder)
-    yield org.sigilaris.core.codec.byte.DecodeResult((nameResult.value, keyIdResult.value), keyIdResult.remainder)
+    yield org.sigilaris.core.codec.byte.DecodeResult(
+      (nameResult.value, keyIdResult.value),
+      keyIdResult.remainder,
+    )
 
   type AccountsSchema = (
-    Entry["accounts", Utf8, AccountInfo],
-    Entry["nameKey", (Utf8, KeyId20), KeyInfo],
+      Entry["accounts", Utf8, AccountInfo],
+      Entry["nameKey", (Utf8, KeyId20), KeyInfo],
   )
 
   val accountsEntry = new Entry["accounts", Utf8, AccountInfo]("accounts")
-  val nameKeyEntry = new Entry["nameKey", (Utf8, KeyId20), KeyInfo]("nameKey")
+  val nameKeyEntry  = new Entry["nameKey", (Utf8, KeyId20), KeyInfo]("nameKey")
 
-  val accountsEntries: AccountsSchema = accountsEntry *: nameKeyEntry *: EmptyTuple
+  val accountsEntries: AccountsSchema =
+    accountsEntry *: nameKeyEntry *: EmptyTuple
 
 /** Accounts state reducer (path-agnostic).
   *
@@ -56,17 +75,29 @@ object AccountsSchema:
   * `SignatureVerifier` utility to guarantee consistent key recovery and
   * expiration checks.
   */
-@SuppressWarnings(Array("org.wartremover.warts.Any", "org.wartremover.warts.AsInstanceOf", "org.wartremover.warts.Overloading"))
-class AccountsReducer[F[_]: Monad] extends StateReducer0[F, AccountsSchema.AccountsSchema, EmptyTuple]:
+@SuppressWarnings(
+  Array(
+    "org.wartremover.warts.Any",
+    "org.wartremover.warts.AsInstanceOf",
+    "org.wartremover.warts.Overloading",
+  ),
+)
+class AccountsReducer[F[_]: Monad]
+    extends StateReducer0[F, AccountsSchema.AccountsSchema, EmptyTuple]:
   import AccountsSchema.*
 
-  private val UnsupportedTransactionCode = FailureCode("accounts.unsupported_transaction")
-  private val AccountNotFoundCode        = FailureCode("accounts.account_not_found")
-  private val AccountAlreadyExistsCode   = FailureCode("accounts.account_already_exists")
-  private val AccountNonceMismatchCode   = FailureCode("accounts.account_nonce_mismatch")
+  private val UnsupportedTransactionCode = FailureCode:
+    "accounts.unsupported_transaction"
+  private val AccountNotFoundCode = FailureCode("accounts.account_not_found")
+  private val AccountAlreadyExistsCode = FailureCode:
+    "accounts.account_already_exists"
+  private val AccountNonceMismatchCode = FailureCode:
+    "accounts.account_nonce_mismatch"
 
-  private inline def resultOf[A](value: A): AccountsResult[A] = AccountsResult(value)
-  private inline def eventOf[A](value: A): AccountsEvent[A] = AccountsEvent(value)
+  private inline def resultOf[A](value: A): AccountsResult[A] = AccountsResult:
+    value
+  private inline def eventOf[A](value: A): AccountsEvent[A] = AccountsEvent:
+    value
 
   private def invalidRequest(
       code: FailureCode,
@@ -74,7 +105,13 @@ class AccountsReducer[F[_]: Monad] extends StateReducer0[F, AccountsSchema.Accou
       message: String,
       detail: Option[String],
   ): String =
-    ClientFailureMessage.invalidRequestWithCode("accounts", reason, message, detail, code)
+    ClientFailureMessage.invalidRequestWithCode(
+      "accounts",
+      reason,
+      message,
+      detail,
+      code,
+    )
 
   private def notFound(
       code: FailureCode,
@@ -82,7 +119,13 @@ class AccountsReducer[F[_]: Monad] extends StateReducer0[F, AccountsSchema.Accou
       message: String,
       detail: Option[String],
   ): String =
-    ClientFailureMessage.notFoundWithCode("accounts", reason, message, detail, code)
+    ClientFailureMessage.notFoundWithCode(
+      "accounts",
+      reason,
+      message,
+      detail,
+      code,
+    )
 
   private def conflict(
       code: FailureCode,
@@ -96,13 +139,19 @@ class AccountsReducer[F[_]: Monad] extends StateReducer0[F, AccountsSchema.Accou
     *
     * Checks that the signer has permission to modify the target account.
     * Authorization is granted if:
-    * 1. Signer is the account owner (accountSig.account == Account.Named(targetName))
-    * 2. Signer is the account's guardian (Some(accountSig.account) == accountInfo.guardian)
+    *   - Signer is the account owner
+    *     (`accountSig.account == Account.Named(targetName)`)
+    *   - Signer is the account's guardian
+    *     (`Some(accountSig.account) == accountInfo.guardian`)
     *
-    * @param targetName the account being modified
-    * @param accountSig the signature claiming authorization
-    * @param ownsTables the owned tables for account lookups
-    * @return Either authorization failure or Unit on success
+    * @param targetName
+    *   the account being modified
+    * @param accountSig
+    *   the signature claiming authorization
+    * @param ownsTables
+    *   the owned tables for account lookups
+    * @return
+    *   Either authorization failure or Unit on success
     */
   private def verifyAuthorization(
       targetName: Utf8,
@@ -139,21 +188,27 @@ class AccountsReducer[F[_]: Monad] extends StateReducer0[F, AccountsSchema.Accou
   /** Verify transaction signature according to ADR-0012.
     *
     * Verification steps:
-    * 1. Compute transaction hash
-    * 2. Recover public key from signature
-    * 3. Derive KeyId20 from recovered public key
-    * 4. Verify KeyId20 is registered for the signing account
-    * 5. Check key expiration (for Named accounts) using deterministic timestamp
+    *   - Compute transaction hash
+    *   - Recover public key from signature
+    *   - Derive KeyId20 from recovered public key
+    *   - Verify KeyId20 is registered for the signing account
+    *   - Check key expiration for named accounts using deterministic timestamp
     *
-    * NOTE: This only verifies that the signature is valid for the claimed signer.
-    * For account mutation operations, you must also call verifyAuthorization
-    * to ensure the signer has permission to modify the target account.
+    * NOTE: This only verifies that the signature is valid for the claimed
+    * signer. For account mutation operations, you must also call
+    * verifyAuthorization to ensure the signer has permission to modify the
+    * target account.
     *
-    * @param signedTx the signed transaction to verify
-    * @param hashT typeclass instance to hash the transaction
-    * @param recoverT typeclass instance to recover the signing public key
-    * @param ownsTables the owned tables for account/key lookups
-    * @return Either verification failure or Unit on success
+    * @param signedTx
+    *   the signed transaction to verify
+    * @param hashT
+    *   typeclass instance to hash the transaction
+    * @param recoverT
+    *   typeclass instance to recover the signing public key
+    * @param ownsTables
+    *   the owned tables for account/key lookups
+    * @return
+    *   Either verification failure or Unit on success
     */
   def apply[T <: Tx](signedTx: Signed[T])(using
       requiresReads: Requires[signedTx.value.Reads, AccountsSchema],
@@ -188,9 +243,14 @@ class AccountsReducer[F[_]: Monad] extends StateReducer0[F, AccountsSchema.Accou
               None,
             )
 
-    result.asInstanceOf[StoreF[F][(signedTx.value.Result, List[signedTx.value.Event])]]
+    result.asInstanceOf[StoreF[F][
+      (signedTx.value.Result, List[signedTx.value.Event]),
+    ]]
 
-  private def handleCreateNamedAccount(tx: CreateNamedAccount, sig: AccountSignature)(using
+  private def handleCreateNamedAccount(
+      tx: CreateNamedAccount,
+      sig: AccountSignature,
+  )(using
       ownsTables: Tables[F, AccountsSchema],
   ): StoreF[F][(tx.Result, List[tx.Event])] =
     val (accountsTable *: nameKeyTable *: EmptyTuple) = ownsTables
@@ -202,7 +262,10 @@ class AccountsReducer[F[_]: Monad] extends StateReducer0[F, AccountsSchema.Accou
       )
       result <-
         if recoveredKeyId =!= tx.initialKeyId then
-          StoreF.raise[F, (AccountsResult[Unit], List[AccountsEvent[AccountCreated]])]:
+          StoreF.raise[
+            F,
+            (AccountsResult[Unit], List[AccountsEvent[AccountCreated]]),
+          ]:
             CryptoFailure:
               s"Recovered key ${recoveredKeyId.bytes.toHex} does not match initialKeyId ${tx.initialKeyId.bytes.toHex}"
         else
@@ -210,7 +273,10 @@ class AccountsReducer[F[_]: Monad] extends StateReducer0[F, AccountsSchema.Accou
             maybeExisting <- accountsTable.get(accountsTable.brand(tx.name))
             created <- maybeExisting match
               case Some(_) =>
-                StoreF.raise[F, (AccountsResult[Unit], List[AccountsEvent[AccountCreated]])]:
+                StoreF.raise[
+                  F,
+                  (AccountsResult[Unit], List[AccountsEvent[AccountCreated]]),
+                ]:
                   TrieFailure:
                     conflict(
                       AccountAlreadyExistsCode,
@@ -219,16 +285,33 @@ class AccountsReducer[F[_]: Monad] extends StateReducer0[F, AccountsSchema.Accou
                       Some(s"name=${tx.name.asString}"),
                     )
               case None =>
-                val accountInfo = AccountInfo(guardian = tx.guardian, nonce = BigNat.Zero)
-                val keyInfo = KeyInfo(addedAt = tx.envelope.createdAt, expiresAt = None, description = Utf8(""))
+                val accountInfo =
+                  AccountInfo(guardian = tx.guardian, nonce = BigNat.Zero)
+                val keyInfo = KeyInfo(
+                  addedAt = tx.envelope.createdAt,
+                  expiresAt = None,
+                  description = Utf8(""),
+                )
                 for
-                  _ <- accountsTable.put(accountsTable.brand(tx.name), accountInfo)
-                  _ <- nameKeyTable.put(nameKeyTable.brand((tx.name, tx.initialKeyId)), keyInfo)
-                yield (resultOf(()), List(eventOf(AccountCreated(tx.name, tx.guardian))))
+                  _ <- accountsTable.put(
+                    accountsTable.brand(tx.name),
+                    accountInfo,
+                  )
+                  _ <- nameKeyTable.put(
+                    nameKeyTable.brand((tx.name, tx.initialKeyId)),
+                    keyInfo,
+                  )
+                yield (
+                  resultOf(()),
+                  List(eventOf(AccountCreated(tx.name, tx.guardian))),
+                )
           yield created
     yield result
 
-  private def verifyAndHandleUpdateAccount(tx: UpdateAccount, sig: AccountSignature)(using
+  private def verifyAndHandleUpdateAccount(
+      tx: UpdateAccount,
+      sig: AccountSignature,
+  )(using
       ownsTables: Tables[F, AccountsSchema],
   ): StoreF[F][(tx.Result, List[tx.Event])] =
     val (_ *: nameKeyTable *: EmptyTuple) = ownsTables
@@ -241,7 +324,7 @@ class AccountsReducer[F[_]: Monad] extends StateReducer0[F, AccountsSchema.Accou
       ) { (name, keyId) =>
         nameKeyTable.get(nameKeyTable.brand((name, keyId)))
       }
-      _ <- verifyAuthorization(tx.name, sig, ownsTables)
+      _      <- verifyAuthorization(tx.name, sig, ownsTables)
       result <- handleUpdateAccount(tx)
     yield result
 
@@ -259,11 +342,16 @@ class AccountsReducer[F[_]: Monad] extends StateReducer0[F, AccountsSchema.Accou
               guardian = tx.newGuardian,
               nonce = BigNat.unsafeFromBigInt(info.nonce.toBigInt + 1),
             )
-            for
-              _ <- accountsTable.put(accountsTable.brand(tx.name), newInfo)
-            yield (resultOf(()), List(eventOf(AccountUpdated(tx.name, tx.newGuardian))))
+            for _ <- accountsTable.put(accountsTable.brand(tx.name), newInfo)
+            yield (
+              resultOf(()),
+              List(eventOf(AccountUpdated(tx.name, tx.newGuardian))),
+            )
           else
-            StoreF.raise[F, (AccountsResult[Unit], List[AccountsEvent[AccountUpdated]])]:
+            StoreF.raise[
+              F,
+              (AccountsResult[Unit], List[AccountsEvent[AccountUpdated]]),
+            ]:
               TrieFailure:
                 invalidRequest(
                   AccountNonceMismatchCode,
@@ -272,7 +360,10 @@ class AccountsReducer[F[_]: Monad] extends StateReducer0[F, AccountsSchema.Accou
                   Some(s"name=${tx.name.asString}"),
                 )
         case None =>
-          StoreF.raise[F, (AccountsResult[Unit], List[AccountsEvent[AccountUpdated]])]:
+          StoreF.raise[
+            F,
+            (AccountsResult[Unit], List[AccountsEvent[AccountUpdated]]),
+          ]:
             TrieFailure:
               notFound(
                 AccountNotFoundCode,
@@ -282,8 +373,8 @@ class AccountsReducer[F[_]: Monad] extends StateReducer0[F, AccountsSchema.Accou
               )
     yield result
 
-  private def verifyAndHandleAddKeyIds(tx: AddKeyIds, sig: AccountSignature)(using
-      ownsTables: Tables[F, AccountsSchema],
+  private def verifyAndHandleAddKeyIds(tx: AddKeyIds, sig: AccountSignature)(
+      using ownsTables: Tables[F, AccountsSchema],
   ): StoreF[F][(tx.Result, List[tx.Event])] =
     val (_ *: nameKeyTable *: EmptyTuple) = ownsTables
 
@@ -295,7 +386,7 @@ class AccountsReducer[F[_]: Monad] extends StateReducer0[F, AccountsSchema.Accou
       ) { (name, keyId) =>
         nameKeyTable.get(nameKeyTable.brand((name, keyId)))
       }
-      _ <- verifyAuthorization(tx.name, sig, ownsTables)
+      _      <- verifyAuthorization(tx.name, sig, ownsTables)
       result <- handleAddKeyIds(tx)
     yield result
 
@@ -310,11 +401,12 @@ class AccountsReducer[F[_]: Monad] extends StateReducer0[F, AccountsSchema.Accou
         case Some(info) =>
           if info.nonce === tx.nonce then
             // Add all keys sequentially
-            val addKeysEffect = tx.keyIds.foldLeft(StoreF.pure[F, Unit](())) {
+            val addKeysEffect = tx.keyIds.foldLeft(StoreF.pure[F, Unit](())):
               case (acc, (keyId, description)) =>
                 for
                   _ <- acc
-                  maybeExisting <- nameKeyTable.get(nameKeyTable.brand((tx.name, keyId)))
+                  maybeExisting <- nameKeyTable.get:
+                    nameKeyTable.brand((tx.name, keyId))
                   _ <- maybeExisting match
                     case Some(_) => StoreF.pure[F, Unit](()) // Skip existing
                     case None =>
@@ -323,9 +415,11 @@ class AccountsReducer[F[_]: Monad] extends StateReducer0[F, AccountsSchema.Accou
                         expiresAt = tx.expiresAt,
                         description = description,
                       )
-                      nameKeyTable.put(nameKeyTable.brand((tx.name, keyId)), keyInfo)
+                      nameKeyTable.put(
+                        nameKeyTable.brand((tx.name, keyId)),
+                        keyInfo,
+                      )
                 yield ()
-            }
 
             val newInfo = AccountInfo(
               guardian = info.guardian,
@@ -334,28 +428,36 @@ class AccountsReducer[F[_]: Monad] extends StateReducer0[F, AccountsSchema.Accou
             for
               _ <- addKeysEffect
               _ <- accountsTable.put(accountsTable.brand(tx.name), newInfo)
-            yield (resultOf(()), List(eventOf(KeysAdded(tx.name, tx.keyIds.keySet))))
+            yield (
+              resultOf(()),
+              List(eventOf(KeysAdded(tx.name, tx.keyIds.keySet))),
+            )
           else
-            StoreF.raise[F, (AccountsResult[Unit], List[AccountsEvent[KeysAdded]])]:
+            StoreF
+              .raise[F, (AccountsResult[Unit], List[AccountsEvent[KeysAdded]])]:
+                TrieFailure:
+                  invalidRequest(
+                    AccountNonceMismatchCode,
+                    "account_nonce_mismatch",
+                    s"Nonce mismatch: expected ${info.nonce}, got ${tx.nonce}",
+                    Some(s"name=${tx.name.asString}"),
+                  )
+        case None =>
+          StoreF
+            .raise[F, (AccountsResult[Unit], List[AccountsEvent[KeysAdded]])]:
               TrieFailure:
-                invalidRequest(
-                  AccountNonceMismatchCode,
-                  "account_nonce_mismatch",
-                  s"Nonce mismatch: expected ${info.nonce}, got ${tx.nonce}",
+                notFound(
+                  AccountNotFoundCode,
+                  "account_not_found",
+                  s"Account ${tx.name.asString} not found",
                   Some(s"name=${tx.name.asString}"),
                 )
-        case None =>
-          StoreF.raise[F, (AccountsResult[Unit], List[AccountsEvent[KeysAdded]])]:
-            TrieFailure:
-              notFound(
-                AccountNotFoundCode,
-                "account_not_found",
-                s"Account ${tx.name.asString} not found",
-                Some(s"name=${tx.name.asString}"),
-              )
     yield result
 
-  private def verifyAndHandleRemoveKeyIds(tx: RemoveKeyIds, sig: AccountSignature)(using
+  private def verifyAndHandleRemoveKeyIds(
+      tx: RemoveKeyIds,
+      sig: AccountSignature,
+  )(using
       ownsTables: Tables[F, AccountsSchema],
   ): StoreF[F][(tx.Result, List[tx.Event])] =
     val (_ *: nameKeyTable *: EmptyTuple) = ownsTables
@@ -368,7 +470,7 @@ class AccountsReducer[F[_]: Monad] extends StateReducer0[F, AccountsSchema.Accou
       ) { (name, keyId) =>
         nameKeyTable.get(nameKeyTable.brand((name, keyId)))
       }
-      _ <- verifyAuthorization(tx.name, sig, ownsTables)
+      _      <- verifyAuthorization(tx.name, sig, ownsTables)
       result <- handleRemoveKeyIds(tx)
     yield result
 
@@ -383,13 +485,14 @@ class AccountsReducer[F[_]: Monad] extends StateReducer0[F, AccountsSchema.Accou
         case Some(info) =>
           if info.nonce === tx.nonce then
             // Remove all keys sequentially
-            val removeKeysEffect = tx.keyIds.foldLeft(StoreF.pure[F, Unit](())) {
-              case (acc, keyId) =>
-                for
-                  _ <- acc
-                  _ <- nameKeyTable.remove(nameKeyTable.brand((tx.name, keyId)))
-                yield ()
-            }
+            val removeKeysEffect =
+              tx.keyIds.foldLeft(StoreF.pure[F, Unit](())):
+                case (acc, keyId) =>
+                  for
+                    _ <- acc
+                    _ <- nameKeyTable.remove:
+                      nameKeyTable.brand((tx.name, keyId))
+                  yield ()
 
             val newInfo = AccountInfo(
               guardian = info.guardian,
@@ -400,7 +503,10 @@ class AccountsReducer[F[_]: Monad] extends StateReducer0[F, AccountsSchema.Accou
               _ <- accountsTable.put(accountsTable.brand(tx.name), newInfo)
             yield (resultOf(()), List(eventOf(KeysRemoved(tx.name, tx.keyIds))))
           else
-            StoreF.raise[F, (AccountsResult[Unit], List[AccountsEvent[KeysRemoved]])]:
+            StoreF.raise[
+              F,
+              (AccountsResult[Unit], List[AccountsEvent[KeysRemoved]]),
+            ]:
               TrieFailure:
                 invalidRequest(
                   AccountNonceMismatchCode,
@@ -409,17 +515,21 @@ class AccountsReducer[F[_]: Monad] extends StateReducer0[F, AccountsSchema.Accou
                   Some(s"name=${tx.name.asString}"),
                 )
         case None =>
-          StoreF.raise[F, (AccountsResult[Unit], List[AccountsEvent[KeysRemoved]])]:
-            TrieFailure:
-              notFound(
-                AccountNotFoundCode,
-                "account_not_found",
-                s"Account ${tx.name.asString} not found",
-                Some(s"name=${tx.name.asString}"),
-              )
+          StoreF
+            .raise[F, (AccountsResult[Unit], List[AccountsEvent[KeysRemoved]])]:
+              TrieFailure:
+                notFound(
+                  AccountNotFoundCode,
+                  "account_not_found",
+                  s"Account ${tx.name.asString} not found",
+                  Some(s"name=${tx.name.asString}"),
+                )
     yield result
 
-  private def verifyAndHandleRemoveAccount(tx: RemoveAccount, sig: AccountSignature)(using
+  private def verifyAndHandleRemoveAccount(
+      tx: RemoveAccount,
+      sig: AccountSignature,
+  )(using
       ownsTables: Tables[F, AccountsSchema],
   ): StoreF[F][(tx.Result, List[tx.Event])] =
     val (_ *: nameKeyTable *: EmptyTuple) = ownsTables
@@ -432,7 +542,7 @@ class AccountsReducer[F[_]: Monad] extends StateReducer0[F, AccountsSchema.Accou
       ) { (name, keyId) =>
         nameKeyTable.get(nameKeyTable.brand((name, keyId)))
       }
-      _ <- verifyAuthorization(tx.name, sig, ownsTables)
+      _      <- verifyAuthorization(tx.name, sig, ownsTables)
       result <- handleRemoveAccount(tx)
     yield result
 
@@ -446,15 +556,17 @@ class AccountsReducer[F[_]: Monad] extends StateReducer0[F, AccountsSchema.Accou
       result <- maybeInfo match
         case Some(info) =>
           if info.nonce === tx.nonce then
-            for
-              _ <- accountsTable.remove(accountsTable.brand(tx.name))
+            for _ <- accountsTable.remove(accountsTable.brand(tx.name))
             yield
               // Note: In a real implementation, we would need to iterate over all keys
               // and remove them. For now, this is a simplified version.
               // TODO: Add streaming API to iterate over all keys with prefix (name, *)
               (resultOf(()), List(eventOf(AccountRemoved(tx.name))))
           else
-            StoreF.raise[F, (AccountsResult[Unit], List[AccountsEvent[AccountRemoved]])]:
+            StoreF.raise[
+              F,
+              (AccountsResult[Unit], List[AccountsEvent[AccountRemoved]]),
+            ]:
               TrieFailure:
                 invalidRequest(
                   AccountNonceMismatchCode,
@@ -463,7 +575,10 @@ class AccountsReducer[F[_]: Monad] extends StateReducer0[F, AccountsSchema.Accou
                   Some(s"name=${tx.name.asString}"),
                 )
         case None =>
-          StoreF.raise[F, (AccountsResult[Unit], List[AccountsEvent[AccountRemoved]])]:
+          StoreF.raise[
+            F,
+            (AccountsResult[Unit], List[AccountsEvent[AccountRemoved]]),
+          ]:
             TrieFailure:
               notFound(
                 AccountNotFoundCode,
@@ -475,24 +590,31 @@ class AccountsReducer[F[_]: Monad] extends StateReducer0[F, AccountsSchema.Accou
 
 /** Accounts module blueprint.
   *
-  * Phase 6 example blueprint implementing ADR-0010 (Blockchain Account Model and Key Management).
+  * Phase 6 example blueprint implementing ADR-0010 (Blockchain Account Model
+  * and Key Management).
   */
 object AccountsBP:
   type AccountsTxs =
-    CreateNamedAccount *:
-      UpdateAccount *:
-      AddKeyIds *:
-      RemoveKeyIds *:
-      RemoveAccount *:
-      EmptyTuple
+    CreateNamedAccount *: UpdateAccount *: AddKeyIds *: RemoveKeyIds *:
+      RemoveAccount *: EmptyTuple
 
   given ReducerCoverage[CreateNamedAccount] with {}
-  given ReducerCoverage[UpdateAccount] with {}
-  given ReducerCoverage[AddKeyIds] with {}
-  given ReducerCoverage[RemoveKeyIds] with {}
-  given ReducerCoverage[RemoveAccount] with {}
+  given ReducerCoverage[UpdateAccount] with      {}
+  given ReducerCoverage[AddKeyIds] with          {}
+  given ReducerCoverage[RemoveKeyIds] with       {}
+  given ReducerCoverage[RemoveAccount] with      {}
 
-  def apply[F[_]: Monad](using @annotation.unused nodeStore: org.sigilaris.core.merkle.MerkleTrie.NodeStore[F]): ModuleBlueprint[F, "accounts", AccountsSchema.AccountsSchema, EmptyTuple, AccountsTxs] =
+  def apply[F[_]: Monad](using
+      @annotation.unused nodeStore: org.sigilaris.core.merkle.MerkleTrie.NodeStore[
+        F,
+      ],
+  ): ModuleBlueprint[
+    F,
+    "accounts",
+    AccountsSchema.AccountsSchema,
+    EmptyTuple,
+    AccountsTxs,
+  ] =
     import AccountsSchema.*
 
     new ModuleBlueprint[F, "accounts", AccountsSchema, EmptyTuple, AccountsTxs](

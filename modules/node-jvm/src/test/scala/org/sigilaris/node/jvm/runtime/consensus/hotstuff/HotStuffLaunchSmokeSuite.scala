@@ -46,7 +46,10 @@ import org.sigilaris.node.jvm.runtime.block.{
 import org.sigilaris.node.jvm.runtime.consensus.hotstuff.given
 import org.sigilaris.node.jvm.runtime.gossip.*
 import org.sigilaris.node.jvm.storage.swaydb.StorageLayout
-import org.sigilaris.node.jvm.transport.armeria.{ArmeriaServer, ArmeriaServerConfig}
+import org.sigilaris.node.jvm.transport.armeria.{
+  ArmeriaServer,
+  ArmeriaServerConfig,
+}
 import org.sigilaris.node.jvm.transport.armeria.gossip.*
 
 final class HotStuffLaunchSmokeSuite extends CatsEffectSuite:
@@ -54,8 +57,8 @@ final class HotStuffLaunchSmokeSuite extends CatsEffectSuite:
   override def munitIOTimeout: scala.concurrent.duration.Duration =
     120.seconds
 
-  private val chainId = ChainId.unsafe("chain-main")
-  private val startedAt = Instant.parse("2026-04-07T09:00:00Z")
+  private val chainId       = ChainId.unsafe("chain-main")
+  private val startedAt     = Instant.parse("2026-04-07T09:00:00Z")
   private val validatorKeys = Vector.fill(4)(CryptoOps.generate())
   private val validatorSet = ValidatorSet.unsafe(
     validatorKeys.zipWithIndex.map: (keyPair, index) =>
@@ -71,15 +74,15 @@ final class HotStuffLaunchSmokeSuite extends CatsEffectSuite:
   private val nodeD = "node-d"
   private val nodeE = "node-e"
 
-  private val validatorPeers = Vector(nodeA, nodeB, nodeC, nodeD)
-  private val allPeers = validatorPeers :+ nodeE
-  private val authenticatedPeerHeaderName = "x-sigilaris-peer-identity"
-  private val transportProofHeaderName = "x-sigilaris-transport-proof"
+  private val validatorPeers                = Vector(nodeA, nodeB, nodeC, nodeD)
+  private val allPeers                      = validatorPeers :+ nodeE
+  private val authenticatedPeerHeaderName   = "x-sigilaris-peer-identity"
+  private val transportProofHeaderName      = "x-sigilaris-transport-proof"
   private val bootstrapCapabilityHeaderName = "x-sigilaris-bootstrap-capability"
-  private val transportProofInfo = "sigilaris.transport-proof.v1"
-  private val transportProofHmacAlgorithm = "HmacSHA256"
-  private val transportProofSha256 = "SHA-256"
-  private val sharedHttpClient = HttpClient.newHttpClient()
+  private val transportProofInfo            = "sigilaris.transport-proof.v1"
+  private val transportProofHmacAlgorithm   = "HmacSHA256"
+  private val transportProofSha256          = "SHA-256"
+  private val sharedHttpClient              = HttpClient.newHttpClient()
   private val validatorNodeSpecs =
     Vector(nodeA -> 0, nodeB -> 1, nodeC -> 2, nodeD -> 3)
 
@@ -95,74 +98,80 @@ final class HotStuffLaunchSmokeSuite extends CatsEffectSuite:
   private given ByteDecoder[NewViewId] =
     ByteDecoder[UInt256].map(NewViewId(_))
   private given ByteDecoder[TimeoutVoteSubject] = ByteDecoder.derived
-  private given ByteDecoder[TimeoutVote] = ByteDecoder.derived
+  private given ByteDecoder[TimeoutVote]        = ByteDecoder.derived
   private given ByteDecoder[TimeoutCertificate] = ByteDecoder.derived
-  private given ByteDecoder[NewView] = ByteDecoder.derived
+  private given ByteDecoder[NewView]            = ByteDecoder.derived
   private given ByteDecoder[HotStuffGossipArtifact] =
     bytes =>
-      ByteDecoder[Byte].decode(bytes).flatMap:
-        case DecodeResult(tag, remainder) =>
-          tag match
-            case 0x01 =>
-              ByteDecoder[Proposal]
-                .decode(remainder)
-                .leftMap(error =>
-                  DecodeFailure("proposal artifact decode failed: " + error.msg),
-                )
-                .map(result =>
-                  DecodeResult(
-                    HotStuffGossipArtifact.ProposalArtifact(result.value),
-                    result.remainder,
-                  ),
-                )
-            case 0x02 =>
-              ByteDecoder[Vote]
-                .decode(remainder)
-                .leftMap(error =>
-                  DecodeFailure("vote artifact decode failed: " + error.msg),
-                )
-                .map(result =>
-                  DecodeResult(
-                    HotStuffGossipArtifact.VoteArtifact(result.value),
-                    result.remainder,
-                  ),
-                )
-            case 0x03 =>
-              ByteDecoder[TimeoutVote]
-                .decode(remainder)
-                .leftMap(error =>
-                  DecodeFailure(
-                    "timeout vote artifact decode failed: " + error.msg,
-                  ),
-                )
-                .map(result =>
-                  DecodeResult(
-                    HotStuffGossipArtifact.TimeoutVoteArtifact(result.value),
-                    result.remainder,
-                  ),
-                )
-            case 0x04 =>
-              ByteDecoder[NewView]
-                .decode(remainder)
-                .leftMap(error =>
-                  DecodeFailure("new-view artifact decode failed: " + error.msg),
-                )
-                .map(result =>
-                  DecodeResult(
-                    HotStuffGossipArtifact.NewViewArtifact(result.value),
-                    result.remainder,
-                  ),
-                )
-            case other =>
-              DecodeFailure(
-                "unknown HotStuff gossip artifact tag: " + (other.toInt & 0xff).toString,
-              ).asLeft[DecodeResult[HotStuffGossipArtifact]]
+      ByteDecoder[Byte]
+        .decode(bytes)
+        .flatMap:
+          case DecodeResult(tag, remainder) =>
+            tag match
+              case 0x01 =>
+                ByteDecoder[Proposal]
+                  .decode(remainder)
+                  .leftMap(error =>
+                    DecodeFailure(
+                      "proposal artifact decode failed: " + error.msg,
+                    ),
+                  )
+                  .map(result =>
+                    DecodeResult(
+                      HotStuffGossipArtifact.ProposalArtifact(result.value),
+                      result.remainder,
+                    ),
+                  )
+              case 0x02 =>
+                ByteDecoder[Vote]
+                  .decode(remainder)
+                  .leftMap(error =>
+                    DecodeFailure("vote artifact decode failed: " + error.msg),
+                  )
+                  .map(result =>
+                    DecodeResult(
+                      HotStuffGossipArtifact.VoteArtifact(result.value),
+                      result.remainder,
+                    ),
+                  )
+              case 0x03 =>
+                ByteDecoder[TimeoutVote]
+                  .decode(remainder)
+                  .leftMap(error =>
+                    DecodeFailure(
+                      "timeout vote artifact decode failed: " + error.msg,
+                    ),
+                  )
+                  .map(result =>
+                    DecodeResult(
+                      HotStuffGossipArtifact.TimeoutVoteArtifact(result.value),
+                      result.remainder,
+                    ),
+                  )
+              case 0x04 =>
+                ByteDecoder[NewView]
+                  .decode(remainder)
+                  .leftMap(error =>
+                    DecodeFailure(
+                      "new-view artifact decode failed: " + error.msg,
+                    ),
+                  )
+                  .map(result =>
+                    DecodeResult(
+                      HotStuffGossipArtifact.NewViewArtifact(result.value),
+                      result.remainder,
+                    ),
+                  )
+              case other =>
+                DecodeFailure(
+                  "unknown HotStuff gossip artifact tag: " + (other.toInt & 0xff).toString,
+                ).asLeft[DecodeResult[HotStuffGossipArtifact]]
 
   test(
     "reference launch smoke automatically forms sessions, advances consensus across a stalled leader, bootstraps a newcomer, and preserves archive state across restart",
   ):
     tempDirResource.use: root =>
-      val graph = snapshotGraph("31")
+      val graph   = snapshotGraph("31")
       val genesis = genesisProposal("41")
       val round1 = signedProposal(
         proposerIndex = 1,
@@ -190,82 +199,112 @@ final class HotStuffLaunchSmokeSuite extends CatsEffectSuite:
         HotStuffWindow(chainId, 3L, 4L, validatorSet.hash)
       val holders = initialHolders
 
-      validatorNodesResource(root, holders, validatorNodeSpecs.take(3)).use: validators =>
-        for
-          _ <- validators.traverse_(
-            seedBootstrapLocal(
-              _,
-              Vector(genesis, round1, round2),
-              Vector(graph.rootNode, graph.leftNode, graph.rightNode),
-            ),
-          )
-          result <- automaticMeshResource(validators).use: validatorMesh =>
-            for
-              validatorLinkCount <- validatorMesh.links.map(_.size)
-              automatic <- awaitAutomaticConsensusProgress(
-                validators = validators,
-                mesh = validatorMesh,
-                expectedProposalHeights = Set(0L, 1L, 2L, 3L, 4L, 5L),
-                stalledWindow = stalledWindow,
-                recoveredWindow = recoveredWindow,
-              )
-              snapshots = automatic.snapshots
-              proposalHeights =
-                snapshots.map(snapshot =>
-                  snapshot.proposals.valuesIterator.map(proposalHeight).toSet,
+      validatorNodesResource(root, holders, validatorNodeSpecs.take(3)).use:
+        validators =>
+          for
+            _ <- validators.traverse_(
+              seedBootstrapLocal(
+                _,
+                Vector(genesis, round1, round2),
+                Vector(graph.rootNode, graph.leftNode, graph.rightNode),
+              ),
+            )
+            result <- automaticMeshResource(validators).use: validatorMesh =>
+              for
+                validatorLinkCount <- validatorMesh.links.map(_.size)
+                automatic <- awaitAutomaticConsensusProgress(
+                  validators = validators,
+                  mesh = validatorMesh,
+                  expectedProposalHeights = Set(0L, 1L, 2L, 3L, 4L, 5L),
+                  stalledWindow = stalledWindow,
+                  recoveredWindow = recoveredWindow,
                 )
-              qcHeights =
-                snapshots.map(snapshot =>
-                  snapshot.qcs.valuesIterator.map(qcHeight).toSet,
+                snapshots = automatic.snapshots
+                proposalHeights =
+                  snapshots.map(snapshot =>
+                    snapshot.proposals.valuesIterator.map(proposalHeight).toSet,
+                  )
+                qcHeights =
+                  snapshots.map(snapshot =>
+                    snapshot.qcs.valuesIterator.map(qcHeight).toSet,
+                  )
+                primarySnapshot <- IO.fromOption(snapshots.headOption)(
+                  new IllegalStateException("missing validator snapshot"),
                 )
-              primarySnapshot <- IO.fromOption(snapshots.headOption)(
-                new IllegalStateException("missing validator snapshot"),
+                height3Proposal <- IO.fromOption(
+                  proposalAtWindow(primarySnapshot, recoveredWindow),
+                )(
+                  new IllegalStateException(
+                    "missing recovered height-3 proposal",
+                  ),
+                )
+                height4Proposal <- IO.fromOption(
+                  proposalAtHeight(primarySnapshot, 4L),
+                )(
+                  new IllegalStateException(
+                    "missing automatic height-4 proposal",
+                  ),
+                )
+                height5Proposal <- IO.fromOption(
+                  proposalAtHeight(primarySnapshot, 5L),
+                )(
+                  new IllegalStateException(
+                    "missing automatic height-5 proposal",
+                  ),
+                )
+                auditRoot        = root.resolve(nodeE)
+                auditRestartRoot = root.resolve("node-e-restart")
+                auditBootstrapResult <- launchedNodeResource(
+                  localNodeId = nodeE,
+                  role = LocalNodeRole.Audit,
+                  holders = holders,
+                  localKeys = Map.empty,
+                  storageRoot = auditRoot,
+                  bootstrapPeerBaseUris = bootstrapPeerBaseUris(validators),
+                ).use: audit =>
+                  for
+                    validatorNow <- latestClockInstant(validators)
+                    _            <- alignClockTo(audit, validatorNow)
+                    _            <- validatorMesh.registerNodes(Vector(audit))
+                    auditSessions <- validatorMesh.bindingsFrom(
+                      audit,
+                      validators,
+                    )
+                    _ <- awaitObservedProposalHeights(
+                      node = audit,
+                      expectedProposalHeights = Set(3L, 4L, 5L),
+                    )
+                    bootstrapReady <- bootstrapUntilReady(
+                      node = audit,
+                      sessions = auditSessions,
+                      startedAt = startedAt.plusSeconds(90L),
+                    )
+                  yield (auditSessions, bootstrapReady)
+                _ <- IO.blocking(copyRecursively(auditRoot, auditRestartRoot))
+                restartedArchive <- launchedNodeResource(
+                  localNodeId = nodeE,
+                  role = LocalNodeRole.Audit,
+                  holders = holders,
+                  localKeys = Map.empty,
+                  storageRoot = auditRestartRoot,
+                  bootstrapPeerBaseUris = bootstrapPeerBaseUris(validators),
+                ).use: _ =>
+                  withArchive(StorageLayout.fromRoot(auditRestartRoot))(
+                    _.list(chainId),
+                  )
+              yield (
+                validatorLinkCount,
+                snapshots,
+                proposalHeights,
+                qcHeights,
+                height3Proposal,
+                height4Proposal,
+                height5Proposal,
+                auditBootstrapResult,
+                restartedArchive,
               )
-              height3Proposal <- IO.fromOption(
-                proposalAtWindow(primarySnapshot, recoveredWindow),
-              )(new IllegalStateException("missing recovered height-3 proposal"))
-              height4Proposal <- IO.fromOption(
-                proposalAtHeight(primarySnapshot, 4L),
-              )(new IllegalStateException("missing automatic height-4 proposal"))
-              height5Proposal <- IO.fromOption(
-                proposalAtHeight(primarySnapshot, 5L),
-              )(new IllegalStateException("missing automatic height-5 proposal"))
-              auditRoot = root.resolve(nodeE)
-              auditRestartRoot = root.resolve("node-e-restart")
-              auditBootstrapResult <- launchedNodeResource(
-                localNodeId = nodeE,
-                role = LocalNodeRole.Audit,
-                holders = holders,
-                localKeys = Map.empty,
-                storageRoot = auditRoot,
-                bootstrapPeerBaseUris = bootstrapPeerBaseUris(validators),
-              ).use: audit =>
-                for
-                  validatorNow <- latestClockInstant(validators)
-                  _ <- alignClockTo(audit, validatorNow)
-                  _ <- validatorMesh.registerNodes(Vector(audit))
-                  auditSessions <- validatorMesh.bindingsFrom(audit, validators)
-                  _ <- awaitObservedProposalHeights(
-                    node = audit,
-                    expectedProposalHeights = Set(3L, 4L, 5L),
-                  )
-                  bootstrapReady <- bootstrapUntilReady(
-                    node = audit,
-                    sessions = auditSessions,
-                    startedAt = startedAt.plusSeconds(90L),
-                  )
-                yield (auditSessions, bootstrapReady)
-              _ <- IO.blocking(copyRecursively(auditRoot, auditRestartRoot))
-              restartedArchive <- launchedNodeResource(
-                localNodeId = nodeE,
-                role = LocalNodeRole.Audit,
-                holders = holders,
-                localKeys = Map.empty,
-                storageRoot = auditRestartRoot,
-                bootstrapPeerBaseUris = bootstrapPeerBaseUris(validators),
-              ).use: _ =>
-                withArchive(StorageLayout.fromRoot(auditRestartRoot))(_.list(chainId))
-            yield (
+          yield
+            val (
               validatorLinkCount,
               snapshots,
               proposalHeights,
@@ -275,95 +314,126 @@ final class HotStuffLaunchSmokeSuite extends CatsEffectSuite:
               height5Proposal,
               auditBootstrapResult,
               restartedArchive,
+            ) = result
+            val (auditSessions, bootstrapReady) =
+              auditBootstrapResult
+            val bootstrapResult          = bootstrapReady.result
+            val readyDiagnostics         = bootstrapReady.diagnostics
+            val expectedAutomaticHeights = Set(0L, 1L, 2L, 3L, 4L, 5L)
+            assertEquals(
+              HotStuffPacemaker.deterministicLeader(
+                HotStuffWindow(chainId, 1L, 1L, validatorSet.hash),
+                validatorSet,
+              ),
+              validatorSet.members(1).id,
             )
-        yield
-          val (
-            validatorLinkCount,
-            snapshots,
-            proposalHeights,
-            qcHeights,
-            height3Proposal,
-            height4Proposal,
-            height5Proposal,
-            auditBootstrapResult,
-            restartedArchive,
-          ) = result
-          val (auditSessions, bootstrapReady) =
-            auditBootstrapResult
-          val bootstrapResult = bootstrapReady.result
-          val readyDiagnostics = bootstrapReady.diagnostics
-          val expectedAutomaticHeights = Set(0L, 1L, 2L, 3L, 4L, 5L)
-          assertEquals(
-            HotStuffPacemaker.deterministicLeader(
-              HotStuffWindow(chainId, 1L, 1L, validatorSet.hash),
-              validatorSet,
-            ),
-            validatorSet.members(1).id,
-          )
-          assertEquals(
-            HotStuffPacemaker.deterministicLeader(
-              HotStuffWindow(chainId, 2L, 2L, validatorSet.hash),
-              validatorSet,
-            ),
-            validatorSet.members(2).id,
-          )
-          assertEquals(
-            HotStuffPacemaker.deterministicLeader(
-              HotStuffWindow(chainId, 3L, 3L, validatorSet.hash),
-              validatorSet,
-            ),
-            validatorSet.members(3).id,
-          )
-          assertEquals(validatorLinkCount, 6)
-          assertEquals(auditSessions.size, 3)
-          assert(
-            proposalHeights.forall(expectedAutomaticHeights.subsetOf),
-            s"unexpected proposal heights: $proposalHeights",
-          )
-          assert(
-            qcHeights.forall(Set(1L, 2L, 3L, 4L).subsetOf),
-            s"unexpected QC heights: $qcHeights",
-          )
-          assertEquals(height3Proposal.block.height, BlockHeight.unsafeFromLong(3L))
-          assertEquals(height3Proposal.window, recoveredWindow)
-          assertEquals(height3Proposal.block.parent, Some(round2.targetBlockId))
-          assertEquals(height4Proposal.block.height, BlockHeight.unsafeFromLong(4L))
-          assertEquals(height5Proposal.block.height, BlockHeight.unsafeFromLong(5L))
-          assert(snapshots.forall(_.proposals.contains(round1.proposalId)))
-          assert(snapshots.forall(_.proposals.contains(round2.proposalId)))
-          assert(snapshots.forall(_.proposals.contains(height3Proposal.proposalId)))
-          assert(snapshots.forall(_.proposals.contains(height4Proposal.proposalId)))
-          assert(snapshots.forall(_.proposals.contains(height5Proposal.proposalId)))
-          assert(snapshots.forall(_.timeoutCertificates.keySet.exists(_.window === stalledWindow)))
-          assert(snapshots.forall(_.newViews.valuesIterator.exists(_.window === recoveredWindow)))
-          assert(
-            snapshots.forall(
-              _.newViews.valuesIterator
-                .find(_.window === recoveredWindow)
-                .exists(_.nextLeader === validatorSet.members(0).id),
-            ),
-            s"unexpected recovered new-view leaders: ${snapshots.map(_.newViews.valuesIterator.toVector)}",
-          )
-          assert(
-            proposalHeight(bootstrapResult.anchor.proposal) >= 1L &&
-              bootstrapResult.forwardCatchUp.applied.nonEmpty &&
-              bootstrapResult.forwardCatchUp.applied.forall(proposal =>
-                proposalHeight(proposal) > proposalHeight(bootstrapResult.anchor.proposal),
-              ) &&
-              bootstrapResult.forwardCatchUp.applied.map(proposalHeight).max >= 5L,
-            s"unexpected bootstrap result: $bootstrapResult",
-          )
-          assertEquals(
-            bootstrapResult.forwardCatchUp.voteReadiness,
-            BootstrapVoteReadiness.Ready,
-          )
-          assertEquals(readyDiagnostics.phase, BootstrapPhase.Ready)
-          assert(bootstrapReady.attempts <= 3)
-          assert(readyDiagnostics.retryAttempts <= 3)
-          assert(restartedArchive.nonEmpty)
-          assert(restartedArchive.exists(_.proposal.proposalId === genesis.proposalId))
-          assert(restartedArchive.exists(_.proposal.proposalId === round1.proposalId))
-          assert(restartedArchive.exists(_.proposal.proposalId === round2.proposalId))
+            assertEquals(
+              HotStuffPacemaker.deterministicLeader(
+                HotStuffWindow(chainId, 2L, 2L, validatorSet.hash),
+                validatorSet,
+              ),
+              validatorSet.members(2).id,
+            )
+            assertEquals(
+              HotStuffPacemaker.deterministicLeader(
+                HotStuffWindow(chainId, 3L, 3L, validatorSet.hash),
+                validatorSet,
+              ),
+              validatorSet.members(3).id,
+            )
+            assertEquals(validatorLinkCount, 6)
+            assertEquals(auditSessions.size, 3)
+            assert(
+              proposalHeights.forall(expectedAutomaticHeights.subsetOf),
+              s"unexpected proposal heights: $proposalHeights",
+            )
+            assert(
+              qcHeights.forall(Set(1L, 2L, 3L, 4L).subsetOf),
+              s"unexpected QC heights: $qcHeights",
+            )
+            assertEquals(
+              height3Proposal.block.height,
+              BlockHeight.unsafeFromLong(3L),
+            )
+            assertEquals(height3Proposal.window, recoveredWindow)
+            assertEquals(
+              height3Proposal.block.parent,
+              Some(round2.targetBlockId),
+            )
+            assertEquals(
+              height4Proposal.block.height,
+              BlockHeight.unsafeFromLong(4L),
+            )
+            assertEquals(
+              height5Proposal.block.height,
+              BlockHeight.unsafeFromLong(5L),
+            )
+            assert(snapshots.forall(_.proposals.contains(round1.proposalId)))
+            assert(snapshots.forall(_.proposals.contains(round2.proposalId)))
+            assert(
+              snapshots.forall(_.proposals.contains(height3Proposal.proposalId)),
+            )
+            assert(
+              snapshots.forall(_.proposals.contains(height4Proposal.proposalId)),
+            )
+            assert(
+              snapshots.forall(_.proposals.contains(height5Proposal.proposalId)),
+            )
+            assert(
+              snapshots.forall(
+                _.timeoutCertificates.keySet.exists(_.window === stalledWindow),
+              ),
+            )
+            assert(
+              snapshots.forall(
+                _.newViews.valuesIterator.exists(_.window === recoveredWindow),
+              ),
+            )
+            assert(
+              snapshots.forall(
+                _.newViews.valuesIterator
+                  .find(_.window === recoveredWindow)
+                  .exists(_.nextLeader === validatorSet.members(0).id),
+              ),
+              s"unexpected recovered new-view leaders: ${snapshots
+                  .map(_.newViews.valuesIterator.toVector)}",
+            )
+            assert(
+              proposalHeight(bootstrapResult.anchor.proposal) >= 1L &&
+                bootstrapResult.forwardCatchUp.applied.nonEmpty &&
+                bootstrapResult.forwardCatchUp.applied.forall(proposal =>
+                  proposalHeight(proposal) > proposalHeight(
+                    bootstrapResult.anchor.proposal,
+                  ),
+                ) &&
+                bootstrapResult.forwardCatchUp.applied
+                  .map(proposalHeight)
+                  .max >= 5L,
+              s"unexpected bootstrap result: $bootstrapResult",
+            )
+            assertEquals(
+              bootstrapResult.forwardCatchUp.voteReadiness,
+              BootstrapVoteReadiness.Ready,
+            )
+            assertEquals(readyDiagnostics.phase, BootstrapPhase.Ready)
+            assert(bootstrapReady.attempts <= 3)
+            assert(readyDiagnostics.retryAttempts <= 3)
+            assert(restartedArchive.nonEmpty)
+            assert(
+              restartedArchive.exists(
+                _.proposal.proposalId === genesis.proposalId,
+              ),
+            )
+            assert(
+              restartedArchive.exists(
+                _.proposal.proposalId === round1.proposalId,
+              ),
+            )
+            assert(
+              restartedArchive.exists(
+                _.proposal.proposalId === round2.proposalId,
+              ),
+            )
 
   test(
     "same-validator relocation smoke fences the old holder and resumes quorum on the pre-provisioned audit node",
@@ -391,108 +461,165 @@ final class HotStuffLaunchSmokeSuite extends CatsEffectSuite:
         at = tsAt(20L),
       )
 
-      validatorNodesResource(root, initialHolders, validatorNodeSpecs.take(3)).use: stableNodes =>
-        val nodeDRoot = root.resolve(nodeD)
-        val nodeERoot = root.resolve(nodeE)
-        val fencedNodeDRoot = root.resolve("node-d-fenced")
-        val relocatedNodeERoot = root.resolve("node-e-relocated")
-        for
-          _ <- launchedNodeResource(
-            localNodeId = nodeE,
-            role = LocalNodeRole.Audit,
-            holders = initialHolders,
-            localKeys = Map.empty,
-            storageRoot = nodeERoot,
-          ).use: _ =>
-            launchedNodeResource(
-              localNodeId = nodeD,
-              role = LocalNodeRole.Validator,
-              holders = initialHolders,
-              localKeys = Map(validatorSet.members(3).id -> validatorKeys(3)),
-              storageRoot = nodeDRoot,
-            ).use: initialNodeD =>
-              seedBootstrapLocal(
-                initialNodeD,
-                Vector(genesis, round1, round2),
-                Vector.empty,
-              )
-          _ <- stableNodes.traverse_(
-            seedBootstrapLocal(_, Vector(genesis, round1, round2), Vector.empty),
-          )
-          _ <- IO.blocking(copyRecursively(nodeERoot, relocatedNodeERoot))
-          relocationAssertions <- launchedNodeResource(
-            localNodeId = nodeD,
-            role = LocalNodeRole.Validator,
-            holders = relocatedHolders,
-            localKeys = Map(validatorSet.members(3).id -> validatorKeys(3)),
-            storageRoot = fencedNodeDRoot,
-          ).use: fencedNodeD =>
-            launchedNodeResource(
+      validatorNodesResource(root, initialHolders, validatorNodeSpecs.take(3))
+        .use: stableNodes =>
+          val nodeDRoot          = root.resolve(nodeD)
+          val nodeERoot          = root.resolve(nodeE)
+          val fencedNodeDRoot    = root.resolve("node-d-fenced")
+          val relocatedNodeERoot = root.resolve("node-e-relocated")
+          for
+            _ <- launchedNodeResource(
               localNodeId = nodeE,
-              role = LocalNodeRole.Validator,
-              holders = relocatedHolders,
-              localKeys = Map(validatorSet.members(3).id -> validatorKeys(3)),
-              storageRoot = relocatedNodeERoot,
-            ).use: relocatedNodeE =>
-              for
-                fencedVoteAttempt <- fencedNodeD.bootstrap.consensus.emitVote(
-                  validatorSet.members(3).id,
-                  round2,
-                  tsAt(30L),
-                )
-                _ <- seedBootstrapLocal(
-                  relocatedNodeE,
+              role = LocalNodeRole.Audit,
+              holders = initialHolders,
+              localKeys = Map.empty,
+              storageRoot = nodeERoot,
+            ).use: _ =>
+              launchedNodeResource(
+                localNodeId = nodeD,
+                role = LocalNodeRole.Validator,
+                holders = initialHolders,
+                localKeys = Map(validatorSet.members(3).id -> validatorKeys(3)),
+                storageRoot = nodeDRoot,
+              ).use: initialNodeD =>
+                seedBootstrapLocal(
+                  initialNodeD,
                   Vector(genesis, round1, round2),
                   Vector.empty,
                 )
-                result <- automaticMeshResource(stableNodes :+ relocatedNodeE).use: mesh =>
-                  for
-                    linkCount <- mesh.links.map(_.size)
-                    automatic <- awaitAutomaticProposalProgress(
-                      validators = stableNodes :+ relocatedNodeE,
-                      mesh = mesh,
-                      expectedProposalHeights = Set(0L, 1L, 2L, 3L, 4L),
-                    )
-                    primarySnapshot <- IO.fromOption(automatic.snapshots.headOption)(
-                      new IllegalStateException("missing relocation snapshot"),
-                    )
-                    height3Proposal <- IO.fromOption(
-                      proposalAtWindow(
-                        primarySnapshot,
-                        HotStuffWindow(chainId, 3L, 3L, validatorSet.hash),
-                      ),
-                    )(new IllegalStateException("missing relocated height-3 proposal"))
-                    height4Proposal <- IO.fromOption(
-                      proposalAtHeight(primarySnapshot, 4L),
-                    )(new IllegalStateException("missing resumed height-4 proposal"))
-                    height3Qc <- IO.fromOption(
-                      primarySnapshot.qcs.get(height3Proposal.proposalId),
-                    )(new IllegalStateException("missing QC for relocated height-3 proposal"))
-                  yield (linkCount, automatic, height3Proposal, height4Proposal, height3Qc)
-              yield (fencedVoteAttempt, result)
-        yield
-          val (fencedVoteAttempt, (linkCount, automatic, height3Proposal, height4Proposal, height3Qc)) =
-            relocationAssertions
-          val proposalHeights =
-            automatic.snapshots.map(snapshot =>
-              snapshot.proposals.valuesIterator.map(proposalHeight).toSet,
+            _ <- stableNodes.traverse_(
+              seedBootstrapLocal(
+                _,
+                Vector(genesis, round1, round2),
+                Vector.empty,
+              ),
             )
-          assertEquals(
-            fencedVoteAttempt.leftMap(_.reason),
-            Left("validatorKeyFenced"),
-          )
-          assertEquals(linkCount, 12)
-          assert(
-            proposalHeights.forall(Set(0L, 1L, 2L, 3L, 4L).subsetOf),
-            s"unexpected proposal heights after relocation: $proposalHeights",
-          )
-          assert(automatic.snapshots.forall(_.proposals.contains(height3Proposal.proposalId)))
-          assert(automatic.snapshots.forall(_.proposals.contains(height4Proposal.proposalId)))
-          assert(automatic.snapshots.forall(_.qcs.contains(height3Proposal.proposalId)))
-          assertEquals(height3Proposal.proposer, validatorSet.members(3).id)
-          assertEquals(height3Proposal.window.view, HotStuffView.unsafeFromLong(3L))
-          assertEquals(height4Proposal.block.height, BlockHeight.unsafeFromLong(4L))
-          assert(height3Qc.votes.exists(_.voter === validatorSet.members(3).id))
+            _ <- IO.blocking(copyRecursively(nodeERoot, relocatedNodeERoot))
+            relocationAssertions <- launchedNodeResource(
+              localNodeId = nodeD,
+              role = LocalNodeRole.Validator,
+              holders = relocatedHolders,
+              localKeys = Map(validatorSet.members(3).id -> validatorKeys(3)),
+              storageRoot = fencedNodeDRoot,
+            ).use: fencedNodeD =>
+              launchedNodeResource(
+                localNodeId = nodeE,
+                role = LocalNodeRole.Validator,
+                holders = relocatedHolders,
+                localKeys = Map(validatorSet.members(3).id -> validatorKeys(3)),
+                storageRoot = relocatedNodeERoot,
+              ).use: relocatedNodeE =>
+                for
+                  fencedVoteAttempt <- fencedNodeD.bootstrap.consensus.emitVote(
+                    validatorSet.members(3).id,
+                    round2,
+                    tsAt(30L),
+                  )
+                  _ <- seedBootstrapLocal(
+                    relocatedNodeE,
+                    Vector(genesis, round1, round2),
+                    Vector.empty,
+                  )
+                  result <- automaticMeshResource(stableNodes :+ relocatedNodeE)
+                    .use: mesh =>
+                      for
+                        linkCount <- mesh.links.map(_.size)
+                        automatic <- awaitAutomaticProposalProgress(
+                          validators = stableNodes :+ relocatedNodeE,
+                          mesh = mesh,
+                          expectedProposalHeights = Set(0L, 1L, 2L, 3L, 4L),
+                        )
+                        primarySnapshot <- IO.fromOption(
+                          automatic.snapshots.headOption,
+                        )(
+                          new IllegalStateException(
+                            "missing relocation snapshot",
+                          ),
+                        )
+                        height3Proposal <- IO.fromOption(
+                          proposalAtWindow(
+                            primarySnapshot,
+                            HotStuffWindow(chainId, 3L, 3L, validatorSet.hash),
+                          ),
+                        )(
+                          new IllegalStateException(
+                            "missing relocated height-3 proposal",
+                          ),
+                        )
+                        height4Proposal <- IO.fromOption(
+                          proposalAtHeight(primarySnapshot, 4L),
+                        )(
+                          new IllegalStateException(
+                            "missing resumed height-4 proposal",
+                          ),
+                        )
+                        height3Qc <- IO.fromOption(
+                          primarySnapshot.qcs.get(height3Proposal.proposalId),
+                        )(
+                          new IllegalStateException(
+                            "missing QC for relocated height-3 proposal",
+                          ),
+                        )
+                      yield (
+                        linkCount,
+                        automatic,
+                        height3Proposal,
+                        height4Proposal,
+                        height3Qc,
+                      )
+                yield (fencedVoteAttempt, result)
+          yield
+            val (
+              fencedVoteAttempt,
+              (
+                linkCount,
+                automatic,
+                height3Proposal,
+                height4Proposal,
+                height3Qc,
+              ),
+            ) =
+              relocationAssertions
+            val proposalHeights =
+              automatic.snapshots.map(snapshot =>
+                snapshot.proposals.valuesIterator.map(proposalHeight).toSet,
+              )
+            assertEquals(
+              fencedVoteAttempt.leftMap(_.reason),
+              Left("validatorKeyFenced"),
+            )
+            assertEquals(linkCount, 12)
+            assert(
+              proposalHeights.forall(Set(0L, 1L, 2L, 3L, 4L).subsetOf),
+              s"unexpected proposal heights after relocation: $proposalHeights",
+            )
+            assert(
+              automatic.snapshots.forall(
+                _.proposals.contains(height3Proposal.proposalId),
+              ),
+            )
+            assert(
+              automatic.snapshots.forall(
+                _.proposals.contains(height4Proposal.proposalId),
+              ),
+            )
+            assert(
+              automatic.snapshots.forall(
+                _.qcs.contains(height3Proposal.proposalId),
+              ),
+            )
+            assertEquals(height3Proposal.proposer, validatorSet.members(3).id)
+            assertEquals(
+              height3Proposal.window.view,
+              HotStuffView.unsafeFromLong(3L),
+            )
+            assertEquals(
+              height4Proposal.block.height,
+              BlockHeight.unsafeFromLong(4L),
+            )
+            assert(
+              height3Qc.votes.exists(_.voter === validatorSet.members(3).id),
+            )
 
   private def validatorNodesResource(
       root: Path,
@@ -504,8 +631,11 @@ final class HotStuffLaunchSmokeSuite extends CatsEffectSuite:
         localNodeId = localNodeId,
         role = LocalNodeRole.Validator,
         holders = holders,
-        localKeys =
-          Map(validatorSet.members(validatorIndex).id -> validatorKeys(validatorIndex)),
+        localKeys = Map(
+          validatorSet.members(validatorIndex).id -> validatorKeys(
+            validatorIndex,
+          ),
+        ),
         storageRoot = root.resolve(localNodeId),
       )
 
@@ -569,7 +699,7 @@ final class HotStuffLaunchSmokeSuite extends CatsEffectSuite:
     val missingPairs =
       for
         from <- fromNodes
-        to <- toNodes
+        to   <- toNodes
         if from.localNodeId =!= to.localNodeId
         if !existingPairs.contains((from.localNodeId, to.localNodeId))
       yield (from, to)
@@ -584,11 +714,11 @@ final class HotStuffLaunchSmokeSuite extends CatsEffectSuite:
     Resource
       .make(
         for
-          nodesRef <- Ref.of[IO, Vector[LaunchedNode]](Vector.empty)
-          linksRef <- Ref.of[IO, Vector[MeshLink]](Vector.empty)
+          nodesRef   <- Ref.of[IO, Vector[LaunchedNode]](Vector.empty)
+          linksRef   <- Ref.of[IO, Vector[MeshLink]](Vector.empty)
           failureRef <- Ref.of[IO, Option[Throwable]](None)
           mesh = AutomaticMesh(nodesRef, linksRef, failureRef)
-          _ <- mesh.registerNodes(initialNodes)
+          _     <- mesh.registerNodes(initialNodes)
           fiber <- meshBackgroundLoop(mesh).start
         yield (mesh, fiber),
       ) { case (_, fiber) => fiber.cancel }
@@ -614,9 +744,10 @@ final class HotStuffLaunchSmokeSuite extends CatsEffectSuite:
     Option(error).exists:
       case _: ConnectException       => true
       case _: ClosedChannelException => true
-      case io: IOException if Option(io.getMessage).exists(_.contains("GOAWAY received")) =>
+      case io: IOException
+          if Option(io.getMessage).exists(_.contains("GOAWAY received")) =>
         true
-      case other                     => isBenignMeshShutdownError(other.getCause)
+      case other => isBenignMeshShutdownError(other.getCause)
 
   private def awaitAutomaticConsensusProgress(
       validators: Vector[LaunchedNode],
@@ -636,8 +767,10 @@ final class HotStuffLaunchSmokeSuite extends CatsEffectSuite:
         val heights =
           snapshot.proposals.valuesIterator.map(proposalHeight).toSet
         expectedProposalHeights.subsetOf(heights) &&
-          snapshot.timeoutCertificates.keySet.exists(_.window === stalledWindow) &&
-          snapshot.newViews.valuesIterator.exists(_.window === recoveredWindow)
+        snapshot.timeoutCertificates.keySet.exists(
+          _.window === stalledWindow,
+        ) &&
+        snapshot.newViews.valuesIterator.exists(_.window === recoveredWindow)
 
     def describeSnapshots(
         snapshots: Vector[InMemoryHotStuffSinkSnapshot],
@@ -645,7 +778,11 @@ final class HotStuffLaunchSmokeSuite extends CatsEffectSuite:
       snapshots.zipWithIndex
         .map: (snapshot, index) =>
           val heights =
-            snapshot.proposals.valuesIterator.map(proposalHeight).toVector.sorted.mkString("[", ",", "]")
+            snapshot.proposals.valuesIterator
+              .map(proposalHeight)
+              .toVector
+              .sorted
+              .mkString("[", ",", "]")
           val timeouts =
             snapshot.timeoutCertificates.keySet.iterator
               .map(_.window)
@@ -675,7 +812,7 @@ final class HotStuffLaunchSmokeSuite extends CatsEffectSuite:
         ticksRemaining: Int,
     ): IO[AutomaticLaunchProgress] =
       for
-        _ <- mesh.assertHealthy
+        _         <- mesh.assertHealthy
         snapshots <- validators.traverse(sinkSnapshot)
         result <-
           if progressReached(snapshots) then
@@ -683,7 +820,9 @@ final class HotStuffLaunchSmokeSuite extends CatsEffectSuite:
           else if ticksRemaining <= 0 then
             IO.raiseError(
               new IllegalStateException(
-                "automatic consensus progress not reached: " + describeSnapshots(snapshots),
+                "automatic consensus progress not reached: " + describeSnapshots(
+                  snapshots,
+                ),
               ),
             )
           else
@@ -706,7 +845,11 @@ final class HotStuffLaunchSmokeSuite extends CatsEffectSuite:
       snapshots.zipWithIndex
         .map: (snapshot, index) =>
           val heights =
-            snapshot.proposals.valuesIterator.map(proposalHeight).toVector.sorted.mkString("[", ",", "]")
+            snapshot.proposals.valuesIterator
+              .map(proposalHeight)
+              .toVector
+              .sorted
+              .mkString("[", ",", "]")
           s"node-${index + 1}: proposals=$heights"
         .mkString("; ")
 
@@ -714,7 +857,7 @@ final class HotStuffLaunchSmokeSuite extends CatsEffectSuite:
         remainingAttempts: Int,
     ): IO[AutomaticLaunchProgress] =
       for
-        _ <- mesh.assertHealthy
+        _         <- mesh.assertHealthy
         snapshots <- validators.traverse(sinkSnapshot)
         result <-
           if snapshots.forall(snapshot =>
@@ -722,16 +865,16 @@ final class HotStuffLaunchSmokeSuite extends CatsEffectSuite:
                 snapshot.proposals.valuesIterator.map(proposalHeight).toSet,
               ),
             )
-          then
-            IO.pure(AutomaticLaunchProgress(snapshots))
+          then IO.pure(AutomaticLaunchProgress(snapshots))
           else if remainingAttempts <= 1 then
             IO.raiseError(
               new IllegalStateException(
-                "automatic proposal progress not reached: " + describeSnapshots(snapshots),
+                "automatic proposal progress not reached: " + describeSnapshots(
+                  snapshots,
+                ),
               ),
             )
-          else
-            IO.sleep(50.millis) *> loop(remainingAttempts - 1)
+          else IO.sleep(50.millis) *> loop(remainingAttempts - 1)
       yield result
 
     loop(attempts)
@@ -755,8 +898,7 @@ final class HotStuffLaunchSmokeSuite extends CatsEffectSuite:
               s"observed proposal heights not reached for ${node.localNodeId}: $observedHeights",
             ),
           )
-        else
-          IO.sleep(50.millis) *> loop(remainingAttempts - 1)
+        else IO.sleep(50.millis) *> loop(remainingAttempts - 1)
 
     loop(attempts)
 
@@ -771,7 +913,9 @@ final class HotStuffLaunchSmokeSuite extends CatsEffectSuite:
     ): IO[BootstrapReadyResult] =
       for
         liveSnapshot <- sinkSnapshot(node)
-        liveProposals = canonicalProposalChain(liveSnapshot.proposals.valuesIterator.toVector)
+        liveProposals = canonicalProposalChain(
+          liveSnapshot.proposals.valuesIterator.toVector,
+        )
         bootstrapResult <- node.bootstrap.consensus.bootstrap(
           chainId = chainId,
           sessions = sessions,
@@ -788,7 +932,7 @@ final class HotStuffLaunchSmokeSuite extends CatsEffectSuite:
         diagnostics <- node.bootstrap.consensus.currentBootstrapDiagnostics
         result <-
           if bootstrapReady.forwardCatchUp.voteReadiness == BootstrapVoteReadiness.Ready &&
-              diagnostics.phase == BootstrapPhase.Ready
+            diagnostics.phase == BootstrapPhase.Ready
           then
             IO.pure(
               BootstrapReadyResult(
@@ -804,11 +948,11 @@ final class HotStuffLaunchSmokeSuite extends CatsEffectSuite:
                   s"readiness=${bootstrapReady.forwardCatchUp.voteReadiness}, " +
                   s"phase=${diagnostics.phase}, " +
                   s"liveProposalHeights=${liveProposals.map(proposalHeight)}, " +
-                  s"allObservedHeights=${orderedProposals(liveSnapshot.proposals.valuesIterator.toVector).map(proposalHeight)}",
+                  s"allObservedHeights=${orderedProposals(liveSnapshot.proposals.valuesIterator.toVector)
+                      .map(proposalHeight)}",
               ),
             )
-          else
-            IO.sleep(100.millis) *> loop(attempt + 1)
+          else IO.sleep(100.millis) *> loop(attempt + 1)
       yield result
 
     loop(attempt = 1)
@@ -816,10 +960,12 @@ final class HotStuffLaunchSmokeSuite extends CatsEffectSuite:
   private def latestClockInstant(
       nodes: Vector[LaunchedNode],
   ): IO[Instant] =
-    nodes.traverse(_.clock.now).flatMap: instants =>
-      IO.fromOption(instants.sortBy(_.toEpochMilli).lastOption)(
-        new IllegalStateException("missing clock source"),
-      )
+    nodes
+      .traverse(_.clock.now)
+      .flatMap: instants =>
+        IO.fromOption(instants.sortBy(_.toEpochMilli).lastOption)(
+          new IllegalStateException("missing clock source"),
+        )
 
   private def alignClockTo(
       node: LaunchedNode,
@@ -850,24 +996,28 @@ final class HotStuffLaunchSmokeSuite extends CatsEffectSuite:
         authenticatedPeer = Some(from.localNodeId),
       )
       ackWire <- IO.fromEither(
-        decode[SessionOpenAckWire](response.body).leftMap(new IllegalStateException(_)),
+        decode[SessionOpenAckWire](response.body).leftMap(
+          new IllegalStateException(_),
+        ),
       )
-      ack <- IO.fromEither(toAck(ackWire).leftMap(new IllegalArgumentException(_)))
+      ack <- IO.fromEither(
+        toAck(ackWire).leftMap(new IllegalArgumentException(_)),
+      )
       applied <- from.bootstrap.runtime.applyHandshakeAck(ack)
       _ <- IO.fromEither(
-        applied.leftMap(rejection => new IllegalStateException(rejection.reason)),
+        applied.leftMap(rejection =>
+          new IllegalStateException(rejection.reason),
+        ),
       )
-    yield
-      MeshLink(
-        from = from,
-        to = to,
-        binding =
-          BootstrapSessionBinding(
-            peer = PeerIdentity.unsafe(to.localNodeId),
-            sessionId = proposal.sessionId,
-            authenticatedPeer = proposal.initiator,
-          ),
-      )
+    yield MeshLink(
+      from = from,
+      to = to,
+      binding = BootstrapSessionBinding(
+        peer = PeerIdentity.unsafe(to.localNodeId),
+        sessionId = proposal.sessionId,
+        authenticatedPeer = proposal.initiator,
+      ),
+    )
 
   private def drainNetwork(
       links: Vector[MeshLink],
@@ -877,15 +1027,17 @@ final class HotStuffLaunchSmokeSuite extends CatsEffectSuite:
         roundsRemaining: Int,
         pending: Int,
     ): IO[Unit] =
-      if roundsRemaining <= 0 || pending <= 0 then
-        IO.unit
+      if roundsRemaining <= 0 || pending <= 0 then IO.unit
       else
         links
           .traverse(pollAndApply)
           .map(_.sum)
           .flatMap(total => loop(roundsRemaining - 1, total))
 
-    links.traverse(pollAndApply).map(_.sum).flatMap(total => loop(maxRounds - 1, total))
+    links
+      .traverse(pollAndApply)
+      .map(_.sum)
+      .flatMap(total => loop(maxRounds - 1, total))
 
   private def pollAndApply(
       link: MeshLink,
@@ -896,13 +1048,14 @@ final class HotStuffLaunchSmokeSuite extends CatsEffectSuite:
         EventRequestWire("poll").asJson.noSpaces,
         authenticatedPeer = Some(link.to.localNodeId),
       )
-      _ <- if response.status == 200 then IO.unit
-      else
-        IO.raiseError(
-          new IllegalStateException(
-            s"unexpected event poll status for ${link.from.localNodeId}->${link.to.localNodeId}: ${response.status}",
-          ),
-        )
+      _ <-
+        if response.status == 200 then IO.unit
+        else
+          IO.raiseError(
+            new IllegalStateException(
+              s"unexpected event poll status for ${link.from.localNodeId}->${link.to.localNodeId}: ${response.status}",
+            ),
+          )
       messages <- decodeBinaryMessages(
         body = response.bodyBytes,
         responseStatus = response.status,
@@ -949,7 +1102,7 @@ final class HotStuffLaunchSmokeSuite extends CatsEffectSuite:
           .decode[HotStuffGossipArtifact](body)
           .leftMap(error =>
             new IllegalStateException(
-                s"failed to decode event poll body for ${link.from.localNodeId}->${link.to.localNodeId}: " +
+              s"failed to decode event poll body for ${link.from.localNodeId}->${link.to.localNodeId}: " +
                 s"status=$responseStatus " +
                 s"contentType=${contentType.getOrElse("<missing>")} " +
                 s"bytes=${body.length} " +
@@ -969,10 +1122,18 @@ final class HotStuffLaunchSmokeSuite extends CatsEffectSuite:
             .toRight(new IllegalStateException("missing event payload"))
             .flatMap: wire =>
               for
-                chain <- ChainId.parse(wire.chainId).leftMap(new IllegalStateException(_))
-                topic <- GossipTopic.parse(wire.topic).leftMap(new IllegalStateException(_))
-                id <- StableArtifactId.fromHex(wire.id).leftMap(new IllegalStateException(_))
-                cursor <- CursorToken.decodeBase64Url(wire.cursor).leftMap(new IllegalStateException(_))
+                chain <- ChainId
+                  .parse(wire.chainId)
+                  .leftMap(new IllegalStateException(_))
+                topic <- GossipTopic
+                  .parse(wire.topic)
+                  .leftMap(new IllegalStateException(_))
+                id <- StableArtifactId
+                  .fromHex(wire.id)
+                  .leftMap(new IllegalStateException(_))
+                cursor <- CursorToken
+                  .decodeBase64Url(wire.cursor)
+                  .leftMap(new IllegalStateException(_))
               yield EventStreamMessage.Event(
                 GossipEvent(
                   chainId = chain,
@@ -992,15 +1153,26 @@ final class HotStuffLaunchSmokeSuite extends CatsEffectSuite:
             at <- envelope.atEpochMs.toRight(
               new IllegalStateException("keepAlive missing timestamp"),
             )
-          yield EventStreamMessage.KeepAlive(sessionId, Instant.ofEpochMilli(at))
+          yield EventStreamMessage.KeepAlive(
+            sessionId,
+            Instant.ofEpochMilli(at),
+          )
       case "rejection" =>
         val detail =
           envelope.rejection
-            .map(rejection => s"${rejection.rejectionClass}:${rejection.reason}")
+            .map(rejection =>
+              s"${rejection.rejectionClass}:${rejection.reason}",
+            )
             .getOrElse("unknown")
-        IO.raiseError(new IllegalStateException("unexpected event-stream rejection: " + detail))
+        IO.raiseError(
+          new IllegalStateException(
+            "unexpected event-stream rejection: " + detail,
+          ),
+        )
       case other =>
-        IO.raiseError(new IllegalStateException("unknown event envelope kind: " + other))
+        IO.raiseError(
+          new IllegalStateException("unknown event envelope kind: " + other),
+        )
 
   private def seedBootstrapLocal(
       node: LaunchedNode,
@@ -1025,11 +1197,13 @@ final class HotStuffLaunchSmokeSuite extends CatsEffectSuite:
             tsAt(index.toLong),
           )
           .flatMap: event =>
-            node.bootstrap.consensus.sink.applyEvent(event).flatMap:
-              case Left(rejection) =>
-                IO.raiseError(new IllegalStateException(rejection.reason))
-              case Right(_) =>
-                IO.unit
+            node.bootstrap.consensus.sink
+              .applyEvent(event)
+              .flatMap:
+                case Left(rejection) =>
+                  IO.raiseError(new IllegalStateException(rejection.reason))
+                case Right(_) =>
+                  IO.unit
       } *> lifecycle.nodeStore.putAll(snapshotNodes)
 
   private def sinkSnapshot(
@@ -1075,8 +1249,7 @@ final class HotStuffLaunchSmokeSuite extends CatsEffectSuite:
         .mkString("\n")
     val bootstrapSection =
       if bootstrapPeerBaseUris.isEmpty then ""
-      else
-        s"""
+      else s"""
            |  bootstrap {
            |    peer-base-uris {
            |$bootstrapPeerBaseUriEntries
@@ -1088,8 +1261,14 @@ final class HotStuffLaunchSmokeSuite extends CatsEffectSuite:
       s"""
          |sigilaris.node.gossip.peers {
          |  local-node-identity = "$localNodeId"
-         |  known-peers = [${allPeers.filterNot(_ === localNodeId).map(peer => s""""$peer"""").mkString(", ")}]
-         |  direct-neighbors = [${allPeers.filterNot(_ === localNodeId).map(peer => s""""$peer"""").mkString(", ")}]
+         |  known-peers = [${allPeers
+          .filterNot(_ === localNodeId)
+          .map(peer => s""""$peer"""")
+          .mkString(", ")}]
+         |  direct-neighbors = [${allPeers
+          .filterNot(_ === localNodeId)
+          .map(peer => s""""$peer"""")
+          .mkString(", ")}]
          |$bootstrapSection
          |}
          |
@@ -1147,19 +1326,55 @@ final class HotStuffLaunchSmokeSuite extends CatsEffectSuite:
 
   private def initialHolders: Vector[ValidatorKeyHolder] =
     Vector(
-      ValidatorKeyHolder(validatorSet.members(0).id, PeerIdentity.unsafe(nodeA), ValidatorKeyHolderStatus.Active),
-      ValidatorKeyHolder(validatorSet.members(1).id, PeerIdentity.unsafe(nodeB), ValidatorKeyHolderStatus.Active),
-      ValidatorKeyHolder(validatorSet.members(2).id, PeerIdentity.unsafe(nodeC), ValidatorKeyHolderStatus.Active),
-      ValidatorKeyHolder(validatorSet.members(3).id, PeerIdentity.unsafe(nodeD), ValidatorKeyHolderStatus.Active),
+      ValidatorKeyHolder(
+        validatorSet.members(0).id,
+        PeerIdentity.unsafe(nodeA),
+        ValidatorKeyHolderStatus.Active,
+      ),
+      ValidatorKeyHolder(
+        validatorSet.members(1).id,
+        PeerIdentity.unsafe(nodeB),
+        ValidatorKeyHolderStatus.Active,
+      ),
+      ValidatorKeyHolder(
+        validatorSet.members(2).id,
+        PeerIdentity.unsafe(nodeC),
+        ValidatorKeyHolderStatus.Active,
+      ),
+      ValidatorKeyHolder(
+        validatorSet.members(3).id,
+        PeerIdentity.unsafe(nodeD),
+        ValidatorKeyHolderStatus.Active,
+      ),
     )
 
   private def relocatedHolders: Vector[ValidatorKeyHolder] =
     Vector(
-      ValidatorKeyHolder(validatorSet.members(0).id, PeerIdentity.unsafe(nodeA), ValidatorKeyHolderStatus.Active),
-      ValidatorKeyHolder(validatorSet.members(1).id, PeerIdentity.unsafe(nodeB), ValidatorKeyHolderStatus.Active),
-      ValidatorKeyHolder(validatorSet.members(2).id, PeerIdentity.unsafe(nodeC), ValidatorKeyHolderStatus.Active),
-      ValidatorKeyHolder(validatorSet.members(3).id, PeerIdentity.unsafe(nodeD), ValidatorKeyHolderStatus.Fenced),
-      ValidatorKeyHolder(validatorSet.members(3).id, PeerIdentity.unsafe(nodeE), ValidatorKeyHolderStatus.Active),
+      ValidatorKeyHolder(
+        validatorSet.members(0).id,
+        PeerIdentity.unsafe(nodeA),
+        ValidatorKeyHolderStatus.Active,
+      ),
+      ValidatorKeyHolder(
+        validatorSet.members(1).id,
+        PeerIdentity.unsafe(nodeB),
+        ValidatorKeyHolderStatus.Active,
+      ),
+      ValidatorKeyHolder(
+        validatorSet.members(2).id,
+        PeerIdentity.unsafe(nodeC),
+        ValidatorKeyHolderStatus.Active,
+      ),
+      ValidatorKeyHolder(
+        validatorSet.members(3).id,
+        PeerIdentity.unsafe(nodeD),
+        ValidatorKeyHolderStatus.Fenced,
+      ),
+      ValidatorKeyHolder(
+        validatorSet.members(3).id,
+        PeerIdentity.unsafe(nodeE),
+        ValidatorKeyHolderStatus.Active,
+      ),
     )
 
   private def snapshotGraph(
@@ -1181,7 +1396,7 @@ final class HotStuffLaunchSmokeSuite extends CatsEffectSuite:
           s"invalid snapshot right leaf hex for seed $seed",
         ),
       )
-    val leftHash = leftLeaf.toHash
+    val leftHash  = leftLeaf.toHash
     val rightHash = rightLeaf.toHash
     val children =
       MerkleTrieNode.Children.empty
@@ -1202,17 +1417,16 @@ final class HotStuffLaunchSmokeSuite extends CatsEffectSuite:
       seed: String,
   ): Proposal =
     val bootstrap = bootstrapQc(seed)
-    val txIds = Vector.empty[StableArtifactId]
+    val txIds     = Vector.empty[StableArtifactId]
     val genesisBlock =
       block(
         parent = None,
         height = 0L,
         stateRoot = StateRoot(hex(seed + "10")),
-        bodyRoot =
-          requireEither(
-            ApplicationNeutralProposalView.bodyRoot(txIds),
-            s"failed to compute genesis body root for seed $seed",
-          ),
+        bodyRoot = requireEither(
+          ApplicationNeutralProposalView.bodyRoot(txIds),
+          s"failed to compute genesis body root for seed $seed",
+        ),
         at = startedAt,
       )
     requireEither(
@@ -1308,8 +1522,8 @@ final class HotStuffLaunchSmokeSuite extends CatsEffectSuite:
       at: Instant,
   ): Proposal =
     val proposer = validatorSet.members(proposerIndex).id
-    val window = HotStuffWindow(chainId, height, view, validatorSet.hash)
-    val txIds = txSeeds.map(stableTxId)
+    val window   = HotStuffWindow(chainId, height, view, validatorSet.hash)
+    val txIds    = txSeeds.map(stableTxId)
     require(
       HotStuffPacemaker.deterministicLeader(window, validatorSet) === proposer,
       s"unexpected deterministic leader for $window",
@@ -1319,11 +1533,10 @@ final class HotStuffLaunchSmokeSuite extends CatsEffectSuite:
         parent = parentBlockId,
         height = height,
         stateRoot = stateRoot,
-        bodyRoot =
-          requireEither(
-            ApplicationNeutralProposalView.bodyRoot(txIds),
-            s"failed to compute body root at height $height view $view",
-          ),
+        bodyRoot = requireEither(
+          ApplicationNeutralProposalView.bodyRoot(txIds),
+          s"failed to compute body root at height $height view $view",
+        ),
         at = at,
       )
     requireEither(
@@ -1371,8 +1584,7 @@ final class HotStuffLaunchSmokeSuite extends CatsEffectSuite:
       snapshot.proposals.valuesIterator
         .filter(proposal => proposalHeight(proposal) === height)
         .toVector,
-    )
-      .headOption
+    ).headOption
 
   private def proposalAtWindow(
       snapshot: InMemoryHotStuffSinkSnapshot,
@@ -1413,7 +1625,9 @@ final class HotStuffLaunchSmokeSuite extends CatsEffectSuite:
       ): Vector[Proposal] =
         current.block.parent.flatMap(byBlockId.get) match
           case Some(parentProposal)
-              if proposalHeight(parentProposal) + 1L == proposalHeight(current) =>
+              if proposalHeight(parentProposal) + 1L == proposalHeight(
+                current,
+              ) =>
             loop(parentProposal, parentProposal +: acc)
           case _ =>
             acc
@@ -1428,7 +1642,10 @@ final class HotStuffLaunchSmokeSuite extends CatsEffectSuite:
   private def hex(
       value: String,
   ): UInt256 =
-    requireEither(UInt256.fromHex(value.padTo(64, '0')), s"invalid test hex value: $value")
+    requireEither(
+      UInt256.fromHex(value.padTo(64, '0')),
+      s"invalid test hex value: $value",
+    )
 
   private def requireEither[A](
       result: Either[?, A],
@@ -1478,28 +1695,28 @@ final class HotStuffLaunchSmokeSuite extends CatsEffectSuite:
       peerCorrelationId = proposal.peerCorrelationId.value,
       initiator = proposal.initiator.value,
       acceptor = proposal.acceptor.value,
-      subscriptions =
-        proposal.subscriptions.values.toVector.map(entry =>
-          ChainTopicWire(entry.chainId.value, entry.topic.value),
-        ),
+      subscriptions = proposal.subscriptions.values.toVector.map(entry =>
+        ChainTopicWire(entry.chainId.value, entry.topic.value),
+      ),
       heartbeatIntervalMs = proposal.heartbeatInterval.map(_.toMillis),
       livenessTimeoutMs = proposal.livenessTimeout.map(_.toMillis),
-      maxControlRetryIntervalMs = proposal.maxControlRetryInterval.map(_.toMillis),
+      maxControlRetryIntervalMs =
+        proposal.maxControlRetryInterval.map(_.toMillis),
     )
 
   private def toAck(
       wire: SessionOpenAckWire,
   ): Either[String, SessionOpenAck] =
     for
-      sessionId <- DirectionalSessionId.parse(wire.sessionId)
+      sessionId         <- DirectionalSessionId.parse(wire.sessionId)
       peerCorrelationId <- PeerCorrelationId.parse(wire.peerCorrelationId)
-      initiator <- PeerIdentity.parse(wire.initiator)
-      acceptor <- PeerIdentity.parse(wire.acceptor)
+      initiator         <- PeerIdentity.parse(wire.initiator)
+      acceptor          <- PeerIdentity.parse(wire.acceptor)
       subscriptions <- wire.subscriptions.toVector
         .traverse: entry =>
           for
             chainId <- ChainId.parse(entry.chainId)
-            topic <- GossipTopic.parse(entry.topic)
+            topic   <- GossipTopic.parse(entry.topic)
           yield ChainTopic(chainId, topic)
         .map(_.toSet)
         .flatMap(SessionSubscription.fromSet)
@@ -1512,12 +1729,15 @@ final class HotStuffLaunchSmokeSuite extends CatsEffectSuite:
       negotiated = NegotiatedSessionParameters(
         heartbeatInterval = Duration.ofMillis(wire.heartbeatIntervalMs),
         livenessTimeout = Duration.ofMillis(wire.livenessTimeoutMs),
-        maxControlRetryInterval = Duration.ofMillis(wire.maxControlRetryIntervalMs),
+        maxControlRetryInterval =
+          Duration.ofMillis(wire.maxControlRetryIntervalMs),
       ),
     )
 
   private def tempDirResource: Resource[IO, Path] =
-    Resource.make(IO.blocking(Files.createTempDirectory("sigilaris-launch-smoke"))) { root =>
+    Resource.make(
+      IO.blocking(Files.createTempDirectory("sigilaris-launch-smoke")),
+    ) { root =>
       IO.blocking(deleteRecursively(root))
     }
 
@@ -1532,21 +1752,20 @@ final class HotStuffLaunchSmokeSuite extends CatsEffectSuite:
       source: Path,
       destination: Path,
   ): Unit =
-    if Files.exists(destination) then
-      deleteRecursively(destination)
+    if Files.exists(destination) then deleteRecursively(destination)
     Files.createDirectories(destination)
     Using.resource(Files.walk(source)): stream =>
       stream.iterator.asScala.foreach: current =>
         val relative = source.relativize(current)
         val target   = destination.resolve(relative.toString)
-        if Files.isDirectory(current) then
-          Files.createDirectories(target)
+        if Files.isDirectory(current) then Files.createDirectories(target)
         else
           Files.createDirectories(target.getParent)
           Files.copy(current, target)
 
   override def afterAll(): Unit =
-    val _ = HistoricalProposalArchive.resetSharedStoresForTesting.attempt.unsafeRunSync()
+    val _ = HistoricalProposalArchive.resetSharedStoresForTesting.attempt
+      .unsafeRunSync()
     super.afterAll()
 
   private final case class Response(
@@ -1624,14 +1843,18 @@ final class HotStuffLaunchSmokeSuite extends CatsEffectSuite:
           builder
             .POST(HttpRequest.BodyPublishers.ofString(body))
             .build()
-        val response = sharedHttpClient.send(request, HttpResponse.BodyHandlers.ofByteArray())
+        val response = sharedHttpClient.send(
+          request,
+          HttpResponse.BodyHandlers.ofByteArray(),
+        )
         Response(
           status = response.statusCode(),
           bodyBytes = response.body(),
           contentType = response.headers().firstValue("content-type").toScala,
         )
 
-  private final class TestClock private (ref: Ref[IO, Instant]) extends GossipClock[IO]:
+  private final class TestClock private (ref: Ref[IO, Instant])
+      extends GossipClock[IO]:
     override def now: IO[Instant] =
       ref.get
 
@@ -1660,7 +1883,11 @@ final class HotStuffLaunchSmokeSuite extends CatsEffectSuite:
             .map(_.last)
             .toVector
             .sortBy(_.localNodeId)
-        updatedLinks <- ensureDirectedLinks(updatedNodes, updatedNodes, currentLinks)
+        updatedLinks <- ensureDirectedLinks(
+          updatedNodes,
+          updatedNodes,
+          currentLinks,
+        )
         _ <- nodesRef.set(updatedNodes)
         _ <- linksRef.set(updatedLinks)
       yield ()
@@ -1705,26 +1932,32 @@ final class HotStuffLaunchSmokeSuite extends CatsEffectSuite:
     requireEither(
       transportAuth
         .secretFor(peer)
-        .orElse(StaticPeerTransportAuth.testing(topologyFor(authenticatedPeer)).secretFor(peer))
+        .orElse(
+          StaticPeerTransportAuth
+            .testing(topologyFor(authenticatedPeer))
+            .secretFor(peer),
+        )
         .map: secret =>
-        val derivedKey =
-          deriveTransportProofKey(secret.bytes)
-        val message =
-          encodeTransportTuple(
-            ByteVector.view(transportProofInfo.getBytes(StandardCharsets.UTF_8)),
-            ByteVector.view(authenticatedPeer.getBytes(StandardCharsets.UTF_8)),
-            ByteVector.view("POST".getBytes(StandardCharsets.UTF_8)),
-            ByteVector.view(path.getBytes(StandardCharsets.UTF_8)),
-            ByteVector.view(
-              MessageDigest
-                .getInstance(transportProofSha256)
-                .digest(body.getBytes(StandardCharsets.UTF_8)),
-            ),
-          )
-        Base64
-          .getUrlEncoder
-          .withoutPadding()
-          .encodeToString(hmac(derivedKey, message).toArray),
+          val derivedKey =
+            deriveTransportProofKey(secret.bytes)
+          val message =
+            encodeTransportTuple(
+              ByteVector
+                .view(transportProofInfo.getBytes(StandardCharsets.UTF_8)),
+              ByteVector
+                .view(authenticatedPeer.getBytes(StandardCharsets.UTF_8)),
+              ByteVector.view("POST".getBytes(StandardCharsets.UTF_8)),
+              ByteVector.view(path.getBytes(StandardCharsets.UTF_8)),
+              ByteVector.view(
+                MessageDigest
+                  .getInstance(transportProofSha256)
+                  .digest(body.getBytes(StandardCharsets.UTF_8)),
+              ),
+            )
+          Base64.getUrlEncoder
+            .withoutPadding()
+            .encodeToString(hmac(derivedKey, message).toArray)
+      ,
       s"failed to sign transport proof for $authenticatedPeer",
     )
 

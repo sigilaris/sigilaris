@@ -15,24 +15,29 @@ import failure.DecodeFailure
   * ```scala
   * case class User(name: String, age: Int) derives JsonCodec
   * val codec = JsonCodec[User]
-  * val json = codec.encode(User("Alice", 30))
-  * val user = codec.decode(json)
+  * val json  = codec.encode(User("Alice", 30))
+  * val user  = codec.decode(json)
   * ```
   *
-  * See also: [[JsonEncoder]] for encoding only, [[JsonDecoder]] for decoding only
+  * See also: [[JsonEncoder]] for encoding only, [[JsonDecoder]] for decoding
+  * only
   */
 final case class JsonCodec[A](encoder: JsonEncoder[A], decoder: JsonDecoder[A]):
   /** Encodes a value using the bundled encoder.
     *
-    * @param value the value to encode
-    * @return the JSON representation
+    * @param value
+    *   the value to encode
+    * @return
+    *   the JSON representation
     */
   def encode(value: A): JsonValue = encoder.encode(value)
 
   /** Decodes a JSON value using the bundled decoder.
     *
-    * @param json the JSON value to decode
-    * @return either a decode failure or the decoded value
+    * @param json
+    *   the JSON value to decode
+    * @return
+    *   either a decode failure or the decoded value
     */
   def decode(json: JsonValue): Either[DecodeFailure, A] =
     decoder.decode(json)
@@ -58,8 +63,8 @@ object JsonCodec:
 
   /** Automatic JsonCodec when both encoder and decoder are available.
     *
-    * This given instance allows implicit summoning of a codec when both
-    * an encoder and decoder are in scope.
+    * This given instance allows implicit summoning of a codec when both an
+    * encoder and decoder are in scope.
     *
     * ```scala
     * given JsonEncoder[MyType] = ...
@@ -79,7 +84,7 @@ object JsonCodec:
     * ```scala
     * case class Point(x: Int, y: Int) derives JsonCodec
     * sealed trait Shape derives JsonCodec
-    * case class Circle(radius: Double) extends Shape
+    * case class Circle(radius: Double)                   extends Shape
     * case class Rectangle(width: Double, height: Double) extends Shape
     * ```
     */
@@ -96,11 +101,13 @@ object JsonCodec:
       * Import the constructed value to activate the instances.
       *
       * ```scala
-      * val cfg = JsonConfig.default.copy(fieldNaming = FieldNamingPolicy.SnakeCase)
-      * object MyCodecs extends JsonCodec.configured.Codecs(
-      *   JsonEncoder.configured(cfg),
-      *   JsonDecoder.configured(cfg)
-      * )
+      * val cfg =
+      *   JsonConfig.default.copy(fieldNaming = FieldNamingPolicy.SnakeCase)
+      * object MyCodecs
+      *     extends JsonCodec.configured.Codecs(
+      *       JsonEncoder.configured(cfg),
+      *       JsonDecoder.configured(cfg),
+      *     )
       * import MyCodecs.given
       * ```
       */
@@ -114,7 +121,7 @@ object JsonCodec:
     /** Creates a codec bundle with a specific configuration.
       *
       * ```scala
-      * val cfg = JsonConfig.default.copy(dropNullValues = false)
+      * val cfg    = JsonConfig.default.copy(dropNullValues = false)
       * val codecs = JsonCodec.configured(cfg)
       * import codecs.given
       * ```

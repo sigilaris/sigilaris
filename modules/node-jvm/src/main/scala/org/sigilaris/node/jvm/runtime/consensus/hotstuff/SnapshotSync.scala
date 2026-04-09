@@ -69,27 +69,33 @@ object SnapshotMetadataStore:
         override def get(
             chainId: org.sigilaris.node.jvm.runtime.gossip.ChainId,
         ): F[Option[SnapshotMetadata]] =
-          keyValueStore.get(chainId).value.flatMap:
-            case Right(metadata) =>
-              latestMetadata(metadata.getOrElse(Vector.empty)).pure[F]
-            case Left(error) =>
-              Concurrent[F].raiseError(new IllegalStateException(error.msg))
+          keyValueStore
+            .get(chainId)
+            .value
+            .flatMap:
+              case Right(metadata) =>
+                latestMetadata(metadata.getOrElse(Vector.empty)).pure[F]
+              case Left(error) =>
+                Concurrent[F].raiseError(new IllegalStateException(error.msg))
 
         override def getForAnchor(
             anchor: SnapshotAnchor,
         ): F[Option[SnapshotMetadata]] =
           list(anchor.chainId).map(
-            _.find(metadata => sameAnchor(metadata.anchor, anchor))
+            _.find(metadata => sameAnchor(metadata.anchor, anchor)),
           )
 
         override def list(
             chainId: org.sigilaris.node.jvm.runtime.gossip.ChainId,
         ): F[Vector[SnapshotMetadata]] =
-          keyValueStore.get(chainId).value.flatMap:
-            case Right(metadata) =>
-              sortHistory(metadata.getOrElse(Vector.empty)).pure[F]
-            case Left(error) =>
-              Concurrent[F].raiseError(new IllegalStateException(error.msg))
+          keyValueStore
+            .get(chainId)
+            .value
+            .flatMap:
+              case Right(metadata) =>
+                sortHistory(metadata.getOrElse(Vector.empty)).pure[F]
+              case Left(error) =>
+                Concurrent[F].raiseError(new IllegalStateException(error.msg))
 
         override def put(
             metadata: SnapshotMetadata,
@@ -121,7 +127,7 @@ object SnapshotMetadataStore:
         anchor: SnapshotAnchor,
     ): F[Option[SnapshotMetadata]] =
       list(anchor.chainId).map(
-        _.find(metadata => sameAnchor(metadata.anchor, anchor))
+        _.find(metadata => sameAnchor(metadata.anchor, anchor)),
       )
 
     override def list(
@@ -172,7 +178,9 @@ object SnapshotMetadataStore:
       metadata: SnapshotMetadata,
   ): Vector[SnapshotMetadata] =
     sortHistory(
-      history.filterNot(existing => sameAnchor(existing.anchor, metadata.anchor)) :+ metadata
+      history.filterNot(existing =>
+        sameAnchor(existing.anchor, metadata.anchor),
+      ) :+ metadata,
     )
 
 trait SnapshotNodeStore[F[_]]:
@@ -207,11 +215,14 @@ object SnapshotNodeStore:
       override def get(
           hash: MerkleTrieNode.MerkleHash,
       ): F[Option[MerkleTrieNode]] =
-        keyValueStore.get(hash).value.flatMap:
-          case Right(node) =>
-            node.pure[F]
-          case Left(error) =>
-            Sync[F].raiseError(new IllegalStateException(error.msg))
+        keyValueStore
+          .get(hash)
+          .value
+          .flatMap:
+            case Right(node) =>
+              node.pure[F]
+            case Left(error) =>
+              Sync[F].raiseError(new IllegalStateException(error.msg))
 
       override def put(
           node: SnapshotTrieNode,
@@ -293,14 +304,17 @@ object SnapshotNodeFetchServiceRuntime:
           chainId: org.sigilaris.node.jvm.runtime.gossip.ChainId,
           stateRoot: org.sigilaris.node.jvm.runtime.block.StateRoot,
           hashes: Vector[MerkleTrieNode.MerkleHash],
-      ): F[Either[org.sigilaris.node.jvm.runtime.gossip.CanonicalRejection, Vector[
-        SnapshotTrieNode,
-      ]]] =
+      ): F[
+        Either[org.sigilaris.node.jvm.runtime.gossip.CanonicalRejection, Vector[
+          SnapshotTrieNode,
+        ]],
+      ] =
         hashes.distinct
           .traverse: hash =>
             nodeStore.get(hash).map(_.map(node => SnapshotTrieNode(hash, node)))
           .map: loaded =>
-            loaded.flatten.asRight[org.sigilaris.node.jvm.runtime.gossip.CanonicalRejection]
+            loaded.flatten
+              .asRight[org.sigilaris.node.jvm.runtime.gossip.CanonicalRejection]
 
 object SnapshotCoordinator:
   def create[F[_]: Sync: Clock](
@@ -388,9 +402,11 @@ object SnapshotCoordinator:
                 pendingNodeCount = pendingNodeCount,
                 lastUpdatedAt = updatedAt,
               )
-            metadataStore.put(failedMetadata).as(
-              SnapshotSyncFailure(reason, detail).asLeft[SnapshotSyncResult],
-            )
+            metadataStore
+              .put(failedMetadata)
+              .as(
+                SnapshotSyncFailure(reason, detail).asLeft[SnapshotSyncResult],
+              )
 
         def updateProgress(
             verifiedNodeCount: Long,
@@ -410,11 +426,12 @@ object SnapshotCoordinator:
         def loadNodes(
             hashes: Vector[MerkleTrieNode.MerkleHash],
         ): F[Map[MerkleTrieNode.MerkleHash, MerkleTrieNode]] =
-          hashes.distinct.traverse: hash =>
-            nodeStore.get(hash).map(hash -> _)
-          .map(
-            _.collect { case (hash, Some(node)) => hash -> node }.toMap,
-          )
+          hashes.distinct
+            .traverse: hash =>
+              nodeStore.get(hash).map(hash -> _)
+            .map(
+              _.collect { case (hash, Some(node)) => hash -> node }.toMap,
+            )
 
         def fetchMissing(
             missing: Vector[MerkleTrieNode.MerkleHash],
@@ -443,7 +460,11 @@ object SnapshotCoordinator:
                       case left @ Left(_) =>
                         left.pure[F]
                       case Right((Vector(), persistedCount, rejection)) =>
-                        (Vector.empty[MerkleTrieNode.MerkleHash], persistedCount, rejection)
+                        (
+                          Vector.empty[MerkleTrieNode.MerkleHash],
+                          persistedCount,
+                          rejection,
+                        )
                           .asRight[SnapshotSyncFailure]
                           .pure[F]
                       case Right((pending, persistedCount, rejection)) =>
@@ -461,27 +482,38 @@ object SnapshotCoordinator:
                                 persistedCount,
                                 SnapshotSyncFailure(
                                   reason = "snapshotFetchRejected",
-                                  detail =
-                                    fetchRejection.detail.orElse(Some(fetchRejection.reason)),
+                                  detail = fetchRejection.detail.orElse(
+                                    Some(fetchRejection.reason),
+                                  ),
                                 ).some,
                               ).asRight[SnapshotSyncFailure].pure[F]
                             case Right(nodes) =>
                               SnapshotNodeVerifier.verifyBatch(nodes) match
                                 case Left(error) =>
                                   error
-                                    .asLeft[(Vector[
-                                      MerkleTrieNode.MerkleHash,
-                                    ], Long, Option[SnapshotSyncFailure])]
+                                    .asLeft[
+                                      (
+                                          Vector[
+                                            MerkleTrieNode.MerkleHash,
+                                          ],
+                                          Long,
+                                          Option[SnapshotSyncFailure],
+                                      ),
+                                    ]
                                     .pure[F]
                                 case Right(verifiedNodes) =>
-                                  nodeStore.putAll(verifiedNodes).as:
-                                    val fetchedHashes =
-                                      verifiedNodes.iterator.map(_.hash).toSet
-                                    (
-                                      pending.filterNot(fetchedHashes.contains),
-                                      persistedCount + verifiedNodes.size.toLong,
-                                      rejection,
-                                    ).asRight[SnapshotSyncFailure]
+                                  nodeStore
+                                    .putAll(verifiedNodes)
+                                    .as:
+                                      val fetchedHashes =
+                                        verifiedNodes.iterator.map(_.hash).toSet
+                                      (
+                                        pending.filterNot(
+                                          fetchedHashes.contains,
+                                        ),
+                                        persistedCount + verifiedNodes.size.toLong,
+                                        rejection,
+                                      ).asRight[SnapshotSyncFailure]
                 .flatMap:
                   case Left(error) =>
                     error.asLeft[Long].pure[F]
@@ -501,7 +533,8 @@ object SnapshotCoordinator:
                   case Right((remainingAfterRound, _, None)) =>
                     SnapshotSyncFailure(
                       reason = "snapshotClosureIncomplete",
-                      detail = Some(remainingAfterRound.map(_.hex).mkString(",")),
+                      detail =
+                        Some(remainingAfterRound.map(_.hex).mkString(",")),
                     ).asLeft[Long].pure[F]
 
             runRounds(
@@ -533,7 +566,10 @@ object SnapshotCoordinator:
               pendingNodeCount = 0L,
               status = SnapshotStatus.Complete,
             ).map: metadata =>
-              SnapshotSyncResult(metadata = metadata, fetchedNodeCount = fetchedNodeCount)
+              SnapshotSyncResult(
+                metadata = metadata,
+                fetchedNodeCount = fetchedNodeCount,
+              )
                 .asRight[SnapshotSyncFailure]
           else
             for
@@ -541,25 +577,35 @@ object SnapshotCoordinator:
               fetchResult <-
                 if pending.forall(loadedBefore.contains) then
                   0L.asRight[SnapshotSyncFailure].pure[F]
-                else
-                  fetchMissing(pending.filterNot(loadedBefore.contains))
+                else fetchMissing(pending.filterNot(loadedBefore.contains))
               result <- fetchResult match
                 case Left(error) =>
                   loadNodes(pending).flatMap: loadedAfter =>
                     fail(
                       reason = error.reason,
                       detail = error.detail,
-                      verifiedNodeCount = (visited ++ loadedAfter.keySet).size.toLong,
-                      pendingNodeCount = pending.count(hash => !loadedAfter.contains(hash)).toLong,
+                      verifiedNodeCount =
+                        (visited ++ loadedAfter.keySet).size.toLong,
+                      pendingNodeCount = pending
+                        .count(hash => !loadedAfter.contains(hash))
+                        .toLong,
                     )
                 case Right(fetchedNow) =>
                   loadNodes(pending).flatMap: loadedAfter =>
                     if pending.exists(hash => !loadedAfter.contains(hash)) then
                       fail(
                         reason = "snapshotClosureIncomplete",
-                        detail = Some(pending.filterNot(loadedAfter.contains).map(_.hex).mkString(",")),
-                        verifiedNodeCount = (visited ++ loadedAfter.keySet).size.toLong,
-                        pendingNodeCount = pending.count(hash => !loadedAfter.contains(hash)).toLong,
+                        detail = Some(
+                          pending
+                            .filterNot(loadedAfter.contains)
+                            .map(_.hex)
+                            .mkString(","),
+                        ),
+                        verifiedNodeCount =
+                          (visited ++ loadedAfter.keySet).size.toLong,
+                        pendingNodeCount = pending
+                          .count(hash => !loadedAfter.contains(hash))
+                          .toLong,
                       )
                     else
                       val visitedNow = visited ++ pending

@@ -48,7 +48,7 @@ object ConflictFootprint:
       accessLog: AccessLog,
   ): Either[AccessLogInvariantViolation, ConflictFootprint] =
     for
-      reads <- flatten(accessLog.reads)
+      reads  <- flatten(accessLog.reads)
       writes <- flatten(accessLog.writes)
     yield ConflictFootprint(reads = reads, writes = writes)
 
@@ -60,22 +60,28 @@ object ConflictFootprint:
     // depends on the AccessLog invariant that each stored key already carries
     // the same prefix as the map entry it was recorded under.
     val initial: Either[AccessLogInvariantViolation, Set[StateRef]] =
-      scala.Right[AccessLogInvariantViolation, Set[StateRef]](Set.empty[StateRef])
-    entries.toVector.sortBy(_._1.toHex).foldLeft(initial):
-      case (Right(acc), (tablePrefix, keys)) =>
-        val perPrefixInitial: Either[AccessLogInvariantViolation, Set[StateRef]] =
-          scala.Right[AccessLogInvariantViolation, Set[StateRef]](acc)
-        keys.toVector.sortBy(_.toHex).foldLeft(perPrefixInitial):
-          case (Right(current), key) =>
-            Either.cond(
-              key.startsWith(tablePrefix),
-              current + StateRef.fromBytes(key),
-              AccessLogInvariantViolation(
-                tablePrefix = tablePrefix,
-                key = key,
-              ),
-            )
-          case (left @ Left(_), _) =>
-            left
-      case (left @ Left(_), _) =>
-        left
+      scala.Right[AccessLogInvariantViolation, Set[StateRef]]:
+        Set.empty[StateRef]
+    entries.toVector
+      .sortBy(_._1.toHex)
+      .foldLeft(initial):
+        case (Right(acc), (tablePrefix, keys)) =>
+          val perPrefixInitial
+              : Either[AccessLogInvariantViolation, Set[StateRef]] =
+            scala.Right[AccessLogInvariantViolation, Set[StateRef]](acc)
+          keys.toVector
+            .sortBy(_.toHex)
+            .foldLeft(perPrefixInitial):
+              case (Right(current), key) =>
+                Either.cond(
+                  key.startsWith(tablePrefix),
+                  current + StateRef.fromBytes(key),
+                  AccessLogInvariantViolation(
+                    tablePrefix = tablePrefix,
+                    key = key,
+                  ),
+                )
+              case (left @ Left(_), _) =>
+                left
+        case (left @ Left(_), _) =>
+          left

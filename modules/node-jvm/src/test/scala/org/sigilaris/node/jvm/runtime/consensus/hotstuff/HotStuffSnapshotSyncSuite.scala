@@ -16,42 +16,54 @@ import org.sigilaris.core.crypto.Hash.ops.*
 import org.sigilaris.core.datatype.UInt256
 import org.sigilaris.core.merkle.MerkleTrieNode
 import org.sigilaris.core.merkle.Nibbles.*
-import org.sigilaris.node.jvm.runtime.block.{BlockHeader, BlockHeight, BlockTimestamp, BlockId, BodyRoot, StateRoot}
-import org.sigilaris.node.jvm.runtime.gossip.{CanonicalRejection, ChainId, DirectionalSessionId, PeerIdentity}
+import org.sigilaris.node.jvm.runtime.block.{
+  BlockHeader,
+  BlockHeight,
+  BlockTimestamp,
+  BlockId,
+  BodyRoot,
+  StateRoot,
+}
+import org.sigilaris.node.jvm.runtime.gossip.{
+  CanonicalRejection,
+  ChainId,
+  DirectionalSessionId,
+  PeerIdentity,
+}
 import org.sigilaris.node.jvm.storage.KeyValueStore
 
 final class HotStuffSnapshotSyncSuite extends CatsEffectSuite:
 
-  private val chainId = ChainId.unsafe("chain-main")
-  private val startedAt = Instant.parse("2026-04-05T02:00:00Z")
+  private val chainId       = ChainId.unsafe("chain-main")
+  private val startedAt     = Instant.parse("2026-04-05T02:00:00Z")
   private val validatorKeys = Vector.fill(4)(CryptoOps.generate())
   private val validatorSet = ValidatorSet.unsafe(
     validatorKeys.zipWithIndex.map: (keyPair, index) =>
       ValidatorMember(
         id = ValidatorId.unsafe(s"validator-${index + 1}"),
         publicKey = keyPair.publicKey,
-      )
+      ),
   )
   private val peer1 =
     BootstrapSessionBinding(
       peer = PeerIdentity.unsafe("node-b"),
-      sessionId =
-        DirectionalSessionId
-          .parse("11111111-1111-4111-8111-111111111111")
-          .toOption
-          .get,
+      sessionId = DirectionalSessionId
+        .parse("11111111-1111-4111-8111-111111111111")
+        .toOption
+        .get,
     )
   private val peer2 =
     BootstrapSessionBinding(
       peer = PeerIdentity.unsafe("node-c"),
-      sessionId =
-        DirectionalSessionId
-          .parse("22222222-2222-4222-8222-222222222222")
-          .toOption
-          .get,
+      sessionId = DirectionalSessionId
+        .parse("22222222-2222-4222-8222-222222222222")
+        .toOption
+        .get,
     )
 
-  test("snapshot coordinator completes by mixing verified nodes from multiple peers"):
+  test(
+    "snapshot coordinator completes by mixing verified nodes from multiple peers",
+  ):
     val graph = snapshotGraph("10")
     val progressInstants =
       Vector(
@@ -61,16 +73,20 @@ final class HotStuffSnapshotSyncSuite extends CatsEffectSuite:
       )
 
     for
-      metadataStore <- SnapshotMetadataStore.inMemory[IO]
+      metadataStore  <- SnapshotMetadataStore.inMemory[IO]
       localNodeStore <- SnapshotNodeStore.inMemory[IO]
-      peer1Store <- SnapshotNodeStore.inMemory[IO]
-      peer2Store <- SnapshotNodeStore.inMemory[IO]
+      peer1Store     <- SnapshotNodeStore.inMemory[IO]
+      peer2Store     <- SnapshotNodeStore.inMemory[IO]
       currentInstant <- sequencedInstants(progressInstants*)
       _ <- peer1Store.putAll(Vector(graph.rootNode, graph.leftNode))
       _ <- peer2Store.put(graph.rightNode)
       fetchService = multiplexedFetchService(
-        peer1.peer -> SnapshotNodeFetchServiceRuntime.fromNodeStore[IO](peer1Store),
-        peer2.peer -> SnapshotNodeFetchServiceRuntime.fromNodeStore[IO](peer2Store),
+        peer1.peer -> SnapshotNodeFetchServiceRuntime.fromNodeStore[IO](
+          peer1Store,
+        ),
+        peer2.peer -> SnapshotNodeFetchServiceRuntime.fromNodeStore[IO](
+          peer2Store,
+        ),
       )
       coordinator =
         SnapshotCoordinator.createWithNow[IO](
@@ -80,13 +96,20 @@ final class HotStuffSnapshotSyncSuite extends CatsEffectSuite:
           fetchService,
           currentInstant,
         )
-      result <- coordinator.sync(graph.anchorSuggestion, Vector(peer1, peer2), startedAt)
-      metadata <- metadataStore.get(chainId)
-      storedRoot <- localNodeStore.get(graph.rootHash)
-      storedLeft <- localNodeStore.get(graph.leftHash)
+      result <- coordinator.sync(
+        graph.anchorSuggestion,
+        Vector(peer1, peer2),
+        startedAt,
+      )
+      metadata    <- metadataStore.get(chainId)
+      storedRoot  <- localNodeStore.get(graph.rootHash)
+      storedLeft  <- localNodeStore.get(graph.leftHash)
       storedRight <- localNodeStore.get(graph.rightHash)
     yield
-      assertEquals(result.map(_.metadata.status), Right(SnapshotStatus.Complete))
+      assertEquals(
+        result.map(_.metadata.status),
+        Right(SnapshotStatus.Complete),
+      )
       assertEquals(result.map(_.fetchedNodeCount), Right(3L))
       assertEquals(metadata.map(_.status), Some(SnapshotStatus.Complete))
       assertEquals(metadata.map(_.verifiedNodeCount), Some(3L))
@@ -95,7 +118,9 @@ final class HotStuffSnapshotSyncSuite extends CatsEffectSuite:
       assertEquals(storedLeft, Some(graph.leftNode.node))
       assertEquals(storedRight, Some(graph.rightNode.node))
 
-  test("snapshot coordinator rejects fetched nodes whose advertised hash does not match content"):
+  test(
+    "snapshot coordinator rejects fetched nodes whose advertised hash does not match content",
+  ):
     val graph = snapshotGraph("20")
     val invalidNode =
       SnapshotTrieNode(
@@ -109,14 +134,22 @@ final class HotStuffSnapshotSyncSuite extends CatsEffectSuite:
             chainId: ChainId,
             stateRoot: StateRoot,
             hashes: Vector[MerkleTrieNode.MerkleHash],
-        ): IO[Either[org.sigilaris.node.jvm.runtime.gossip.CanonicalRejection, Vector[SnapshotTrieNode]]] =
+        ): IO[Either[
+          org.sigilaris.node.jvm.runtime.gossip.CanonicalRejection,
+          Vector[SnapshotTrieNode],
+        ]] =
           IO.pure(Right(Vector(invalidNode)))
 
     for
-      metadataStore <- SnapshotMetadataStore.inMemory[IO]
+      metadataStore  <- SnapshotMetadataStore.inMemory[IO]
       localNodeStore <- SnapshotNodeStore.inMemory[IO]
-      coordinator = SnapshotCoordinator.create[IO](chainId, metadataStore, localNodeStore, invalidFetchService)
-      result <- coordinator.sync(graph.anchorSuggestion, Vector(peer1), startedAt)
+      coordinator = SnapshotCoordinator
+        .create[IO](chainId, metadataStore, localNodeStore, invalidFetchService)
+      result <- coordinator.sync(
+        graph.anchorSuggestion,
+        Vector(peer1),
+        startedAt,
+      )
       metadata <- metadataStore.get(chainId)
     yield
       assertEquals(result.left.map(_.reason), Left("invalidSnapshotNodeHash"))
@@ -135,7 +168,7 @@ final class HotStuffSnapshotSyncSuite extends CatsEffectSuite:
           IO.pure(Left(CanonicalRejection.BackfillUnavailable("peerRefused")))
 
     for
-      metadataStore <- SnapshotMetadataStore.inMemory[IO]
+      metadataStore  <- SnapshotMetadataStore.inMemory[IO]
       localNodeStore <- SnapshotNodeStore.inMemory[IO]
       coordinator =
         SnapshotCoordinator.createWithNow[IO](
@@ -145,22 +178,30 @@ final class HotStuffSnapshotSyncSuite extends CatsEffectSuite:
           rejectingFetchService,
           IO.pure(startedAt.plusSeconds(1L)),
         )
-      result <- coordinator.sync(graph.anchorSuggestion, Vector(peer1), startedAt)
+      result <- coordinator.sync(
+        graph.anchorSuggestion,
+        Vector(peer1),
+        startedAt,
+      )
       metadata <- metadataStore.get(chainId)
     yield
       assertEquals(result.left.map(_.reason), Left("snapshotFetchRejected"))
       assertEquals(result.left.map(_.detail), Left(Some("peerRefused")))
       assertEquals(metadata.map(_.status), Some(SnapshotStatus.Failed))
 
-  test("snapshot coordinator retries transient peer rejections before failing the snapshot"):
+  test(
+    "snapshot coordinator retries transient peer rejections before failing the snapshot",
+  ):
     val graph = snapshotGraph("27")
 
     for
-      metadataStore <- SnapshotMetadataStore.inMemory[IO]
+      metadataStore  <- SnapshotMetadataStore.inMemory[IO]
       localNodeStore <- SnapshotNodeStore.inMemory[IO]
-      peerStore <- SnapshotNodeStore.inMemory[IO]
-      attemptCount <- Ref.of[IO, Int](0)
-      _ <- peerStore.putAll(Vector(graph.rootNode, graph.leftNode, graph.rightNode))
+      peerStore      <- SnapshotNodeStore.inMemory[IO]
+      attemptCount   <- Ref.of[IO, Int](0)
+      _ <- peerStore.putAll(
+        Vector(graph.rootNode, graph.leftNode, graph.rightNode),
+      )
       fetchService =
         new SnapshotNodeFetchService[IO]:
           private val delegated =
@@ -172,11 +213,18 @@ final class HotStuffSnapshotSyncSuite extends CatsEffectSuite:
               stateRoot: StateRoot,
               hashes: Vector[MerkleTrieNode.MerkleHash],
           ): IO[Either[CanonicalRejection, Vector[SnapshotTrieNode]]] =
-            attemptCount.modify(current => (current + 1, current)).flatMap:
-              case 0 =>
-                IO.pure(Left(CanonicalRejection.BackfillUnavailable("transientPeerFailure")))
-              case _ =>
-                delegated.fetchNodes(session, chainId, stateRoot, hashes)
+            attemptCount
+              .modify(current => (current + 1, current))
+              .flatMap:
+                case 0 =>
+                  IO.pure(
+                    Left(
+                      CanonicalRejection
+                        .BackfillUnavailable("transientPeerFailure"),
+                    ),
+                  )
+                case _ =>
+                  delegated.fetchNodes(session, chainId, stateRoot, hashes)
       coordinator =
         SnapshotCoordinator.createWithPolicyAndNow[IO](
           chainId = chainId,
@@ -186,11 +234,18 @@ final class HotStuffSnapshotSyncSuite extends CatsEffectSuite:
           fetchPolicy = SnapshotFetchPolicy(maxPeerRounds = 2),
           currentInstant = IO.pure(startedAt.plusSeconds(1L)),
         )
-      result <- coordinator.sync(graph.anchorSuggestion, Vector(peer1), startedAt)
+      result <- coordinator.sync(
+        graph.anchorSuggestion,
+        Vector(peer1),
+        startedAt,
+      )
       attempts <- attemptCount.get
       metadata <- metadataStore.get(chainId)
     yield
-      assertEquals(result.map(_.metadata.status), Right(SnapshotStatus.Complete))
+      assertEquals(
+        result.map(_.metadata.status),
+        Right(SnapshotStatus.Complete),
+      )
       assertEquals(metadata.map(_.status), Some(SnapshotStatus.Complete))
       assert(attempts >= 2)
 
@@ -198,24 +253,33 @@ final class HotStuffSnapshotSyncSuite extends CatsEffectSuite:
     val graph = snapshotGraph("30")
 
     for
-      metadataStore <- SnapshotMetadataStore.inMemory[IO]
+      metadataStore  <- SnapshotMetadataStore.inMemory[IO]
       localNodeStore <- SnapshotNodeStore.inMemory[IO]
-      peerStore <- SnapshotNodeStore.inMemory[IO]
-      _ <- peerStore.putAll(Vector(graph.rootNode, graph.leftNode))
-      fetchService = SnapshotNodeFetchServiceRuntime.fromNodeStore[IO](peerStore)
-      coordinator = SnapshotCoordinator.create[IO](chainId, metadataStore, localNodeStore, fetchService)
-      result <- coordinator.sync(graph.anchorSuggestion, Vector(peer1), startedAt)
+      peerStore      <- SnapshotNodeStore.inMemory[IO]
+      _              <- peerStore.putAll(Vector(graph.rootNode, graph.leftNode))
+      fetchService = SnapshotNodeFetchServiceRuntime.fromNodeStore[IO](
+        peerStore,
+      )
+      coordinator = SnapshotCoordinator
+        .create[IO](chainId, metadataStore, localNodeStore, fetchService)
+      result <- coordinator.sync(
+        graph.anchorSuggestion,
+        Vector(peer1),
+        startedAt,
+      )
       metadata <- metadataStore.get(chainId)
     yield
       assertEquals(result.left.map(_.reason), Left("snapshotClosureIncomplete"))
       assertEquals(metadata.map(_.status), Some(SnapshotStatus.Failed))
       assertEquals(metadata.map(_.pendingNodeCount), Some(1L))
 
-  test("snapshot coordinator surfaces an explicit failure when no sessions are available"):
+  test(
+    "snapshot coordinator surfaces an explicit failure when no sessions are available",
+  ):
     val graph = snapshotGraph("35")
 
     for
-      metadataStore <- SnapshotMetadataStore.inMemory[IO]
+      metadataStore  <- SnapshotMetadataStore.inMemory[IO]
       localNodeStore <- SnapshotNodeStore.inMemory[IO]
       coordinator =
         SnapshotCoordinator.createWithNow[IO](
@@ -225,25 +289,33 @@ final class HotStuffSnapshotSyncSuite extends CatsEffectSuite:
           multiplexedFetchService(),
           IO.pure(startedAt.plusSeconds(1L)),
         )
-      result <- coordinator.sync(graph.anchorSuggestion, Vector.empty, startedAt)
+      result <- coordinator.sync(
+        graph.anchorSuggestion,
+        Vector.empty,
+        startedAt,
+      )
       metadata <- metadataStore.get(chainId)
     yield
       assertEquals(result.left.map(_.reason), Left("snapshotNoPeersAvailable"))
       assertEquals(metadata.map(_.status), Some(SnapshotStatus.Failed))
 
-  test("snapshot coordinator skips peer fetches when all required nodes are already local"):
+  test(
+    "snapshot coordinator skips peer fetches when all required nodes are already local",
+  ):
     val graph = snapshotGraph("40")
 
     for
-      metadataStore <- SnapshotMetadataStore.inMemory[IO]
+      metadataStore  <- SnapshotMetadataStore.inMemory[IO]
       localNodeStore <- SnapshotNodeStore.inMemory[IO]
-      fetchCount <- Ref.of[IO, Int](0)
+      fetchCount     <- Ref.of[IO, Int](0)
       currentInstant <- sequencedInstants(
         startedAt.plusSeconds(1L),
         startedAt.plusSeconds(2L),
         startedAt.plusSeconds(3L),
       )
-      _ <- localNodeStore.putAll(Vector(graph.rootNode, graph.leftNode, graph.rightNode))
+      _ <- localNodeStore.putAll(
+        Vector(graph.rootNode, graph.leftNode, graph.rightNode),
+      )
       fetchService =
         new SnapshotNodeFetchService[IO]:
           override def fetchNodes(
@@ -261,16 +333,25 @@ final class HotStuffSnapshotSyncSuite extends CatsEffectSuite:
           fetchService,
           currentInstant,
         )
-      result <- coordinator.sync(graph.anchorSuggestion, Vector(peer1), startedAt)
-      calls <- fetchCount.get
+      result <- coordinator.sync(
+        graph.anchorSuggestion,
+        Vector(peer1),
+        startedAt,
+      )
+      calls    <- fetchCount.get
       metadata <- metadataStore.get(chainId)
     yield
-      assertEquals(result.map(_.metadata.status), Right(SnapshotStatus.Complete))
+      assertEquals(
+        result.map(_.metadata.status),
+        Right(SnapshotStatus.Complete),
+      )
       assertEquals(result.map(_.fetchedNodeCount), Right(0L))
       assertEquals(calls, 0)
       assertEquals(metadata.map(_.status), Some(SnapshotStatus.Complete))
 
-  test("snapshot metadata store keeps anchor-specific history instead of overwriting prior sync state"):
+  test(
+    "snapshot metadata store keeps anchor-specific history instead of overwriting prior sync state",
+  ):
     val graph1 = snapshotGraph("46")
     val graph2 = snapshotGraph("47")
     val metadata1 =
@@ -299,20 +380,22 @@ final class HotStuffSnapshotSyncSuite extends CatsEffectSuite:
 
     for
       metadataStore <- SnapshotMetadataStore.inMemory[IO]
-      _ <- metadataStore.put(metadata1)
-      _ <- metadataStore.put(metadata1Updated)
-      _ <- metadataStore.put(metadata2)
-      latest <- metadataStore.get(chainId)
-      anchor1 <- metadataStore.getForAnchor(metadata1.anchor)
-      anchor2 <- metadataStore.getForAnchor(metadata2.anchor)
-      history <- metadataStore.list(chainId)
+      _             <- metadataStore.put(metadata1)
+      _             <- metadataStore.put(metadata1Updated)
+      _             <- metadataStore.put(metadata2)
+      latest        <- metadataStore.get(chainId)
+      anchor1       <- metadataStore.getForAnchor(metadata1.anchor)
+      anchor2       <- metadataStore.getForAnchor(metadata2.anchor)
+      history       <- metadataStore.list(chainId)
     yield
       assertEquals(latest, Some(metadata2))
       assertEquals(anchor1, Some(metadata1Updated))
       assertEquals(anchor2, Some(metadata2))
       assertEquals(history, Vector(metadata2, metadata1Updated))
 
-  test("kv-backed snapshot metadata store serializes concurrent history updates"):
+  test(
+    "kv-backed snapshot metadata store serializes concurrent history updates",
+  ):
     val graph1 = snapshotGraph("48")
     val graph2 = snapshotGraph("49")
     val metadata1 =
@@ -334,7 +417,7 @@ final class HotStuffSnapshotSyncSuite extends CatsEffectSuite:
 
     for
       stored <- Ref.of[IO, Map[ChainId, Vector[SnapshotMetadata]]](Map.empty)
-      concurrentGets <- Ref.of[IO, Int](0)
+      concurrentGets    <- Ref.of[IO, Int](0)
       maxConcurrentGets <- Ref.of[IO, Int](0)
       metadataStore <- SnapshotMetadataStore.fromKeyValueStore[IO](
         new KeyValueStore[IO, ChainId, Vector[SnapshotMetadata]]:
@@ -348,7 +431,9 @@ final class HotStuffSnapshotSyncSuite extends CatsEffectSuite:
                   maxConcurrentGets.update(_.max(current)) *>
                     IO.sleep(50.millis) *>
                     stored.get.map(_.get(key))
-                .guarantee(concurrentGets.update(current => (current - 1).max(0)))
+                .guarantee(
+                  concurrentGets.update(current => (current - 1).max(0)),
+                )
 
           override def put(
               key: ChainId,
@@ -359,25 +444,29 @@ final class HotStuffSnapshotSyncSuite extends CatsEffectSuite:
           override def remove(
               key: ChainId,
           ): IO[Unit] =
-            stored.update(_ - key)
+            stored.update(_ - key),
       )
-      _ <- Vector(metadata1, metadata2).parTraverse_(metadataStore.put)
+      _       <- Vector(metadata1, metadata2).parTraverse_(metadataStore.put)
       history <- metadataStore.list(chainId)
       maxConcurrent <- maxConcurrentGets.get
     yield
       assertEquals(maxConcurrent, 1)
       assertEquals(history, Vector(metadata2, metadata1))
 
-  test("snapshot node verifier derives the trie root hash from the snapshot state root"):
+  test(
+    "snapshot node verifier derives the trie root hash from the snapshot state root",
+  ):
     val graph = snapshotGraph("45")
 
     assertEquals(
-      SnapshotNodeVerifier.rootHash(graph.anchorSuggestion.snapshotAnchor.stateRoot),
+      SnapshotNodeVerifier.rootHash(
+        graph.anchorSuggestion.snapshotAnchor.stateRoot,
+      ),
       graph.rootHash,
     )
 
   private def multiplexedFetchService(
-      services: (PeerIdentity, SnapshotNodeFetchService[IO])*
+      services: (PeerIdentity, SnapshotNodeFetchService[IO])*,
   ): SnapshotNodeFetchService[IO] =
     val byPeer = services.toMap
     new SnapshotNodeFetchService[IO]:
@@ -386,19 +475,25 @@ final class HotStuffSnapshotSyncSuite extends CatsEffectSuite:
           chainId: ChainId,
           stateRoot: StateRoot,
           hashes: Vector[MerkleTrieNode.MerkleHash],
-      ): IO[Either[org.sigilaris.node.jvm.runtime.gossip.CanonicalRejection, Vector[SnapshotTrieNode]]] =
+      ): IO[
+        Either[org.sigilaris.node.jvm.runtime.gossip.CanonicalRejection, Vector[
+          SnapshotTrieNode,
+        ]],
+      ] =
         byPeer(session.peer)
           .fetchNodes(session, chainId, stateRoot, hashes)
 
   private def sequencedInstants(
-      instants: Instant*
+      instants: Instant*,
   ): IO[IO[Instant]] =
-    Ref.of[IO, List[Instant]](instants.toList).map: ref =>
-      ref.modify:
-        case head :: tail => tail -> head
-        case Nil =>
-          val fallback = instants.lastOption.getOrElse(startedAt)
-          Nil -> fallback
+    Ref
+      .of[IO, List[Instant]](instants.toList)
+      .map: ref =>
+        ref.modify:
+          case head :: tail => tail -> head
+          case Nil =>
+            val fallback = instants.lastOption.getOrElse(startedAt)
+            Nil -> fallback
 
   private def snapshotGraph(
       seed: String,
@@ -413,7 +508,7 @@ final class HotStuffSnapshotSyncSuite extends CatsEffectSuite:
         ByteVector.empty.toNibbles,
         ByteVector.fromHexDescriptive(seed + "bb").toOption.get,
       )
-    val leftHash = leftLeaf.toHash
+    val leftHash  = leftLeaf.toHash
     val rightHash = rightLeaf.toHash
     val children =
       MerkleTrieNode.Children.empty
@@ -487,8 +582,11 @@ final class HotStuffSnapshotSyncSuite extends CatsEffectSuite:
           UnsignedProposal(
             window = HotStuffWindow(chainId, 2L, 2L, validatorSet.hash),
             proposer = validatorSet.members(1).id,
-            targetBlockId = BlockHeader.computeId(block(Some(anchor.targetBlockId), 2L, stateRoot, seed + "20")),
-            block = block(Some(anchor.targetBlockId), 2L, stateRoot, seed + "20"),
+            targetBlockId = BlockHeader.computeId(
+              block(Some(anchor.targetBlockId), 2L, stateRoot, seed + "20"),
+            ),
+            block =
+              block(Some(anchor.targetBlockId), 2L, stateRoot, seed + "20"),
             txSet = ProposalTxSet.empty,
             justify = qcFor(anchor),
           ),
@@ -502,8 +600,11 @@ final class HotStuffSnapshotSyncSuite extends CatsEffectSuite:
           UnsignedProposal(
             window = HotStuffWindow(chainId, 3L, 3L, validatorSet.hash),
             proposer = validatorSet.members(2).id,
-            targetBlockId = BlockHeader.computeId(block(Some(child.targetBlockId), 3L, stateRoot, seed + "30")),
-            block = block(Some(child.targetBlockId), 3L, stateRoot, seed + "30"),
+            targetBlockId = BlockHeader.computeId(
+              block(Some(child.targetBlockId), 3L, stateRoot, seed + "30"),
+            ),
+            block =
+              block(Some(child.targetBlockId), 3L, stateRoot, seed + "30"),
             txSet = ProposalTxSet.empty,
             justify = qcFor(child),
           ),
@@ -561,7 +662,8 @@ final class HotStuffSnapshotSyncSuite extends CatsEffectSuite:
       height = BlockHeight.unsafeFromLong(height),
       stateRoot = stateRoot,
       bodyRoot = BodyRoot(hex(bodyHex)),
-      timestamp = BlockTimestamp.unsafeFromEpochMillis(startedAt.toEpochMilli + height),
+      timestamp =
+        BlockTimestamp.unsafeFromEpochMillis(startedAt.toEpochMilli + height),
     )
 
   private def hex(

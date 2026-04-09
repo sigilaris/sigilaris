@@ -26,11 +26,12 @@ final case class VoteAccumulator(
         (this -> VoteRecordOutcome.Duplicate).asRight[HotStuffValidationFailure]
       case None =>
         votesByEquivocationKey.get(vote.equivocationKey) match
-          case Some(existing) if existing.targetProposalId =!= vote.targetProposalId =>
+          case Some(existing)
+              if existing.targetProposalId =!= vote.targetProposalId =>
             HotStuffValidationFailure(
               reason = "equivocationDetected",
               detail = Some:
-                ss"${vote.equivocationKey.validatorId.value}:${existing.targetProposalId.toHexLower}:${vote.targetProposalId.toHexLower}"
+                ss"${vote.equivocationKey.validatorId.value}:${existing.targetProposalId.toHexLower}:${vote.targetProposalId.toHexLower}",
             ).asLeft[(VoteAccumulator, VoteRecordOutcome)]
           case Some(_) =>
             HotStuffValidationFailure(
@@ -54,7 +55,8 @@ final case class VoteAccumulator(
     // scan. Production-backed sinks should index by `(window, proposalId)`
     // instead of depending on repeated linear reads here.
     votesById.values.toVector
-      .filter(vote => vote.window === window && vote.targetProposalId === proposalId)
+      .filter: vote =>
+        vote.window === window && vote.targetProposalId === proposalId
 
 object VoteAccumulator:
   val empty: VoteAccumulator =
@@ -84,7 +86,7 @@ final case class TimeoutVoteAccumulator(
             HotStuffValidationFailure(
               reason = "timeoutEquivocationDetected",
               detail = Some:
-                ss"${vote.equivocationKey.validatorId.value}:${existing.subject.highestKnownQc.proposalId.toHexLower}:${vote.subject.highestKnownQc.proposalId.toHexLower}"
+                ss"${vote.equivocationKey.validatorId.value}:${existing.subject.highestKnownQc.proposalId.toHexLower}:${vote.subject.highestKnownQc.proposalId.toHexLower}",
             ).asLeft[(TimeoutVoteAccumulator, TimeoutVoteRecordOutcome)]
           case Some(_) =>
             HotStuffValidationFailure(
@@ -128,7 +130,9 @@ object QuorumCertificateAssembler:
         ._2
     for
       byValidator <- deduplicated
-        .foldLeft(Map.empty[ValidatorId, Vote].asRight[HotStuffValidationFailure]):
+        .foldLeft(
+          Map.empty[ValidatorId, Vote].asRight[HotStuffValidationFailure],
+        ):
           case (Right(acc), vote) =>
             acc.get(vote.voter) match
               case Some(existing) if existing.voteId === vote.voteId =>
@@ -153,7 +157,7 @@ object QuorumCertificateAssembler:
         byValidator.sizeCompare(validatorSet.quorumSize) >= 0,
         "insufficientQuorum",
         Some:
-          ss"required=${validatorSet.quorumSize.toString} actual=${byValidator.size.toString}"
+          ss"required=${validatorSet.quorumSize.toString} actual=${byValidator.size.toString}",
       )
     yield QuorumCertificate(
       subject = subject,
@@ -177,7 +181,8 @@ object TimeoutCertificateAssembler:
     for
       byValidator <- deduplicated
         .foldLeft(
-          Map.empty[ValidatorId, TimeoutVote]
+          Map
+            .empty[ValidatorId, TimeoutVote]
             .asRight[HotStuffValidationFailure],
         ):
           case (Right(acc), vote) =>
@@ -189,7 +194,7 @@ object TimeoutCertificateAssembler:
                 HotStuffValidationFailure(
                   reason = "timeoutEquivocationDetected",
                   detail = Some:
-                    ss"${vote.voter.value}:${existing.subject.highestKnownQc.proposalId.toHexLower}:${vote.subject.highestKnownQc.proposalId.toHexLower}"
+                    ss"${vote.voter.value}:${existing.subject.highestKnownQc.proposalId.toHexLower}:${vote.subject.highestKnownQc.proposalId.toHexLower}",
                 ).asLeft[Map[ValidatorId, TimeoutVote]]
               case Some(_) =>
                 HotStuffValidationFailure(
@@ -210,7 +215,7 @@ object TimeoutCertificateAssembler:
         byValidator.sizeCompare(validatorSet.quorumSize) >= 0,
         "insufficientTimeoutQuorum",
         Some:
-          ss"required=${validatorSet.quorumSize.toString} actual=${byValidator.size.toString}"
+          ss"required=${validatorSet.quorumSize.toString} actual=${byValidator.size.toString}",
       )
     yield TimeoutCertificate(
       subject = subject,
@@ -243,7 +248,7 @@ object HotStuffValidator:
         proposal.block.height.toBigNat === proposal.window.height.toBigNat,
         "proposalBlockHeightMismatch",
         Some:
-          ss"window=${proposal.window.height.render} block=${proposal.block.height.render}"
+          ss"window=${proposal.window.height.render} block=${proposal.block.height.render}",
       )
       _ <- HotStuffValidationSupport.ensure(
         proposal.targetBlockId === BlockHeader.computeId(proposal.block),
@@ -284,7 +289,7 @@ object HotStuffValidator:
         else proposal.justify.subject.window.height < proposal.window.height,
         "justifyHeightNotProgressing",
         Some:
-          ss"proposal=${proposal.window.height.render} justify=${proposal.justify.subject.window.height.render}"
+          ss"proposal=${proposal.window.height.render} justify=${proposal.justify.subject.window.height.render}",
       )
       _ <- HotStuffValidationSupport.ensure(
         if proposal.window.height === HotStuffHeight.Genesis then
@@ -302,7 +307,8 @@ object HotStuffValidator:
             block = proposal.block,
             txSet = proposal.txSet,
             justify = proposal.justify,
-          ),
+          )
+        ,
         proposal.signature,
         proposer.publicKey,
         "proposalSignatureMismatch",
@@ -351,7 +357,8 @@ object HotStuffValidator:
             window = vote.window,
             voter = vote.voter,
             targetProposalId = vote.targetProposalId,
-          ),
+          )
+        ,
         vote.signature,
         voter.publicKey,
         "voteSignatureMismatch",
@@ -403,7 +410,8 @@ object HotStuffValidator:
           UnsignedTimeoutVote(
             subject = vote.subject,
             voter = vote.voter,
-          ),
+          )
+        ,
         vote.signature,
         voter.publicKey,
         "timeoutVoteSignatureMismatch",
@@ -417,7 +425,11 @@ object HotStuffValidator:
     for
       _ <- validateTimeoutVoteSubject(timeoutCertificate.subject, validatorSet)
       _ <- TimeoutCertificateAssembler
-        .assemble(timeoutCertificate.subject, timeoutCertificate.votes, validatorSet)
+        .assemble(
+          timeoutCertificate.subject,
+          timeoutCertificate.votes,
+          validatorSet,
+        )
         .void
     yield ()
 
@@ -488,7 +500,8 @@ object HotStuffValidator:
             nextLeader = newView.nextLeader,
             highestKnownQc = newView.highestKnownQc,
             timeoutCertificate = newView.timeoutCertificate,
-          ),
+          )
+        ,
         newView.signature,
         sender.publicKey,
         "newViewSignatureMismatch",
@@ -523,7 +536,7 @@ object HotStuffValidator:
           ),
         "timeoutVoteHighestQcWindowMismatch",
         Some:
-          ss"${subject.highestKnownQc.window.height.render}:${subject.highestKnownQc.window.view.render}"
+          ss"${subject.highestKnownQc.window.height.render}:${subject.highestKnownQc.window.view.render}",
       )
     yield ()
 

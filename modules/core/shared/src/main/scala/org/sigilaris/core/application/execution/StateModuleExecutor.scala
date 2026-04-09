@@ -6,11 +6,16 @@ import scala.Tuple.++
 import org.sigilaris.core.application.scheduling.ConflictFootprint
 import org.sigilaris.core.failure.SigilarisFailure
 import org.sigilaris.core.application.state.{Eff, StoreState}
-import org.sigilaris.core.application.module.runtime.{RoutedStateReducer, StateModule, StateReducer}
+import org.sigilaris.core.application.module.runtime.{
+  RoutedStateReducer,
+  StateModule,
+  StateReducer,
+}
 import org.sigilaris.core.application.support.compiletime.Requires
 import org.sigilaris.core.application.transactions.{ModuleRoutedTx, Signed, Tx}
 
-/** Facade for executing transactions against a mounted [[org.sigilaris.core.application.module.runtime.StateModule]].
+/** Facade for executing transactions against a mounted
+  * [[org.sigilaris.core.application.module.runtime.StateModule]].
   *
   * Typical usage previously required threading through `StateT.run` and
   * `EitherT.value`, which is verbose and obscures intent. This helper wraps the
@@ -18,11 +23,22 @@ import org.sigilaris.core.application.transactions.{ModuleRoutedTx, Signed, Tx}
   */
 object StateModuleExecutor:
 
-  private type PlainModule[F[_], Path <: Tuple, Owns <: Tuple, Needs <: Tuple, Txs <: Tuple] =
+  private type PlainModule[F[
+      _,
+  ], Path <: Tuple, Owns <: Tuple, Needs <: Tuple, Txs <: Tuple] =
     StateModule[F, Path, Owns, Needs, Txs, StateReducer[F, Path, Owns, Needs]]
 
-  private type RoutedModule[F[_], Path <: Tuple, Owns <: Tuple, Needs <: Tuple, Txs <: Tuple] =
-    StateModule[F, Path, Owns, Needs, Txs, RoutedStateReducer[F, Path, Owns, Needs]]
+  private type RoutedModule[F[
+      _,
+  ], Path <: Tuple, Owns <: Tuple, Needs <: Tuple, Txs <: Tuple] =
+    StateModule[
+      F,
+      Path,
+      Owns,
+      Needs,
+      Txs,
+      RoutedStateReducer[F, Path, Owns, Needs],
+    ]
 
   private def freshLogState(
       initial: StoreState,
@@ -45,7 +61,9 @@ object StateModuleExecutor:
   /** Executes one transaction with a fresh access log over the current trie
     * state and returns the per-transaction execution witness.
     */
-  def runExecutionWithModule[F[_], Path <: Tuple, Owns <: Tuple, Needs <: Tuple, Txs <: Tuple, T <: Tx](
+  def runExecutionWithModule[F[
+      _,
+  ], Path <: Tuple, Owns <: Tuple, Needs <: Tuple, Txs <: Tuple, T <: Tx](
       initial: StoreState,
       signedTx: Signed[T],
       module: PlainModule[F, Path, Owns, Needs, Txs],
@@ -54,11 +72,17 @@ object StateModuleExecutor:
       readsReq: Requires[signedTx.value.Reads, Owns ++ Needs],
       writesReq: Requires[signedTx.value.Writes, Owns ++ Needs],
   ): Eff[F][TxExecution[signedTx.value.Result, signedTx.value.Event]] =
-    module.reducer.apply[T](signedTx).run(freshLogState(initial)).map:
-      case (nextState, (result, events)) => toExecution(nextState, result, events)
+    module.reducer
+      .apply[T](signedTx)
+      .run(freshLogState(initial))
+      .map:
+        case (nextState, (result, events)) =>
+          toExecution(nextState, result, events)
 
   /** Executes a signed transaction against the supplied module. */
-  def runWithModule[F[_], Path <: Tuple, Owns <: Tuple, Needs <: Tuple, Txs <: Tuple, T <: Tx](
+  def runWithModule[F[
+      _,
+  ], Path <: Tuple, Owns <: Tuple, Needs <: Tuple, Txs <: Tuple, T <: Tx](
       initial: StoreState,
       signedTx: Signed[T],
       module: PlainModule[F, Path, Owns, Needs, Txs],
@@ -71,7 +95,9 @@ object StateModuleExecutor:
       (execution.observedState, (execution.result, execution.events))
 
   /** Executes using an implicit module in scope. */
-  def run[F[_], Path <: Tuple, Owns <: Tuple, Needs <: Tuple, Txs <: Tuple, T <: Tx](
+  def run[F[
+      _,
+  ], Path <: Tuple, Owns <: Tuple, Needs <: Tuple, Txs <: Tuple, T <: Tx](
       initial: StoreState,
       signedTx: Signed[T],
   )(using
@@ -83,7 +109,9 @@ object StateModuleExecutor:
     runWithModule(initial, signedTx, module)
 
   /** Executes a routed transaction against a composed module. */
-  def runRoutedWithModule[F[_], Path <: Tuple, Owns <: Tuple, Needs <: Tuple, Txs <: Tuple, T <: Tx & ModuleRoutedTx](
+  def runRoutedWithModule[F[
+      _,
+  ], Path <: Tuple, Owns <: Tuple, Needs <: Tuple, Txs <: Tuple, T <: Tx & ModuleRoutedTx](
       initial: StoreState,
       signedTx: Signed[T],
       module: RoutedModule[F, Path, Owns, Needs, Txs],
@@ -95,7 +123,9 @@ object StateModuleExecutor:
     runExecutionRoutedWithModule(initial, signedTx, module).map: execution =>
       (execution.observedState, (execution.result, execution.events))
 
-  def runExecutionRoutedWithModule[F[_], Path <: Tuple, Owns <: Tuple, Needs <: Tuple, Txs <: Tuple, T <: Tx & ModuleRoutedTx](
+  def runExecutionRoutedWithModule[F[
+      _,
+  ], Path <: Tuple, Owns <: Tuple, Needs <: Tuple, Txs <: Tuple, T <: Tx & ModuleRoutedTx](
       initial: StoreState,
       signedTx: Signed[T],
       module: RoutedModule[F, Path, Owns, Needs, Txs],
@@ -104,10 +134,16 @@ object StateModuleExecutor:
       readsReq: Requires[signedTx.value.Reads, Owns ++ Needs],
       writesReq: Requires[signedTx.value.Writes, Owns ++ Needs],
   ): Eff[F][TxExecution[signedTx.value.Result, signedTx.value.Event]] =
-    module.reducer.apply[T](signedTx).run(freshLogState(initial)).map:
-      case (nextState, (result, events)) => toExecution(nextState, result, events)
+    module.reducer
+      .apply[T](signedTx)
+      .run(freshLogState(initial))
+      .map:
+        case (nextState, (result, events)) =>
+          toExecution(nextState, result, events)
 
-  def runRouted[F[_], Path <: Tuple, Owns <: Tuple, Needs <: Tuple, Txs <: Tuple, T <: Tx & ModuleRoutedTx](
+  def runRouted[F[
+      _,
+  ], Path <: Tuple, Owns <: Tuple, Needs <: Tuple, Txs <: Tuple, T <: Tx & ModuleRoutedTx](
       initial: StoreState,
       signedTx: Signed[T],
   )(using
@@ -118,7 +154,9 @@ object StateModuleExecutor:
   ): Eff[F][(StoreState, (signedTx.value.Result, List[signedTx.value.Event]))] =
     runRoutedWithModule(initial, signedTx, module)
 
-  def runExecution[F[_], Path <: Tuple, Owns <: Tuple, Needs <: Tuple, Txs <: Tuple, T <: Tx](
+  def runExecution[F[
+      _,
+  ], Path <: Tuple, Owns <: Tuple, Needs <: Tuple, Txs <: Tuple, T <: Tx](
       initial: StoreState,
       signedTx: Signed[T],
   )(using
@@ -129,7 +167,9 @@ object StateModuleExecutor:
   ): Eff[F][TxExecution[signedTx.value.Result, signedTx.value.Event]] =
     runExecutionWithModule(initial, signedTx, module)
 
-  def runExecutionRouted[F[_], Path <: Tuple, Owns <: Tuple, Needs <: Tuple, Txs <: Tuple, T <: Tx & ModuleRoutedTx](
+  def runExecutionRouted[F[
+      _,
+  ], Path <: Tuple, Owns <: Tuple, Needs <: Tuple, Txs <: Tuple, T <: Tx & ModuleRoutedTx](
       initial: StoreState,
       signedTx: Signed[T],
   )(using
@@ -140,8 +180,12 @@ object StateModuleExecutor:
   ): Eff[F][TxExecution[signedTx.value.Result, signedTx.value.Event]] =
     runExecutionRoutedWithModule(initial, signedTx, module)
 
-  /** Runs from [[org.sigilaris.core.application.state.StoreState.empty]] for common testing scenarios. */
-  def runFromEmptyWithModule[F[_], Path <: Tuple, Owns <: Tuple, Needs <: Tuple, Txs <: Tuple, T <: Tx](
+  /** Runs from [[org.sigilaris.core.application.state.StoreState.empty]] for
+    * common testing scenarios.
+    */
+  def runFromEmptyWithModule[F[
+      _,
+  ], Path <: Tuple, Owns <: Tuple, Needs <: Tuple, Txs <: Tuple, T <: Tx](
       signedTx: Signed[T],
       module: PlainModule[F, Path, Owns, Needs, Txs],
   )(using
@@ -151,7 +195,9 @@ object StateModuleExecutor:
   ): Eff[F][(StoreState, (signedTx.value.Result, List[signedTx.value.Event]))] =
     runWithModule(StoreState.empty, signedTx, module)
 
-  def runFromEmpty[F[_], Path <: Tuple, Owns <: Tuple, Needs <: Tuple, Txs <: Tuple, T <: Tx](
+  def runFromEmpty[F[
+      _,
+  ], Path <: Tuple, Owns <: Tuple, Needs <: Tuple, Txs <: Tuple, T <: Tx](
       signedTx: Signed[T],
   )(using
       module: PlainModule[F, Path, Owns, Needs, Txs],
@@ -161,7 +207,9 @@ object StateModuleExecutor:
   ): Eff[F][(StoreState, (signedTx.value.Result, List[signedTx.value.Event]))] =
     runFromEmptyWithModule(signedTx, module)
 
-  def runExecutionFromEmptyWithModule[F[_], Path <: Tuple, Owns <: Tuple, Needs <: Tuple, Txs <: Tuple, T <: Tx](
+  def runExecutionFromEmptyWithModule[F[
+      _,
+  ], Path <: Tuple, Owns <: Tuple, Needs <: Tuple, Txs <: Tuple, T <: Tx](
       signedTx: Signed[T],
       module: PlainModule[F, Path, Owns, Needs, Txs],
   )(using
@@ -171,7 +219,9 @@ object StateModuleExecutor:
   ): Eff[F][TxExecution[signedTx.value.Result, signedTx.value.Event]] =
     runExecutionWithModule(StoreState.empty, signedTx, module)
 
-  def runExecutionFromEmpty[F[_], Path <: Tuple, Owns <: Tuple, Needs <: Tuple, Txs <: Tuple, T <: Tx](
+  def runExecutionFromEmpty[F[
+      _,
+  ], Path <: Tuple, Owns <: Tuple, Needs <: Tuple, Txs <: Tuple, T <: Tx](
       signedTx: Signed[T],
   )(using
       module: PlainModule[F, Path, Owns, Needs, Txs],
@@ -182,7 +232,9 @@ object StateModuleExecutor:
     runExecutionFromEmptyWithModule(signedTx, module)
 
   /** Convenience to obtain the plain `F` result. */
-  def runValueWithModule[F[_], Path <: Tuple, Owns <: Tuple, Needs <: Tuple, Txs <: Tuple, T <: Tx](
+  def runValueWithModule[F[
+      _,
+  ], Path <: Tuple, Owns <: Tuple, Needs <: Tuple, Txs <: Tuple, T <: Tx](
       initial: StoreState,
       signedTx: Signed[T],
       module: PlainModule[F, Path, Owns, Needs, Txs],
@@ -190,10 +242,15 @@ object StateModuleExecutor:
       monadErrorF: MonadError[F, SigilarisFailure],
       readsReq: Requires[signedTx.value.Reads, Owns ++ Needs],
       writesReq: Requires[signedTx.value.Writes, Owns ++ Needs],
-  ): F[Either[SigilarisFailure, (StoreState, (signedTx.value.Result, List[signedTx.value.Event]))]] =
+  ): F[Either[
+    SigilarisFailure,
+    (StoreState, (signedTx.value.Result, List[signedTx.value.Event])),
+  ]] =
     runWithModule(initial, signedTx, module).value
 
-  def runValue[F[_], Path <: Tuple, Owns <: Tuple, Needs <: Tuple, Txs <: Tuple, T <: Tx](
+  def runValue[F[
+      _,
+  ], Path <: Tuple, Owns <: Tuple, Needs <: Tuple, Txs <: Tuple, T <: Tx](
       initial: StoreState,
       signedTx: Signed[T],
   )(using
@@ -201,5 +258,8 @@ object StateModuleExecutor:
       monadErrorF: MonadError[F, SigilarisFailure],
       readsReq: Requires[signedTx.value.Reads, Owns ++ Needs],
       writesReq: Requires[signedTx.value.Writes, Owns ++ Needs],
-  ): F[Either[SigilarisFailure, (StoreState, (signedTx.value.Result, List[signedTx.value.Event]))]] =
+  ): F[Either[
+    SigilarisFailure,
+    (StoreState, (signedTx.value.Result, List[signedTx.value.Event])),
+  ]] =
     run(initial, signedTx).value

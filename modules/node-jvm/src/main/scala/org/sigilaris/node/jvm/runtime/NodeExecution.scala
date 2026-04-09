@@ -9,5 +9,6 @@ object NodeExecution:
       serve: Services => Resource[F, A],
   ): Resource[F, A] =
     runtime.flatMap: handle =>
-      Resource.eval(initializer.initialize(handle.services))
+      Resource
+        .eval(initializer.initialize(handle.services))
         .flatMap(_ => serve(handle.services))

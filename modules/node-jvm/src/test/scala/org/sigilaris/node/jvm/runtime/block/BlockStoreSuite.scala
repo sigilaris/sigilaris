@@ -8,7 +8,9 @@ import org.sigilaris.core.datatype.{UInt256, Utf8}
 
 final class BlockStoreSuite extends CatsEffectSuite:
 
-  test("application-owned block views round-trip through the block query/store seam"):
+  test(
+    "application-owned block views round-trip through the block query/store seam",
+  ):
     val body =
       blockBody(
         blockRecord("tx-a", Some("result-a"), Vector("event-a")),
@@ -21,18 +23,21 @@ final class BlockStoreSuite extends CatsEffectSuite:
       )
 
     for
-      store <- BlockStore.inMemory[IO, InventoryTxRef, InventoryResultRef, InventoryEvent]
-      blockId <- unwrap(store.putView(view))
+      store <- BlockStore
+        .inMemory[IO, InventoryTxRef, InventoryResultRef, InventoryEvent]
+      blockId      <- unwrap(store.putView(view))
       storedHeader <- store.getHeader(blockId)
-      storedBody <- store.getBody(blockId)
-      storedView <- store.getView(blockId).value
+      storedBody   <- store.getBody(blockId)
+      storedView   <- store.getView(blockId).value
     yield
       assertEquals(blockId, BlockHeader.computeId(view.header))
       assertEquals(storedHeader, Some(view.header))
       assertEquals(storedBody, Some(view.body))
       assertEquals(storedView, Right(Some(view)))
 
-  test("split header/body storage hydrates views only after local body-root re-verification"):
+  test(
+    "split header/body storage hydrates views only after local body-root re-verification",
+  ):
     val canonicalBody =
       blockBody(
         blockRecord("tx-a", Some("result-a"), Vector("event-a")),
@@ -45,12 +50,13 @@ final class BlockStoreSuite extends CatsEffectSuite:
       blockHeader(BlockBody.computeBodyRoot(canonicalBody).toOption.get)
 
     for
-      store <- BlockStore.inMemory[IO, InventoryTxRef, InventoryResultRef, InventoryEvent]
-      blockId <- store.putHeader(header)
-      missingView <- store.getView(blockId).value
+      store <- BlockStore
+        .inMemory[IO, InventoryTxRef, InventoryResultRef, InventoryEvent]
+      blockId         <- store.putHeader(header)
+      missingView     <- store.getView(blockId).value
       mismatchedWrite <- store.putBody(blockId, mismatchedBody).value
-      _ <- unwrap(store.putBody(blockId, canonicalBody))
-      hydratedView <- store.getView(blockId).value
+      _               <- unwrap(store.putBody(blockId, canonicalBody))
+      hydratedView    <- store.getView(blockId).value
     yield
       assertEquals(missingView, Right(None))
       assertEquals(mismatchedWrite.left.map(_.reason), Left("bodyRootMismatch"))
@@ -62,11 +68,13 @@ final class BlockStoreSuite extends CatsEffectSuite:
               header = header,
               body = canonicalBody,
             ),
-          )
+          ),
         ),
       )
 
-  test("body-first storage still defers body-root mismatch detection until hydration"):
+  test(
+    "body-first storage still defers body-root mismatch detection until hydration",
+  ):
     val canonicalBody =
       blockBody(
         blockRecord("tx-a", Some("result-a"), Vector("event-a")),
@@ -79,11 +87,12 @@ final class BlockStoreSuite extends CatsEffectSuite:
       blockHeader(BlockBody.computeBodyRoot(canonicalBody).toOption.get)
 
     for
-      store <- BlockStore.inMemory[IO, InventoryTxRef, InventoryResultRef, InventoryEvent]
+      store <- BlockStore
+        .inMemory[IO, InventoryTxRef, InventoryResultRef, InventoryEvent]
       blockId = BlockHeader.computeId(header)
-      _ <- unwrap(store.putBody(blockId, mismatchedBody))
-      missingView <- store.getView(blockId).value
-      _ <- store.putHeader(header)
+      _              <- unwrap(store.putBody(blockId, mismatchedBody))
+      missingView    <- store.getView(blockId).value
+      _              <- store.putHeader(header)
       mismatchedView <- store.getView(blockId).value
     yield
       assertEquals(missingView, Right(None))

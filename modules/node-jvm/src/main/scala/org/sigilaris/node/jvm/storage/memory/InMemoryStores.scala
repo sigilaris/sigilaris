@@ -8,10 +8,15 @@ import cats.effect.kernel.{Ref, Resource, Sync}
 import cats.syntax.functor.given
 
 import org.sigilaris.core.failure.DecodeFailure
-import org.sigilaris.node.jvm.storage.{KeyValueStore, SingleValueStore, StoreIndex}
+import org.sigilaris.node.jvm.storage.{
+  KeyValueStore,
+  SingleValueStore,
+  StoreIndex,
+}
 
-private final class InMemoryKeyValueStore[F[_]: Monad, K, V](ref: Ref[F, Map[K, V]])
-    extends KeyValueStore[F, K, V]:
+private final class InMemoryKeyValueStore[F[_]: Monad, K, V](
+    ref: Ref[F, Map[K, V]],
+) extends KeyValueStore[F, K, V]:
 
   override def get(key: K): EitherT[F, DecodeFailure, Option[V]] =
     EitherT.right(ref.get.map(_.get(key)))
@@ -22,8 +27,9 @@ private final class InMemoryKeyValueStore[F[_]: Monad, K, V](ref: Ref[F, Map[K, 
   override def remove(key: K): F[Unit] =
     ref.update(_ - key)
 
-private final class InMemoryStoreIndex[F[_]: Monad, K, V](ref: Ref[F, TreeMap[K, V]])
-    extends StoreIndex[F, K, V]:
+private final class InMemoryStoreIndex[F[_]: Monad, K, V](
+    ref: Ref[F, TreeMap[K, V]],
+) extends StoreIndex[F, K, V]:
 
   override def get(key: K): EitherT[F, DecodeFailure, Option[V]] =
     EitherT.right(ref.get.map(_.get(key)))
@@ -45,8 +51,9 @@ private final class InMemoryStoreIndex[F[_]: Monad, K, V](ref: Ref[F, TreeMap[K,
 
     EitherT.right(page)
 
-private final class InMemorySingleValueStore[F[_]: Monad, A](ref: Ref[F, Option[A]])
-    extends SingleValueStore[F, A]:
+private final class InMemorySingleValueStore[F[_]: Monad, A](
+    ref: Ref[F, Option[A]],
+) extends SingleValueStore[F, A]:
 
   override def get(): EitherT[F, DecodeFailure, Option[A]] =
     EitherT.right(ref.get)
@@ -57,15 +64,17 @@ private final class InMemorySingleValueStore[F[_]: Monad, A](ref: Ref[F, Option[
 object InMemoryStores:
   def keyValue[F[_]: Sync, K, V]: Resource[F, KeyValueStore[F, K, V]] =
     Resource.eval(
-      Ref.of[F, Map[K, V]](Map.empty).map(new InMemoryKeyValueStore[F, K, V](_))
+      Ref.of[F, Map[K, V]](Map.empty).map(new InMemoryKeyValueStore[F, K, V](_)),
     )
 
   def storeIndex[F[_]: Sync, K: Ordering, V]: Resource[F, StoreIndex[F, K, V]] =
     Resource.eval(
-      Ref.of[F, TreeMap[K, V]](TreeMap.empty[K, V]).map(new InMemoryStoreIndex[F, K, V](_))
+      Ref
+        .of[F, TreeMap[K, V]](TreeMap.empty[K, V])
+        .map(new InMemoryStoreIndex[F, K, V](_)),
     )
 
   def singleValue[F[_]: Sync, A]: Resource[F, SingleValueStore[F, A]] =
     Resource.eval(
-      Ref.of[F, Option[A]](None).map(new InMemorySingleValueStore[F, A](_))
+      Ref.of[F, Option[A]](None).map(new InMemorySingleValueStore[F, A](_)),
     )

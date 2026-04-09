@@ -88,7 +88,11 @@ object HotStuffBootstrapArmeriaAdapter:
       transportAuth: StaticPeerTransportAuth,
   ): List[ServerEndpoint[Any, F]] =
     List(
-      finalizedSuggestionEndpoint(sessionRuntime, bootstrapServices, transportAuth),
+      finalizedSuggestionEndpoint(
+        sessionRuntime,
+        bootstrapServices,
+        transportAuth,
+      ),
       snapshotFetchEndpoint(sessionRuntime, bootstrapServices, transportAuth),
       replayEndpoint(sessionRuntime, bootstrapServices, transportAuth),
       backfillEndpoint(sessionRuntime, bootstrapServices, transportAuth),
@@ -100,35 +104,52 @@ object HotStuffBootstrapArmeriaAdapter:
       transportAuth: StaticPeerTransportAuth,
   ): ServerEndpoint[Any, F] =
     endpoint.post
-      .in("gossip" / "bootstrap" / "finalized" / path[String]("sessionId") / path[String]("chainId"))
-      .in(header[Option[String]](GossipTransportAuth.AuthenticatedPeerHeaderName))
-      .in(header[Option[String]](GossipTransportAuth.TransportProofHeaderName))
-      .in(header[Option[String]](GossipTransportAuth.BootstrapCapabilityHeaderName))
+      .in(
+        "gossip" / "bootstrap" / "finalized" / path[String]("sessionId") / path[
+          String,
+        ]("chainId"),
+      )
+      .in:
+        header[Option[String]](GossipTransportAuth.AuthenticatedPeerHeaderName)
+      .in:
+        header[Option[String]](GossipTransportAuth.TransportProofHeaderName)
+      .in:
+        header[Option[String]](
+          GossipTransportAuth.BootstrapCapabilityHeaderName,
+        )
       .errorOut(stringBody)
       .out(stringBody)
-      .serverLogic: (sessionIdRaw, chainIdRaw, authenticatedPeerRaw, transportProofRaw, capabilityRaw) =>
-        val requestPath = s"/gossip/bootstrap/finalized/${sessionIdRaw}/${chainIdRaw}"
-        withAuthorizedBinding(
-          sessionRuntime,
-          transportAuth,
-          sessionIdRaw,
-          authenticatedPeerRaw,
-          transportProofRaw,
-          capabilityRaw,
-          requestPath = requestPath,
-          requestBodyBytes = Array.emptyByteArray,
-        ): binding =>
-          parseChainId(chainIdRaw) match
-            case Left(rejection) =>
-              renderRejection(rejection).asLeft[String].pure[F]
-            case Right(chainId) =>
-              bootstrapServices.finalizedAnchorSuggestions
-                .bestFinalized(binding, chainId)
-                .map:
-                  _.leftMap(renderRejection).map: suggestion =>
-                    FinalizedSuggestionResponseWire(
-                      suggestionBase64Url = suggestion.map(encodeValue(_)),
-                    ).asJson.noSpaces
+      .serverLogic:
+        (
+            sessionIdRaw,
+            chainIdRaw,
+            authenticatedPeerRaw,
+            transportProofRaw,
+            capabilityRaw,
+        ) =>
+          val requestPath =
+            s"/gossip/bootstrap/finalized/${sessionIdRaw}/${chainIdRaw}"
+          withAuthorizedBinding(
+            sessionRuntime,
+            transportAuth,
+            sessionIdRaw,
+            authenticatedPeerRaw,
+            transportProofRaw,
+            capabilityRaw,
+            requestPath = requestPath,
+            requestBodyBytes = Array.emptyByteArray,
+          ): binding =>
+            parseChainId(chainIdRaw) match
+              case Left(rejection) =>
+                renderRejection(rejection).asLeft[String].pure[F]
+              case Right(chainId) =>
+                bootstrapServices.finalizedAnchorSuggestions
+                  .bestFinalized(binding, chainId)
+                  .map:
+                    _.leftMap(renderRejection).map: suggestion =>
+                      FinalizedSuggestionResponseWire(
+                        suggestionBase64Url = suggestion.map(encodeValue(_)),
+                      ).asJson.noSpaces
 
   private def snapshotFetchEndpoint[F[_]: Async, A](
       sessionRuntime: TxGossipRuntime[F, A],
@@ -136,48 +157,72 @@ object HotStuffBootstrapArmeriaAdapter:
       transportAuth: StaticPeerTransportAuth,
   ): ServerEndpoint[Any, F] =
     endpoint.post
-      .in("gossip" / "bootstrap" / "snapshot" / path[String]("sessionId") / path[String]("chainId"))
-      .in(header[Option[String]](GossipTransportAuth.AuthenticatedPeerHeaderName))
-      .in(header[Option[String]](GossipTransportAuth.TransportProofHeaderName))
-      .in(header[Option[String]](GossipTransportAuth.BootstrapCapabilityHeaderName))
+      .in(
+        "gossip" / "bootstrap" / "snapshot" / path[String]("sessionId") / path[
+          String,
+        ]("chainId"),
+      )
+      .in:
+        header[Option[String]](GossipTransportAuth.AuthenticatedPeerHeaderName)
+      .in:
+        header[Option[String]](GossipTransportAuth.TransportProofHeaderName)
+      .in:
+        header[Option[String]](
+          GossipTransportAuth.BootstrapCapabilityHeaderName,
+        )
       .in(stringBody)
       .errorOut(stringBody)
       .out(stringBody)
-      .serverLogic: (sessionIdRaw, chainIdRaw, authenticatedPeerRaw, transportProofRaw, capabilityRaw, raw) =>
-        val requestPath = s"/gossip/bootstrap/snapshot/${sessionIdRaw}/${chainIdRaw}"
-        withAuthorizedBinding(
-          sessionRuntime,
-          transportAuth,
-          sessionIdRaw,
-          authenticatedPeerRaw,
-          transportProofRaw,
-          capabilityRaw,
-          requestPath = requestPath,
-          requestBodyBytes = raw.getBytes(StandardCharsets.UTF_8),
-        ): binding =>
-          (parseChainId(chainIdRaw), decodeOrBootstrapReject[SnapshotNodeFetchRequestWire](raw, "invalidSnapshotNodeFetchRequest")) match
-            case (Left(rejection), _) =>
-              renderRejection(rejection).asLeft[String].pure[F]
-            case (_, Left(rendered)) =>
-              rendered.asLeft[String].pure[F]
-            case (Right(chainId), Right(request)) =>
-              parseSnapshotRequest(request).fold(
-                rejection =>
-                  renderRejection(rejection).asLeft[String].pure[F],
-                { case (stateRoot, hashes) =>
-                  bootstrapServices.snapshotNodeFetch
-                    .fetchNodes(binding, chainId, stateRoot, hashes)
-                    .map:
-                      _.leftMap(renderRejection).map: nodes =>
-                        SnapshotNodeFetchResponseWire(
-                          nodes = nodes.map: node =>
-                            SnapshotNodeWire(
-                              hash = node.hash.toUInt256.toHexLower,
-                              nodeBase64Url = encodeValue(node.node),
-                            ),
-                        ).asJson.noSpaces
-                },
-              )
+      .serverLogic:
+        (
+            sessionIdRaw,
+            chainIdRaw,
+            authenticatedPeerRaw,
+            transportProofRaw,
+            capabilityRaw,
+            raw,
+        ) =>
+          val requestPath =
+            s"/gossip/bootstrap/snapshot/${sessionIdRaw}/${chainIdRaw}"
+          withAuthorizedBinding(
+            sessionRuntime,
+            transportAuth,
+            sessionIdRaw,
+            authenticatedPeerRaw,
+            transportProofRaw,
+            capabilityRaw,
+            requestPath = requestPath,
+            requestBodyBytes = raw.getBytes(StandardCharsets.UTF_8),
+          ): binding =>
+            (
+              parseChainId(chainIdRaw),
+              decodeOrBootstrapReject[SnapshotNodeFetchRequestWire](
+                raw,
+                "invalidSnapshotNodeFetchRequest",
+              ),
+            ) match
+              case (Left(rejection), _) =>
+                renderRejection(rejection).asLeft[String].pure[F]
+              case (_, Left(rendered)) =>
+                rendered.asLeft[String].pure[F]
+              case (Right(chainId), Right(request)) =>
+                parseSnapshotRequest(request).fold(
+                  rejection =>
+                    renderRejection(rejection).asLeft[String].pure[F],
+                  { case (stateRoot, hashes) =>
+                    bootstrapServices.snapshotNodeFetch
+                      .fetchNodes(binding, chainId, stateRoot, hashes)
+                      .map:
+                        _.leftMap(renderRejection).map: nodes =>
+                          SnapshotNodeFetchResponseWire(
+                            nodes = nodes.map: node =>
+                              SnapshotNodeWire(
+                                hash = node.hash.toUInt256.toHexLower,
+                                nodeBase64Url = encodeValue(node.node),
+                              ),
+                          ).asJson.noSpaces
+                  },
+                )
 
   private def replayEndpoint[F[_]: Async, A](
       sessionRuntime: TxGossipRuntime[F, A],
@@ -185,39 +230,57 @@ object HotStuffBootstrapArmeriaAdapter:
       transportAuth: StaticPeerTransportAuth,
   ): ServerEndpoint[Any, F] =
     endpoint.post
-      .in("gossip" / "bootstrap" / "replay" / path[String]("sessionId") / path[String]("chainId"))
-      .in(header[Option[String]](GossipTransportAuth.AuthenticatedPeerHeaderName))
-      .in(header[Option[String]](GossipTransportAuth.TransportProofHeaderName))
-      .in(header[Option[String]](GossipTransportAuth.BootstrapCapabilityHeaderName))
+      .in(
+        "gossip" / "bootstrap" / "replay" / path[String]("sessionId") / path[
+          String,
+        ]("chainId"),
+      )
+      .in:
+        header[Option[String]](GossipTransportAuth.AuthenticatedPeerHeaderName)
+      .in:
+        header[Option[String]](GossipTransportAuth.TransportProofHeaderName)
+      .in:
+        header[Option[String]](
+          GossipTransportAuth.BootstrapCapabilityHeaderName,
+        )
       .in(stringBody)
       .errorOut(stringBody)
       .out(stringBody)
-      .serverLogic: (sessionIdRaw, chainIdRaw, authenticatedPeerRaw, transportProofRaw, capabilityRaw, raw) =>
-        val requestPath = s"/gossip/bootstrap/replay/${sessionIdRaw}/${chainIdRaw}"
-        withAuthorizedBinding(
-          sessionRuntime,
-          transportAuth,
-          sessionIdRaw,
-          authenticatedPeerRaw,
-          transportProofRaw,
-          capabilityRaw,
-          requestPath = requestPath,
-          requestBodyBytes = raw.getBytes(StandardCharsets.UTF_8),
-        ): binding =>
-          handleProposalPageRequest(
-            raw = raw,
-            chainIdRaw = chainIdRaw,
-            invalidReason = "invalidProposalReplayRequest",
-            parsePage = parseProposalReplayRequest,
-          ): (chainId, blockId, height, limit) =>
-            bootstrapServices.proposalReplay
-              .readNext(
-                session = binding,
-                chainId = chainId,
-                anchorBlockId = blockId,
-                nextHeight = height,
-                limit = limit,
-              )
+      .serverLogic:
+        (
+            sessionIdRaw,
+            chainIdRaw,
+            authenticatedPeerRaw,
+            transportProofRaw,
+            capabilityRaw,
+            raw,
+        ) =>
+          val requestPath =
+            s"/gossip/bootstrap/replay/${sessionIdRaw}/${chainIdRaw}"
+          withAuthorizedBinding(
+            sessionRuntime,
+            transportAuth,
+            sessionIdRaw,
+            authenticatedPeerRaw,
+            transportProofRaw,
+            capabilityRaw,
+            requestPath = requestPath,
+            requestBodyBytes = raw.getBytes(StandardCharsets.UTF_8),
+          ): binding =>
+            handleProposalPageRequest(
+              raw = raw,
+              chainIdRaw = chainIdRaw,
+              invalidReason = "invalidProposalReplayRequest",
+              parsePage = parseProposalReplayRequest,
+            ): (chainId, blockId, height, limit) =>
+              bootstrapServices.proposalReplay
+                .readNext(
+                  session = binding,
+                  chainId = chainId,
+                  anchorBlockId = blockId,
+                  nextHeight = height,
+                  limit = limit,
+                )
 
   private def backfillEndpoint[F[_]: Async, A](
       sessionRuntime: TxGossipRuntime[F, A],
@@ -225,39 +288,57 @@ object HotStuffBootstrapArmeriaAdapter:
       transportAuth: StaticPeerTransportAuth,
   ): ServerEndpoint[Any, F] =
     endpoint.post
-      .in("gossip" / "bootstrap" / "backfill" / path[String]("sessionId") / path[String]("chainId"))
-      .in(header[Option[String]](GossipTransportAuth.AuthenticatedPeerHeaderName))
-      .in(header[Option[String]](GossipTransportAuth.TransportProofHeaderName))
-      .in(header[Option[String]](GossipTransportAuth.BootstrapCapabilityHeaderName))
+      .in(
+        "gossip" / "bootstrap" / "backfill" / path[String]("sessionId") / path[
+          String,
+        ]("chainId"),
+      )
+      .in:
+        header[Option[String]](GossipTransportAuth.AuthenticatedPeerHeaderName)
+      .in:
+        header[Option[String]](GossipTransportAuth.TransportProofHeaderName)
+      .in:
+        header[Option[String]](
+          GossipTransportAuth.BootstrapCapabilityHeaderName,
+        )
       .in(stringBody)
       .errorOut(stringBody)
       .out(stringBody)
-      .serverLogic: (sessionIdRaw, chainIdRaw, authenticatedPeerRaw, transportProofRaw, capabilityRaw, raw) =>
-        val requestPath = s"/gossip/bootstrap/backfill/${sessionIdRaw}/${chainIdRaw}"
-        withAuthorizedBinding(
-          sessionRuntime,
-          transportAuth,
-          sessionIdRaw,
-          authenticatedPeerRaw,
-          transportProofRaw,
-          capabilityRaw,
-          requestPath = requestPath,
-          requestBodyBytes = raw.getBytes(StandardCharsets.UTF_8),
-        ): binding =>
-          handleProposalPageRequest(
-            raw = raw,
-            chainIdRaw = chainIdRaw,
-            invalidReason = "invalidHistoricalBackfillRequest",
-            parsePage = parseHistoricalBackfillRequest,
-          ): (chainId, blockId, height, limit) =>
-            bootstrapServices.historicalBackfill
-              .readPrevious(
-                session = binding,
-                chainId = chainId,
-                beforeBlockId = blockId,
-                beforeHeight = height,
-                limit = limit,
-              )
+      .serverLogic:
+        (
+            sessionIdRaw,
+            chainIdRaw,
+            authenticatedPeerRaw,
+            transportProofRaw,
+            capabilityRaw,
+            raw,
+        ) =>
+          val requestPath =
+            s"/gossip/bootstrap/backfill/${sessionIdRaw}/${chainIdRaw}"
+          withAuthorizedBinding(
+            sessionRuntime,
+            transportAuth,
+            sessionIdRaw,
+            authenticatedPeerRaw,
+            transportProofRaw,
+            capabilityRaw,
+            requestPath = requestPath,
+            requestBodyBytes = raw.getBytes(StandardCharsets.UTF_8),
+          ): binding =>
+            handleProposalPageRequest(
+              raw = raw,
+              chainIdRaw = chainIdRaw,
+              invalidReason = "invalidHistoricalBackfillRequest",
+              parsePage = parseHistoricalBackfillRequest,
+            ): (chainId, blockId, height, limit) =>
+              bootstrapServices.historicalBackfill
+                .readPrevious(
+                  session = binding,
+                  chainId = chainId,
+                  beforeBlockId = blockId,
+                  beforeHeight = height,
+                  limit = limit,
+                )
 
   private def handleProposalPageRequest[F[_]: Async](
       raw: String,
@@ -273,7 +354,10 @@ object HotStuffBootstrapArmeriaAdapter:
         Vector[Proposal],
       ]],
   ): F[Either[String, String]] =
-    (parseChainId(chainIdRaw), decodeOrBootstrapReject[ProposalPageRequestWire](raw, invalidReason)) match
+    (
+      parseChainId(chainIdRaw),
+      decodeOrBootstrapReject[ProposalPageRequestWire](raw, invalidReason),
+    ) match
       case (Left(rejection), _) =>
         renderRejection(rejection).asLeft[String].pure[F]
       case (_, Left(rendered)) =>
@@ -365,7 +449,10 @@ object HotStuffBootstrapArmeriaAdapter:
 
   private def parseSnapshotRequest(
       request: SnapshotNodeFetchRequestWire,
-  ): Either[CanonicalRejection, (StateRoot, Vector[org.sigilaris.core.merkle.MerkleTrieNode.MerkleHash])] =
+  ): Either[
+    CanonicalRejection,
+    (StateRoot, Vector[org.sigilaris.core.merkle.MerkleTrieNode.MerkleHash]),
+  ] =
     for
       stateRoot <- StateRoot
         .fromHex(request.stateRoot)
@@ -384,7 +471,10 @@ object HotStuffBootstrapArmeriaAdapter:
           .leftMap(error =>
             bootstrapRejected("invalidSnapshotNodeHash", error.toString),
           )
-          .map(org.sigilaris.core.crypto.Hash.Value[org.sigilaris.core.merkle.MerkleTrieNode](_))
+          .map(
+            org.sigilaris.core.crypto.Hash
+              .Value[org.sigilaris.core.merkle.MerkleTrieNode](_),
+          )
     yield stateRoot -> hashes
 
   private def parseProposalReplayRequest(
@@ -495,9 +585,9 @@ object HotStuffBootstrapArmeriaAdapter:
       bytes <- Try(
         ByteVector.view(Base64.getUrlDecoder.decode(encoded)),
       ).toEither.leftMap(_ => bootstrapRejected(reason, encoded))
-      value <- bytes.to[A].leftMap(failure =>
-        bootstrapRejected(reason, failure.msg),
-      )
+      value <- bytes
+        .to[A]
+        .leftMap(failure => bootstrapRejected(reason, failure.msg))
     yield value
 
   private def bootstrapRejected(
@@ -519,18 +609,17 @@ object HotStuffBootstrapArmeriaAdapter:
     )
 
 object HotStuffBootstrapHttpTransport:
-  val DefaultRequestTimeout: Duration = Duration.ofSeconds(10L)
+  val DefaultRequestTimeout: Duration   = Duration.ofSeconds(10L)
   val DefaultMaxConcurrentRequests: Int = 16
 
   @SuppressWarnings(Array("org.wartremover.warts.DefaultArguments"))
   def services[F[_]: Async](
       peerBaseUris: Map[PeerIdentity, String],
       transportAuth: StaticPeerTransportAuth,
-      httpClient: HttpClient =
-        HttpClient
-          .newBuilder()
-          .connectTimeout(DefaultRequestTimeout)
-          .build(),
+      httpClient: HttpClient = HttpClient
+        .newBuilder()
+        .connectTimeout(DefaultRequestTimeout)
+        .build(),
       requestTimeout: Duration = DefaultRequestTimeout,
       maxConcurrentRequests: Int = DefaultMaxConcurrentRequests,
       proposalCatchUpReadiness: Option[ProposalCatchUpReadiness[F]] = None,
@@ -624,7 +713,10 @@ object HotStuffBootstrapHttpTransport:
                             detail = Some(error.toString),
                           ),
                         )
-                        .map(org.sigilaris.core.crypto.Hash.Value[org.sigilaris.core.merkle.MerkleTrieNode](_))
+                        .map(
+                          org.sigilaris.core.crypto.Hash
+                            .Value[org.sigilaris.core.merkle.MerkleTrieNode](_),
+                        )
                       node <- HotStuffBootstrapArmeriaAdapter
                         .decodeValue[org.sigilaris.core.merkle.MerkleTrieNode](
                           wire.nodeBase64Url,
@@ -735,12 +827,16 @@ object HotStuffBootstrapHttpTransport:
   ): F[Either[CanonicalRejection, String]] =
     peerBaseUris.get(session.peer) match
       case None =>
-        CanonicalRejection.BackfillUnavailable(
+        CanonicalRejection
+          .BackfillUnavailable(
             reason = "bootstrapPeerEndpointUnavailable",
             detail = Some(session.peer.value),
-        ).asLeft[String].pure[F]
+          )
+          .asLeft[String]
+          .pure[F]
       case Some(baseUri) =>
-        val bodyBytes = body.fold(Array.emptyByteArray)(_.getBytes(StandardCharsets.UTF_8))
+        val bodyBytes =
+          body.fold(Array.emptyByteArray)(_.getBytes(StandardCharsets.UTF_8))
         val proofEither =
           GossipTransportAuth.issueTransportProof(
             transportAuth = transportAuth,
@@ -761,15 +857,21 @@ object HotStuffBootstrapHttpTransport:
           )
         (proofEither, capabilityEither) match
           case (Left(error), _) =>
-            CanonicalRejection.BackfillUnavailable(
-              reason = "bootstrapTransportAuthUnavailable",
-              detail = Some(error),
-            ).asLeft[String].pure[F]
+            CanonicalRejection
+              .BackfillUnavailable(
+                reason = "bootstrapTransportAuthUnavailable",
+                detail = Some(error),
+              )
+              .asLeft[String]
+              .pure[F]
           case (_, Left(error)) =>
-            CanonicalRejection.BackfillUnavailable(
-              reason = "bootstrapCapabilityUnavailable",
-              detail = Some(error),
-            ).asLeft[String].pure[F]
+            CanonicalRejection
+              .BackfillUnavailable(
+                reason = "bootstrapCapabilityUnavailable",
+                detail = Some(error),
+              )
+              .asLeft[String]
+              .pure[F]
           case (Right(transportProof), Right(bootstrapCapability)) =>
             Async[F]
               .blocking(requestGate.acquire())
@@ -798,7 +900,9 @@ object HotStuffBootstrapHttpTransport:
                         body match
                           case Some(payload) =>
                             builder
-                              .POST(HttpRequest.BodyPublishers.ofString(payload))
+                              .POST(
+                                HttpRequest.BodyPublishers.ofString(payload),
+                              )
                               .build()
                           case None =>
                             builder
@@ -807,15 +911,17 @@ object HotStuffBootstrapHttpTransport:
                       httpClient.sendAsync(
                         request,
                         HttpResponse.BodyHandlers.ofString(),
-                      )
+                      ),
                   )
                   .attempt
                   .map:
                     case Left(error) =>
-                      CanonicalRejection.BackfillUnavailable(
-                        reason = "bootstrapTransportFailed",
-                        detail = Some(error.getMessage),
-                      ).asLeft[String]
+                      CanonicalRejection
+                        .BackfillUnavailable(
+                          reason = "bootstrapTransportFailed",
+                          detail = Some(error.getMessage),
+                        )
+                        .asLeft[String]
                     case Right(response) if response.statusCode() == 200 =>
                       response.body().asRight[CanonicalRejection]
                     case Right(response) =>
@@ -828,7 +934,7 @@ object HotStuffBootstrapHttpTransport:
                           ),
                         )
                         .merge
-                        .asLeft[String]
+                        .asLeft[String],
               )(_ => Async[F].delay(requestGate.release()).void)
 
 object HotStuffGossipArmeriaAdapter:

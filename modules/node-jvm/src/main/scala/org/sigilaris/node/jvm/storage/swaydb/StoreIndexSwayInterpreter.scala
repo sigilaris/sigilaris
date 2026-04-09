@@ -47,10 +47,9 @@ final class StoreIndexSwayInterpreter[K, V: ByteEncoder: ByteDecoder](
           case (decodedKey, valueArray) =>
             ByteDecoder[V]
               .decode(ByteVector.view(valueArray))
-              .flatMap(result =>
+              .flatMap: result =>
                 StoreIndexSwayInterpreter
-                  .ensureNoRemainder(result, "decoded value has remainder"),
-              )
+                  .ensureNoRemainder(result, "decoded value has remainder")
               .map(decodedValue => (decodedKey, decodedValue))
 
   def close(): IO[Unit] =

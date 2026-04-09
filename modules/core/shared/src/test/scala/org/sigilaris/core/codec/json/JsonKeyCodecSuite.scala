@@ -24,9 +24,11 @@ final class JsonKeyCodecSuite extends FunSuite:
   test("JsonKeyCodec.narrow validates on decode and encodes via base type"):
     final case class PositiveKey(value: Int)
     def fromInt(n: Int): Either[DecodeFailure, PositiveKey] =
-      if n > 0 then Right(PositiveKey(n)) else Left(DecodeFailure(s"Not positive: ${n.toString}"))
+      if n > 0 then Right(PositiveKey(n))
+      else Left(DecodeFailure(s"Not positive: ${n.toString}"))
 
-    val kc: JsonKeyCodec[PositiveKey] = JsonKeyCodec[Int].narrow(fromInt, _.value)
+    val kc: JsonKeyCodec[PositiveKey] =
+      JsonKeyCodec[Int].narrow(fromInt, _.value)
 
     // encode uses total back-conversion
     assertEquals(kc.encodeKey(PositiveKey(3)), "3")
@@ -35,5 +37,3 @@ final class JsonKeyCodecSuite extends FunSuite:
     assertEquals(kc.decodeKey("3"), Right(PositiveKey(3)))
     assert(kc.decodeKey("0").isLeft)
     assert(kc.decodeKey("-1").isLeft)
-
-

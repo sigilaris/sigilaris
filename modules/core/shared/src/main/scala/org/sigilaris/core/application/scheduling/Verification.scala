@@ -12,16 +12,25 @@ final case class AggregateFootprint(
       item: A,
       footprint: ConflictFootprint,
   ): Either[FootprintConflict[A], AggregateFootprint] =
-    writeWriteConflict(footprint).map: stateRef =>
-      FootprintConflict(item = item, stateRef = stateRef, kind = ConflictKind.WriteWrite)
-    .orElse:
-      readWriteConflict(footprint).map: stateRef =>
-        FootprintConflict(item = item, stateRef = stateRef, kind = ConflictKind.ReadWrite)
-    .toLeft:
-      AggregateFootprint(
-        readsSeen = readsSeen ++ footprint.reads,
-        writesSeen = writesSeen ++ footprint.writes,
-      )
+    writeWriteConflict(footprint)
+      .map: stateRef =>
+        FootprintConflict(
+          item = item,
+          stateRef = stateRef,
+          kind = ConflictKind.WriteWrite,
+        )
+      .orElse:
+        readWriteConflict(footprint).map: stateRef =>
+          FootprintConflict(
+            item = item,
+            stateRef = stateRef,
+            kind = ConflictKind.ReadWrite,
+          )
+      .toLeft:
+        AggregateFootprint(
+          readsSeen = readsSeen ++ footprint.reads,
+          writesSeen = writesSeen ++ footprint.writes,
+        )
 
   def footprint: ConflictFootprint =
     ConflictFootprint(reads = readsSeen, writes = writesSeen)

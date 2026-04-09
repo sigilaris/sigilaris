@@ -18,8 +18,8 @@ final case class StaticPeerBootstrapHttpTransportConfig(
 
 @SuppressWarnings(Array("org.wartremover.warts.DefaultArguments"))
 object StaticPeerBootstrapHttpTransportConfig:
-  val DefaultPath: String = StaticPeerTopologyConfig.DefaultPath
-  val DefaultRequestTimeout: Duration = Duration.ofSeconds(10L)
+  val DefaultPath: String               = StaticPeerTopologyConfig.DefaultPath
+  val DefaultRequestTimeout: Duration   = Duration.ofSeconds(10L)
   val DefaultMaxConcurrentRequests: Int = 16
 
   def load(
@@ -27,10 +27,8 @@ object StaticPeerBootstrapHttpTransportConfig:
       topology: StaticPeerTopology,
       path: String = DefaultPath,
   ): Either[String, Option[StaticPeerBootstrapHttpTransportConfig]] =
-    if config.hasPath(path) then
-      loadSection(config.getConfig(path), topology)
-    else
-      none[StaticPeerBootstrapHttpTransportConfig].asRight[String]
+    if config.hasPath(path) then loadSection(config.getConfig(path), topology)
+    else none[StaticPeerBootstrapHttpTransportConfig].asRight[String]
 
   def loadSection(
       section: Config,
@@ -104,9 +102,13 @@ object StaticPeerBootstrapHttpTransportConfig:
           .catchNonFatal(config.getConfig(path))
           .leftMap(_.getMessage)
           .map: section =>
-            section.root().entrySet().asScala.toVector.map(entry =>
-              entry.getKey -> section.getString(entry.getKey),
-            ).toMap
+            section
+              .root()
+              .entrySet()
+              .asScala
+              .toVector
+              .map(entry => entry.getKey -> section.getString(entry.getKey))
+              .toMap
 
   private def optionalConfig(
       config: Config,

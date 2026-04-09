@@ -66,10 +66,12 @@ final class InMemoryTxArtifactSource[F[_]: Sync, A] private (
   ): F[Either[CanonicalRejection, Vector[AvailableGossipEvent[A]]]] =
     ref.get.map: state =>
       if topic =!= GossipTopic.tx then
-        CanonicalRejection.ArtifactContractRejected(
-          reason = "unsupportedTopic",
-          detail = Some(topic.value),
-        ).asLeft[Vector[AvailableGossipEvent[A]]]
+        CanonicalRejection
+          .ArtifactContractRejected(
+            reason = "unsupportedTopic",
+            detail = Some(topic.value),
+          )
+          .asLeft[Vector[AvailableGossipEvent[A]]]
       else
         val chainEvents =
           state.getOrElse(chainId, Vector.empty[AvailableGossipEvent[A]])
@@ -77,20 +79,20 @@ final class InMemoryTxArtifactSource[F[_]: Sync, A] private (
           case None =>
             chainEvents.asRight[CanonicalRejection]
           case Some(token) =>
-            decodeSequence(token).flatMap: sequence =>
-              val maxSequence = chainEvents.size.toLong
-              Either.cond(
-                sequence >= 1L && sequence <= maxSequence,
-                chainEvents.drop(sequence.toInt),
-                CanonicalRejection.StaleCursor(
-                  reason = "unknownCursor",
-                  detail =
-                    Some(
-                      ss"sequence=${sequence.toString} max=${maxSequence.toString}"
+            decodeSequence(token)
+              .flatMap: sequence =>
+                val maxSequence = chainEvents.size.toLong
+                Either.cond(
+                  sequence >= 1L && sequence <= maxSequence,
+                  chainEvents.drop(sequence.toInt),
+                  CanonicalRejection.StaleCursor(
+                    reason = "unknownCursor",
+                    detail = Some(
+                      ss"sequence=${sequence.toString} max=${maxSequence.toString}",
                     ),
-                ),
-              )
-            .leftWiden[CanonicalRejection]
+                  ),
+                )
+              .leftWiden[CanonicalRejection]
 
   override def readByIds(
       chainId: ChainId,
@@ -145,7 +147,10 @@ final class InMemoryTxArtifactSink[F[_], A] private (
   ] =
     ref.modify: snapshot =>
       val knownForChain =
-        snapshot.appliedIds.getOrElse(event.chainId, Set.empty[StableArtifactId])
+        snapshot.appliedIds.getOrElse(
+          event.chainId,
+          Set.empty[StableArtifactId],
+        )
       if knownForChain.contains(event.id) then
         snapshot.copy(duplicates = snapshot.duplicates :+ event) ->
           ArtifactApplyResult(applied = false, duplicate = true)
@@ -153,8 +158,8 @@ final class InMemoryTxArtifactSink[F[_], A] private (
       else
         snapshot.copy(
           applied = snapshot.applied :+ event,
-          appliedIds =
-            snapshot.appliedIds.updated(event.chainId, knownForChain + event.id),
+          appliedIds = snapshot.appliedIds
+            .updated(event.chainId, knownForChain + event.id),
         ) ->
           ArtifactApplyResult(applied = true, duplicate = false)
             .asRight[CanonicalRejection.ArtifactContractRejected]

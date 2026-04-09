@@ -3,11 +3,25 @@ package org.sigilaris.core.application.module.runtime
 import cats.Monad
 import scala.Tuple.++
 
-import org.sigilaris.core.application.module.blueprint.{ComposedBlueprint, ModuleBlueprint, SchemaInstantiation, SchemaMapper}
+import org.sigilaris.core.application.module.blueprint.{
+  ComposedBlueprint,
+  ModuleBlueprint,
+  SchemaInstantiation,
+  SchemaMapper,
+}
 import org.sigilaris.core.application.module.provider.TablesProvider
 import org.sigilaris.core.application.state.{StoreF, StoreState, Tables}
-import org.sigilaris.core.application.support.compiletime.{PrefixFreePath, Requires, UniqueNames}
-import org.sigilaris.core.application.transactions.{ModuleRoutedTx, Signed, Tx, TxRegistry}
+import org.sigilaris.core.application.support.compiletime.{
+  PrefixFreePath,
+  Requires,
+  UniqueNames,
+}
+import org.sigilaris.core.application.transactions.{
+  ModuleRoutedTx,
+  Signed,
+  Tx,
+  TxRegistry,
+}
 import org.sigilaris.core.merkle.MerkleTrie
 
 /** Path-bound state reducer for single modules.
@@ -402,8 +416,14 @@ object StateModule:
   ): StateReducer[F, Path, O1 ++ O2, N1 ++ N2] =
     new StateReducer[F, Path, O1 ++ O2, N1 ++ N2]:
       def apply[T <: Tx](signedTx: Signed[T])(using
-          requiresReads: Requires[signedTx.value.Reads, (O1 ++ O2) ++ (N1 ++ N2)],
-          requiresWrites: Requires[signedTx.value.Writes, (O1 ++ O2) ++ (N1 ++ N2)],
+          requiresReads: Requires[
+            signedTx.value.Reads,
+            (O1 ++ O2) ++ (N1 ++ N2),
+          ],
+          requiresWrites: Requires[
+            signedTx.value.Writes,
+            (O1 ++ O2) ++ (N1 ++ N2),
+          ],
       ): StoreF[F][(signedTx.value.Result, List[signedTx.value.Event])] =
         val r1Result = r1.apply(signedTx)(using
           requiresReads.asInstanceOf[Requires[signedTx.value.Reads, O1 ++ N1]],
@@ -418,15 +438,19 @@ object StateModule:
             .run(s)
             .recoverWith: _ =>
               r2.apply(signedTx)(using
-                requiresReads.asInstanceOf[Requires[signedTx.value.Reads, O2 ++ N2]],
-                requiresWrites.asInstanceOf[Requires[signedTx.value.Writes, O2 ++ N2]],
+                requiresReads
+                  .asInstanceOf[Requires[signedTx.value.Reads, O2 ++ N2]],
+                requiresWrites
+                  .asInstanceOf[Requires[signedTx.value.Writes, O2 ++ N2]],
               ).run(s)
 
   trait ModuleFactory[F[_], Owns <: Tuple, Txs <: Tuple]:
     def build[Path <: Tuple](using
         @annotation.unused monad: cats.Monad[F],
         prefixFreePath: PrefixFreePath[Path, Owns],
-        @annotation.unused nodeStore: org.sigilaris.core.merkle.MerkleTrie.NodeStore[F],
+        @annotation.unused nodeStore: org.sigilaris.core.merkle.MerkleTrie.NodeStore[
+          F,
+        ],
         schemaMapper: SchemaMapper[F, Path, Owns],
     ): StateModule[F, Path, Owns, EmptyTuple, Txs, StateReducer[
       F,
@@ -443,7 +467,9 @@ object StateModule:
         def build[Path <: Tuple](using
             @annotation.unused monad: cats.Monad[F],
             prefixFreePath: PrefixFreePath[Path, Owns],
-            @annotation.unused nodeStore: org.sigilaris.core.merkle.MerkleTrie.NodeStore[F],
+            @annotation.unused nodeStore: org.sigilaris.core.merkle.MerkleTrie.NodeStore[
+              F,
+            ],
             schemaMapper: SchemaMapper[F, Path, Owns],
         ): StateModule[F, Path, Owns, EmptyTuple, Txs, StateReducer[
           F,

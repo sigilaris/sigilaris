@@ -6,10 +6,11 @@ import util.SafeStringInterp.*
 
 /** Tracks differences in Merkle Trie state using reference counting.
   *
-  * Maintains a map from node hashes to (node, reference count) pairs.
-  * Positive counts indicate additions, negative counts indicate removals.
+  * Maintains a map from node hashes to (node, reference count) pairs. Positive
+  * counts indicate additions, negative counts indicate removals.
   *
-  * @see [[MerkleTrieState]] for usage context
+  * @see
+  *   [[MerkleTrieState]] for usage context
   */
 opaque type MerkleTrieStateDiff = Map[MerkleHash, (MerkleTrieNode, Int)]
 
@@ -18,8 +19,10 @@ object MerkleTrieStateDiff:
 
   /** Creates a diff from a map.
     *
-    * @param map the underlying map
-    * @return new diff
+    * @param map
+    *   the underlying map
+    * @return
+    *   new diff
     */
   def apply(
       map: Map[MerkleHash, (MerkleTrieNode, Int)],
@@ -31,8 +34,10 @@ object MerkleTrieStateDiff:
   extension (diff: MerkleTrieStateDiff)
     /** Gets a node if it exists with positive reference count.
       *
-      * @param hash the node hash
-      * @return Some(node) if present with positive count, None otherwise
+      * @param hash
+      *   the node hash
+      * @return
+      *   Some(node) if present with positive count, None otherwise
       */
     def get(hash: MerkleHash): Option[MerkleTrieNode] =
       diff.get(hash).flatMap {
@@ -42,20 +47,24 @@ object MerkleTrieStateDiff:
 
     /** Applies a function to all nodes with positive reference count.
       *
-      * @param f function to apply to each (hash, node) pair
+      * @param f
+      *   function to apply to each (hash, node) pair
       */
     def foreach(f: (MerkleHash, MerkleTrieNode) => Unit): Unit =
       diff.foreach:
         case (hash, (node, count)) if count > 0 => f(hash, node)
-        case _ => ()
+        case _                                  => ()
 
     /** Adds a node reference to the diff.
       *
       * Increments the reference count, or cancels out a -1 count.
       *
-      * @param hash the node hash
-      * @param node the node
-      * @return updated diff
+      * @param hash
+      *   the node hash
+      * @param node
+      *   the node
+      * @return
+      *   updated diff
       */
     def add(
         hash: MerkleHash,
@@ -70,9 +79,12 @@ object MerkleTrieStateDiff:
       *
       * Decrements the reference count, or cancels out a +1 count.
       *
-      * @param hash the node hash
-      * @param node the node
-      * @return updated diff
+      * @param hash
+      *   the node hash
+      * @param node
+      *   the node
+      * @return
+      *   updated diff
       */
     def remove(
         hash: MerkleHash,
@@ -92,6 +104,7 @@ object MerkleTrieStateDiff:
     /** Converts diff to string for debugging. */
     def string: String = diff
       .map:
-        case (hash, (node, count)) => ss"${hash.hex} -> (${node.toString}, ${count.toString})"
+        case (hash, (node, count)) =>
+          ss"${hash.hex} -> (${node.toString}, ${count.toString})"
       .mkString("Diff(", ", ", ")")
   end extension

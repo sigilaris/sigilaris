@@ -26,12 +26,14 @@ import util.SafeStringInterp.*
   * [[org.sigilaris.core.crypto.internal.CryptoParams.CachePolicy]].
   *
   * @note
-  *   Equality and hashCode are based solely on the 64-byte x||y
-  *   representation, ensuring consistency across both internal forms.
+  *   Equality and hashCode are based solely on the 64-byte x||y representation,
+  *   ensuring consistency across both internal forms.
   *
-  * @see [[PublicKeyLike]] for the cross-platform interface
-  * @see [[org.sigilaris.core.crypto.internal.CryptoParams.CachePolicy]] for
-  *      caching behavior
+  * @see
+  *   [[PublicKeyLike]] for the cross-platform interface
+  * @see
+  *   [[org.sigilaris.core.crypto.internal.CryptoParams.CachePolicy]] for
+  *   caching behavior
   */
 sealed trait PublicKey extends PublicKeyLike:
   /** Returns the 64-byte uncompressed representation (x||y). */
@@ -82,7 +84,8 @@ object PublicKey:
             System.arraycopy(xb, 0, out, 0, 32)
             System.arraycopy(yb, 0, out, 32, 32)
             out
-          if internal.CryptoParams.CachePolicy.enabled then cachedXY64Ref.set(Some(combined))
+          if internal.CryptoParams.CachePolicy.enabled then
+            cachedXY64Ref.set(Some(combined))
           combined
 
     override private[crypto] def asECPoint(): ECPoint =
@@ -99,10 +102,13 @@ object PublicKey:
                 System.arraycopy(xy, 0, enc, 1, 64)
                 enc
               })
-              if internal.CryptoParams.CachePolicy.enabled then cachedPointRef.set(Some(point))
+              if internal.CryptoParams.CachePolicy.enabled then
+                cachedPointRef.set(Some(point))
               point
-          val normalized = if decoded.isNormalized then decoded else decoded.normalize()
-          if internal.CryptoParams.CachePolicy.enabled then cachedPointNormRef.set(Some(normalized))
+          val normalized =
+            if decoded.isNormalized then decoded else decoded.normalize()
+          if internal.CryptoParams.CachePolicy.enabled then
+            cachedPointNormRef.set(Some(normalized))
           normalized
 
   final case class Point(p: ECPoint) extends PublicKey:
@@ -120,7 +126,8 @@ object PublicKey:
         case Some(np) => np
         case None =>
           val np = if p.isNormalized then p else p.normalize()
-          if internal.CryptoParams.CachePolicy.enabled then cachedNormRef.set(Some(np))
+          if internal.CryptoParams.CachePolicy.enabled then
+            cachedNormRef.set(Some(np))
           np
 
     @SuppressWarnings(Array("org.wartremover.warts.Throw"))
@@ -133,7 +140,8 @@ object PublicKey:
             UInt256.fromBigIntegerUnsigned(np.getAffineXCoord.toBigInteger) match
               case Right(u) => u
               case Left(e)  => throw new IllegalArgumentException(e.msg)
-          if internal.CryptoParams.CachePolicy.enabled then cachedXRef.set(Some(v))
+          if internal.CryptoParams.CachePolicy.enabled then
+            cachedXRef.set(Some(v))
           v
 
     @SuppressWarnings(Array("org.wartremover.warts.Throw"))
@@ -146,7 +154,8 @@ object PublicKey:
             UInt256.fromBigIntegerUnsigned(np.getAffineYCoord.toBigInteger) match
               case Right(u) => u
               case Left(e)  => throw new IllegalArgumentException(e.msg)
-          if internal.CryptoParams.CachePolicy.enabled then cachedYRef.set(Some(v))
+          if internal.CryptoParams.CachePolicy.enabled then
+            cachedYRef.set(Some(v))
           v
 
     private def xy64Array(): Array[Byte] =
@@ -158,7 +167,8 @@ object PublicKey:
           val out = new Array[Byte](64)
           System.arraycopy(xb, 0, out, 0, 32)
           System.arraycopy(yb, 0, out, 32, 32)
-          if internal.CryptoParams.CachePolicy.enabled then cachedXY64Ref.set(Some(out))
+          if internal.CryptoParams.CachePolicy.enabled then
+            cachedXY64Ref.set(Some(out))
           out
 
     override def toBytes: ByteVector =
@@ -173,10 +183,14 @@ object PublicKey:
     *   Right([[PublicKey]]) on success, Left(failure) if array length is not 64
     *   or coordinates are invalid
     */
-  def fromByteArray(array: Array[Byte]): Either[failure.UInt256Failure, PublicKey] =
+  def fromByteArray(
+      array: Array[Byte],
+  ): Either[failure.UInt256Failure, PublicKey] =
     if array.length != 64 then
       val len: String = array.length.toString
-      failure.UInt256Overflow(ss"Public key array size must be 64, got: ${len}").asLeft[PublicKey]
+      failure
+        .UInt256Overflow(ss"Public key array size must be 64, got: ${len}")
+        .asLeft[PublicKey]
     else
       val (xArr, yArr) = array splitAt 32
       for

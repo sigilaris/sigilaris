@@ -8,16 +8,18 @@ import scodec.bits.ByteVector
 final class GossipProducerSessionSuite extends FunSuite:
 
   private val remotePeer = PeerIdentity.unsafe("node-b")
-  private val chainId = ChainId.unsafe("chain-main")
+  private val chainId    = ChainId.unsafe("chain-main")
   private val auditTopic = GossipTopic.unsafe("audit")
-  private val startedAt = Instant.parse("2026-04-01T00:00:00Z")
+  private val startedAt  = Instant.parse("2026-04-01T00:00:00Z")
 
   private final case class StubQoS(
       maxBatchItems: Int,
       flushInterval: Duration,
   ) extends GossipProducerQoS
 
-  test("topic-neutral producer session state and polling can be reused by a non-tx topic stub"):
+  test(
+    "topic-neutral producer session state and polling can be reused by a non-tx topic stub",
+  ):
     val chainTopic = ChainTopic(chainId, auditTopic)
     val session = GossipProducerSessionState(
       sessionId = DirectionalSessionId.random(),
@@ -30,15 +32,22 @@ final class GossipProducerSessionSuite extends FunSuite:
         maxControlRetryInterval = Duration.ofSeconds(30),
       ),
     )
-    val cursor1 = CursorToken.issue(ByteVector.fromLong(1L))
-    val cursor2 = CursorToken.issue(ByteVector.fromLong(2L))
+    val cursor1         = CursorToken.issue(ByteVector.fromLong(1L))
+    val cursor2         = CursorToken.issue(ByteVector.fromLong(2L))
     val replayRequested = session.withReplay(chainTopic, Some(cursor1))
     val advanced =
       replayRequested
         .advanceStreamCursor(
           chainTopic,
           Vector(
-            GossipEvent(chainId, auditTopic, StableArtifactId.unsafeFromHex("01"), cursor2, startedAt, "audit-2")
+            GossipEvent(
+              chainId,
+              auditTopic,
+              StableArtifactId.unsafeFromHex("01"),
+              cursor2,
+              startedAt,
+              "audit-2",
+            ),
           ),
         )
         .clearReplay(chainTopic)
@@ -56,7 +65,7 @@ final class GossipProducerSessionSuite extends FunSuite:
               payload = "audit-1",
             ),
             availableAt = startedAt,
-          )
+          ),
         ),
         qos = StubQoS(maxBatchItems = 4, flushInterval = Duration.ofSeconds(5)),
         forceFlush = false,

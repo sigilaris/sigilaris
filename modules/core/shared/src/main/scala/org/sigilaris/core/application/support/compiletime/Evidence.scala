@@ -1,6 +1,11 @@
 package org.sigilaris.core.application.support.compiletime
 
-import org.sigilaris.core.application.state.{Entry, EntryTuple, StateTable, Tables}
+import org.sigilaris.core.application.state.{
+  Entry,
+  EntryTuple,
+  StateTable,
+  Tables,
+}
 
 /** Evidence that all entries in Needs are present in Schema.
   *

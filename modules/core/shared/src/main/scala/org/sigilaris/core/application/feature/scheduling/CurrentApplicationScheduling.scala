@@ -4,10 +4,28 @@ import cats.syntax.either.*
 import scodec.bits.ByteVector
 
 import org.sigilaris.core.application.feature.accounts.domain.{Account, KeyId20}
-import org.sigilaris.core.application.feature.accounts.transactions.{AddKeyIds, CreateNamedAccount, RemoveAccount, RemoveKeyIds, UpdateAccount}
+import org.sigilaris.core.application.feature.accounts.transactions.{
+  AddKeyIds,
+  CreateNamedAccount,
+  RemoveAccount,
+  RemoveKeyIds,
+  UpdateAccount,
+}
 import org.sigilaris.core.application.feature.group.domain.GroupId
-import org.sigilaris.core.application.feature.group.transactions.{AddAccounts, CreateGroup, DisbandGroup, RemoveAccounts, ReplaceCoordinator}
-import org.sigilaris.core.application.scheduling.{ConflictFootprint, FootprintDerivationFailure, FootprintDeriver, SchedulingClassification, StateRef}
+import org.sigilaris.core.application.feature.group.transactions.{
+  AddAccounts,
+  CreateGroup,
+  DisbandGroup,
+  RemoveAccounts,
+  ReplaceCoordinator,
+}
+import org.sigilaris.core.application.scheduling.{
+  ConflictFootprint,
+  FootprintDerivationFailure,
+  FootprintDeriver,
+  SchedulingClassification,
+  StateRef,
+}
 import org.sigilaris.core.application.support.encoding.tablePrefixRuntime
 import org.sigilaris.core.application.transactions.{Signed, Tx}
 import org.sigilaris.core.codec.byte.ByteCodec
@@ -129,7 +147,8 @@ object CurrentApplicationScheduling:
   ): Either[FootprintDerivationFailure, ConflictFootprint] =
     signerKeyReads(signed).map: signerReads =>
       val groupState = groupRef(groupId)
-      val memberRefs = accounts.map(account => groupAccountRef(groupId, account))
+      val memberRefs =
+        accounts.map(account => groupAccountRef(groupId, account))
       ConflictFootprint(
         reads = signerReads + groupState ++ memberRefs,
         writes = Set(groupState) ++ memberRefs,
@@ -138,9 +157,9 @@ object CurrentApplicationScheduling:
   def deriveCreateNamedAccount(
       signed: Signed[CreateNamedAccount],
   ): Either[FootprintDerivationFailure, ConflictFootprint] =
-    val tx = signed.value
+    val tx           = signed.value
     val accountState = accountRef(tx.name)
-    val signerKey = nameKeyRef(tx.name, tx.initialKeyId)
+    val signerKey    = nameKeyRef(tx.name, tx.initialKeyId)
     ConflictFootprint(
       reads = Set(accountState),
       writes = Set(accountState, signerKey),
@@ -156,7 +175,7 @@ object CurrentApplicationScheduling:
       signed: Signed[AddKeyIds],
   ): Either[FootprintDerivationFailure, ConflictFootprint] =
     signerKeyReads(signed).map: signerReads =>
-      val tx = signed.value
+      val tx           = signed.value
       val accountState = accountRef(tx.name)
       val keyRefs = tx.keyIds.keySet.map(keyId => nameKeyRef(tx.name, keyId))
       ConflictFootprint(
@@ -168,9 +187,9 @@ object CurrentApplicationScheduling:
       signed: Signed[RemoveKeyIds],
   ): Either[FootprintDerivationFailure, ConflictFootprint] =
     signerKeyReads(signed).map: signerReads =>
-      val tx = signed.value
+      val tx           = signed.value
       val accountState = accountRef(tx.name)
-      val keyRefs = tx.keyIds.map(keyId => nameKeyRef(tx.name, keyId))
+      val keyRefs      = tx.keyIds.map(keyId => nameKeyRef(tx.name, keyId))
       ConflictFootprint(
         reads = signerReads + accountState ++ keyRefs,
         writes = Set(accountState) ++ keyRefs,
@@ -198,12 +217,20 @@ object CurrentApplicationScheduling:
   def deriveAddAccounts(
       signed: Signed[AddAccounts],
   ): Either[FootprintDerivationFailure, ConflictFootprint] =
-    deriveGroupMembershipFootprint(signed, signed.value.groupId, signed.value.accounts)
+    deriveGroupMembershipFootprint(
+      signed,
+      signed.value.groupId,
+      signed.value.accounts,
+    )
 
   def deriveRemoveAccounts(
       signed: Signed[RemoveAccounts],
   ): Either[FootprintDerivationFailure, ConflictFootprint] =
-    deriveGroupMembershipFootprint(signed, signed.value.groupId, signed.value.accounts)
+    deriveGroupMembershipFootprint(
+      signed,
+      signed.value.groupId,
+      signed.value.accounts,
+    )
 
   def deriveReplaceCoordinator(
       signed: Signed[ReplaceCoordinator],
@@ -216,7 +243,8 @@ object CurrentApplicationScheduling:
   ): Either[FootprintDerivationFailure, ConflictFootprint] =
     signed.value match
       case _: CreateNamedAccount =>
-        deriveCreateNamedAccount(signed.asInstanceOf[Signed[CreateNamedAccount]])
+        deriveCreateNamedAccount:
+          signed.asInstanceOf[Signed[CreateNamedAccount]]
       case _: UpdateAccount =>
         deriveUpdateAccount(signed.asInstanceOf[Signed[UpdateAccount]])
       case _: AddKeyIds =>
@@ -234,7 +262,8 @@ object CurrentApplicationScheduling:
       case _: RemoveAccounts =>
         deriveRemoveAccounts(signed.asInstanceOf[Signed[RemoveAccounts]])
       case _: ReplaceCoordinator =>
-        deriveReplaceCoordinator(signed.asInstanceOf[Signed[ReplaceCoordinator]])
+        deriveReplaceCoordinator:
+          signed.asInstanceOf[Signed[ReplaceCoordinator]]
       case other =>
         FootprintDerivationFailure(
           reason = "unsupportedTxFamily",
@@ -247,7 +276,8 @@ object CurrentApplicationScheduling:
   ): SchedulingClassification =
     SchedulingClassification.fromDerivation(deriveSigned(signed))
 
-  given createNamedAccountFootprintDeriver: FootprintDeriver[Signed[CreateNamedAccount]] =
+  given createNamedAccountFootprintDeriver
+      : FootprintDeriver[Signed[CreateNamedAccount]] =
     FootprintDeriver.instance(deriveCreateNamedAccount)
   given updateAccountFootprintDeriver: FootprintDeriver[Signed[UpdateAccount]] =
     FootprintDeriver.instance(deriveUpdateAccount)
@@ -263,7 +293,9 @@ object CurrentApplicationScheduling:
     FootprintDeriver.instance(deriveDisbandGroup)
   given addAccountsFootprintDeriver: FootprintDeriver[Signed[AddAccounts]] =
     FootprintDeriver.instance(deriveAddAccounts)
-  given removeAccountsFootprintDeriver: FootprintDeriver[Signed[RemoveAccounts]] =
+  given removeAccountsFootprintDeriver
+      : FootprintDeriver[Signed[RemoveAccounts]] =
     FootprintDeriver.instance(deriveRemoveAccounts)
-  given replaceCoordinatorFootprintDeriver: FootprintDeriver[Signed[ReplaceCoordinator]] =
+  given replaceCoordinatorFootprintDeriver
+      : FootprintDeriver[Signed[ReplaceCoordinator]] =
     FootprintDeriver.instance(deriveReplaceCoordinator)

@@ -23,12 +23,12 @@ private[gossip] object GossipTransportAuth:
   val BootstrapCapabilityHeaderName: String =
     "x-sigilaris-bootstrap-capability"
 
-  private val TransportProofInfo       = "sigilaris.transport-proof.v1"
-  private val BootstrapCapabilityInfo  = "sigilaris.bootstrap-capability.v1"
-  private val Utf8                     = StandardCharsets.UTF_8
-  private val HmacAlgorithm: String    = "HmacSHA256"
-  private val Sha256Algorithm: String  = "SHA-256"
-  private val MacLength: Int           = 32
+  private val TransportProofInfo      = "sigilaris.transport-proof.v1"
+  private val BootstrapCapabilityInfo = "sigilaris.bootstrap-capability.v1"
+  private val Utf8                    = StandardCharsets.UTF_8
+  private val HmacAlgorithm: String   = "HmacSHA256"
+  private val Sha256Algorithm: String = "SHA-256"
+  private val MacLength: Int          = 32
 
   def issueTransportProof(
       transportAuth: StaticPeerTransportAuth,
@@ -37,19 +37,20 @@ private[gossip] object GossipTransportAuth:
       requestPath: String,
       requestBodyBytes: Array[Byte],
   ): Either[String, String] =
-    transportAuth.secretFor(authenticatedPeer).map: secret =>
-      encodeMac(
-        mac(
-          key = deriveKey(secret.bytes, TransportProofInfo),
-          message =
-            transportProofInput(
+    transportAuth
+      .secretFor(authenticatedPeer)
+      .map: secret =>
+        encodeMac(
+          mac(
+            key = deriveKey(secret.bytes, TransportProofInfo),
+            message = transportProofInput(
               authenticatedPeer = authenticatedPeer,
               httpMethod = httpMethod,
               requestPath = requestPath,
               requestBodyBytes = requestBodyBytes,
             ),
-        ),
-      )
+          ),
+        )
 
   def authenticateRequest(
       transportAuth: StaticPeerTransportAuth,
@@ -61,7 +62,7 @@ private[gossip] object GossipTransportAuth:
   ): Either[CanonicalRejection.HandshakeRejected, PeerIdentity] =
     for
       authenticatedPeer <- parseAuthenticatedPeer(authenticatedPeerRaw)
-      proof <- parseProofHeader(transportProofRaw)
+      proof             <- parseProofHeader(transportProofRaw)
       expected <- issueTransportProof(
         transportAuth = transportAuth,
         authenticatedPeer = authenticatedPeer,
@@ -88,12 +89,13 @@ private[gossip] object GossipTransportAuth:
       requestPath: String,
       requestBodyBytes: Array[Byte],
   ): Either[String, String] =
-    transportAuth.secretFor(authenticatedPeer).map: secret =>
-      encodeMac(
-        mac(
-          key = deriveKey(secret.bytes, BootstrapCapabilityInfo),
-          message =
-            bootstrapCapabilityInput(
+    transportAuth
+      .secretFor(authenticatedPeer)
+      .map: secret =>
+        encodeMac(
+          mac(
+            key = deriveKey(secret.bytes, BootstrapCapabilityInfo),
+            message = bootstrapCapabilityInput(
               authenticatedPeer = authenticatedPeer,
               targetPeer = targetPeer,
               sessionId = sessionId,
@@ -101,8 +103,8 @@ private[gossip] object GossipTransportAuth:
               requestPath = requestPath,
               requestBodyBytes = requestBodyBytes,
             ),
-        ),
-      )
+          ),
+        )
 
   def verifyBootstrapCapability(
       transportAuth: StaticPeerTransportAuth,
@@ -138,15 +140,16 @@ private[gossip] object GossipTransportAuth:
   private def parseAuthenticatedPeer(
       raw: Option[String],
   ): Either[CanonicalRejection.HandshakeRejected, PeerIdentity] =
-    raw.toRight(
-      handshakeRejected(
-        "missingAuthenticatedPeer",
-        AuthenticatedPeerHeaderName,
-      ),
-    ).flatMap: value =>
-      PeerIdentity
-        .parse(value)
-        .leftMap(handshakeRejected("invalidAuthenticatedPeer", _))
+    raw
+      .toRight:
+        handshakeRejected(
+          "missingAuthenticatedPeer",
+          AuthenticatedPeerHeaderName,
+        )
+      .flatMap: value =>
+        PeerIdentity
+          .parse(value)
+          .leftMap(handshakeRejected("invalidAuthenticatedPeer", _))
 
   private def parseProofHeader(
       raw: Option[String],
@@ -174,20 +177,23 @@ private[gossip] object GossipTransportAuth:
       invalidReason: String,
       headerName: String,
   ): Either[CanonicalRejection.HandshakeRejected, String] =
-    raw.toRight(
-      handshakeRejected(
-        missingReason,
-        headerName,
-      ),
-    ).flatMap: value =>
-      decodeMac(value)
-        .toRight(handshakeRejected(invalidReason, value))
-        .map(_ => value)
+    raw
+      .toRight:
+        handshakeRejected(
+          missingReason,
+          headerName,
+        )
+      .flatMap: value =>
+        decodeMac(value)
+          .toRight(handshakeRejected(invalidReason, value))
+          .map(_ => value)
 
   private def decodeMac(
       raw: String,
   ): Option[ByteVector] =
-    scala.util.Try(ByteVector.view(Base64.getUrlDecoder.decode(raw))).toOption
+    scala.util
+      .Try(ByteVector.view(Base64.getUrlDecoder.decode(raw)))
+      .toOption
       .filter(_.size == MacLength.toLong)
 
   private def encodeMac(
@@ -230,10 +236,11 @@ private[gossip] object GossipTransportAuth:
   private def requestBodyDigest(
       requestBodyBytes: Array[Byte],
   ): ByteVector =
-    ByteVector.view(MessageDigest.getInstance(Sha256Algorithm).digest(requestBodyBytes))
+    ByteVector.view:
+      MessageDigest.getInstance(Sha256Algorithm).digest(requestBodyBytes)
 
   private def encodeTuple(
-      fields: ByteVector*
+      fields: ByteVector*,
   ): ByteVector =
     fields.foldLeft(ByteVector.empty): (acc, field) =>
       acc ++ ByteVector.fromInt(field.size.toInt) ++ field

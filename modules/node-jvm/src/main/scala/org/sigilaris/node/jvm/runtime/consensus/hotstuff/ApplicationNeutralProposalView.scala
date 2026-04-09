@@ -4,17 +4,26 @@ import cats.effect.kernel.Sync
 import cats.syntax.all.*
 import scodec.bits.ByteVector
 
-import org.sigilaris.core.application.scheduling.{ConflictFootprint, SchedulingClassification}
+import org.sigilaris.core.application.scheduling.{
+  ConflictFootprint,
+  SchedulingClassification,
+}
 import org.sigilaris.core.codec.byte.ByteEncoder
 import org.sigilaris.core.codec.byte.ByteEncoder.ops.*
 import org.sigilaris.core.crypto.{Hash, Hash as CryptoHash}
 import org.sigilaris.core.datatype.{UInt256, Utf8}
-import org.sigilaris.node.jvm.runtime.block.{BlockBody, BlockRecord, BlockValidationFailure, BlockView, BodyRoot}
+import org.sigilaris.node.jvm.runtime.block.{
+  BlockBody,
+  BlockRecord,
+  BlockValidationFailure,
+  BlockView,
+  BodyRoot,
+}
 import org.sigilaris.node.jvm.runtime.gossip.StableArtifactId
 
 object ApplicationNeutralProposalView:
   type ResultRef = Utf8
-  type Event = Utf8
+  type Event     = Utf8
   private val LegacyAutomaticProposalBodyRootDomain =
     Utf8("sigilaris.hotstuff.auto-proposal.body-root.v1")
 
@@ -144,7 +153,11 @@ object ApplicationNeutralProposalView:
   def validate(
       proposal: Proposal,
       validatorSet: ValidatorSet,
-  ): Either[HotStuffValidationFailure, BlockView[StableArtifactId, ResultRef, Event]] =
+  ): Either[HotStuffValidationFailure, BlockView[
+    StableArtifactId,
+    ResultRef,
+    Event,
+  ]] =
     ensureSupportedTxIds(proposal.txSet.txIds).flatMap: _ =>
       given Hash[StableArtifactId] = (txId: StableArtifactId) =>
         CryptoHash.Value[StableArtifactId](

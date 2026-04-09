@@ -20,7 +20,9 @@ object CodecLawSupport:
           )
         case Left(_) => Result.failure
 
-    def deterministicEncoding[A](value: A)(using ByteEncoder[A], ByteDecoder[A]): Result =
+    def deterministicEncoding[A](
+        value: A,
+    )(using ByteEncoder[A], ByteDecoder[A]): Result =
       val encoded = ByteEncoder[A].encode(value)
       ByteDecoder[A].decode(encoded) match
         case Right(DecodeResult(decoded, remainder)) =>
@@ -38,7 +40,9 @@ object CodecLawSupport:
         case Right(decoded) => decoded ==== value
         case Left(_)        => Result.failure
 
-    def deterministicEncoding[A](value: A)(using JsonEncoder[A], JsonDecoder[A]): Result =
+    def deterministicEncoding[A](
+        value: A,
+    )(using JsonEncoder[A], JsonDecoder[A]): Result =
       val encoded = JsonEncoder[A].encode(value)
       JsonDecoder[A].decode(encoded) match
         case Right(decoded) => JsonEncoder[A].encode(decoded) ==== encoded

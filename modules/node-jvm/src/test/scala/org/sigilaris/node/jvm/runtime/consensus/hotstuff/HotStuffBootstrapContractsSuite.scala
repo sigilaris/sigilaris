@@ -6,47 +6,61 @@ import munit.CatsEffectSuite
 import org.sigilaris.core.crypto.CryptoOps
 import org.sigilaris.core.datatype.UInt256
 import org.sigilaris.node.jvm.runtime.block.{BlockHeight, BlockId, StateRoot}
-import org.sigilaris.node.jvm.runtime.gossip.{ChainId, DirectionalSessionId, PeerIdentity}
+import org.sigilaris.node.jvm.runtime.gossip.{
+  ChainId,
+  DirectionalSessionId,
+  PeerIdentity,
+}
 
 final class HotStuffBootstrapContractsSuite extends CatsEffectSuite:
 
-  private val chainId = ChainId.unsafe("chain-main")
+  private val chainId       = ChainId.unsafe("chain-main")
   private val validatorKeys = Vector.fill(4)(CryptoOps.generate())
   private val validatorSet = ValidatorSet.unsafe(
     validatorKeys.zipWithIndex.map: (keyPair, index) =>
       ValidatorMember(
         id = ValidatorId.unsafe(s"validator-${index + 1}"),
         publicKey = keyPair.publicKey,
-      )
+      ),
   )
   private val otherValidatorSet = ValidatorSet.unsafe(
-    Vector.fill(4)(CryptoOps.generate()).zipWithIndex.map: (keyPair, index) =>
-      ValidatorMember(
-        id = ValidatorId.unsafe(s"validator-alt-${index + 1}"),
-        publicKey = keyPair.publicKey,
-      )
+    Vector
+      .fill(4)(CryptoOps.generate())
+      .zipWithIndex
+      .map: (keyPair, index) =>
+        ValidatorMember(
+          id = ValidatorId.unsafe(s"validator-alt-${index + 1}"),
+          publicKey = keyPair.publicKey,
+        ),
   )
   private val session =
     BootstrapSessionBinding(
       peer = PeerIdentity.unsafe("node-b"),
-      sessionId =
-        DirectionalSessionId
-          .parse("aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa")
-          .toOption
-          .get,
+      sessionId = DirectionalSessionId
+        .parse("aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa")
+        .toOption
+        .get,
     )
 
-  test("static validator-set lookup accepts matching validatorSetHash and rejects unknown historical sets"):
-    val lookup = ValidatorSetLookup.static[IO](BootstrapTrustRoot.staticValidatorSet(validatorSet))
+  test(
+    "static validator-set lookup accepts matching validatorSetHash and rejects unknown historical sets",
+  ):
+    val lookup = ValidatorSetLookup.static[IO](
+      BootstrapTrustRoot.staticValidatorSet(validatorSet),
+    )
 
     for
-      matching <- lookup.validatorSetFor(HotStuffWindow(chainId, 1L, 1L, validatorSet.hash))
-      missing <- lookup.validatorSetFor(HotStuffWindow(chainId, 1L, 1L, otherValidatorSet.hash))
+      matching <- lookup.validatorSetFor:
+        HotStuffWindow(chainId, 1L, 1L, validatorSet.hash)
+      missing <- lookup.validatorSetFor:
+        HotStuffWindow(chainId, 1L, 1L, otherValidatorSet.hash)
     yield
       assertEquals(matching.map(_.hash), Right(validatorSet.hash))
       assertEquals(missing.left.map(_.reason), Left("validatorSetUnavailable"))
 
-  test("inventory lookup resolves trusted-checkpoint and configured historical validator sets by hash"):
+  test(
+    "inventory lookup resolves trusted-checkpoint and configured historical validator sets by hash",
+  ):
     val checkpointRoot =
       BootstrapTrustRoot
         .trustedCheckpoint(
@@ -62,17 +76,17 @@ final class HotStuffBootstrapContractsSuite extends CatsEffectSuite:
       )
 
     for
-      checkpointSet <- lookup.validatorSetFor(
-        HotStuffWindow(chainId, 10L, 3L, otherValidatorSet.hash),
-      )
-      currentSet <- lookup.validatorSetFor(
-        HotStuffWindow(chainId, 11L, 4L, validatorSet.hash),
-      )
+      checkpointSet <- lookup.validatorSetFor:
+        HotStuffWindow(chainId, 10L, 3L, otherValidatorSet.hash)
+      currentSet <- lookup.validatorSetFor:
+        HotStuffWindow(chainId, 11L, 4L, validatorSet.hash)
     yield
       assertEquals(checkpointSet.map(_.hash), Right(otherValidatorSet.hash))
       assertEquals(currentSet.map(_.hash), Right(validatorSet.hash))
 
-  test("checkpoint trust-root construction rejects validator-set hash mismatch"):
+  test(
+    "checkpoint trust-root construction rejects validator-set hash mismatch",
+  ):
     val mismatched =
       BootstrapTrustRoot.trustedCheckpoint(
         HotStuffWindow(chainId, 7L, 2L, validatorSet.hash),
@@ -80,15 +94,22 @@ final class HotStuffBootstrapContractsSuite extends CatsEffectSuite:
       )
 
     assertEquals(
-      mismatched.left.map(_.startsWith("trustedCheckpoint validatorSetHash mismatch")),
+      mismatched.left.map(
+        _.startsWith("trustedCheckpoint validatorSetHash mismatch"),
+      ),
       Left(true),
     )
 
-  test("static bootstrap services expose empty session-bound skeleton implementations"):
+  test(
+    "static bootstrap services expose empty session-bound skeleton implementations",
+  ):
     val services = HotStuffBootstrapServices.static[IO](validatorSet)
 
     for
-      suggestion <- services.finalizedAnchorSuggestions.bestFinalized(session, chainId)
+      suggestion <- services.finalizedAnchorSuggestions.bestFinalized(
+        session,
+        chainId,
+      )
       nodes <- services.snapshotNodeFetch.fetchNodes(
         session = session,
         chainId = chainId,
@@ -116,7 +137,10 @@ final class HotStuffBootstrapContractsSuite extends CatsEffectSuite:
       assertEquals(replay, Right(Vector.empty))
       assertEquals(backfill, Right(Vector.empty))
       assertEquals(diagnostics.chains, Map.empty)
-      assertEquals(diagnostics.historicalBackfill, HistoricalBackfillStatus.Idle)
+      assertEquals(
+        diagnostics.historicalBackfill,
+        HistoricalBackfillStatus.Idle,
+      )
 
   private def hex(
       value: String,

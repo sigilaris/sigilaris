@@ -7,18 +7,18 @@ import org.sigilaris.core.datatype.{BigNat, UInt256, Utf8Key}
 /** Law verification tests for OrderedCodec instances.
   *
   * This test suite verifies the fundamental law of OrderedCodec:
-  *   sign(compare(x, y)) == sign(encode(x).compare(encode(y)))
+  * sign(compare(x, y)) == sign(encode(x).compare(encode(y)))
   *
   * For each type, we test:
-  * 1. Ordering preservation: if x < y, then encode(x) < encode(y)
-  * 2. Equality preservation: if x == y, then encode(x) == encode(y)
-  * 3. Reverse ordering: if x > y, then encode(x) > encode(y)
-  * 4. Round-trip: decode(encode(x)) == Some(x)
+  *   - Ordering preservation: if x < y, then encode(x) < encode(y)
+  *   - Equality preservation: if x == y, then encode(x) == encode(y)
+  *   - Reverse ordering: if x > y, then encode(x) > encode(y)
+  *   - Round-trip: decode(encode(x)) == Some(x)
   */
 class OrderedCodecLawTest extends FunSuite:
 
-  /** Verifies the OrderedCodec law for a list of values.
-    * Tests all pairs (x, y) where x and y are in the list.
+  /** Verifies the OrderedCodec law for a list of values. Tests all pairs (x, y)
+    * where x and y are in the list.
     */
   def verifyLaw[A](values: List[A])(using oc: OrderedCodec[A]): Unit =
     for
@@ -32,17 +32,22 @@ class OrderedCodecLawTest extends FunSuite:
 
       assert(
         ordering.sign == encodedOrdering.sign,
-        s"Law violated: compare($x, $y) = $ordering, but encoded comparison = $encodedOrdering"
+        s"Law violated: compare($x, $y) = $ordering, but encoded comparison = $encodedOrdering",
       )
 
-  /** Verifies round-trip property: decode(encode(x)) == Right(DecodeResult(x, remainder)) */
+  /** Verifies round-trip property: decode(encode(x)) == Right(DecodeResult(x,
+    * remainder))
+    */
   def verifyRoundTrip[A](values: List[A])(using oc: OrderedCodec[A]): Unit =
     values.foreach: x =>
       val encoded = oc.encode(x)
       val decoded = oc.decode(encoded)
       decoded match
         case Right(result) =>
-          assert(result.value == x, s"Round-trip failed for $x: decoded to ${result.value}")
+          assert(
+            result.value == x,
+            s"Round-trip failed for $x: decoded to ${result.value}",
+          )
         case Left(failure) =>
           fail(s"Round-trip failed for $x: decode failed with $failure")
 
@@ -59,7 +64,6 @@ class OrderedCodecLawTest extends FunSuite:
     )
     verifyLaw(values)
     verifyRoundTrip(values)
-
 
   test("OrderedCodec[BigNat] satisfies law"):
     val values = List(
@@ -106,9 +110,9 @@ class OrderedCodecLawTest extends FunSuite:
 
   // Specific boundary tests
   test("OrderedCodec[BigNat] handles boundary transitions"):
-    val oc = OrderedCodec[BigNat]
-    val zero = BigNat.unsafeFromLong(0)
-    val one = BigNat.unsafeFromLong(1)
+    val oc    = OrderedCodec[BigNat]
+    val zero  = BigNat.unsafeFromLong(0)
+    val one   = BigNat.unsafeFromLong(1)
     val large = BigNat.unsafeFromBigInt(BigInt("1000000000000000000"))
 
     // Zero to one
@@ -124,10 +128,10 @@ class OrderedCodecLawTest extends FunSuite:
     assert(oc.encode(zero).compare(oc.encode(large)) < 0)
 
   test("OrderedCodec[UInt256] handles boundary transitions"):
-    val oc = OrderedCodec[UInt256]
+    val oc   = OrderedCodec[UInt256]
     val zero = UInt256.unsafeFromBigIntUnsigned(BigInt(0))
-    val one = UInt256.unsafeFromBigIntUnsigned(BigInt(1))
-    val max = UInt256.unsafeFromBigIntUnsigned(BigInt(2).pow(256) - 1)
+    val one  = UInt256.unsafeFromBigIntUnsigned(BigInt(1))
+    val max  = UInt256.unsafeFromBigIntUnsigned(BigInt(2).pow(256) - 1)
 
     // Zero to one
     assert(oc.compare(zero, one) < 0)
@@ -143,17 +147,17 @@ class OrderedCodecLawTest extends FunSuite:
 
   test("OrderedCodec.satisfiesLaw method"):
     val ocBigNat = OrderedCodec[BigNat]
-    val n1 = BigNat.unsafeFromLong(10)
-    val n2 = BigNat.unsafeFromLong(100)
+    val n1       = BigNat.unsafeFromLong(10)
+    val n2       = BigNat.unsafeFromLong(100)
 
     assert(ocBigNat.satisfiesLaw(n1, n2))
     assert(ocBigNat.satisfiesLaw(n2, n1))
     assert(ocBigNat.satisfiesLaw(n1, n1))
 
   test("OrderedCodec[Utf8Key] handles empty string"):
-    val oc = OrderedCodec[Utf8Key]
+    val oc    = OrderedCodec[Utf8Key]
     val empty = Utf8Key("")
-    val a = Utf8Key("a")
+    val a     = Utf8Key("a")
 
     assert(oc.compare(empty, a) < 0)
     assert(oc.encode(empty).compare(oc.encode(a)) < 0)

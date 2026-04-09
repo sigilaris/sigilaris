@@ -7,24 +7,38 @@ import scodec.bits.ByteVector
 
 import org.sigilaris.core.crypto.CryptoOps
 import org.sigilaris.core.datatype.UInt256
-import org.sigilaris.node.jvm.runtime.block.{BlockHeader, BlockHeight, BlockTimestamp, BodyRoot, StateRoot}
-import org.sigilaris.node.jvm.runtime.gossip.{ChainId, CursorToken, GossipEvent, GossipTopic, StableArtifactId}
+import org.sigilaris.node.jvm.runtime.block.{
+  BlockHeader,
+  BlockHeight,
+  BlockTimestamp,
+  BodyRoot,
+  StateRoot,
+}
+import org.sigilaris.node.jvm.runtime.gossip.{
+  ChainId,
+  CursorToken,
+  GossipEvent,
+  GossipTopic,
+  StableArtifactId,
+}
 
 final class HotStuffValidationSuite extends FunSuite:
 
-  private val chainId = ChainId.unsafe("chain-main")
+  private val chainId       = ChainId.unsafe("chain-main")
   private val validatorKeys = Vector.fill(4)(CryptoOps.generate())
   private val validatorSet = ValidatorSet.unsafe(
     validatorKeys.zipWithIndex.map: (keyPair, index) =>
       ValidatorMember(
         id = ValidatorId.unsafe(s"validator-${index + 1}"),
         publicKey = keyPair.publicKey,
-      )
+      ),
   )
 
-  test("proposal and vote sign bytes are independent from gossip envelope fields"):
+  test(
+    "proposal and vote sign bytes are independent from gossip envelope fields",
+  ):
     val proposal = signedProposal()
-    val vote = signedVote(proposal, voterIndex = 1)
+    val vote     = signedVote(proposal, voterIndex = 1)
 
     val proposalEventA = gossipEvent(
       topic = GossipTopic.unsafe("consensus.proposal"),
@@ -60,11 +74,16 @@ final class HotStuffValidationSuite extends FunSuite:
       Vote.signBytes(unsignedVote(voteEventB.payload)),
     )
 
-  test("proposal and vote signatures validate and proposal id differs from block id"):
+  test(
+    "proposal and vote signatures validate and proposal id differs from block id",
+  ):
     val proposal = signedProposal()
-    val vote = signedVote(proposal, voterIndex = 1)
+    val vote     = signedVote(proposal, voterIndex = 1)
 
-    assertEquals(HotStuffValidator.validateProposal(proposal, validatorSet), Right(()))
+    assertEquals(
+      HotStuffValidator.validateProposal(proposal, validatorSet),
+      Right(()),
+    )
     assertEquals(
       HotStuffValidator.validateVote(
         vote,
@@ -74,7 +93,10 @@ final class HotStuffValidationSuite extends FunSuite:
       ),
       Right(()),
     )
-    assertNotEquals(proposal.proposalId.toHexLower, proposal.targetBlockId.toHexLower)
+    assertNotEquals(
+      proposal.proposalId.toHexLower,
+      proposal.targetBlockId.toHexLower,
+    )
 
   test("proposal and vote validation reject wrong signers"):
     val validProposal = signedProposal()
@@ -96,26 +118,34 @@ final class HotStuffValidationSuite extends FunSuite:
         .get
 
     assertEquals(
-      HotStuffValidator.validateProposal(forgedProposal, validatorSet).left.map(_.reason),
+      HotStuffValidator
+        .validateProposal(forgedProposal, validatorSet)
+        .left
+        .map(_.reason),
       Left("proposalSignatureMismatch"),
     )
     assertEquals(
-      HotStuffValidator.validateVote(
-        forgedVote,
-        validatorSet = validatorSet,
-        expectedWindow = Some(validProposal.window),
-        expectedProposalId = Some(validProposal.proposalId),
-      ).left.map(_.reason),
+      HotStuffValidator
+        .validateVote(
+          forgedVote,
+          validatorSet = validatorSet,
+          expectedWindow = Some(validProposal.window),
+          expectedProposalId = Some(validProposal.proposalId),
+        )
+        .left
+        .map(_.reason),
       Left("voteSignatureMismatch"),
     )
 
-  test("proposal and vote validation reject unknown validators and tampered ids"):
+  test(
+    "proposal and vote validation reject unknown validators and tampered ids",
+  ):
     val proposal = signedProposal()
     val unknownProposer =
       proposal.copy(
         proposer = ValidatorId.unsafe("validator-unknown"),
         proposalId = Proposal.recomputeId(
-          proposal.copy(proposer = ValidatorId.unsafe("validator-unknown"))
+          proposal.copy(proposer = ValidatorId.unsafe("validator-unknown")),
         ),
       )
     val unknownVoter =
@@ -135,50 +165,68 @@ final class HotStuffValidationSuite extends FunSuite:
     val baseVote = signedVote(proposal, voterIndex = 1)
     val voteWithWrongValidatorSetHash =
       baseVote.copy(
-        window = baseVote.window.copy(validatorSetHash = ValidatorSetHash(hex("cd")))
+        window =
+          baseVote.window.copy(validatorSetHash = ValidatorSetHash(hex("cd"))),
       )
     val tamperedVoteId =
       baseVote.copy(voteId = VoteId(hex("ef")))
 
     assertEquals(
-      HotStuffValidator.validateProposal(unknownProposer, validatorSet).left.map(_.reason),
+      HotStuffValidator
+        .validateProposal(unknownProposer, validatorSet)
+        .left
+        .map(_.reason),
       Left("unknownProposer"),
     )
     assertEquals(
-      HotStuffValidator.validateVote(
-        unknownVoter,
-        validatorSet = validatorSet,
-        expectedWindow = Some(proposal.window),
-        expectedProposalId = Some(proposal.proposalId),
-      ).left.map(_.reason),
+      HotStuffValidator
+        .validateVote(
+          unknownVoter,
+          validatorSet = validatorSet,
+          expectedWindow = Some(proposal.window),
+          expectedProposalId = Some(proposal.proposalId),
+        )
+        .left
+        .map(_.reason),
       Left("unknownVoter"),
     )
     assertEquals(
-      HotStuffValidator.validateProposal(tamperedProposalId, validatorSet).left.map(_.reason),
+      HotStuffValidator
+        .validateProposal(tamperedProposalId, validatorSet)
+        .left
+        .map(_.reason),
       Left("proposalIdMismatch"),
     )
     assertEquals(
-      HotStuffValidator.validateVote(
-        voteWithWrongValidatorSetHash,
-        validatorSet = validatorSet,
-        expectedWindow = Some(proposal.window),
-        expectedProposalId = Some(proposal.proposalId),
-      ).left.map(_.reason),
+      HotStuffValidator
+        .validateVote(
+          voteWithWrongValidatorSetHash,
+          validatorSet = validatorSet,
+          expectedWindow = Some(proposal.window),
+          expectedProposalId = Some(proposal.proposalId),
+        )
+        .left
+        .map(_.reason),
       Left("validatorSetHashMismatch"),
     )
     assertEquals(
-      HotStuffValidator.validateVote(
-        tamperedVoteId,
-        validatorSet = validatorSet,
-        expectedWindow = Some(proposal.window),
-        expectedProposalId = Some(proposal.proposalId),
-      ).left.map(_.reason),
+      HotStuffValidator
+        .validateVote(
+          tamperedVoteId,
+          validatorSet = validatorSet,
+          expectedWindow = Some(proposal.window),
+          expectedProposalId = Some(proposal.proposalId),
+        )
+        .left
+        .map(_.reason),
       Left("voteIdMismatch"),
     )
 
-  test("vote accumulator deduplicates exact duplicates and rejects equivocation"):
+  test(
+    "vote accumulator deduplicates exact duplicates and rejects equivocation",
+  ):
     val proposal = signedProposal()
-    val vote = signedVote(proposal, voterIndex = 1)
+    val vote     = signedVote(proposal, voterIndex = 1)
     val equivocated =
       Vote
         .sign(
@@ -192,17 +240,19 @@ final class HotStuffValidationSuite extends FunSuite:
         .toOption
         .get
 
-    val first = VoteAccumulator.empty.record(vote)
+    val first  = VoteAccumulator.empty.record(vote)
     val second = first.toOption.get._1.record(vote)
-    val third = first.toOption.get._1.record(equivocated)
+    val third  = first.toOption.get._1.record(equivocated)
 
     assertEquals(first.map(_._2), Right(VoteRecordOutcome.Applied))
     assertEquals(second.map(_._2), Right(VoteRecordOutcome.Duplicate))
     assertEquals(third.left.map(_.reason), Left("equivocationDetected"))
 
-  test("vote accumulator rejects duplicate validator votes with different vote ids for the same proposal"):
+  test(
+    "vote accumulator rejects duplicate validator votes with different vote ids for the same proposal",
+  ):
     val proposal = signedProposal()
-    val vote = signedVote(proposal, voterIndex = 1)
+    val vote     = signedVote(proposal, voterIndex = 1)
     val duplicateValidator =
       vote.copy(voteId = VoteId(hex("beef")))
 
@@ -216,7 +266,9 @@ final class HotStuffValidationSuite extends FunSuite:
 
     assertEquals(result.left.map(_.reason), Left("duplicateValidatorVote"))
 
-  test("timeout vote and new-view signatures validate with deterministic leader rotation"):
+  test(
+    "timeout vote and new-view signatures validate with deterministic leader rotation",
+  ):
     val proposal = signedProposal()
     val timeoutVoteA =
       signedTimeoutVoteFor(
@@ -275,10 +327,15 @@ final class HotStuffValidationSuite extends FunSuite:
       ),
       Right(()),
     )
-    assertEquals(HotStuffValidator.validateNewView(newView, validatorSet), Right(()))
+    assertEquals(
+      HotStuffValidator.validateNewView(newView, validatorSet),
+      Right(()),
+    )
     assertEquals(newView.nextLeader, expectedLeader)
 
-  test("new-view sign bytes stay stable across quorum and timeout certificate duplicate ordering"):
+  test(
+    "new-view sign bytes stay stable across quorum and timeout certificate duplicate ordering",
+  ):
     val proposal = signedProposal()
     val qcVoteA =
       signedVoteFor(
@@ -372,7 +429,9 @@ final class HotStuffValidationSuite extends FunSuite:
 
     assertEquals(NewView.signBytes(unsignedA), NewView.signBytes(unsignedB))
 
-  test("timeout vote accumulator deduplicates exact duplicates and rejects timeout equivocation"):
+  test(
+    "timeout vote accumulator deduplicates exact duplicates and rejects timeout equivocation",
+  ):
     val proposal = signedProposal()
     val timeoutVote =
       signedTimeoutVoteFor(
@@ -386,11 +445,10 @@ final class HotStuffValidationSuite extends FunSuite:
           UnsignedTimeoutVote(
             subject = TimeoutVoteSubject(
               window = proposal.window,
-              highestKnownQc =
-                proposal.justify.subject.copy(
-                  proposalId = ProposalId(hex("ac")),
-                  blockId = BlockId(hex("ad")),
-                ),
+              highestKnownQc = proposal.justify.subject.copy(
+                proposalId = ProposalId(hex("ac")),
+                blockId = BlockId(hex("ad")),
+              ),
             ),
             voter = validatorSet.members.head.id,
           ),
@@ -399,15 +457,17 @@ final class HotStuffValidationSuite extends FunSuite:
         .toOption
         .get
 
-    val first = TimeoutVoteAccumulator.empty.record(timeoutVote)
+    val first  = TimeoutVoteAccumulator.empty.record(timeoutVote)
     val second = first.toOption.get._1.record(timeoutVote)
-    val third = first.toOption.get._1.record(equivocated)
+    val third  = first.toOption.get._1.record(equivocated)
 
     assertEquals(first.map(_._2), Right(TimeoutVoteRecordOutcome.Applied))
     assertEquals(second.map(_._2), Right(TimeoutVoteRecordOutcome.Duplicate))
     assertEquals(third.left.map(_.reason), Left("timeoutEquivocationDetected"))
 
-  test("new-view validation rejects wrong next leader and mismatched highest qc proof"):
+  test(
+    "new-view validation rejects wrong next leader and mismatched highest qc proof",
+  ):
     val proposal = signedProposal()
     val timeoutCertificate =
       TimeoutCertificateAssembler
@@ -450,9 +510,21 @@ final class HotStuffValidationSuite extends FunSuite:
         .assemble(
           subject = mismatchedSubject,
           votes = Vector(
-            signedVoteFor(mismatchedSubject.window, mismatchedSubject.proposalId, 0),
-            signedVoteFor(mismatchedSubject.window, mismatchedSubject.proposalId, 1),
-            signedVoteFor(mismatchedSubject.window, mismatchedSubject.proposalId, 2),
+            signedVoteFor(
+              mismatchedSubject.window,
+              mismatchedSubject.proposalId,
+              0,
+            ),
+            signedVoteFor(
+              mismatchedSubject.window,
+              mismatchedSubject.proposalId,
+              1,
+            ),
+            signedVoteFor(
+              mismatchedSubject.window,
+              mismatchedSubject.proposalId,
+              2,
+            ),
           ),
           validatorSet = validatorSet,
         )
@@ -475,23 +547,34 @@ final class HotStuffValidationSuite extends FunSuite:
         .get
 
     assertEquals(
-      HotStuffValidator.validateNewView(wrongLeaderNewView, validatorSet).left.map(_.reason),
+      HotStuffValidator
+        .validateNewView(wrongLeaderNewView, validatorSet)
+        .left
+        .map(_.reason),
       Left("newViewLeaderMismatch"),
     )
     assertEquals(
-      HotStuffValidator.validateNewView(mismatchedNewView, validatorSet).left.map(_.reason),
+      HotStuffValidator
+        .validateNewView(mismatchedNewView, validatorSet)
+        .left
+        .map(_.reason),
       Left("newViewHighestQcMismatch"),
     )
 
-  test("timeout certificate validation rejects insufficient quorum, duplicate validators, and unknown timeout voters"):
+  test(
+    "timeout certificate validation rejects insufficient quorum, duplicate validators, and unknown timeout voters",
+  ):
     val proposal = signedProposal()
     val subject = TimeoutVoteSubject(
       window = proposal.window,
       highestKnownQc = proposal.justify.subject,
     )
-    val timeoutVoteA = signedTimeoutVoteFor(proposal.window, proposal.justify, 0)
-    val timeoutVoteB = signedTimeoutVoteFor(proposal.window, proposal.justify, 1)
-    val timeoutVoteC = signedTimeoutVoteFor(proposal.window, proposal.justify, 2)
+    val timeoutVoteA =
+      signedTimeoutVoteFor(proposal.window, proposal.justify, 0)
+    val timeoutVoteB =
+      signedTimeoutVoteFor(proposal.window, proposal.justify, 1)
+    val timeoutVoteC =
+      signedTimeoutVoteFor(proposal.window, proposal.justify, 2)
     val duplicateValidator =
       timeoutVoteA.copy(timeoutVoteId = TimeoutVoteId(hex("ce")))
     val unknownTimeoutVoter =
@@ -543,7 +626,9 @@ final class HotStuffValidationSuite extends FunSuite:
       Left("unknownTimeoutVoter"),
     )
 
-  test("timeout vote validation rejects highest qc from the same height and view"):
+  test(
+    "timeout vote validation rejects highest qc from the same height and view",
+  ):
     val proposal = signedProposal()
     val timeoutVote =
       TimeoutVote
@@ -551,7 +636,8 @@ final class HotStuffValidationSuite extends FunSuite:
           UnsignedTimeoutVote(
             subject = TimeoutVoteSubject(
               window = proposal.window,
-              highestKnownQc = proposal.justify.subject.copy(window = proposal.window),
+              highestKnownQc =
+                proposal.justify.subject.copy(window = proposal.window),
             ),
             voter = validatorSet.members.head.id,
           ),
@@ -561,7 +647,10 @@ final class HotStuffValidationSuite extends FunSuite:
         .get
 
     assertEquals(
-      HotStuffValidator.validateTimeoutVote(timeoutVote, validatorSet).left.map(_.reason),
+      HotStuffValidator
+        .validateTimeoutVote(timeoutVote, validatorSet)
+        .left
+        .map(_.reason),
       Left("timeoutVoteHighestQcWindowMismatch"),
     )
 
@@ -608,8 +697,8 @@ final class HotStuffValidationSuite extends FunSuite:
           UnsignedNewView(
             window = wrongHeightWindow,
             sender = validatorSet.members.head.id,
-            nextLeader =
-              HotStuffPacemaker.deterministicLeader(wrongHeightWindow, validatorSet),
+            nextLeader = HotStuffPacemaker
+              .deterministicLeader(wrongHeightWindow, validatorSet),
             highestKnownQc = proposal.justify,
             timeoutCertificate = timeoutCertificate,
           ),
@@ -619,17 +708,23 @@ final class HotStuffValidationSuite extends FunSuite:
         .get
 
     assertEquals(
-      HotStuffValidator.validateNewView(unknownSenderNewView, validatorSet).left.map(_.reason),
+      HotStuffValidator
+        .validateNewView(unknownSenderNewView, validatorSet)
+        .left
+        .map(_.reason),
       Left("unknownNewViewSender"),
     )
     assertEquals(
-      HotStuffValidator.validateNewView(wrongHeightNewView, validatorSet).left.map(_.reason),
+      HotStuffValidator
+        .validateNewView(wrongHeightNewView, validatorSet)
+        .left
+        .map(_.reason),
       Left("newViewWindowMismatch"),
     )
 
   test("single-validator timeout certificate and new-view validate"):
     val singleKey = CryptoOps.generate()
-    val singleId = ValidatorId.unsafe("validator-single")
+    val singleId  = ValidatorId.unsafe("validator-single")
     val singleSet = ValidatorSet.unsafe(
       Vector(
         ValidatorMember(
@@ -689,7 +784,8 @@ final class HotStuffValidationSuite extends FunSuite:
           UnsignedNewView(
             window = nextWindow,
             sender = singleId,
-            nextLeader = HotStuffPacemaker.deterministicLeader(nextWindow, singleSet),
+            nextLeader =
+              HotStuffPacemaker.deterministicLeader(nextWindow, singleSet),
             highestKnownQc = qc,
             timeoutCertificate = timeoutCertificate,
           ),
@@ -699,13 +795,22 @@ final class HotStuffValidationSuite extends FunSuite:
         .get
 
     assertEquals(singleSet.quorumSize, 1)
-    assertEquals(HotStuffValidator.validateTimeoutCertificate(timeoutCertificate, singleSet), Right(()))
-    assertEquals(HotStuffValidator.validateNewView(newView, singleSet), Right(()))
+    assertEquals(
+      HotStuffValidator
+        .validateTimeoutCertificate(timeoutCertificate, singleSet),
+      Right(()),
+    )
+    assertEquals(
+      HotStuffValidator.validateNewView(newView, singleSet),
+      Right(()),
+    )
 
-  test("vote accumulator returns only votes matching the requested window and proposal"):
+  test(
+    "vote accumulator returns only votes matching the requested window and proposal",
+  ):
     val proposal = signedProposal()
-    val voteA = signedVote(proposal, voterIndex = 1)
-    val voteB = signedVote(proposal, voterIndex = 2)
+    val voteA    = signedVote(proposal, voterIndex = 1)
+    val voteB    = signedVote(proposal, voterIndex = 2)
     val otherWindowVote =
       Vote
         .sign(
@@ -751,52 +856,75 @@ final class HotStuffValidationSuite extends FunSuite:
         ._1
 
     assertEquals(
-      accumulator.votesFor(proposal.window, proposal.proposalId).map(_.voteId).toSet,
+      accumulator
+        .votesFor(proposal.window, proposal.proposalId)
+        .map(_.voteId)
+        .toSet,
       Set(voteA.voteId, voteB.voteId),
     )
     assertEquals(
-      accumulator.votesFor(proposal.window.copy(view = proposal.window.view + 99L), proposal.proposalId),
+      accumulator.votesFor(
+        proposal.window.copy(view = proposal.window.view + 99L),
+        proposal.proposalId,
+      ),
       Vector.empty,
     )
 
-  test("quorum certificate validation rejects insufficient quorum and wrong target proposal id"):
-    val parentBlock = block(parent = None, height = 1L, rootHex = "11")
-    val parentWindow = HotStuffWindow(chainId, 1L, 0L, validatorSet.hash)
+  test(
+    "quorum certificate validation rejects insufficient quorum and wrong target proposal id",
+  ):
+    val parentBlock      = block(parent = None, height = 1L, rootHex = "11")
+    val parentWindow     = HotStuffWindow(chainId, 1L, 0L, validatorSet.hash)
     val parentProposalId = ProposalId(hex("99"))
     val subject = QuorumCertificateSubject(
       window = parentWindow,
       proposalId = parentProposalId,
       blockId = BlockHeader.computeId(parentBlock),
     )
-    val voteA = signedVoteFor(subject.window, subject.proposalId, voterIndex = 0)
-    val voteB = signedVoteFor(subject.window, subject.proposalId, voterIndex = 1)
-    val wrongVote = signedVoteFor(subject.window, ProposalId(hex("88")), voterIndex = 2)
+    val voteA =
+      signedVoteFor(subject.window, subject.proposalId, voterIndex = 0)
+    val voteB =
+      signedVoteFor(subject.window, subject.proposalId, voterIndex = 1)
+    val wrongVote =
+      signedVoteFor(subject.window, ProposalId(hex("88")), voterIndex = 2)
 
     val insufficient = QuorumCertificate(subject, Vector(voteA, voteB))
-    val wrongTarget = QuorumCertificate(subject, Vector(voteA, voteB, wrongVote))
+    val wrongTarget =
+      QuorumCertificate(subject, Vector(voteA, voteB, wrongVote))
 
     assertEquals(
-      HotStuffValidator.validateQuorumCertificate(insufficient, validatorSet).left.map(_.reason),
+      HotStuffValidator
+        .validateQuorumCertificate(insufficient, validatorSet)
+        .left
+        .map(_.reason),
       Left("insufficientQuorum"),
     )
     assertEquals(
-      HotStuffValidator.validateQuorumCertificate(wrongTarget, validatorSet).left.map(_.reason),
+      HotStuffValidator
+        .validateQuorumCertificate(wrongTarget, validatorSet)
+        .left
+        .map(_.reason),
       Left("wrongTargetProposalId"),
     )
 
-  test("quorum certificate validation rejects duplicate validator entries and unknown voters"):
-    val parentBlock = block(parent = None, height = 1L, rootHex = "41")
-    val parentWindow = HotStuffWindow(chainId, 1L, 0L, validatorSet.hash)
+  test(
+    "quorum certificate validation rejects duplicate validator entries and unknown voters",
+  ):
+    val parentBlock      = block(parent = None, height = 1L, rootHex = "41")
+    val parentWindow     = HotStuffWindow(chainId, 1L, 0L, validatorSet.hash)
     val parentProposalId = ProposalId(hex("42"))
     val subject = QuorumCertificateSubject(
       window = parentWindow,
       proposalId = parentProposalId,
       blockId = BlockHeader.computeId(parentBlock),
     )
-    val voteA = signedVoteFor(subject.window, subject.proposalId, voterIndex = 0)
+    val voteA =
+      signedVoteFor(subject.window, subject.proposalId, voterIndex = 0)
     val voteAAgain = voteA.copy(voteId = VoteId(hex("43")))
-    val voteB = signedVoteFor(subject.window, subject.proposalId, voterIndex = 1)
-    val voteC = signedVoteFor(subject.window, subject.proposalId, voterIndex = 2)
+    val voteB =
+      signedVoteFor(subject.window, subject.proposalId, voterIndex = 1)
+    val voteC =
+      signedVoteFor(subject.window, subject.proposalId, voterIndex = 2)
     val unknownVoter =
       Vote
         .sign(
@@ -810,21 +938,29 @@ final class HotStuffValidationSuite extends FunSuite:
         .toOption
         .get
 
-    val duplicateValidatorQc = QuorumCertificate(subject, Vector(voteA, voteAAgain, voteB, voteC))
-    val unknownVoterQc = QuorumCertificate(subject, Vector(voteA, voteB, unknownVoter))
+    val duplicateValidatorQc =
+      QuorumCertificate(subject, Vector(voteA, voteAAgain, voteB, voteC))
+    val unknownVoterQc =
+      QuorumCertificate(subject, Vector(voteA, voteB, unknownVoter))
 
     assertEquals(
-      HotStuffValidator.validateQuorumCertificate(duplicateValidatorQc, validatorSet).left.map(_.reason),
+      HotStuffValidator
+        .validateQuorumCertificate(duplicateValidatorQc, validatorSet)
+        .left
+        .map(_.reason),
       Left("duplicateValidatorVote"),
     )
     assertEquals(
-      HotStuffValidator.validateQuorumCertificate(unknownVoterQc, validatorSet).left.map(_.reason),
+      HotStuffValidator
+        .validateQuorumCertificate(unknownVoterQc, validatorSet)
+        .left
+        .map(_.reason),
       Left("unknownVoter"),
     )
 
   test("qc assembly rejects votes signed by the wrong validator key"):
-    val parentBlock = block(parent = None, height = 1L, rootHex = "45")
-    val parentWindow = HotStuffWindow(chainId, 1L, 0L, validatorSet.hash)
+    val parentBlock      = block(parent = None, height = 1L, rootHex = "45")
+    val parentWindow     = HotStuffWindow(chainId, 1L, 0L, validatorSet.hash)
     val parentProposalId = ProposalId(hex("46"))
     val subject = QuorumCertificateSubject(
       window = parentWindow,
@@ -846,14 +982,22 @@ final class HotStuffValidationSuite extends FunSuite:
 
     assertEquals(
       QuorumCertificateAssembler
-        .assemble(subject, Vector(forgedVote, signedVoteFor(subject.window, subject.proposalId, 1), signedVoteFor(subject.window, subject.proposalId, 2)), validatorSet)
+        .assemble(
+          subject,
+          Vector(
+            forgedVote,
+            signedVoteFor(subject.window, subject.proposalId, 1),
+            signedVoteFor(subject.window, subject.proposalId, 2),
+          ),
+          validatorSet,
+        )
         .left
         .map(_.reason),
       Left("voteSignatureMismatch"),
     )
 
   test("qc assembly rejects votes from a mismatched window"):
-    val parentBlock = block(parent = None, height = 1L, rootHex = "47")
+    val parentBlock   = block(parent = None, height = 1L, rootHex = "47")
     val subjectWindow = HotStuffWindow(chainId, 1L, 0L, validatorSet.hash)
     val subject = QuorumCertificateSubject(
       window = subjectWindow,
@@ -875,23 +1019,35 @@ final class HotStuffValidationSuite extends FunSuite:
 
     assertEquals(
       QuorumCertificateAssembler
-        .assemble(subject, Vector(mismatchedVote, signedVoteFor(subjectWindow, subject.proposalId, 1), signedVoteFor(subjectWindow, subject.proposalId, 2)), validatorSet)
+        .assemble(
+          subject,
+          Vector(
+            mismatchedVote,
+            signedVoteFor(subjectWindow, subject.proposalId, 1),
+            signedVoteFor(subjectWindow, subject.proposalId, 2),
+          ),
+          validatorSet,
+        )
         .left
         .map(_.reason),
       Left("voteWindowMismatch"),
     )
 
-  test("proposal validation rejects wrong validator set hash and malformed justification subject"):
+  test(
+    "proposal validation rejects wrong validator set hash and malformed justification subject",
+  ):
     val proposal = signedProposal()
     val wrongValidatorSetHash =
       proposal.copy(
-        window = proposal.window.copy(validatorSetHash = ValidatorSetHash(hex("ff")))
+        window =
+          proposal.window.copy(validatorSetHash = ValidatorSetHash(hex("ff"))),
       )
     val wrongTargetBlockId =
       proposal.copy(
-        targetBlockId = BlockId(hex("44"))
+        targetBlockId = BlockId(hex("44")),
       )
-    val differentChainWindow = HotStuffWindow(ChainId.unsafe("chain-remote"), 1L, 0L, validatorSet.hash)
+    val differentChainWindow =
+      HotStuffWindow(ChainId.unsafe("chain-remote"), 1L, 0L, validatorSet.hash)
     val differentChainSubject =
       proposal.justify.subject.copy(window = differentChainWindow)
     val differentChainQc =
@@ -899,9 +1055,21 @@ final class HotStuffValidationSuite extends FunSuite:
         .assemble(
           subject = differentChainSubject,
           votes = Vector(
-            signedVoteFor(differentChainWindow, differentChainSubject.proposalId, 0),
-            signedVoteFor(differentChainWindow, differentChainSubject.proposalId, 1),
-            signedVoteFor(differentChainWindow, differentChainSubject.proposalId, 2),
+            signedVoteFor(
+              differentChainWindow,
+              differentChainSubject.proposalId,
+              0,
+            ),
+            signedVoteFor(
+              differentChainWindow,
+              differentChainSubject.proposalId,
+              1,
+            ),
+            signedVoteFor(
+              differentChainWindow,
+              differentChainSubject.proposalId,
+              2,
+            ),
           ),
           validatorSet = validatorSet,
         )
@@ -987,31 +1155,51 @@ final class HotStuffValidationSuite extends FunSuite:
         .get
 
     assertEquals(
-      HotStuffValidator.validateProposal(wrongValidatorSetHash, validatorSet).left.map(_.reason),
+      HotStuffValidator
+        .validateProposal(wrongValidatorSetHash, validatorSet)
+        .left
+        .map(_.reason),
       Left("validatorSetHashMismatch"),
     )
     assertEquals(
-      HotStuffValidator.validateProposal(wrongTargetBlockId, validatorSet).left.map(_.reason),
+      HotStuffValidator
+        .validateProposal(wrongTargetBlockId, validatorSet)
+        .left
+        .map(_.reason),
       Left("targetBlockIdMismatch"),
     )
     assertEquals(
-      HotStuffValidator.validateProposal(justifyChainMismatch, validatorSet).left.map(_.reason),
+      HotStuffValidator
+        .validateProposal(justifyChainMismatch, validatorSet)
+        .left
+        .map(_.reason),
       Left("justifyChainMismatch"),
     )
     assertEquals(
-      HotStuffValidator.validateProposal(nonProgressingJustification, validatorSet).left.map(_.reason),
+      HotStuffValidator
+        .validateProposal(nonProgressingJustification, validatorSet)
+        .left
+        .map(_.reason),
       Left("justifyHeightNotProgressing"),
     )
     assertEquals(
-      HotStuffValidator.validateProposal(wrongHeightProposal, validatorSet).left.map(_.reason),
+      HotStuffValidator
+        .validateProposal(wrongHeightProposal, validatorSet)
+        .left
+        .map(_.reason),
       Left("proposalBlockHeightMismatch"),
     )
     assertEquals(
-      HotStuffValidator.validateProposal(malformedJustification, validatorSet).left.map(_.reason),
+      HotStuffValidator
+        .validateProposal(malformedJustification, validatorSet)
+        .left
+        .map(_.reason),
       Left("justifyBlockMismatch"),
     )
 
-  test("proposal validation rejects non-canonical tx sets before proposal id checks"):
+  test(
+    "proposal validation rejects non-canonical tx sets before proposal id checks",
+  ):
     val proposal = signedProposal().copy(
       txSet = ProposalTxSet(
         Vector(
@@ -1022,44 +1210,68 @@ final class HotStuffValidationSuite extends FunSuite:
     )
 
     assertEquals(
-      HotStuffValidator.validateProposal(proposal, validatorSet).left.map(_.reason),
+      HotStuffValidator
+        .validateProposal(proposal, validatorSet)
+        .left
+        .map(_.reason),
       Left("proposalTxSetNotCanonical"),
     )
 
-  test("qc assembly deduplicates repeated vote ids and produces a quorum certificate"):
-    val parentBlock = block(parent = None, height = 1L, rootHex = "21")
-    val parentWindow = HotStuffWindow(chainId, 1L, 0L, validatorSet.hash)
+  test(
+    "qc assembly deduplicates repeated vote ids and produces a quorum certificate",
+  ):
+    val parentBlock      = block(parent = None, height = 1L, rootHex = "21")
+    val parentWindow     = HotStuffWindow(chainId, 1L, 0L, validatorSet.hash)
     val parentProposalId = ProposalId(hex("77"))
     val subject = QuorumCertificateSubject(
       window = parentWindow,
       proposalId = parentProposalId,
       blockId = BlockHeader.computeId(parentBlock),
     )
-    val voteA = signedVoteFor(subject.window, subject.proposalId, voterIndex = 0)
-    val voteB = signedVoteFor(subject.window, subject.proposalId, voterIndex = 1)
-    val voteC = signedVoteFor(subject.window, subject.proposalId, voterIndex = 2)
+    val voteA =
+      signedVoteFor(subject.window, subject.proposalId, voterIndex = 0)
+    val voteB =
+      signedVoteFor(subject.window, subject.proposalId, voterIndex = 1)
+    val voteC =
+      signedVoteFor(subject.window, subject.proposalId, voterIndex = 2)
 
-    val qc = QuorumCertificateAssembler.assemble(subject, Vector(voteA, voteA, voteB, voteC), validatorSet)
+    val qc = QuorumCertificateAssembler.assemble(
+      subject,
+      Vector(voteA, voteA, voteB, voteC),
+      validatorSet,
+    )
 
-    assertEquals(qc.map(_.votes.map(_.voter.value)), Right(Vector("validator-1", "validator-2", "validator-3")))
+    assertEquals(
+      qc.map(_.votes.map(_.voter.value)),
+      Right(Vector("validator-1", "validator-2", "validator-3")),
+    )
 
-  test("proposal id is stable across QC vote ordering and exact duplicate votes"):
-    val parentBlock = block(parent = None, height = 1L, rootHex = "31")
-    val parentWindow = HotStuffWindow(chainId, 1L, 0L, validatorSet.hash)
+  test(
+    "proposal id is stable across QC vote ordering and exact duplicate votes",
+  ):
+    val parentBlock      = block(parent = None, height = 1L, rootHex = "31")
+    val parentWindow     = HotStuffWindow(chainId, 1L, 0L, validatorSet.hash)
     val parentProposalId = ProposalId(hex("55"))
     val subject = QuorumCertificateSubject(
       window = parentWindow,
       proposalId = parentProposalId,
       blockId = BlockHeader.computeId(parentBlock),
     )
-    val voteA = signedVoteFor(subject.window, subject.proposalId, voterIndex = 0)
-    val voteB = signedVoteFor(subject.window, subject.proposalId, voterIndex = 1)
-    val voteC = signedVoteFor(subject.window, subject.proposalId, voterIndex = 2)
+    val voteA =
+      signedVoteFor(subject.window, subject.proposalId, voterIndex = 0)
+    val voteB =
+      signedVoteFor(subject.window, subject.proposalId, voterIndex = 1)
+    val voteC =
+      signedVoteFor(subject.window, subject.proposalId, voterIndex = 2)
     val canonicalQc =
-      QuorumCertificateAssembler.assemble(subject, Vector(voteA, voteB, voteC), validatorSet).toOption.get
+      QuorumCertificateAssembler
+        .assemble(subject, Vector(voteA, voteB, voteC), validatorSet)
+        .toOption
+        .get
     val shuffledQc =
       canonicalQc.copy(votes = Vector(voteC, voteA, voteB, voteA))
-    val proposalBlock = block(parent = Some(subject.blockId), height = 2L, rootHex = "32")
+    val proposalBlock =
+      block(parent = Some(subject.blockId), height = 2L, rootHex = "32")
     val canonicalProposal =
       Proposal
         .sign(
@@ -1092,15 +1304,24 @@ final class HotStuffValidationSuite extends FunSuite:
         .get
 
     assertEquals(canonicalProposal.proposalId, shuffledProposal.proposalId)
-    assertEquals(HotStuffValidator.validateProposal(shuffledProposal, validatorSet), Right(()))
+    assertEquals(
+      HotStuffValidator.validateProposal(shuffledProposal, validatorSet),
+      Right(()),
+    )
 
   test("validator set rejects duplicate public keys"):
     assertEquals(
       ValidatorSet(
         Vector(
-          ValidatorMember(ValidatorId.unsafe("validator-a"), validatorKeys.head.publicKey),
-          ValidatorMember(ValidatorId.unsafe("validator-b"), validatorKeys.head.publicKey),
-        )
+          ValidatorMember(
+            ValidatorId.unsafe("validator-a"),
+            validatorKeys.head.publicKey,
+          ),
+          ValidatorMember(
+            ValidatorId.unsafe("validator-b"),
+            validatorKeys.head.publicKey,
+          ),
+        ),
       ),
       Left(ValidatorSetError.DuplicatePublicKeys),
     )
@@ -1113,9 +1334,15 @@ final class HotStuffValidationSuite extends FunSuite:
     assertEquals(
       ValidatorSet(
         Vector(
-          ValidatorMember(ValidatorId.unsafe("validator-a"), validatorKeys.head.publicKey),
-          ValidatorMember(ValidatorId.unsafe("validator-a"), validatorKeys(1).publicKey),
-        )
+          ValidatorMember(
+            ValidatorId.unsafe("validator-a"),
+            validatorKeys.head.publicKey,
+          ),
+          ValidatorMember(
+            ValidatorId.unsafe("validator-a"),
+            validatorKeys(1).publicKey,
+          ),
+        ),
       ),
       Left(ValidatorSetError.DuplicateIds),
     )
@@ -1132,15 +1359,18 @@ final class HotStuffValidationSuite extends FunSuite:
       blockId = BlockId(hex("62")),
     )
     val bootstrapQc =
-      QuorumCertificateAssembler.assemble(
-        bootstrapSubject,
-        Vector(
-          signedVoteFor(bootstrapWindow, bootstrapSubject.proposalId, 0),
-          signedVoteFor(bootstrapWindow, bootstrapSubject.proposalId, 1),
-          signedVoteFor(bootstrapWindow, bootstrapSubject.proposalId, 2),
-        ),
-        validatorSet,
-      ).toOption.get
+      QuorumCertificateAssembler
+        .assemble(
+          bootstrapSubject,
+          Vector(
+            signedVoteFor(bootstrapWindow, bootstrapSubject.proposalId, 0),
+            signedVoteFor(bootstrapWindow, bootstrapSubject.proposalId, 1),
+            signedVoteFor(bootstrapWindow, bootstrapSubject.proposalId, 2),
+          ),
+          validatorSet,
+        )
+        .toOption
+        .get
     val genesisBlock = block(parent = None, height = 0L, rootHex = "63")
     val proposal =
       Proposal
@@ -1158,7 +1388,10 @@ final class HotStuffValidationSuite extends FunSuite:
         .toOption
         .get
 
-    assertEquals(HotStuffValidator.validateProposal(proposal, validatorSet), Right(()))
+    assertEquals(
+      HotStuffValidator.validateProposal(proposal, validatorSet),
+      Right(()),
+    )
 
   test("genesis-height proposal accepts a justify QC at height zero boundary"):
     val bootstrapWindow = HotStuffWindow(chainId, 0L, 0L, validatorSet.hash)
@@ -1168,15 +1401,18 @@ final class HotStuffValidationSuite extends FunSuite:
       blockId = BlockId(hex("75")),
     )
     val boundaryQc =
-      QuorumCertificateAssembler.assemble(
-        boundarySubject,
-        Vector(
-          signedVoteFor(bootstrapWindow, boundarySubject.proposalId, 0),
-          signedVoteFor(bootstrapWindow, boundarySubject.proposalId, 1),
-          signedVoteFor(bootstrapWindow, boundarySubject.proposalId, 2),
-        ),
-        validatorSet,
-      ).toOption.get
+      QuorumCertificateAssembler
+        .assemble(
+          boundarySubject,
+          Vector(
+            signedVoteFor(bootstrapWindow, boundarySubject.proposalId, 0),
+            signedVoteFor(bootstrapWindow, boundarySubject.proposalId, 1),
+            signedVoteFor(bootstrapWindow, boundarySubject.proposalId, 2),
+          ),
+          validatorSet,
+        )
+        .toOption
+        .get
     val genesisBlock = block(parent = None, height = 0L, rootHex = "76")
     val proposal =
       Proposal
@@ -1194,7 +1430,10 @@ final class HotStuffValidationSuite extends FunSuite:
         .toOption
         .get
 
-    assertEquals(HotStuffValidator.validateProposal(proposal, validatorSet), Right(()))
+    assertEquals(
+      HotStuffValidator.validateProposal(proposal, validatorSet),
+      Right(()),
+    )
 
   test("genesis-height proposal rejects a non-empty parent pointer"):
     val bootstrapWindow = HotStuffWindow(chainId, 0L, 0L, validatorSet.hash)
@@ -1204,15 +1443,18 @@ final class HotStuffValidationSuite extends FunSuite:
       blockId = BlockId(hex("78")),
     )
     val boundaryQc =
-      QuorumCertificateAssembler.assemble(
-        boundarySubject,
-        Vector(
-          signedVoteFor(bootstrapWindow, boundarySubject.proposalId, 0),
-          signedVoteFor(bootstrapWindow, boundarySubject.proposalId, 1),
-          signedVoteFor(bootstrapWindow, boundarySubject.proposalId, 2),
-        ),
-        validatorSet,
-      ).toOption.get
+      QuorumCertificateAssembler
+        .assemble(
+          boundarySubject,
+          Vector(
+            signedVoteFor(bootstrapWindow, boundarySubject.proposalId, 0),
+            signedVoteFor(bootstrapWindow, boundarySubject.proposalId, 1),
+            signedVoteFor(bootstrapWindow, boundarySubject.proposalId, 2),
+          ),
+          validatorSet,
+        )
+        .toOption
+        .get
     val invalidGenesisBlock =
       block(parent = Some(boundarySubject.blockId), height = 0L, rootHex = "79")
     val proposal =
@@ -1232,7 +1474,10 @@ final class HotStuffValidationSuite extends FunSuite:
         .get
 
     assertEquals(
-      HotStuffValidator.validateProposal(proposal, validatorSet).left.map(_.reason),
+      HotStuffValidator
+        .validateProposal(proposal, validatorSet)
+        .left
+        .map(_.reason),
       Left("justifyBlockMismatch"),
     )
 
@@ -1244,15 +1489,18 @@ final class HotStuffValidationSuite extends FunSuite:
       blockId = BlockId(hex("72")),
     )
     val highQc =
-      QuorumCertificateAssembler.assemble(
-        highSubject,
-        Vector(
-          signedVoteFor(highSubject.window, highSubject.proposalId, 0),
-          signedVoteFor(highSubject.window, highSubject.proposalId, 1),
-          signedVoteFor(highSubject.window, highSubject.proposalId, 2),
-        ),
-        validatorSet,
-      ).toOption.get
+      QuorumCertificateAssembler
+        .assemble(
+          highSubject,
+          Vector(
+            signedVoteFor(highSubject.window, highSubject.proposalId, 0),
+            signedVoteFor(highSubject.window, highSubject.proposalId, 1),
+            signedVoteFor(highSubject.window, highSubject.proposalId, 2),
+          ),
+          validatorSet,
+        )
+        .toOption
+        .get
     val genesisBlock = block(parent = None, height = 0L, rootHex = "73")
     val proposal =
       Proposal
@@ -1271,13 +1519,16 @@ final class HotStuffValidationSuite extends FunSuite:
         .get
 
     assertEquals(
-      HotStuffValidator.validateProposal(proposal, validatorSet).left.map(_.reason),
+      HotStuffValidator
+        .validateProposal(proposal, validatorSet)
+        .left
+        .map(_.reason),
       Left("justifyHeightNotProgressing"),
     )
 
   private def signedProposal(): Proposal =
-    val parentBlock = block(parent = None, height = 0L, rootHex = "01")
-    val parentWindow = HotStuffWindow(chainId, 0L, 0L, validatorSet.hash)
+    val parentBlock      = block(parent = None, height = 0L, rootHex = "01")
+    val parentWindow     = HotStuffWindow(chainId, 0L, 0L, validatorSet.hash)
     val parentProposalId = ProposalId(hex("10"))
     val subject = QuorumCertificateSubject(
       window = parentWindow,
@@ -1296,7 +1547,8 @@ final class HotStuffValidationSuite extends FunSuite:
       )
       .toOption
       .get
-    val proposalBlock = block(parent = Some(subject.blockId), height = 1L, rootHex = "02")
+    val proposalBlock =
+      block(parent = Some(subject.blockId), height = 1L, rootHex = "02")
     Proposal
       .sign(
         UnsignedProposal(

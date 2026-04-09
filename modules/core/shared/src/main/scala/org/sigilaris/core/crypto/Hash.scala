@@ -31,7 +31,8 @@ import datatype.{UInt256, Utf8}
   *   given Hash[MyType] = Hash.build[MyType]
   *   ```
   *
-  * @see [[CryptoOps.keccak256]] for the underlying hash function
+  * @see
+  *   [[CryptoOps.keccak256]] for the underlying hash function
   */
 trait Hash[A]:
   /** Computes the Keccak-256 hash of a value.
@@ -63,7 +64,8 @@ object Hash:
     */
   def apply[A: Hash]: Hash[A] = summon
 
-  /** Opaque type wrapping [[org.sigilaris.core.datatype.UInt256]] to track the source type of the hash.
+  /** Opaque type wrapping [[org.sigilaris.core.datatype.UInt256]] to track the
+    * source type of the hash.
     *
     * @tparam A
     *   the type that was hashed to produce this value
@@ -112,7 +114,7 @@ object Hash:
       */
     extension [A](value: Value[A])
       def toUInt256: UInt256 = value
-      def hex: String = toUInt256.toHexLower
+      def hex: String        = toUInt256.toHexLower
 
   /** Extension methods for hashing. */
   object ops:
@@ -145,10 +147,8 @@ object Hash:
     Array("org.wartremover.warts.AsInstanceOf", "org.wartremover.warts.Nothing"),
   )
   def build[A: ByteEncoder]: Hash[A] = (a: A) =>
-    val h     = CryptoOps.keccak256(a.toBytes.toArray)
+    val h = CryptoOps.keccak256(a.toBytes.toArray)
     ByteVector.view(h).asInstanceOf[Value[A]]
 
   /** Default [[Hash]] instance for [[datatype.Utf8]] strings. */
   given Hash[Utf8] = build
-
-

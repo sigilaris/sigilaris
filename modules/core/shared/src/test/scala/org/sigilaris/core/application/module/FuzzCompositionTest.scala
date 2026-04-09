@@ -111,10 +111,12 @@ class FuzzCompositionTest extends HedgehogSuite:
       val result = PrefixFreeValidator.validate(List(prefix1, prefix2))
       result match
         case PrefixFreeValidator.IdenticalPrefixes(p, count) =>
-          Result.all(List(
-            p ==== prefix1,
-            count ==== 2
-          ))
+          Result.all(
+            List(
+              p ==== prefix1,
+              count ==== 2,
+            ),
+          )
         case _ =>
           Result.failure
 
@@ -127,8 +129,10 @@ class FuzzCompositionTest extends HedgehogSuite:
     yield
       val distinctNames = sharedNames.distinct
 
-      val module1Prefixes = distinctNames.map(n => tablePrefixRuntimeFromList(path1, n))
-      val module2Prefixes = distinctNames.map(n => tablePrefixRuntimeFromList(path2, n))
+      val module1Prefixes =
+        distinctNames.map(n => tablePrefixRuntimeFromList(path1, n))
+      val module2Prefixes =
+        distinctNames.map(n => tablePrefixRuntimeFromList(path2, n))
 
       val allPrefixes = module1Prefixes ++ module2Prefixes
 
@@ -138,10 +142,10 @@ class FuzzCompositionTest extends HedgehogSuite:
       if path1 == path2 then
         result match
           case PrefixFreeValidator.IdenticalPrefixes(_, _) => Result.success
-          case PrefixFreeValidator.Valid => Result.assert(distinctNames.size <= 1)
+          case PrefixFreeValidator.Valid =>
+            Result.assert(distinctNames.size <= 1)
           case _ => Result.failure
-      else
-        result ==== PrefixFreeValidator.Valid
+      else result ==== PrefixFreeValidator.Valid
 
   // Fuzz test: large composition
   property("fuzz: large schema composition"):
@@ -228,7 +232,8 @@ class FuzzCompositionTest extends HedgehogSuite:
     for specs <- Gen.list(genTableSpec, Range.linear(0, 5)).forAll
     yield
       val prefixes1 = specs.map(s => tablePrefixRuntimeFromList(s.path, s.name))
-      val prefixes2 = specs.reverse.map(s => tablePrefixRuntimeFromList(s.path, s.name))
+      val prefixes2 =
+        specs.reverse.map(s => tablePrefixRuntimeFromList(s.path, s.name))
 
       val result1 = PrefixFreeValidator.validate(prefixes1)
       val result2 = PrefixFreeValidator.validate(prefixes2.reverse)
@@ -251,8 +256,9 @@ class FuzzCompositionTest extends HedgehogSuite:
         TableSpec(List("app", "governance"), "votes"),
       )
 
-      val prefixes = dappSchema.map(s => tablePrefixRuntimeFromList(s.path, s.name))
-      val result   = PrefixFreeValidator.validate(prefixes)
+      val prefixes =
+        dappSchema.map(s => tablePrefixRuntimeFromList(s.path, s.name))
+      val result = PrefixFreeValidator.validate(prefixes)
 
       result ==== PrefixFreeValidator.Valid
 
@@ -283,7 +289,7 @@ class FuzzCompositionTest extends HedgehogSuite:
       val result = PrefixFreeValidator.validate(prefixes)
       result match
         case PrefixFreeValidator.IdenticalPrefixes(_, count) => count ==== 2
-        case _ => Result.failure
+        case _                                               => Result.failure
 
   // Fuzz test: versioned schemas
   property("fuzz: versioned schemas maintain prefix-free"):
@@ -299,7 +305,9 @@ class FuzzCompositionTest extends HedgehogSuite:
   // Fuzz test: multi-tenant structure
   property("fuzz: multi-tenant isolation"):
     for
-      tenants   <- Gen.list(Gen.string(Gen.alpha, Range.linear(1, 10)), Range.linear(0, 5)).forAll
+      tenants <- Gen
+        .list(Gen.string(Gen.alpha, Range.linear(1, 10)), Range.linear(0, 5))
+        .forAll
       tableName <- genTableName.forAll
     yield
       val distinctTenants = tenants.distinct

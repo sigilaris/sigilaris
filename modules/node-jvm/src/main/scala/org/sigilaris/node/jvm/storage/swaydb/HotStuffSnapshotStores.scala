@@ -3,7 +3,12 @@ package org.sigilaris.node.jvm.storage.swaydb
 import cats.effect.{IO, Resource}
 
 import org.sigilaris.core.merkle.MerkleTrieNode
-import org.sigilaris.node.jvm.runtime.consensus.hotstuff.{SnapshotMetadata, SnapshotMetadataStore, SnapshotNodeStore, given}
+import org.sigilaris.node.jvm.runtime.consensus.hotstuff.{
+  SnapshotMetadata,
+  SnapshotMetadataStore,
+  SnapshotNodeStore,
+  given,
+}
 import org.sigilaris.node.jvm.runtime.gossip.ChainId
 
 object HotStuffSnapshotStores:
