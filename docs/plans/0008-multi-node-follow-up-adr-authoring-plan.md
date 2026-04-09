@@ -30,7 +30,7 @@ Complete; ADR Tranche Drafted; Implementation Handoff Ready
   - `ADR-0022`: HotStuff Pacemaker And View-Change Baseline
   - `ADR-0023`: Validator-Set Rotation And Bootstrap Trust Roots
   - `ADR-0024`: Static-Topology Peer Identity Binding And Session-Bound Capability Authorization
-- deferred candidate `ADR-0025`: Validator Signing Custody And Remote Signer Baseline
+- deferred future ADR candidate: `Validator Signing Custody And Remote Signer Baseline`
 - 위 ADR 작성 결과를 반영해 `ADR-0016`, `ADR-0017`, `ADR-0018`, `ADR-0021`, 관련 plan 문서의 follow-up / consequence / residual gap 서술을 정렬한다.
 - ADR 수용 이후 어떤 구현 작업이 기존 plan 의 phase 확장으로 들어갈지, 별도 plan 으로 분리할지를 backlog 수준으로 정리한다.
 
@@ -115,7 +115,7 @@ Complete; ADR Tranche Drafted; Implementation Handoff Ready
 | automatic audit-to-validator promotion / automatic cross-DC failover policy | Explicit defer | current operator-managed promotion baseline 을 유지하고, 자동화 계약은 별도 운영 ADR 로 분리한다. | `ADR-0018`, plan `0004` | `ADR-0023` 이 authority continuity 를 고정하더라도 자동 failover 까지 포함하지 않음 |
 | archive-grade historical sync | Explicit defer; elevated follow-up priority | audit node 운영을 위한 archive/deep-history follow-up 으로 분리하고, post-ADR backlog 에서 우선순위를 높여 다룬다. | `ADR-0019`, `ADR-0021`, plan `0007` | bootstrap baseline 위에서 audit-node deep history 가용성을 높이는 follow-up 으로 취급 |
 | snapshot batching-compression / Merkle proof serving / remote body/proof fetch / durable archive compaction | Explicit defer | snapshot/archive optimization 또는 serving 후속 ADR / implementation plan 으로 남긴다. | `ADR-0019`, `ADR-0021`, plans `0005`, `0007` | archive-grade historical sync 와 분리해 후순위 optimization 으로 취급 |
-| validator signing custody / KMS / HSM / remote signer baseline | Explicit defer; tentative `ADR-0025` | operator-managed raw key baseline 의 security-hardening follow-up 으로 남긴다. | `ADR-0018`, plan `0004` | multi-operator deployment, external validator participation, custody incident 가 re-open trigger |
+| validator signing custody / KMS / HSM / remote signer baseline | Explicit defer; future security-hardening ADR candidate | operator-managed raw key baseline 의 security-hardening follow-up 으로 남긴다. | `ADR-0018`, plan `0004` | multi-operator deployment, external validator participation, custody incident 가 re-open trigger |
 | application transaction-shape migration / dynamic-discovery schedulability follow-up | Existing `ADR-0020` follow-up, outside this tranche | multi-node trust/liveness ADR 이 아니라 application scheduling migration 으로 남긴다. | `ADR-0020`, plan `0006` | current tranche blocker 아님 |
 
 ## Phase 0 Explicit Defer List
@@ -124,7 +124,7 @@ Complete; ADR Tranche Drafted; Implementation Handoff Ready
 - `Archive-grade historical sync` 는 audit node 운영을 위한 archive/deep-history follow-up 으로 남기되, post-ADR backlog 에서 우선순위를 한 단계 올려 다룬다.
 - `Snapshot batching/compression`, `Merkle proof serving`, `remote body/proof fetch`, `durable archive compaction` 은 계속 snapshot/archive optimization follow-up 으로 남긴다.
 - `Fee market`, `proposer fairness`, distributed mempool policy 는 current trust/liveness/authority tranche 와 분리한다.
-- `Validator signing custody`, `KMS/HSM`, `remote signer` 는 tentative `ADR-0025` security-hardening candidate 로 defer 한다.
+- `Validator signing custody`, `KMS/HSM`, `remote signer` 는 future security-hardening ADR candidate 로 defer 한다.
 - `ADR-0020` application-specific scheduling extension 과 future dynamic-discovery transaction migration 은 current multi-node ADR tranche 의 mandatory output 으로 두지 않는다.
 
 ## Phase 0 ADR-vs-Spec-vs-Plan Boundary Rules
@@ -219,7 +219,7 @@ Complete; ADR Tranche Drafted; Implementation Handoff Ready
 | configured peer identity credential binding, capability token/header/path encoding, re-auth / disconnect diagnostics | `ADR-0024` | plans `0003`, `0007` | generic gossip/session admission seam 은 `0003`, bootstrap service transport projection 은 `0007` 이 받는다. |
 | archive-grade historical sync for audit-node operation | `ADR-0019` / `ADR-0021` consequence area | plan `0007` or separate audit/archive follow-up plan | snapshot/bootstrap baseline 위에서 audit node deep-history hydration 경로를 우선 정리한다. |
 | snapshot compression, Merkle proof serving, remote body/proof fetch, durable archive compaction | `ADR-0019` / `ADR-0021` consequence area | plans `0005`, `0007` or separate follow-up plan | trust/liveness/authority contract 확장보다는 optimization / serving follow-up 으로 취급한다. |
-| validator signing custody, KMS/HSM, remote signer baseline | tentative `ADR-0025` | future security-hardening ADR / plan | multi-operator deployment, external validator, custody incident 가 re-open trigger 다. |
+| validator signing custody, KMS/HSM, remote signer baseline | future security-hardening ADR candidate | future security-hardening ADR / plan | multi-operator deployment, external validator, custody incident 가 re-open trigger 다. |
 
 ### Split Criteria
 - semantic owner 가 이미 고정되어 있고 남은 일이 runtime/transport/storage/wire detail 뿐이면 기존 implementation plan 안에서 계속 진행한다.
@@ -249,7 +249,7 @@ Complete; ADR Tranche Drafted; Implementation Handoff Ready
 - 기존 shipped baseline 과 target contract 를 문서에서 섞어 쓰면 구현 상태 오해가 생긴다. 모든 ADR 에서 shipped / new / follow-up 세 구획을 명시한다.
 - 문서가 implementation detail 을 과도하게 잠그면 이후 transport/runtime 선택지가 줄어든다. long-lived contract 와 protocol-spec detail 을 분리한다.
 - 새 ADR 이 늘어나며 기존 follow-up 문구가 stale 상태로 남을 수 있다. 각 phase 의 output 에 관련 문서 정렬 작업을 포함한다.
-- `ADR-0025` defer 가 indefinite backlog 로 사라질 수 있다. multi-operator deployment, external validator participation, operator key compromise incident, 또는 raw key custody 가 운영 병목으로 드러나는 시점을 explicit re-open trigger 로 문서화한다.
+- validator signing custody / remote signer defer 가 indefinite backlog 로 사라질 수 있다. multi-operator deployment, external validator participation, operator key compromise incident, 또는 raw key custody 가 운영 병목으로 드러나는 시점을 explicit re-open trigger 로 문서화한다.
 - 문서 초안 단계에서 번호가 변할 수 있다. numbering 대신 title 과 dependency order 를 canonical reference 로 본다.
 
 ## Acceptance Criteria
@@ -305,5 +305,5 @@ Complete; ADR Tranche Drafted; Implementation Handoff Ready
 - `P6`: dynamic peer discovery, peer scoring, validator admission policy 가 static topology baseline 을 대체해야 하면 별도 ADR 또는 superseding deployment ADR 로 분리한다.
 - `P7`: snapshot compression, Merkle proof serving, remote body/proof fetch, durable archive compaction 은 별도 ADR 또는 implementation plan 으로 분리한다.
 - `P8`: application-specific scheduling extension 이 on-wire footprint 또는 receipt projection 같은 새 canonical artifact 를 요구하면 `ADR-0020` follow-up ADR 로 분리한다.
-- `P9`: multi-operator deployment, external validator participation, operator key compromise incident, 또는 raw key custody 가 운영 병목으로 드러나면 tentative `ADR-0025` `Validator Signing Custody And Remote Signer Baseline` 을 별도 security-hardening follow-up 으로 분리한다.
+- `P9`: multi-operator deployment, external validator participation, operator key compromise incident, 또는 raw key custody 가 운영 병목으로 드러나면 `Validator Signing Custody And Remote Signer Baseline` 을 별도 security-hardening follow-up ADR 또는 plan 으로 분리한다.
 - `P10`: static multi-node chain 을 실제로 띄우기 위한 mandatory runtime/transport/operator gap 은 plan `0009-minimal-static-multi-node-launch-readiness-plan.md` 가 받는다. pacemaker runtime, concrete bootstrap readiness, local durable historical archive backing, stronger peer credential binding, reference launch proof, 그리고 same-validator identity relocation 기반 manual DR proof 를 minimal gate 로 두고 rotation/archive acceleration/discovery/custody hardening 은 계속 defer 한다.
