@@ -10,12 +10,15 @@ import org.sigilaris.core.util.SafeStringInterp.*
 import org.sigilaris.node.jvm.runtime.block.BlockHeight
 import org.sigilaris.node.jvm.runtime.gossip.{CanonicalRejection, ChainId}
 
+/** Represents a failure when verifying a finalized anchor suggestion. */
 final case class FinalizedAnchorVerificationFailure(
     reason: String,
     detail: Option[String],
 )
 
+/** Companion for `FinalizedAnchorVerificationFailure`. */
 object FinalizedAnchorVerificationFailure:
+  /** Creates from a validation failure. */
   def fromValidation(
       error: HotStuffValidationFailure,
   ): FinalizedAnchorVerificationFailure =
@@ -24,14 +27,17 @@ object FinalizedAnchorVerificationFailure:
       detail = error.detail,
     )
 
+/** Records a safety fault where conflicting blocks were finalized at the same height. */
 final case class FinalizedAnchorSafetyFault(
     chainId: ChainId,
     height: BlockHeight,
     conflictingAnchors: Vector[SnapshotAnchor],
 ):
+  /** The reason identifier for this safety fault. */
   def reason: String =
     "conflictingFinalizedSuggestion"
 
+  /** Detail string listing the conflicting block IDs. */
   def detail: Option[String] =
     Some(
       conflictingAnchors
@@ -39,7 +45,9 @@ final case class FinalizedAnchorSafetyFault(
         .mkString(","),
     )
 
+/** Companion for `FinalizedAnchorSafetyFault`. */
 object FinalizedAnchorSafetyFault:
+  /** Creates a safety fault from conflicting finalized suggestions at the same height. */
   def fromSuggestions(
       chainId: ChainId,
       height: BlockHeight,
@@ -57,18 +65,22 @@ object FinalizedAnchorSafetyFault:
         .distinctBy(_.blockId.toHexLower),
     )
 
+/** A snapshot of finalization tracking state, including the best finalized and any safety faults. */
 final case class FinalizationTrackerSnapshot(
     bestFinalized: Option[FinalizedAnchorSuggestion],
     safetyFaults: Vector[FinalizedAnchorSafetyFault],
 )
 
+/** Companion for `FinalizationTrackerSnapshot`. */
 object FinalizationTrackerSnapshot:
+  /** An empty finalization snapshot with no finalized anchor and no faults. */
   val empty: FinalizationTrackerSnapshot =
     FinalizationTrackerSnapshot(
       bestFinalized = None,
       safetyFaults = Vector.empty[FinalizedAnchorSafetyFault],
     )
 
+/** Tracks finalization by detecting three-chain commit proofs from observed proposals. */
 object HotStuffFinalizationTracker:
   private val candidateOrdering: Ordering[FinalizedAnchorSuggestion] =
     Ordering.by: suggestion =>
@@ -79,6 +91,7 @@ object HotStuffFinalizationTracker:
         suggestion.finalizedProof.grandchild.proposalId.toHexLower,
       )
 
+  /** Tracks finalization across all chains from the given proposals. */
   def trackAll(
       proposals: Iterable[Proposal],
   ): Map[ChainId, FinalizationTrackerSnapshot] =
@@ -88,6 +101,7 @@ object HotStuffFinalizationTracker:
       .mapValues(track)
       .toMap
 
+  /** Tracks finalization for a single chain from the given proposals. */
   def track(
       proposals: Iterable[Proposal],
   ): FinalizationTrackerSnapshot =
@@ -167,7 +181,9 @@ object HotStuffFinalizationTracker:
     Ordering[BlockHeight].lt(anchor.block.height, child.block.height) &&
       Ordering[BlockHeight].lt(child.block.height, grandchild.block.height)
 
+/** Verifies finalized anchor suggestions against the validator set and selects the highest verified. */
 object HotStuffFinalizedAnchorVerifier:
+  /** Verifies a finalized anchor suggestion by checking all three proposals and their QCs. */
   def verify[F[_]: Monad](
       suggestion: FinalizedAnchorSuggestion,
       validatorSetLookup: ValidatorSetLookup[F],
@@ -257,6 +273,7 @@ object HotStuffFinalizedAnchorVerifier:
       )
     yield suggestion
 
+  /** Selects the highest verified finalized anchor from multiple suggestions, detecting safety faults. */
   def selectHighestVerified[F[_]: Monad](
       suggestions: Iterable[FinalizedAnchorSuggestion],
       validatorSetLookup: ValidatorSetLookup[F],
@@ -534,7 +551,9 @@ private def ancestorChain(
 
   loop(start, Nil).reverse.toVector
 
+/** Factory for constructing bootstrap services backed by in-memory artifact sinks. */
 object HotStuffBootstrapServicesRuntime:
+  /** Creates in-memory bootstrap services from a static validator set. */
   def inMemory[F[_]: Sync](
       validatorSet: ValidatorSet,
       sink: InMemoryHotStuffArtifactSink[F],
@@ -547,6 +566,7 @@ object HotStuffBootstrapServicesRuntime:
       diagnostics = new InMemoryBootstrapDiagnosticsSource(sink),
     )
 
+  /** Creates bootstrap services from a trust root with historical validator sets. */
   def fromTrustRoot[F[_]: Sync](
       trustRoot: BootstrapTrustRoot,
       validatorSetInventory: Vector[ValidatorSet],
@@ -560,6 +580,7 @@ object HotStuffBootstrapServicesRuntime:
       diagnostics = new InMemoryBootstrapDiagnosticsSource(sink),
     )
 
+  /** Creates in-memory bootstrap services with an optional snapshot node store. */
   def inMemoryWithNodeStore[F[_]: Sync](
       validatorSet: ValidatorSet,
       sink: InMemoryHotStuffArtifactSink[F],
@@ -574,6 +595,7 @@ object HotStuffBootstrapServicesRuntime:
       diagnostics = diagnostics,
     )
 
+  /** Creates bootstrap services from a trust root with full configuration options. */
   def fromTrustRootWithNodeStore[F[_]: Sync](
       trustRoot: BootstrapTrustRoot,
       validatorSetInventory: Vector[ValidatorSet],

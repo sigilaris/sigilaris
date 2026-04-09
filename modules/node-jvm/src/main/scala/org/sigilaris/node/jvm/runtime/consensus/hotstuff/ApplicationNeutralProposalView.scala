@@ -21,8 +21,15 @@ import org.sigilaris.node.jvm.runtime.block.{
 }
 import org.sigilaris.node.jvm.runtime.gossip.StableArtifactId
 
+/** Provides an application-neutral view over proposals, where the block body
+  * is derived entirely from the carried transaction set without application-specific logic.
+  */
 object ApplicationNeutralProposalView:
+
+  /** Type alias for block record result references in application-neutral proposals. */
   type ResultRef = Utf8
+
+  /** Type alias for block record events in application-neutral proposals. */
   type Event     = Utf8
   private val LegacyAutomaticProposalBodyRootDomain =
     Utf8("sigilaris.hotstuff.auto-proposal.body-root.v1")
@@ -40,11 +47,21 @@ object ApplicationNeutralProposalView:
   ): SchedulingClassification =
     SchedulingClassification.Schedulable(ConflictFootprint.empty)
 
+  /** Constructs a canonical proposal transaction set from the given transaction IDs.
+    *
+    * @param txIds the transaction identifiers to include
+    * @return a canonically ordered proposal transaction set
+    */
   def proposalTxSet(
       txIds: Iterable[StableArtifactId],
   ): ProposalTxSet =
     ProposalTxSet.canonical(ProposalTxSet(txIds.iterator.toVector))
 
+  /** Builds a block body from the given transaction IDs with empty results and events.
+    *
+    * @param txIds the transaction identifiers to include as block records
+    * @return an application-neutral block body
+    */
   def blockBody(
       txIds: Iterable[StableArtifactId],
   ): BlockBody[StableArtifactId, ResultRef, Event] =
@@ -60,11 +77,21 @@ object ApplicationNeutralProposalView:
         .toSet,
     )
 
+  /** Computes the body root hash for the given transaction IDs.
+    *
+    * @param txIds the transaction identifiers
+    * @return the computed body root or a validation failure
+    */
   def bodyRoot(
       txIds: Iterable[StableArtifactId],
   ): Either[BlockValidationFailure, BodyRoot] =
     BlockBody.computeBodyRoot(blockBody(txIds))
 
+  /** Constructs a block view from a proposal using its header and derived body.
+    *
+    * @param proposal the consensus proposal
+    * @return the application-neutral block view
+    */
   def blockView(
       proposal: Proposal,
   ): BlockView[StableArtifactId, ResultRef, Event] =
@@ -150,6 +177,12 @@ object ApplicationNeutralProposalView:
         proposal.justify,
       )
 
+  /** Validates a proposal against the validator set and returns the derived block view.
+    *
+    * @param proposal the consensus proposal to validate
+    * @param validatorSet the active validator set for validation
+    * @return the validated block view or a validation failure
+    */
   def validate(
       proposal: Proposal,
       validatorSet: ValidatorSet,
@@ -172,6 +205,12 @@ object ApplicationNeutralProposalView:
         )(classifyTx)
         .map(_ => view)
 
+  /** Creates a catch-up readiness evaluator that validates proposals using application-neutral body derivation.
+    *
+    * @tparam F the effect type
+    * @param validatorSet the active validator set
+    * @return a readiness evaluator for proposal catch-up
+    */
   def readiness[F[_]: Sync](
       validatorSet: ValidatorSet,
   ): ProposalCatchUpReadiness[F] =
@@ -197,6 +236,11 @@ object ApplicationNeutralProposalView:
                     .leftMap(BootstrapCoordinatorFailure.fromValidation)
         result.pure[F]
 
+  /** Parses an application-neutral transaction ID from raw bytes, requiring exactly 32 bytes.
+    *
+    * @param bytes the raw byte representation
+    * @return the parsed stable artifact ID or an error message
+    */
   def txIdFromBytes(
       bytes: ByteVector,
   ): Either[String, StableArtifactId] =

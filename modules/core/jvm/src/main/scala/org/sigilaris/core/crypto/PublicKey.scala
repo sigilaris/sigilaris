@@ -61,6 +61,15 @@ sealed trait PublicKey extends PublicKeyLike:
   override final def hashCode(): Int = toBytes.hashCode
 
 object PublicKey:
+  /** Public key representation storing explicit x and y coordinates.
+    *
+    * Lazily computes and caches the BouncyCastle EC point when needed.
+    *
+    * @param x
+    *   x-coordinate as 32-byte [[datatype.UInt256]]
+    * @param y
+    *   y-coordinate as 32-byte [[datatype.UInt256]]
+    */
   final case class XY(x: UInt256, y: UInt256) extends PublicKey:
     private val cachedXY64Ref: AtomicReference[Option[Array[Byte]]] =
       new AtomicReference[Option[Array[Byte]]](None)
@@ -111,6 +120,13 @@ object PublicKey:
             cachedPointNormRef.set(Some(normalized))
           normalized
 
+  /** Public key representation wrapping a BouncyCastle EC point.
+    *
+    * Lazily computes and caches x/y coordinates and byte array when needed.
+    *
+    * @param p
+    *   BouncyCastle elliptic curve point
+    */
   final case class Point(p: ECPoint) extends PublicKey:
     private val cachedXY64Ref: AtomicReference[Option[Array[Byte]]] =
       new AtomicReference[Option[Array[Byte]]](None)
@@ -222,15 +238,19 @@ object PublicKey:
     */
   def fromECPoint(p: ECPoint): PublicKey = Point(p)
 
+  /** [[codec.byte.ByteEncoder]] instance that serializes a public key to 64 bytes (x||y). */
   inline given pubkeyByteEncoder: ByteEncoder[PublicKey] with
     def encode(pubkey: PublicKey): ByteVector = pubkey.toBytes
 
+  /** [[codec.byte.ByteDecoder]] instance that deserializes a public key from 64 bytes (x||y). */
   given pubkeyByteDecoder: ByteDecoder[PublicKey] =
     ByteDecoder.fromFixedSizeBytes(64)(identity).emap { bytes =>
       fromByteArray(bytes.toArray).left.map(e => DecodeFailure(e.msg))
     }
 
+  /** Default [[Hash]] instance for public keys, using Keccak-256 over the 64-byte representation. */
   inline given Hash[PublicKey] = Hash.build
 
+  /** [[cats.Eq]] instance comparing public keys by their (x, y) coordinates. */
   given Eq[PublicKey] =
     Eq.by(publicKey => (publicKey.x, publicKey.y))

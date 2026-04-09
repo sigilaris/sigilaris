@@ -10,13 +10,33 @@ import scodec.bits.ByteVector
 import org.sigilaris.core.util.SafeStringInterp.*
 import org.sigilaris.node.jvm.runtime.gossip.*
 
+/** Snapshot of the in-memory transaction sink state for testing and inspection.
+  *
+  * @tparam A
+  *   the artifact payload type
+  * @param applied
+  *   events that were successfully applied
+  * @param duplicates
+  *   events that were detected as duplicates
+  * @param appliedIds
+  *   per-chain set of applied artifact ids for deduplication
+  */
 final case class InMemoryTxSinkSnapshot[A](
     applied: Vector[GossipEvent[A]],
     duplicates: Vector[GossipEvent[A]],
     appliedIds: Map[ChainId, Set[StableArtifactId]],
 )
 
+/** Companion for `InMemoryTxSinkSnapshot`. */
 object InMemoryTxSinkSnapshot:
+
+  /** Creates an empty sink snapshot.
+    *
+    * @tparam A
+    *   the artifact payload type
+    * @return
+    *   an empty snapshot
+    */
   def empty[A]: InMemoryTxSinkSnapshot[A] =
     InMemoryTxSinkSnapshot(
       applied = Vector.empty[GossipEvent[A]],
@@ -24,12 +44,31 @@ object InMemoryTxSinkSnapshot:
       appliedIds = Map.empty[ChainId, Set[StableArtifactId]],
     )
 
+/** In-memory implementation of `GossipArtifactSource` for transaction
+  * artifacts, primarily for testing.
+  *
+  * @tparam F
+  *   the effect type
+  * @tparam A
+  *   the artifact payload type
+  */
 final class InMemoryTxArtifactSource[F[_]: Sync, A] private (
     clock: GossipClock[F],
     ref: Ref[F, Map[ChainId, Vector[AvailableGossipEvent[A]]]],
 )(using txIdentity: TxIdentity[A])
     extends GossipArtifactSource[F, A]:
 
+  /** Appends a new transaction payload to the in-memory source.
+    *
+    * @param chainId
+    *   the chain to append to
+    * @param payload
+    *   the artifact payload
+    * @param ts
+    *   the event timestamp
+    * @return
+    *   the generated gossip event
+    */
   def append(
       chainId: ChainId,
       payload: A,
@@ -54,6 +93,13 @@ final class InMemoryTxArtifactSource[F[_]: Sync, A] private (
         )
         state.updated(chainId, chainEvents :+ available) -> event
 
+  /** Returns all stored events for the given chain.
+    *
+    * @param chainId
+    *   the chain to snapshot
+    * @return
+    *   all stored events for the chain
+    */
   def snapshot(chainId: ChainId): F[Vector[GossipEvent[A]]] =
     ref.get.map(
       _.getOrElse(chainId, Vector.empty[AvailableGossipEvent[A]]).map(_.event),
@@ -128,7 +174,18 @@ final class InMemoryTxArtifactSource[F[_]: Sync, A] private (
           ),
         )
 
+/** Companion for `InMemoryTxArtifactSource`. */
 object InMemoryTxArtifactSource:
+
+  /** Creates a new empty in-memory transaction artifact source.
+    *
+    * @tparam F
+    *   the effect type
+    * @tparam A
+    *   the artifact payload type
+    * @return
+    *   a new source instance
+    */
   def create[F[_]: Sync, A](using
       clock: GossipClock[F],
       txIdentity: TxIdentity[A],
@@ -137,6 +194,14 @@ object InMemoryTxArtifactSource:
       .of[F, Map[ChainId, Vector[AvailableGossipEvent[A]]]](Map.empty)
       .map(new InMemoryTxArtifactSource[F, A](clock, _))
 
+/** In-memory implementation of `GossipArtifactSink` for transaction
+  * artifacts, primarily for testing.
+  *
+  * @tparam F
+  *   the effect type
+  * @tparam A
+  *   the artifact payload type
+  */
 final class InMemoryTxArtifactSink[F[_], A] private (
     ref: Ref[F, InMemoryTxSinkSnapshot[A]],
 ) extends GossipArtifactSink[F, A]:
@@ -164,10 +229,26 @@ final class InMemoryTxArtifactSink[F[_], A] private (
           ArtifactApplyResult(applied = true, duplicate = false)
             .asRight[CanonicalRejection.ArtifactContractRejected]
 
+  /** Returns the current sink state snapshot.
+    *
+    * @return
+    *   the current snapshot
+    */
   def snapshot: F[InMemoryTxSinkSnapshot[A]] =
     ref.get
 
+/** Companion for `InMemoryTxArtifactSink`. */
 object InMemoryTxArtifactSink:
+
+  /** Creates a new empty in-memory transaction artifact sink.
+    *
+    * @tparam F
+    *   the effect type
+    * @tparam A
+    *   the artifact payload type
+    * @return
+    *   a new sink instance
+    */
   def create[F[_]: Sync, A]: F[InMemoryTxArtifactSink[F, A]] =
     Ref
       .of[F, InMemoryTxSinkSnapshot[A]](InMemoryTxSinkSnapshot.empty[A])

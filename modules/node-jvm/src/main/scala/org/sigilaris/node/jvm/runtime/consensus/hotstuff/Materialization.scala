@@ -15,6 +15,7 @@ import org.sigilaris.node.jvm.runtime.block.BlockHeight
 import org.sigilaris.node.jvm.runtime.gossip.{ChainId, ControlBatch}
 import org.sigilaris.node.jvm.storage.swaydb.{Bag, StorageLayout, SwayStores}
 
+/** Captures the materialized state of a forward catch-up for persistence or replay. */
 final case class ForwardCatchUpMaterialization(
     chainId: ChainId,
     anchor: SnapshotAnchor,
@@ -27,16 +28,21 @@ final case class ForwardCatchUpMaterialization(
     lastUpdatedAt: Instant,
 )
 
+/** Stores forward catch-up materializations keyed by chain ID. */
 trait ForwardCatchUpStore[F[_]]:
+  /** Retrieves the current forward catch-up materialization for the given chain. */
   def current(
       chainId: ChainId,
   ): F[Option[ForwardCatchUpMaterialization]]
 
+  /** Stores a forward catch-up materialization. */
   def put(
       materialization: ForwardCatchUpMaterialization,
   ): F[Unit]
 
+/** Companion for `ForwardCatchUpStore`. */
 object ForwardCatchUpStore:
+  /** Creates a no-op store that discards all writes. */
   def noop[F[_]: Applicative]: ForwardCatchUpStore[F] =
     new ForwardCatchUpStore[F]:
       override def current(
@@ -49,6 +55,7 @@ object ForwardCatchUpStore:
       ): F[Unit] =
         Applicative[F].unit
 
+  /** Creates an in-memory store backed by a Ref. */
   def inMemory[F[_]: Sync]: F[ForwardCatchUpStore[F]] =
     Ref
       .of[F, Map[ChainId, ForwardCatchUpMaterialization]](Map.empty)
@@ -66,27 +73,42 @@ object ForwardCatchUpStore:
               _.updated(materialization.chainId, materialization),
             )
 
+/** The source that produced a historical archive entry. */
 enum HistoricalArchiveSource:
-  case BackgroundBackfill, ArchiveSync
+  /** Stored during background historical backfill. */
+  case BackgroundBackfill
+  /** Stored during archive synchronization. */
+  case ArchiveSync
 
+/** An entry in the historical proposal archive.
+  *
+  * @param proposal the archived proposal
+  * @param source the source that produced this entry
+  * @param storedAt the time this entry was stored
+  */
 final case class HistoricalArchiveEntry(
     proposal: Proposal,
     source: HistoricalArchiveSource,
     storedAt: Instant,
 )
 
+/** Persistent archive for historical proposals, supporting list, put, remove, and deduplication. */
 trait HistoricalProposalArchive[F[_]]:
+  /** Releases resources held by the archive. */
   def close: F[Unit]
 
+  /** Lists all archived entries for the given chain. */
   def list(
       chainId: ChainId,
   ): F[Vector[HistoricalArchiveEntry]]
 
+  /** Checks whether a proposal is already archived. */
   def contains(
       chainId: ChainId,
       proposalId: ProposalId,
   ): F[Boolean]
 
+  /** Archives proposals, returning the IDs of newly stored ones (skipping duplicates). */
   def putAll(
       chainId: ChainId,
       proposals: Vector[Proposal],
@@ -94,11 +116,13 @@ trait HistoricalProposalArchive[F[_]]:
       storedAt: Instant,
   ): F[Vector[ProposalId]]
 
+  /** Removes the given proposals from the archive, returning the count actually removed. */
   def removeAll(
       chainId: ChainId,
       proposalIds: Vector[ProposalId],
   ): F[Int]
 
+/** Companion for `HistoricalProposalArchive`, providing in-memory and SwayDB-backed implementations. */
 object HistoricalProposalArchive:
   private val SchemaVersionV1: Byte = 0x01.toByte
   private val ListPageSize: Int     = 256
@@ -202,6 +226,7 @@ object HistoricalProposalArchive:
   private given ByteDecoder[ByteVector] = bytes =>
     DecodeResult(bytes, ByteVector.empty).asRight[DecodeFailure]
 
+  /** Creates a no-op archive that discards all writes. */
   def noop[F[_]: Applicative]: HistoricalProposalArchive[F] =
     new HistoricalProposalArchive[F]:
       override def close: F[Unit] =
@@ -232,6 +257,7 @@ object HistoricalProposalArchive:
       ): F[Int] =
         proposalIds.size.pure[F]
 
+  /** Creates an in-memory archive backed by a Ref. */
   def inMemory[F[_]: Sync]: F[HistoricalProposalArchive[F]] =
     Ref
       .of[F, Map[ChainId, Vector[HistoricalArchiveEntry]]](Map.empty)
@@ -294,6 +320,7 @@ object HistoricalProposalArchive:
                 retained,
               ) -> (existing.size - retained.size)
 
+  /** Creates a persistent archive backed by SwayDB. */
   def swaydb[F[_]: Async: LiftIO](
       layout: StorageLayout,
   ): F[HistoricalProposalArchive[F]] =

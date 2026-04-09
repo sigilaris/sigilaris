@@ -123,6 +123,9 @@ object StateModuleExecutor:
     runExecutionRoutedWithModule(initial, signedTx, module).map: execution =>
       (execution.observedState, (execution.result, execution.events))
 
+  /** Executes a routed transaction with a fresh access log and returns the
+    * per-transaction execution witness.
+    */
   def runExecutionRoutedWithModule[F[
       _,
   ], Path <: Tuple, Owns <: Tuple, Needs <: Tuple, Txs <: Tuple, T <: Tx & ModuleRoutedTx](
@@ -141,6 +144,7 @@ object StateModuleExecutor:
         case (nextState, (result, events)) =>
           toExecution(nextState, result, events)
 
+  /** Executes a routed transaction using an implicit module in scope. */
   def runRouted[F[
       _,
   ], Path <: Tuple, Owns <: Tuple, Needs <: Tuple, Txs <: Tuple, T <: Tx & ModuleRoutedTx](
@@ -154,6 +158,9 @@ object StateModuleExecutor:
   ): Eff[F][(StoreState, (signedTx.value.Result, List[signedTx.value.Event]))] =
     runRoutedWithModule(initial, signedTx, module)
 
+  /** Executes a transaction using an implicit module and returns the execution
+    * witness.
+    */
   def runExecution[F[
       _,
   ], Path <: Tuple, Owns <: Tuple, Needs <: Tuple, Txs <: Tuple, T <: Tx](
@@ -167,6 +174,9 @@ object StateModuleExecutor:
   ): Eff[F][TxExecution[signedTx.value.Result, signedTx.value.Event]] =
     runExecutionWithModule(initial, signedTx, module)
 
+  /** Executes a routed transaction using an implicit module and returns the
+    * execution witness.
+    */
   def runExecutionRouted[F[
       _,
   ], Path <: Tuple, Owns <: Tuple, Needs <: Tuple, Txs <: Tuple, T <: Tx & ModuleRoutedTx](
@@ -195,6 +205,7 @@ object StateModuleExecutor:
   ): Eff[F][(StoreState, (signedTx.value.Result, List[signedTx.value.Event]))] =
     runWithModule(StoreState.empty, signedTx, module)
 
+  /** Runs from empty state using an implicit module in scope. */
   def runFromEmpty[F[
       _,
   ], Path <: Tuple, Owns <: Tuple, Needs <: Tuple, Txs <: Tuple, T <: Tx](
@@ -207,6 +218,9 @@ object StateModuleExecutor:
   ): Eff[F][(StoreState, (signedTx.value.Result, List[signedTx.value.Event]))] =
     runFromEmptyWithModule(signedTx, module)
 
+  /** Runs from empty state with an explicit module and returns the execution
+    * witness.
+    */
   def runExecutionFromEmptyWithModule[F[
       _,
   ], Path <: Tuple, Owns <: Tuple, Needs <: Tuple, Txs <: Tuple, T <: Tx](
@@ -219,6 +233,9 @@ object StateModuleExecutor:
   ): Eff[F][TxExecution[signedTx.value.Result, signedTx.value.Event]] =
     runExecutionWithModule(StoreState.empty, signedTx, module)
 
+  /** Runs from empty state using an implicit module and returns the execution
+    * witness.
+    */
   def runExecutionFromEmpty[F[
       _,
   ], Path <: Tuple, Owns <: Tuple, Needs <: Tuple, Txs <: Tuple, T <: Tx](
@@ -248,6 +265,7 @@ object StateModuleExecutor:
   ]] =
     runWithModule(initial, signedTx, module).value
 
+  /** Convenience to obtain the plain `F` result using an implicit module. */
   def runValue[F[
       _,
   ], Path <: Tuple, Owns <: Tuple, Needs <: Tuple, Txs <: Tuple, T <: Tx](

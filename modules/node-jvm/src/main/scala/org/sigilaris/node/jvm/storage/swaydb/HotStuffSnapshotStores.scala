@@ -11,7 +11,14 @@ import org.sigilaris.node.jvm.runtime.consensus.hotstuff.{
 }
 import org.sigilaris.node.jvm.runtime.gossip.ChainId
 
+/** Factory for creating SwayDB-backed HotStuff snapshot stores. */
 object HotStuffSnapshotStores:
+
+  /** Creates a SwayDB-backed store for snapshot metadata, keyed by chain ID.
+    *
+    * @param layout the storage layout defining directory paths
+    * @return a resource that yields a `SnapshotMetadataStore`
+    */
   def metadata(
       layout: StorageLayout,
   )(using Bag.Async[IO]): Resource[IO, SnapshotMetadataStore[IO]] =
@@ -19,6 +26,11 @@ object HotStuffSnapshotStores:
       .keyValue[ChainId, Vector[SnapshotMetadata]](layout.state.snapshot)
       .evalMap(SnapshotMetadataStore.fromKeyValueStore[IO])
 
+  /** Creates a SwayDB-backed store for Merkle trie nodes used in snapshots.
+    *
+    * @param layout the storage layout defining directory paths
+    * @return a resource that yields a `SnapshotNodeStore`
+    */
   def nodes(
       layout: StorageLayout,
   )(using Bag.Async[IO]): Resource[IO, SnapshotNodeStore[IO]] =

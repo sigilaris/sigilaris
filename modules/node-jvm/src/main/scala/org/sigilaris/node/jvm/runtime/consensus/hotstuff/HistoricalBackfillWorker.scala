@@ -13,6 +13,14 @@ import cats.syntax.all.*
 import org.sigilaris.node.jvm.runtime.block.BlockHeight
 import org.sigilaris.node.jvm.runtime.gossip.{CanonicalRejection, ChainId}
 
+/** Configuration for historical backfill behavior.
+  *
+  * @param batchSize number of proposals to fetch per batch
+  * @param interBatchDelay delay between consecutive batches
+  * @param priority the backfill priority level
+  * @param archiveSource the archive source label for stored proposals
+  * @param enabled whether historical backfill is enabled
+  */
 @SuppressWarnings(Array("org.wartremover.warts.DefaultArguments"))
 final case class HistoricalBackfillPolicy(
     batchSize: Int,
@@ -26,13 +34,16 @@ final case class HistoricalBackfillPolicy(
   require(batchSize > 0, "batchSize must be positive")
   require(!interBatchDelay.isNegative, "interBatchDelay must be non-negative")
 
+/** Companion for `HistoricalBackfillPolicy`. */
 object HistoricalBackfillPolicy:
+  /** Default policy for background backfill (small batches, 1-second delay). */
   val backgroundDefault: HistoricalBackfillPolicy =
     HistoricalBackfillPolicy(
       batchSize = 32,
       interBatchDelay = Duration.ofSeconds(1L),
     )
 
+  /** Default policy for archive backfill (larger batches, minimal delay). */
   val archiveDefault: HistoricalBackfillPolicy =
     HistoricalBackfillPolicy(
       batchSize = 256,
@@ -41,6 +52,7 @@ object HistoricalBackfillPolicy:
       archiveSource = HistoricalArchiveSource.ArchiveSync,
     )
 
+  /** Returns the appropriate backfill policy for the given node role. */
   @SuppressWarnings(Array("org.wartremover.warts.DefaultArguments"))
   def forRole(
       role: LocalNodeRole,
@@ -52,7 +64,9 @@ object HistoricalBackfillPolicy:
         case LocalNodeRole.Audit     => archiveDefault
     policy.copy(enabled = enabled)
 
+/** A worker that fetches historical proposals before a snapshot anchor, walking backward to genesis. */
 trait HistoricalBackfillWorker[F[_]]:
+  /** Starts backfill from the given anchor using the provided peer sessions. */
   def start(
       chainId: ChainId,
       sessions: Vector[BootstrapSessionBinding],
@@ -60,23 +74,30 @@ trait HistoricalBackfillWorker[F[_]]:
       now: Instant,
   ): F[Unit]
 
+  /** Pauses the backfill for the given reason. */
   def pause(
       reason: String,
       now: Instant,
   ): F[Unit]
 
+  /** Resumes a paused backfill. */
   def resume(
       now: Instant,
   ): F[Unit]
 
+  /** Returns the current backfill status. */
   def current: F[HistoricalBackfillStatus]
 
+/** Companion for `HistoricalBackfillWorker`. */
 object HistoricalBackfillWorker:
+  /** The reason string used when backfill is disabled by policy. */
   val DisabledByPolicyReason: String = "historicalSyncDisabled"
 
+  /** Creates a no-op worker that never starts backfill. */
   def disabled[F[_]: Applicative]: HistoricalBackfillWorker[F] =
     disabledWithStatus(HistoricalBackfillStatus.Idle)
 
+  /** Creates a no-op worker that always reports the given status. */
   def disabledWithStatus[F[_]: Applicative](
       status: HistoricalBackfillStatus,
   ): HistoricalBackfillWorker[F] =
@@ -103,6 +124,7 @@ object HistoricalBackfillWorker:
       override def current: F[HistoricalBackfillStatus] =
         status.pure[F]
 
+  /** Creates a backfill worker that fetches and archives historical proposals. */
   def create[F[_]: Async: Clock](
       policy: HistoricalBackfillPolicy,
       historicalBackfill: HistoricalBackfillService[F],
@@ -110,6 +132,7 @@ object HistoricalBackfillWorker:
   ): F[HistoricalBackfillWorker[F]] =
     createWithNow(policy, historicalBackfill, archive, Clock[F].realTimeInstant)
 
+  /** Creates a backfill worker with a custom clock source. */
   def createWithNow[F[_]: Async](
       policy: HistoricalBackfillPolicy,
       historicalBackfill: HistoricalBackfillService[F],

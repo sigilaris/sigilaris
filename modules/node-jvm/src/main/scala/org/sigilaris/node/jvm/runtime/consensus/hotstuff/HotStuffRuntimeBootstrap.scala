@@ -30,6 +30,17 @@ import org.sigilaris.node.jvm.runtime.gossip.tx.{
 }
 import org.sigilaris.node.jvm.transport.armeria.gossip.HotStuffBootstrapHttpTransport
 
+/** Configuration for bootstrapping a HotStuff consensus node.
+  *
+  * @param role the local node's role (validator or audit)
+  * @param validatorSet the current active validator set
+  * @param holders the validator key holder bindings
+  * @param localKeys locally available signing keys by validator ID
+  * @param gossipPolicy the gossip topic policies
+  * @param bootstrapTrustRootOverride optional override for the bootstrap trust root
+  * @param historicalValidatorSets previously active validator sets for cross-epoch verification
+  * @param historicalSyncEnabled whether historical backfill is enabled
+  */
 @SuppressWarnings(Array("org.wartremover.warts.DefaultArguments"))
 final case class HotStuffBootstrapConfig(
     role: LocalNodeRole,
@@ -41,10 +52,12 @@ final case class HotStuffBootstrapConfig(
     historicalValidatorSets: Vector[ValidatorSet] = Vector.empty,
     historicalSyncEnabled: Boolean = true,
 ):
+  /** Returns the effective bootstrap trust root, using the override if present. */
   def bootstrapTrustRoot: BootstrapTrustRoot =
     bootstrapTrustRootOverride.getOrElse:
       BootstrapTrustRoot.staticValidatorSet(validatorSet)
 
+  /** Returns the deduplicated inventory of validator sets for cross-epoch lookups. */
   def validatorSetLookupInventory: Vector[ValidatorSet] =
     (Vector(
       bootstrapTrustRoot.validatorSet,
@@ -57,9 +70,12 @@ final case class HotStuffBootstrapConfig(
           (seen + next.hash) -> (acc :+ next)
       ._2
 
+/** Companion for `HotStuffBootstrapConfig`, providing configuration loading from Typesafe Config. */
 object HotStuffBootstrapConfig:
+  /** The default configuration path. */
   val DefaultPath: String = "sigilaris.node.consensus.hotstuff"
 
+  /** Loads the bootstrap configuration from the given Config at the specified path. */
   @SuppressWarnings(Array("org.wartremover.warts.DefaultArguments"))
   def load(
       config: Config,
@@ -73,6 +89,7 @@ object HotStuffBootstrapConfig:
       )
       .flatMap(loadSection)
 
+  /** Loads the bootstrap configuration from a Config section directly. */
   def loadSection(
       section: Config,
   ): Either[String, HotStuffBootstrapConfig] =
@@ -589,6 +606,7 @@ object HotStuffBootstrapConfig:
   ): Option[String] =
     List(primary, alternate).find(config.hasPath)
 
+/** The assembled runtime bootstrap containing peer topology, authentication, consensus, and gossip runtime. */
 final case class HotStuffRuntimeBootstrap[F[_]](
     topology: StaticPeerTopology,
     registry: StaticPeerRegistry,
@@ -597,16 +615,20 @@ final case class HotStuffRuntimeBootstrap[F[_]](
     consensus: HotStuffNodeRuntime[F],
     runtime: TxGossipRuntime[F, HotStuffGossipArtifact],
 ):
+  /** Releases consensus resources. */
   def close: F[Unit] =
     consensus.close
 
+/** Companion for `HotStuffRuntimeBootstrap`, providing full bootstrap from config or topology. */
 object HotStuffRuntimeBootstrap:
+  /** The default transaction runtime policy for consensus proposals. */
   val DefaultRuntimePolicy: TxRuntimePolicy =
     TxRuntimePolicy(
       maxExactRequestRetriesPerScope =
         Some(HotStuffPolicy.requestPolicy.maxRetryAttemptsPerWindow),
     )
 
+  /** Generates a UUID-formatted idempotency key from a proposal ID for control batch deduplication. */
   def proposalControlIdempotencyKey(
       proposal: Proposal,
   ): String =
@@ -616,6 +638,7 @@ object HotStuffRuntimeBootstrap:
     val buffer = ByteBuffer.wrap(bytes)
     UUID(buffer.getLong(), buffer.getLong()).toString
 
+  /** Creates a proposal catch-up readiness evaluator backed by a block query. */
   @SuppressWarnings(Array("org.wartremover.warts.DefaultArguments"))
   def proposalCatchUpReadinessFromBlockQuery[
       F[_]: Sync,
@@ -639,6 +662,7 @@ object HotStuffRuntimeBootstrap:
       idempotencyKeyFor = idempotencyKeyFor,
     )(classifyTx)
 
+  /** Bootstraps the full HotStuff runtime from Typesafe Config. */
   @SuppressWarnings(Array("org.wartremover.warts.DefaultArguments"))
   def fromConfig[F[_]: Async: LiftIO](
       config: Config,
@@ -709,6 +733,7 @@ object HotStuffRuntimeBootstrap:
                     storageLayout = storageLayout,
                   )
 
+  /** Bootstraps the full HotStuff runtime from an explicit peer topology and consensus config. */
   @SuppressWarnings(Array("org.wartremover.warts.DefaultArguments"))
   def fromTopology[F[_]: Async: LiftIO](
       topology: StaticPeerTopology,

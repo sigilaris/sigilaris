@@ -10,10 +10,24 @@ import sttp.apispec.openapi.circe.yaml.*
 import sttp.tapir.AnyEndpoint
 import sttp.tapir.docs.openapi.OpenAPIDocsInterpreter
 
+/** Supported output formats for OpenAPI specification documents. */
 enum OpenApiFormat:
+  /** YAML format output. */
   case Yaml
+  /** JSON format output. */
   case Json
 
+/** Configuration for exporting an OpenAPI specification document.
+  *
+  * @param output
+  *   file path where the specification will be written
+  * @param format
+  *   output format (YAML or JSON)
+  * @param title
+  *   API title included in the specification
+  * @param version
+  *   API version string included in the specification
+  */
 final case class OpenApiExportConfig(
     output: Path,
     format: OpenApiFormat,
@@ -21,8 +35,22 @@ final case class OpenApiExportConfig(
     version: String,
 )
 
+/** Generates and writes OpenAPI specification documents from Tapir endpoint definitions. */
 @SuppressWarnings(Array("org.wartremover.warts.DefaultArguments"))
 object TapirOpenApiExporter:
+  /** Generates an OpenAPI document from the given Tapir endpoints.
+    *
+    * @param title
+    *   API title
+    * @param version
+    *   API version string
+    * @param endpoints
+    *   Tapir endpoints to document
+    * @param enrich
+    *   optional transformation applied to the generated OpenAPI model
+    * @return
+    *   the generated OpenAPI specification
+    */
   def document(
       title: String,
       version: String,
@@ -31,6 +59,19 @@ object TapirOpenApiExporter:
   ): OpenAPI =
     enrich(OpenAPIDocsInterpreter().toOpenAPI(endpoints, title, version))
 
+  /** Generates an OpenAPI document and writes it to disk.
+    *
+    * @tparam F
+    *   the effect type
+    * @param config
+    *   export configuration (output path, format, title, version)
+    * @param endpoints
+    *   Tapir endpoints to document
+    * @param enrich
+    *   optional transformation applied to the generated OpenAPI model
+    * @return
+    *   the absolute path of the written file
+    */
   def write[F[_]: Sync](
       config: OpenApiExportConfig,
       endpoints: List[AnyEndpoint],

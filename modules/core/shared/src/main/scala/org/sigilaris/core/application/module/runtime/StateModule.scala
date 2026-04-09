@@ -173,6 +173,7 @@ final class StateModule[F[
     val prefixFreePath: PrefixFreePath[Path, Owns],
 )
 
+/** Companion for [[StateModule]], providing mounting, composition, and factory operations. */
 object StateModule:
   /** Mount a single-module blueprint at a specific path, creating a
     * StateModule.
@@ -289,6 +290,15 @@ object StateModule:
       tablesProvider = blueprint.provider,
     )(using blueprint.uniqueNames, prefixFreePath)
 
+  /** Mount a composed blueprint at a specific path, creating a StateModule with a RoutedStateReducer.
+    *
+    * Similar to [[mount]] but for composed blueprints that require ModuleRoutedTx
+    * for transaction routing.
+    *
+    * @tparam Path the mount path (only type parameter that needs explicit specification)
+    * @param blueprint the composed blueprint to mount
+    * @return a mounted state module with a routed reducer
+    */
   @SuppressWarnings(Array("org.wartremover.warts.AsInstanceOf"))
   def mountComposed[Path <: Tuple](
       blueprint: ComposedBlueprint[?, ?, ?, ?, ?],
@@ -364,6 +374,15 @@ object StateModule:
       tablesProvider = blueprint.provider,
     )(using blueprint.uniqueNames, prefixFreePath)
 
+  /** Extends two mounted state modules at the same path into one with merged schemas.
+    *
+    * The merged module tries the first reducer, and on failure falls back to the second.
+    *
+    * @tparam F the effect type
+    * @param a the first state module
+    * @param b the second state module
+    * @return a merged state module with combined schemas and transactions
+    */
   def extend[F[_]
     : cats.Monad, Path <: Tuple, O1 <: Tuple, N1 <: Tuple, O2 <: Tuple, N2 <: Tuple, T1 <: Tuple, T2 <: Tuple, R1, R2](
       a: StateModule[F, Path, O1, N1, T1, R1],
@@ -444,7 +463,18 @@ object StateModule:
                   .asInstanceOf[Requires[signedTx.value.Writes, O2 ++ N2]],
               ).run(s)
 
+  /** Factory for building state modules at arbitrary paths from a fixed blueprint.
+    *
+    * @tparam F the effect type
+    * @tparam Owns the owned schema tuple
+    * @tparam Txs the transaction types tuple
+    */
   trait ModuleFactory[F[_], Owns <: Tuple, Txs <: Tuple]:
+    /** Builds a state module mounted at the given path.
+      *
+      * @tparam Path the mount path
+      * @return a mounted state module
+      */
     def build[Path <: Tuple](using
         @annotation.unused monad: cats.Monad[F],
         prefixFreePath: PrefixFreePath[Path, Owns],
@@ -459,7 +489,17 @@ object StateModule:
       EmptyTuple,
     ]]
 
+  /** Companion for [[ModuleFactory]]. */
   object ModuleFactory:
+    /** Creates a ModuleFactory from a blueprint with no external dependencies.
+      *
+      * @tparam F the effect type
+      * @tparam MName the module name
+      * @tparam Owns the owned schema tuple
+      * @tparam Txs the transaction types tuple
+      * @param blueprint the module blueprint to wrap
+      * @return a ModuleFactory that can mount the blueprint at any path
+      */
     def fromBlueprint[F[_], MName <: String, Owns <: Tuple, Txs <: Tuple](
         blueprint: ModuleBlueprint[F, MName, Owns, EmptyTuple, Txs],
     ): ModuleFactory[F, Owns, Txs] =

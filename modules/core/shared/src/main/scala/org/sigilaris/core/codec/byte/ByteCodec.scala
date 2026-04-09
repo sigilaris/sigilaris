@@ -25,6 +25,15 @@ trait ByteCodec[A] extends ByteDecoder[A] with ByteEncoder[A]:
   /** Maps a codec through an isomorphism.
     *
     * Useful for opaque wrappers whose representation already has a codec.
+    *
+    * @tparam B
+    *   the target type
+    * @param to
+    *   conversion from A to B
+    * @param from
+    *   conversion from B to A
+    * @return
+    *   a new ByteCodec for type B
     */
   def imap[B](to: A => B, from: B => A): ByteCodec[B] = new ByteCodec[B]:
     def decode(bytes: ByteVector): Either[DecodeFailure, DecodeResult[B]] =
@@ -46,6 +55,17 @@ object ByteCodec:
     *
     * The representation's codec remains the single source of truth while the
     * wrapper supplies only the wrapping and unwrapping functions.
+    *
+    * @tparam A
+    *   the opaque wrapper type
+    * @tparam Repr
+    *   the underlying representation type
+    * @param wrap
+    *   function to wrap the representation into the opaque type
+    * @param unwrap
+    *   function to unwrap the opaque type to its representation
+    * @return
+    *   a ByteCodec for the opaque wrapper type
     */
   def opaqueProduct[A, Repr](
       wrap: Repr => A,

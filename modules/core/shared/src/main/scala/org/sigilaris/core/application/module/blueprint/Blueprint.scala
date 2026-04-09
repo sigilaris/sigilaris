@@ -162,10 +162,15 @@ trait RoutedStateReducer0[F[_], Owns <: Tuple, Needs <: Tuple]:
 sealed trait Blueprint[F[
     _,
 ], MName <: String, Owns <: Tuple, Needs <: Tuple, Txs <: Tuple, +R]:
+  /** The effect type used by this blueprint. */
   type EffectType[A] = F[A]
+  /** The literal module name type. */
   type ModuleName    = MName
+  /** The owned schema tuple type. */
   type OwnsType      = Owns
+  /** The needed schema tuple type. */
   type NeedsType     = Needs
+  /** The transaction types tuple. */
   type TxsType       = Txs
 
   /** The Entry instances for owned tables (runtime values that can create
@@ -303,6 +308,7 @@ final class ComposedBlueprint[F[
       RoutedStateReducer0[F, Owns, Needs],
     ]
 
+/** Companion for [[Blueprint]], providing composition and mounting operations. */
 object Blueprint:
   private final case class BlueprintData[F[
       _,

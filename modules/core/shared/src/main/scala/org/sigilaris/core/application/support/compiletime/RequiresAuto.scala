@@ -5,6 +5,12 @@ import scala.quoted.*
 
 /** Inline derivation helper for [[Requires]]. */
 object RequiresAuto:
+  /** Derives a Requires instance, reporting a descriptive compile-time error on failure.
+    *
+    * @tparam Needs the required tables tuple
+    * @tparam Schema the available schema tuple
+    * @return a Requires instance
+    */
   @SuppressWarnings(Array("org.wartremover.warts.Any"))
   transparent inline def derive[Needs <: Tuple, Schema <: Tuple]
       : Requires[Needs, Schema] =

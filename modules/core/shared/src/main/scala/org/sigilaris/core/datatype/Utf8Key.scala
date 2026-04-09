@@ -63,6 +63,7 @@ import failure.DecodeFailure
   */
 opaque type Utf8Key = String
 
+/** Companion object providing constructors, encoding, and typeclass instances for [[Utf8Key]]. */
 object Utf8Key:
   /** Terminator byte marking end of encoded string. */
   private val Terminator: Byte = 0x00

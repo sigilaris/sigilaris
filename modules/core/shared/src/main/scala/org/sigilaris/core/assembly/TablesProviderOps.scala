@@ -15,6 +15,22 @@ package org.sigilaris.core.assembly
   *   [[org.sigilaris.core.application.module.provider.TablesProvider.fromModule]]
   */
 object TablesProviderOps:
+
+  /** Extension providing `toTablesProvider` on any mounted [[org.sigilaris.core.application.module.runtime.StateModule]].
+    *
+    * @tparam F
+    *   the effect type
+    * @tparam Path
+    *   the module's mount path tuple
+    * @tparam Owns
+    *   the module's owned schema tuple
+    * @tparam Needs
+    *   the module's dependency schema tuple
+    * @tparam Txs
+    *   the module's transaction types tuple
+    * @tparam R
+    *   the module's reducer type
+    */
   extension [F[
       _,
   ], Path <: Tuple, Owns <: Tuple, Needs <: Tuple, Txs <: Tuple, R](
@@ -26,6 +42,9 @@ object TablesProviderOps:
       * modules that list them in `Needs`. The provider captures the module's
       * live tables, so the caller should treat it as an immutable capability
       * and avoid leaking it beyond the intended assembly scope.
+      *
+      * @return
+      *   a [[org.sigilaris.core.application.module.provider.TablesProvider]] exposing the module's owned tables
       */
     def toTablesProvider
         : org.sigilaris.core.application.module.provider.TablesProvider[

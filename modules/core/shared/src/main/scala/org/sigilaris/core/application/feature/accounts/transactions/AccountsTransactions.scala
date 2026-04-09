@@ -39,6 +39,7 @@ final case class CreateNamedAccount(
   type Result = AccountsResult[Unit]
   type Event  = AccountsEvent[AccountCreated]
 
+/** Companion for [[CreateNamedAccount]], providing codec and crypto instances. */
 object CreateNamedAccount:
   given createNamedAccountEq: Eq[CreateNamedAccount] = Eq.fromUniversalEquals
   given createNamedAccountHash: Hash[CreateNamedAccount]       = Hash.build
@@ -71,6 +72,7 @@ final case class UpdateAccount(
   type Result = AccountsResult[Unit]
   type Event  = AccountsEvent[AccountUpdated]
 
+/** Companion for [[UpdateAccount]], providing codec and crypto instances. */
 object UpdateAccount:
   given updateAccountEq: Eq[UpdateAccount]           = Eq.fromUniversalEquals
   given updateAccountHash: Hash[UpdateAccount]       = Hash.build
@@ -108,6 +110,7 @@ final case class AddKeyIds(
   type Result = AccountsResult[Unit]
   type Event  = AccountsEvent[KeysAdded]
 
+/** Companion for [[AddKeyIds]], providing codec and crypto instances. */
 object AddKeyIds:
   given addKeyIdsEq: Eq[AddKeyIds]           = Eq.fromUniversalEquals
   given addKeyIdsHash: Hash[AddKeyIds]       = Hash.build
@@ -142,6 +145,7 @@ final case class RemoveKeyIds(
   type Result = AccountsResult[Unit]
   type Event  = AccountsEvent[KeysRemoved]
 
+/** Companion for [[RemoveKeyIds]], providing codec and crypto instances. */
 object RemoveKeyIds:
   given removeKeyIdsEq: Eq[RemoveKeyIds]           = Eq.fromUniversalEquals
   given removeKeyIdsHash: Hash[RemoveKeyIds]       = Hash.build
@@ -172,20 +176,49 @@ final case class RemoveAccount(
   type Result = AccountsResult[Unit]
   type Event  = AccountsEvent[AccountRemoved]
 
+/** Companion for [[RemoveAccount]], providing codec and crypto instances. */
 object RemoveAccount:
   given removeAccountEq: Eq[RemoveAccount]           = Eq.fromUniversalEquals
   given removeAccountHash: Hash[RemoveAccount]       = Hash.build
   given removeAccountRecover: Recover[RemoveAccount] = Recover.build
 
-// Event types
+/** Sealed base trait for all account-related domain events. */
 sealed trait AccountEvent
 
+/** Event emitted when a new named account is created.
+  *
+  * @param name the account name
+  * @param guardian optional guardian account
+  */
 final case class AccountCreated(name: Utf8, guardian: Option[Account])
     extends AccountEvent
+
+/** Event emitted when an account's metadata is updated.
+  *
+  * @param name the account name
+  * @param newGuardian the updated guardian (None if removed)
+  */
 final case class AccountUpdated(name: Utf8, newGuardian: Option[Account])
     extends AccountEvent
+
+/** Event emitted when public keys are added to an account.
+  *
+  * @param name the account name
+  * @param keyIds the set of key identifiers that were added
+  */
 final case class KeysAdded(name: Utf8, keyIds: Set[KeyId20])
     extends AccountEvent
+
+/** Event emitted when public keys are removed from an account.
+  *
+  * @param name the account name
+  * @param keyIds the set of key identifiers that were removed
+  */
 final case class KeysRemoved(name: Utf8, keyIds: Set[KeyId20])
     extends AccountEvent
+
+/** Event emitted when an account is removed.
+  *
+  * @param name the account name
+  */
 final case class AccountRemoved(name: Utf8) extends AccountEvent

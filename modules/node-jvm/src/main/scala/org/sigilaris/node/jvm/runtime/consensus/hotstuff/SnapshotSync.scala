@@ -13,6 +13,7 @@ import org.sigilaris.core.merkle.MerkleTrieNode
 import org.sigilaris.node.jvm.runtime.block.BlockHeight
 import org.sigilaris.node.jvm.storage.KeyValueStore
 
+/** Persistent store for snapshot synchronization metadata, keyed by chain ID. */
 trait SnapshotMetadataStore[F[_]]:
   def get(
       chainId: org.sigilaris.node.jvm.runtime.gossip.ChainId,
@@ -34,6 +35,7 @@ trait SnapshotMetadataStore[F[_]]:
       chainId: org.sigilaris.node.jvm.runtime.gossip.ChainId,
   ): F[Unit]
 
+/** Companion for `SnapshotMetadataStore`, providing in-memory and key-value-backed implementations. */
 object SnapshotMetadataStore:
   private val latestOrdering: Ordering[SnapshotMetadata] =
     Ordering.by[SnapshotMetadata, (Instant, BlockHeight, String, String)]:
@@ -48,6 +50,7 @@ object SnapshotMetadataStore:
   private val historyOrdering: Ordering[SnapshotMetadata] =
     latestOrdering.reverse
 
+  /** Creates an in-memory metadata store backed by a Ref. */
   def inMemory[F[_]: Sync]: F[SnapshotMetadataStore[F]] =
     Ref
       .of[F, Map[org.sigilaris.node.jvm.runtime.gossip.ChainId, Vector[
@@ -57,6 +60,7 @@ object SnapshotMetadataStore:
       )
       .map(new InMemorySnapshotMetadataStore[F](_))
 
+  /** Creates a metadata store backed by a key-value store. */
   def fromKeyValueStore[F[_]: Concurrent](
       keyValueStore: KeyValueStore[
         F,
@@ -183,6 +187,7 @@ object SnapshotMetadataStore:
       ) :+ metadata,
     )
 
+/** Store for Merkle trie nodes used during snapshot synchronization. */
 trait SnapshotNodeStore[F[_]]:
   def get(
       hash: MerkleTrieNode.MerkleHash,
@@ -202,12 +207,15 @@ trait SnapshotNodeStore[F[_]]:
   )(using Functor[F]): F[Boolean] =
     get(hash).map(_.nonEmpty)
 
+/** Companion for `SnapshotNodeStore`, providing in-memory and key-value-backed implementations. */
 object SnapshotNodeStore:
+  /** Creates an in-memory node store backed by a Ref. */
   def inMemory[F[_]: Sync]: F[SnapshotNodeStore[F]] =
     Ref
       .of[F, Map[MerkleTrieNode.MerkleHash, MerkleTrieNode]](Map.empty)
       .map(new InMemorySnapshotNodeStore[F](_))
 
+  /** Creates a node store backed by a key-value store. */
   def fromKeyValueStore[F[_]: Sync](
       keyValueStore: KeyValueStore[F, MerkleTrieNode.MerkleHash, MerkleTrieNode],
   ): SnapshotNodeStore[F] =
@@ -242,25 +250,31 @@ object SnapshotNodeStore:
     ): F[Unit] =
       ref.update(_.updated(node.hash, node.node))
 
+/** Represents a failure during snapshot synchronization. */
 final case class SnapshotSyncFailure(
     reason: String,
     detail: Option[String],
 )
 
+/** The result of a successful snapshot synchronization. */
 final case class SnapshotSyncResult(
     metadata: SnapshotMetadata,
     fetchedNodeCount: Long,
 )
 
+/** Policy controlling how many rounds of peer fetching to attempt during snapshot sync. */
 final case class SnapshotFetchPolicy(
     maxPeerRounds: Int,
 ):
   require(maxPeerRounds > 0, "maxPeerRounds must be positive")
 
+/** Companion for `SnapshotFetchPolicy`. */
 object SnapshotFetchPolicy:
+  /** The default fetch policy (3 peer rounds). */
   val default: SnapshotFetchPolicy =
     SnapshotFetchPolicy(maxPeerRounds = 3)
 
+/** Coordinates snapshot synchronization by fetching trie nodes from peers and persisting them locally. */
 trait SnapshotCoordinator[F[_]]:
   def sync(
       anchor: FinalizedAnchorSuggestion,
@@ -268,7 +282,9 @@ trait SnapshotCoordinator[F[_]]:
       startedAt: Instant,
   ): F[Either[SnapshotSyncFailure, SnapshotSyncResult]]
 
+/** Verifies the integrity of fetched snapshot trie nodes by checking their hashes. */
 object SnapshotNodeVerifier:
+  /** Verifies a batch of snapshot trie nodes, checking each hash matches the node content. */
   def verifyBatch(
       nodes: Vector[SnapshotTrieNode],
   ): Either[SnapshotSyncFailure, Vector[SnapshotTrieNode]] =
@@ -289,12 +305,15 @@ object SnapshotNodeVerifier:
             ),
           )
 
+  /** Converts a state root to its equivalent Merkle hash for snapshot traversal. */
   def rootHash(
       stateRoot: org.sigilaris.node.jvm.runtime.block.StateRoot,
   ): MerkleTrieNode.MerkleHash =
     Hash.Value[MerkleTrieNode](stateRoot.toUInt256)
 
+/** Runtime implementation of `SnapshotNodeFetchService` backed by a local node store. */
 object SnapshotNodeFetchServiceRuntime:
+  /** Creates a fetch service that serves nodes from a local store. */
   def fromNodeStore[F[_]: Sync](
       nodeStore: SnapshotNodeStore[F],
   ): SnapshotNodeFetchService[F] =
@@ -316,6 +335,7 @@ object SnapshotNodeFetchServiceRuntime:
             loaded.flatten
               .asRight[org.sigilaris.node.jvm.runtime.gossip.CanonicalRejection]
 
+/** Companion for `SnapshotCoordinator`, providing factory methods with varying configuration. */
 object SnapshotCoordinator:
   def create[F[_]: Sync: Clock](
       chainId: org.sigilaris.node.jvm.runtime.gossip.ChainId,

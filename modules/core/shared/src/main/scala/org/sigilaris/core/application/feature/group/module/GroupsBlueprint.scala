@@ -38,14 +38,19 @@ object GroupsSchema:
       accountResult <- ByteDecoder[Account].decode(groupIdResult.remainder)
     yield org.sigilaris.core.codec.byte.DecodeResult((GroupId(groupIdResult.value), accountResult.value), accountResult.remainder)
 
+  /** The groups module table schema: groups table and group-accounts membership table. */
   type GroupsSchema =
     Entry["groups", GroupId, GroupData] *:
       Entry["groupAccounts", (GroupId, Account), Unit] *:
       EmptyTuple
 
+  /** Entry descriptor for the groups table (groupId -> GroupData). */
   val groupsEntry = new Entry["groups", GroupId, GroupData]("groups")
+
+  /** Entry descriptor for the group-accounts table ((groupId, account) -> Unit). */
   val groupAccountsEntry = new Entry["groupAccounts", (GroupId, Account), Unit]("groupAccounts")
 
+  /** All entry descriptors for the groups module as a typed tuple. */
   val groupsEntries: GroupsSchema = groupsEntry *: groupAccountsEntry *: EmptyTuple
 
 /** Groups state reducer (path-agnostic).
@@ -63,6 +68,8 @@ object GroupsSchema:
   *
   * DEPENDENCY: This reducer depends on AccountsSchema for Named account key verification.
   * The Needs type parameter includes the accounts tables.
+  *
+  * @tparam F the effect type
   */
 @SuppressWarnings(Array("org.wartremover.warts.Any", "org.wartremover.warts.AsInstanceOf", "org.wartremover.warts.Overloading"))
 class GroupsReducer[F[_]: Monad] extends StateReducer0[F, GroupsSchema.GroupsSchema, GroupsReducer.GroupsNeeds]:
@@ -494,8 +501,9 @@ class GroupsReducer[F[_]: Monad] extends StateReducer0[F, GroupsSchema.GroupsSch
             
     yield result
 
+/** Companion for [[GroupsReducer]], defining dependency types. */
 object GroupsReducer:
-  // Groups module needs access to accounts tables for Named account verification
+  /** External table dependencies required by the groups module for Named account key verification. */
   type GroupsNeeds =
     Entry["accounts", Utf8, AccountInfo] *:
       Entry["nameKey", (Utf8, KeyId20), KeyInfo] *:
@@ -509,6 +517,7 @@ object GroupsReducer:
   * The provider parameter must supply the accounts and nameKey tables from AccountsBP.
   */
 object GroupsBP:
+  /** Tuple of all transaction types supported by the groups module. */
   type GroupsTxs =
     CreateGroup *:
       DisbandGroup *:
@@ -523,6 +532,13 @@ object GroupsBP:
   given ReducerCoverage[RemoveAccounts] with {}
   given ReducerCoverage[ReplaceCoordinator] with {}
 
+  /** Creates the groups module blueprint for a given effect type.
+    *
+    * @tparam F the effect type
+    * @param provider the tables provider supplying accounts tables for key verification
+    * @param nodeStore the MerkleTrie node store
+    * @return a ModuleBlueprint for the groups module
+    */
   def apply[F[_]: Monad](
       provider: TablesProvider[F, GroupsReducer.GroupsNeeds],
   )(using @annotation.unused nodeStore: org.sigilaris.core.merkle.MerkleTrie.NodeStore[F]): ModuleBlueprint[F, "groups", GroupsSchema.GroupsSchema, GroupsReducer.GroupsNeeds, GroupsTxs] =

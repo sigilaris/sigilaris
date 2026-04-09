@@ -7,17 +7,24 @@ import cats.syntax.all.*
 
 import org.sigilaris.node.jvm.runtime.gossip.ChainId
 
+/** Manages the full lifecycle of HotStuff bootstrap, including stores, coordinator creation, and shutdown. */
 trait HotStuffBootstrapLifecycle[F[_]] extends BootstrapDiagnosticsSource[F]:
+  /** The snapshot metadata store used during bootstrap. */
   def metadataStore: SnapshotMetadataStore[F]
 
+  /** The snapshot node store used during bootstrap. */
   def nodeStore: SnapshotNodeStore[F]
 
+  /** The forward catch-up materialization store. */
   def forwardStore: ForwardCatchUpStore[F]
 
+  /** The historical proposal archive for backfill. */
   def historicalArchive: HistoricalProposalArchive[F]
 
+  /** Releases resources held by the lifecycle. */
   def close: F[Unit]
 
+  /** Runs the bootstrap process for a given chain. */
   def bootstrap(
       chainId: ChainId,
       sessions: Vector[BootstrapSessionBinding],
@@ -27,10 +34,12 @@ trait HotStuffBootstrapLifecycle[F[_]] extends BootstrapDiagnosticsSource[F]:
       Async[F],
   ): F[Either[BootstrapCoordinatorFailure, BootstrapCoordinatorResult]]
 
+  /** Returns the current vote readiness for the given chain. */
   def voteReadiness(
       chainId: ChainId,
   ): F[BootstrapVoteReadiness]
 
+/** Companion for `HotStuffBootstrapLifecycle`, providing in-memory construction. */
 object HotStuffBootstrapLifecycle:
   enum CoordinatorSlot[F[_]]:
     case Building(
@@ -47,6 +56,7 @@ object HotStuffBootstrapLifecycle:
         promise: Deferred[F, Either[Throwable, BootstrapCoordinator[F]]],
     )
 
+  /** Creates an in-memory bootstrap lifecycle with all required stores and services. */
   def inMemory[F[_]: Sync](
       metadataStore: SnapshotMetadataStore[F],
       nodeStore: SnapshotNodeStore[F],

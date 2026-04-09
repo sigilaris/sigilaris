@@ -8,30 +8,96 @@ import cats.syntax.all.*
 import org.sigilaris.core.util.SafeStringInterp.*
 import org.sigilaris.node.jvm.runtime.gossip.CanonicalRejection.HandshakeRejected
 
+/** Direction of a gossip session relative to the local node. */
 enum SessionDirection:
-  case Outbound, Inbound
 
+  /** The local node initiated this session. */
+  case Outbound
+
+  /** A remote peer initiated this session. */
+  case Inbound
+
+/** Companion for `SessionDirection`. */
 object SessionDirection:
   given Eq[SessionDirection] = Eq.fromUniversalEquals
 
+/** Lifecycle status of a single directional session. */
 enum DirectionalSessionStatus:
-  case Opening, Open, Closed, Dead
 
+  /** Handshake in progress, not yet open. */
+  case Opening
+
+  /** Session is open and active. */
+  case Open
+
+  /** Session has been gracefully closed. */
+  case Closed
+
+  /** Session is terminally dead (timed out or failed). */
+  case Dead
+
+/** Companion for `DirectionalSessionStatus`. */
 object DirectionalSessionStatus:
   given Eq[DirectionalSessionStatus] = Eq.fromUniversalEquals
 
+/** Aggregate status of a bidirectional peer relationship. */
 enum PeerRelationshipStatus:
-  case Opening, Open, HalfOpen, Closed, Dead
 
+  /** At least one direction is opening, none fully open yet. */
+  case Opening
+
+  /** Both directions are open. */
+  case Open
+
+  /** Was previously bidirectionally open, but one direction dropped. */
+  case HalfOpen
+
+  /** All directions are closed. */
+  case Closed
+
+  /** At least one direction is dead. */
+  case Dead
+
+/** Companion for `PeerRelationshipStatus`. */
 object PeerRelationshipStatus:
   given Eq[PeerRelationshipStatus] = Eq.fromUniversalEquals
 
+/** Kind of traffic that arrived before a session was fully open. */
 enum PreOpenTrafficKind:
-  case EventStream, ControlChannel
 
+  /** Traffic on the event stream channel. */
+  case EventStream
+
+  /** Traffic on the control channel. */
+  case ControlChannel
+
+/** Companion for `PreOpenTrafficKind`. */
 object PreOpenTrafficKind:
   given Eq[PreOpenTrafficKind] = Eq.fromUniversalEquals
 
+/** State of a single directional gossip session.
+  *
+  * @param sessionId
+  *   the unique directional session identifier
+  * @param direction
+  *   whether this session is outbound or inbound
+  * @param peer
+  *   the remote peer
+  * @param peerCorrelationId
+  *   the peer correlation id
+  * @param proposal
+  *   the original session open proposal
+  * @param negotiated
+  *   the negotiated parameters (present after handshake completes)
+  * @param status
+  *   the current lifecycle status
+  * @param createdAt
+  *   when this session was created
+  * @param openedAt
+  *   when this session became open (if applicable)
+  * @param lastActivityAt
+  *   the most recent activity timestamp
+  */
 final case class DirectionalSession(
     sessionId: DirectionalSessionId,
     direction: SessionDirection,
@@ -44,10 +110,27 @@ final case class DirectionalSession(
     openedAt: Option[Instant],
     lastActivityAt: Instant,
 ):
+
+  /** @return true if the session is in Opening or Open status */
   def isAlive: Boolean =
     status === DirectionalSessionStatus.Open ||
       status === DirectionalSessionStatus.Opening
 
+/** Aggregate state of a bidirectional relationship with a single peer.
+  *
+  * @param peer
+  *   the remote peer identity
+  * @param peerCorrelationId
+  *   the current correlation id for this relationship
+  * @param outbound
+  *   the outbound directional session, if any
+  * @param inbound
+  *   the inbound directional session, if any
+  * @param status
+  *   the aggregate relationship status
+  * @param wasBidirectionalOpen
+  *   true if both directions were simultaneously open at any point
+  */
 final case class PeerRelationship(
     peer: PeerIdentity,
     peerCorrelationId: PeerCorrelationId,
@@ -56,10 +139,28 @@ final case class PeerRelationship(
     status: PeerRelationshipStatus,
     wasBidirectionalOpen: Boolean,
 ):
+
+  /** Finds a directional session by its id among the outbound and inbound
+    * sessions.
+    *
+    * @param sessionId
+    *   the session id to look for
+    * @return
+    *   the matching session, or None
+    */
   def session(sessionId: DirectionalSessionId): Option[DirectionalSession] =
     List(outbound, inbound).flatten.find(_.sessionId === sessionId)
 
+/** Companion for `PeerRelationship` providing factory methods. */
 object PeerRelationship:
+
+  /** Creates a new relationship with an outbound session in Opening status.
+    *
+    * @param session
+    *   the outbound directional session
+    * @return
+    *   the new relationship
+    */
   def openingWithOutbound(session: DirectionalSession): PeerRelationship =
     PeerRelationship(
       peer = session.peer,
@@ -70,6 +171,13 @@ object PeerRelationship:
       wasBidirectionalOpen = false,
     )
 
+  /** Creates a new relationship with an inbound session.
+    *
+    * @param session
+    *   the inbound directional session
+    * @return
+    *   the new relationship
+    */
   def withInbound(session: DirectionalSession): PeerRelationship =
     PeerRelationship(
       peer = session.peer,
@@ -80,14 +188,30 @@ object PeerRelationship:
       wasBidirectionalOpen = false,
     )
 
+/** Result of processing an inbound session open proposal. */
 sealed trait InboundHandshakeResult
 
+/** Companion for `InboundHandshakeResult` defining the result subtypes. */
 object InboundHandshakeResult:
+
+  /** The proposal was accepted.
+    *
+    * @param ack
+    *   the generated acknowledgement
+    * @param supersededSessionId
+    *   if a simultaneous-open was resolved, the id of the superseded outbound
+    *   session
+    */
   final case class Accepted(
       ack: SessionOpenAck,
       supersededSessionId: Option[DirectionalSessionId],
   ) extends InboundHandshakeResult
 
+  /** The proposal was rejected.
+    *
+    * @param rejection
+    *   the rejection reason
+    */
   final case class Rejected(
       rejection: CanonicalRejection.HandshakeRejected,
   ) extends InboundHandshakeResult
@@ -97,20 +221,66 @@ object InboundHandshakeResult:
     "org.wartremover.warts.DefaultArguments",
   ),
 )
+/** Pure, immutable state machine managing gossip session lifecycles for a local
+  * peer.
+  *
+  * @param localPeer
+  *   the identity of the local node
+  * @param topology
+  *   the static peer topology
+  * @param policy
+  *   the handshake timing policy
+  * @param relationships
+  *   the current peer relationships
+  */
 final case class GossipSessionEngine(
     localPeer: PeerIdentity,
     topology: StaticPeerTopology,
     policy: HandshakePolicy = HandshakePolicy.default,
     relationships: Map[PeerIdentity, PeerRelationship] = Map.empty,
 ):
+
+  /** Returns the relationship with the given peer, if one exists.
+    *
+    * @param peer
+    *   the peer identity
+    * @return
+    *   the relationship, or None
+    */
   def relationshipWith(peer: PeerIdentity): Option[PeerRelationship] =
     relationships.get(peer)
 
+  /** Looks up a directional session by id across all relationships.
+    *
+    * @param sessionId
+    *   the directional session identifier
+    * @return
+    *   the session, or None
+    */
   def sessionById(sessionId: DirectionalSessionId): Option[DirectionalSession] =
     relationships.valuesIterator
       .flatMap(r => List(r.outbound, r.inbound).flatten)
       .find(_.sessionId === sessionId)
 
+  /** Initiates an outbound session to a direct neighbor peer.
+    *
+    * @param peer
+    *   the target peer
+    * @param subscriptions
+    *   the chain-topic pairs to subscribe to
+    * @param now
+    *   the current timestamp
+    * @param peerCorrelationId
+    *   optional override for the correlation id
+    * @param heartbeatInterval
+    *   optional proposed heartbeat interval
+    * @param livenessTimeout
+    *   optional proposed liveness timeout
+    * @param maxControlRetryInterval
+    *   optional proposed max control retry interval
+    * @return
+    *   the updated engine and proposal, or a rejection
+    */
   def startOutbound(
       peer: PeerIdentity,
       subscriptions: SessionSubscription,
@@ -188,6 +358,22 @@ final case class GossipSessionEngine(
                 proposal,
               )
 
+  /** Processes an inbound session open proposal, handling simultaneous-open
+    * resolution.
+    *
+    * @param proposal
+    *   the received proposal
+    * @param now
+    *   the current timestamp
+    * @param heartbeatInterval
+    *   optional override for the heartbeat interval in the ack
+    * @param livenessTimeout
+    *   optional override for the liveness timeout in the ack
+    * @param maxControlRetryInterval
+    *   optional override for the max control retry interval in the ack
+    * @return
+    *   the updated engine and handshake result
+    */
   def handleInboundProposal(
       proposal: SessionOpenProposal,
       now: Instant,
@@ -309,6 +495,15 @@ final case class GossipSessionEngine(
                 InboundHandshakeResult.Accepted(ack, None)
         updatedEngine -> result
 
+  /** Applies a received handshake ack to complete an outbound session open.
+    *
+    * @param ack
+    *   the received acknowledgement
+    * @param now
+    *   the current timestamp
+    * @return
+    *   the updated engine, or a rejection
+    */
   def applyHandshakeAck(
       ack: SessionOpenAck,
       now: Instant,
@@ -360,6 +555,17 @@ final case class GossipSessionEngine(
                       relationships.updated(peer, updatedRelationship),
                     )
 
+  /** Rejects traffic that arrives on a session still in Opening status, closing
+    * the session.
+    *
+    * @param sessionId
+    *   the session that received pre-open traffic
+    * @param kind
+    *   the kind of traffic received
+    * @return
+    *   the updated engine and rejection to send, or a rejection if the session
+    *   is not found
+    */
   def rejectPreOpenTraffic(
       sessionId: DirectionalSessionId,
       kind: PreOpenTrafficKind,
@@ -412,6 +618,13 @@ final case class GossipSessionEngine(
                 detail = Some(session.sessionId.value),
               ).asLeft[(GossipSessionEngine, HandshakeRejected)]
 
+  /** Gracefully closes a session.
+    *
+    * @param sessionId
+    *   the session to close
+    * @return
+    *   the updated engine, or a rejection if the session is already dead
+    */
   def closeSession(
       sessionId: DirectionalSessionId,
   ): Either[HandshakeRejected, GossipSessionEngine] =
@@ -427,6 +640,13 @@ final case class GossipSessionEngine(
             .copy(status = DirectionalSessionStatus.Closed)
             .asRight[HandshakeRejected]
 
+  /** Marks a session as terminally dead.
+    *
+    * @param sessionId
+    *   the session to mark dead
+    * @return
+    *   the updated engine, or a rejection if the session is not found
+    */
   def markSessionDead(
       sessionId: DirectionalSessionId,
   ): Either[HandshakeRejected, GossipSessionEngine] =
@@ -436,6 +656,15 @@ final case class GossipSessionEngine(
         .asRight[HandshakeRejected],
     )
 
+  /** Updates the last-activity timestamp for an open session.
+    *
+    * @param sessionId
+    *   the session to touch
+    * @param now
+    *   the current timestamp
+    * @return
+    *   the updated engine, or a rejection if the session is not open
+    */
   def touchSessionActivity(
       sessionId: DirectionalSessionId,
       now: Instant,
@@ -450,9 +679,25 @@ final case class GossipSessionEngine(
         ),
       )
 
+  /** Expires sessions that have been in Opening state beyond the handshake
+    * timeout.
+    *
+    * @param now
+    *   the current timestamp
+    * @return
+    *   the updated engine with expired sessions marked dead
+    */
   def expireOpeningHandshakes(now: Instant): GossipSessionEngine =
     expireTimedOutSessions(now)
 
+  /** Expires all sessions that have exceeded their handshake timeout or
+    * liveness timeout.
+    *
+    * @param now
+    *   the current timestamp
+    * @return
+    *   the updated engine with timed-out sessions marked dead
+    */
   def expireTimedOutSessions(now: Instant): GossipSessionEngine =
     relationships.values.foldLeft(this):
       case (engine, relationship) =>

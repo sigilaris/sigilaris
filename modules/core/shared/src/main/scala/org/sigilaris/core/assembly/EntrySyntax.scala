@@ -25,7 +25,23 @@ import org.sigilaris.core.application.state.Entry
   *   [[org.sigilaris.core.application.state.Entry]]
   */
 object EntrySyntax:
+
+  /** Builder that captures a compile-time table name and creates an `Entry` when key and value types are supplied.
+    *
+    * @tparam Name
+    *   the singleton string literal representing the table name
+    */
   final class EntryBuilder[Name <: String]:
+
+    /** Create an `Entry` with the captured table name and the given key/value codecs.
+      *
+      * @tparam K
+      *   the key type (must have a `ByteCodec` instance)
+      * @tparam V
+      *   the value type (must have a `ByteCodec` instance)
+      * @return
+      *   a new `Entry` instance for the table
+      */
     inline def apply[K: ByteCodec, V: ByteCodec]: Entry[Name, K, V] =
       new Entry[Name, K, V](constValue[Name])
 
@@ -33,6 +49,17 @@ object EntrySyntax:
     new EntryBuilder[Name]
 
   extension (inline sc: StringContext)
+
+    /** String interpolator that creates an [[EntryBuilder]] from a literal table name.
+      *
+      * Usage: `entry"tableName"[K, V]` produces an `Entry["tableName", K, V]`.
+      * Only literal strings are accepted; spliced expressions cause a compile-time error.
+      *
+      * @param args
+      *   interpolation arguments (must be empty; expressions are not supported)
+      * @return
+      *   an [[EntryBuilder]] parameterised with the literal table name
+      */
     transparent inline def entry(inline args: Any*): EntryBuilder[? <: String] =
       ${ entryImpl('sc, 'args) }
 

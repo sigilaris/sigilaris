@@ -28,5 +28,7 @@ final case class TxEnvelope(
 ) derives ByteEncoder,
       ByteDecoder
 
+/** Companion for [[TxEnvelope]] providing typeclass instances. */
 object TxEnvelope:
+  /** Equality instance based on universal equals. */
   given Eq[TxEnvelope] = Eq.fromUniversalEquals

@@ -19,6 +19,11 @@ import org.sigilaris.node.jvm.runtime.gossip.{
 }
 import org.sigilaris.node.jvm.runtime.gossip.tx.TxRuntimePolicy
 
+/** Controls retry timing for bootstrap coordination attempts.
+  *
+  * @param baseDelay the base delay between retries
+  * @param maxDelay the maximum delay cap
+  */
 final case class BootstrapRetryPolicy(
     baseDelay: Duration,
     maxDelay: Duration,
@@ -26,6 +31,7 @@ final case class BootstrapRetryPolicy(
   require(!baseDelay.isNegative, "baseDelay must be non-negative")
   require(!maxDelay.isNegative, "maxDelay must be non-negative")
 
+  /** Computes the next retry instant using linear backoff capped at maxDelay. */
   def nextRetryAt(
       now: Instant,
       attempt: Int,
@@ -35,19 +41,28 @@ final case class BootstrapRetryPolicy(
     val cappedMillis  = Math.min(rawMillis, maxDelay.toMillis)
     now.plusMillis(cappedMillis)
 
+/** Companion for `BootstrapRetryPolicy`. */
 object BootstrapRetryPolicy:
+  /** A default retry policy with 5-second base delay and 1-minute max. */
   val boundedDefault: BootstrapRetryPolicy =
     BootstrapRetryPolicy(
       baseDelay = Duration.ofSeconds(5L),
       maxDelay = Duration.ofMinutes(1L),
     )
 
+/** Represents a failure during bootstrap coordination.
+  *
+  * @param reason a short identifier for the failure
+  * @param detail optional human-readable detail
+  */
 final case class BootstrapCoordinatorFailure(
     reason: String,
     detail: Option[String],
 )
 
+/** Companion for `BootstrapCoordinatorFailure`. */
 object BootstrapCoordinatorFailure:
+  /** Creates a coordinator failure from a snapshot sync failure. */
   def fromSnapshotFailure(
       failure: SnapshotSyncFailure,
   ): BootstrapCoordinatorFailure =
@@ -56,6 +71,7 @@ object BootstrapCoordinatorFailure:
       detail = failure.detail,
     )
 
+  /** Creates a coordinator failure from a validation failure. */
   def fromValidation(
       failure: HotStuffValidationFailure,
   ): BootstrapCoordinatorFailure =
@@ -64,17 +80,26 @@ object BootstrapCoordinatorFailure:
       detail = failure.detail,
     )
 
+/** The result of assessing a proposal's readiness for catch-up voting.
+  *
+  * @param voteReadiness whether the node is ready to vote on this proposal
+  * @param controlBatch an optional gossip control batch to request missing data
+  */
 final case class ProposalCatchUpAssessment(
     voteReadiness: BootstrapVoteReadiness,
     controlBatch: Option[ControlBatch],
 )
 
+/** Evaluates whether a proposal can be voted on during forward catch-up. */
 trait ProposalCatchUpReadiness[F[_]]:
+  /** Assesses the readiness to vote on a given proposal. */
   def assess(
       proposal: Proposal,
   ): F[Either[BootstrapCoordinatorFailure, ProposalCatchUpAssessment]]
 
+/** Companion for `ProposalCatchUpReadiness`, providing static factory methods. */
 object ProposalCatchUpReadiness:
+  /** Creates readiness that always returns the given static assessment. */
   def static[F[_]: Sync](
       assessment: ProposalCatchUpAssessment,
   ): ProposalCatchUpReadiness[F] =
@@ -84,6 +109,7 @@ object ProposalCatchUpReadiness:
       ): F[Either[BootstrapCoordinatorFailure, ProposalCatchUpAssessment]] =
         assessment.asRight[BootstrapCoordinatorFailure].pure[F]
 
+  /** Creates readiness that always reports as ready to vote. */
   def ready[F[_]: Sync]: ProposalCatchUpReadiness[F] =
     static(
       ProposalCatchUpAssessment(
@@ -92,6 +118,7 @@ object ProposalCatchUpReadiness:
       ),
     )
 
+  /** Creates readiness that always reports as held for the given reason. */
   @SuppressWarnings(Array("org.wartremover.warts.DefaultArguments"))
   def held[F[_]: Sync](
       reason: String,
@@ -104,6 +131,7 @@ object ProposalCatchUpReadiness:
       ),
     )
 
+  /** Creates readiness that always fails with the given reason. */
   @SuppressWarnings(Array("org.wartremover.warts.DefaultArguments"))
   def failure[F[_]: Sync](
       reason: String,
@@ -117,6 +145,7 @@ object ProposalCatchUpReadiness:
           .asLeft[ProposalCatchUpAssessment]
           .pure[F]
 
+  /** Creates readiness that validates proposals against a block query and requests missing transactions. */
   def fromBlockQuery[
       F[_]: Sync,
       TxRef: ByteEncoder: Hash,
@@ -185,6 +214,7 @@ object ProposalCatchUpReadiness:
                     controlBatch = None,
                   ).asRight[BootstrapCoordinatorFailure]
 
+/** The result of a forward catch-up operation, tracking applied and queued proposals. */
 final case class ForwardCatchUpResult(
     applied: Vector[Proposal],
     queued: Vector[Proposal],
@@ -194,7 +224,10 @@ final case class ForwardCatchUpResult(
     voteReadiness: BootstrapVoteReadiness,
 )
 
+/** Plans forward catch-up by applying replayed and live proposals in chain order. */
 object HotStuffForwardCatchUp:
+
+  /** Plans a forward catch-up from an anchor, applying replayed and live proposals sequentially. */
   def plan[F[_]: Sync](
       anchor: FinalizedAnchorSuggestion,
       replayed: Vector[Proposal],
@@ -362,13 +395,16 @@ object HotStuffForwardCatchUp:
 
     canonicalChain ++ unresolvedHigher
 
+/** Coordinates the full bootstrap process: discovery, snapshot sync, and forward catch-up. */
 trait BootstrapCoordinator[F[_]] extends BootstrapDiagnosticsSource[F]:
+  /** Discovers finalized anchor suggestions from available peer sessions. */
   def discover(
       chainId: ChainId,
       sessions: Vector[BootstrapSessionBinding],
       now: Instant,
   ): F[Either[BootstrapCoordinatorFailure, Option[FinalizedAnchorSuggestion]]]
 
+  /** Runs the full bootstrap sequence for a given chain. */
   def bootstrap(
       chainId: ChainId,
       sessions: Vector[BootstrapSessionBinding],
@@ -376,6 +412,7 @@ trait BootstrapCoordinator[F[_]] extends BootstrapDiagnosticsSource[F]:
       liveProposals: Vector[Proposal],
   ): F[Either[BootstrapCoordinatorFailure, BootstrapCoordinatorResult]]
 
+/** The successful result of a full bootstrap coordination run. */
 final case class BootstrapCoordinatorResult(
     anchor: FinalizedAnchorSuggestion,
     snapshot: SnapshotSyncResult,
@@ -383,7 +420,9 @@ final case class BootstrapCoordinatorResult(
     diagnostics: BootstrapDiagnostics,
 )
 
+/** Companion for `BootstrapCoordinator`. */
 object BootstrapCoordinator:
+  /** Creates a bootstrap coordinator without historical backfill. */
   def create[F[_]: Sync](
       retryPolicy: BootstrapRetryPolicy,
       validatorSetLookup: ValidatorSetLookup[F],
@@ -404,6 +443,7 @@ object BootstrapCoordinator:
       historicalBackfill = HistoricalBackfillWorker.disabled[F],
     )
 
+  /** Creates a bootstrap coordinator with historical backfill support. */
   def createWithBackfill[F[_]: Sync](
       retryPolicy: BootstrapRetryPolicy,
       validatorSetLookup: ValidatorSetLookup[F],

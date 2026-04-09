@@ -46,6 +46,7 @@ trait OrderedCodec[A] extends ByteCodec[A], Ordering[A]:
 
 object OrderedCodec:
 
+  /** Summons an OrderedCodec instance for type A. */
   def apply[A](using oc: OrderedCodec[A]): OrderedCodec[A] = oc
 
   /** Creates an OrderedCodec from existing ByteCodec and Ordering instances.
@@ -70,8 +71,11 @@ object OrderedCodec:
         codec.decode(bv)
       def compare(x: A, y: A): Int = ord.compare(x, y)
 
-  // ByteVector instance (lexicographic ordering - identity codec)
-  // Uses ByteVector's built-in compare which does unsigned byte comparison
+  /** OrderedCodec for ByteVector using lexicographic (unsigned byte) ordering.
+    *
+    * The identity codec: encoding returns the ByteVector as-is, and decoding
+    * consumes all bytes.
+    */
   @SuppressWarnings(Array("org.wartremover.warts.Nothing"))
   given orderedByteVector: OrderedCodec[ByteVector] =
     new OrderedCodec[ByteVector]:

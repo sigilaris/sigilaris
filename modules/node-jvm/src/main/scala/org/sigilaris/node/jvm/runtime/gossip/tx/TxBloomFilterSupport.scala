@@ -9,9 +9,21 @@ import org.sigilaris.core.util.SafeStringInterp.*
 import org.sigilaris.node.jvm.runtime.gossip.*
 
 @SuppressWarnings(Array("org.wartremover.warts.DefaultArguments"))
+/** Bloom filter operations for transaction gossip deduplication. */
 object TxBloomFilterSupport:
+
+  /** The hash family identifier supported by this implementation. */
   val SupportedHashFamilyId: String = "murmur3-32"
 
+  /** Validates a Bloom filter received from a peer against the runtime policy.
+    *
+    * @param filter
+    *   the Bloom filter to validate
+    * @param policy
+    *   the runtime policy defining supported hash families
+    * @return
+    *   the validated filter, or a rejection
+    */
   def validate(
       filter: GossipFilter.TxBloomFilter,
       policy: TxRuntimePolicy,
@@ -47,6 +59,19 @@ object TxBloomFilterSupport:
           ),
         )
 
+  /** Builds a Bloom filter from a set of artifact ids.
+    *
+    * @param ids
+    *   the artifact ids to include
+    * @param bitsetBytes
+    *   the size of the bit array in bytes
+    * @param numHashes
+    *   the number of hash functions
+    * @param hashFamilyId
+    *   the hash family identifier
+    * @return
+    *   the populated Bloom filter
+    */
   def build(
       ids: Iterable[StableArtifactId],
       bitsetBytes: Int,
@@ -67,6 +92,15 @@ object TxBloomFilterSupport:
       acc
     filter.copy(bitset = ByteVector.view(populated))
 
+  /** Tests whether a Bloom filter might contain the given artifact id.
+    *
+    * @param filter
+    *   the Bloom filter
+    * @param id
+    *   the artifact id to test
+    * @return
+    *   true if the filter might contain the id (false positives possible)
+    */
   def mightContain(
       filter: GossipFilter.TxBloomFilter,
       id: StableArtifactId,

@@ -10,6 +10,15 @@ import com.typesafe.config.Config
 
 import org.sigilaris.core.util.SafeStringInterp.*
 
+/** Configuration for HTTP-based bootstrap transport to static peers.
+  *
+  * @param peerBaseUris
+  *   mapping of peer identities to their HTTP base URIs
+  * @param requestTimeout
+  *   timeout for individual HTTP requests
+  * @param maxConcurrentRequests
+  *   maximum number of concurrent outbound requests
+  */
 final case class StaticPeerBootstrapHttpTransportConfig(
     peerBaseUris: Map[PeerIdentity, String],
     requestTimeout: Duration,
@@ -17,11 +26,31 @@ final case class StaticPeerBootstrapHttpTransportConfig(
 )
 
 @SuppressWarnings(Array("org.wartremover.warts.DefaultArguments"))
+/** Companion for `StaticPeerBootstrapHttpTransportConfig` providing config
+  * loading.
+  */
 object StaticPeerBootstrapHttpTransportConfig:
-  val DefaultPath: String               = StaticPeerTopologyConfig.DefaultPath
-  val DefaultRequestTimeout: Duration   = Duration.ofSeconds(10L)
+
+  /** Default config path for peer gossip settings. */
+  val DefaultPath: String = StaticPeerTopologyConfig.DefaultPath
+
+  /** Default HTTP request timeout. */
+  val DefaultRequestTimeout: Duration = Duration.ofSeconds(10L)
+
+  /** Default maximum concurrent HTTP requests. */
   val DefaultMaxConcurrentRequests: Int = 16
 
+  /** Loads bootstrap HTTP transport config from the given Typesafe Config.
+    *
+    * @param config
+    *   the root config
+    * @param topology
+    *   the peer topology for validation
+    * @param path
+    *   the config path to read from
+    * @return
+    *   the config, None if no bootstrap section, or an error
+    */
   def load(
       config: Config,
       topology: StaticPeerTopology,
@@ -30,6 +59,15 @@ object StaticPeerBootstrapHttpTransportConfig:
     if config.hasPath(path) then loadSection(config.getConfig(path), topology)
     else none[StaticPeerBootstrapHttpTransportConfig].asRight[String]
 
+  /** Loads bootstrap config from a pre-resolved config section.
+    *
+    * @param section
+    *   the config section at the gossip path
+    * @param topology
+    *   the peer topology for validation
+    * @return
+    *   the config, None if no bootstrap section, or an error
+    */
   def loadSection(
       section: Config,
       topology: StaticPeerTopology,

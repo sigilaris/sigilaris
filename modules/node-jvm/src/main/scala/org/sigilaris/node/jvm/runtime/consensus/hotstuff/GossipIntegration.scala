@@ -24,13 +24,16 @@ import org.sigilaris.node.jvm.runtime.block.{
 }
 import org.sigilaris.node.jvm.runtime.gossip.*
 
+/** The gossip artifact types exchanged during HotStuff consensus. */
 enum HotStuffGossipArtifact:
   case ProposalArtifact(proposal: Proposal)
   case VoteArtifact(vote: Vote)
   case TimeoutVoteArtifact(timeoutVote: TimeoutVote)
   case NewViewArtifact(newView: NewView)
 
+/** Companion for `HotStuffGossipArtifact`, providing topic/ID resolution and encoding. */
 object HotStuffGossipArtifact:
+  /** Returns the gossip topic for the given artifact type. */
   def topicOf(
       artifact: HotStuffGossipArtifact,
   ): GossipTopic =
@@ -43,6 +46,7 @@ object HotStuffGossipArtifact:
       case HotStuffGossipArtifact.NewViewArtifact(_) =>
         GossipTopic.consensusNewView
 
+  /** Returns the stable artifact ID for the given artifact. */
   def stableIdOf(
       artifact: HotStuffGossipArtifact,
   ): StableArtifactId =
@@ -71,6 +75,14 @@ object HotStuffGossipArtifact:
       case HotStuffGossipArtifact.NewViewArtifact(newView) =>
         ByteVector.fromByte(0x04.toByte) ++ newView.toBytes
 
+/** Per-topic gossip configuration for a HotStuff artifact type.
+  *
+  * @param exactKnownSetLimit max entries in the exact-known set
+  * @param requestByIdLimit max IDs per request-by-ID batch
+  * @param maxBatchItems max items per gossip batch
+  * @param flushInterval how often to flush gossip batches
+  * @param deliveryPriority priority for delivery ordering (lower = higher priority)
+  */
 final case class HotStuffTopicPolicy(
     exactKnownSetLimit: Int,
     requestByIdLimit: Int,
@@ -82,12 +94,14 @@ final case class HotStuffTopicPolicy(
   require(requestByIdLimit > 0, "requestByIdLimit must be positive")
   require(maxBatchItems > 0, "maxBatchItems must be positive")
 
+  /** Converts this policy to a gossip producer QoS configuration. */
   def producerQoS: GossipProducerQoS =
     new GossipProducerQoS:
       override def maxBatchItems: Int = HotStuffTopicPolicy.this.maxBatchItems
       override def flushInterval: Duration =
         HotStuffTopicPolicy.this.flushInterval
 
+/** Aggregated gossip policies for all HotStuff artifact types. */
 final case class HotStuffGossipPolicy(
     proposal: HotStuffTopicPolicy,
     vote: HotStuffTopicPolicy,
@@ -95,6 +109,7 @@ final case class HotStuffGossipPolicy(
     newView: HotStuffTopicPolicy,
 )
 
+/** Companion for `HotStuffGossipPolicy`. */
 object HotStuffGossipPolicy:
   private val defaultProposalPolicy: HotStuffTopicPolicy =
     HotStuffTopicPolicy(
@@ -132,6 +147,7 @@ object HotStuffGossipPolicy:
       deliveryPriority = 4,
     )
 
+  /** The default gossip policy. */
   val default: HotStuffGossipPolicy =
     HotStuffGossipPolicy(
       proposal = defaultProposalPolicy,
@@ -140,6 +156,7 @@ object HotStuffGossipPolicy:
       newView = defaultNewViewPolicy,
     )
 
+/** Constructs gossip topic window keys from HotStuff consensus windows. */
 object HotStuffWindowKey:
   private final case class WindowInput(
       chainId: ChainId,
@@ -148,6 +165,7 @@ object HotStuffWindowKey:
       validatorSetHash: ValidatorSetHash,
   ) derives ByteEncoder
 
+  /** Creates a topic window key from a HotStuff consensus window. */
   def fromWindow(
       window: HotStuffWindow,
   ): TopicWindowKey =
@@ -159,6 +177,7 @@ object HotStuffWindowKey:
         validatorSetHash = window.validatorSetHash,
       ).toBytes
 
+/** Creates gossip topic contracts for each HotStuff artifact type. */
 object HotStuffTopic:
   private def scopeForWindow(
       topic: GossipTopic,
@@ -173,6 +192,7 @@ object HotStuffTopic:
       ),
     )
 
+  /** Creates a gossip topic contract for proposal artifacts. */
   def proposalContract(
       policy: HotStuffTopicPolicy,
   ): GossipTopicContract[HotStuffGossipArtifact] =
@@ -230,6 +250,7 @@ object HotStuffTopic:
               )
               .asLeft[Option[ExactKnownSetScope]]
 
+  /** Creates a gossip topic contract for vote artifacts. */
   def voteContract(
       policy: HotStuffTopicPolicy,
   ): GossipTopicContract[HotStuffGossipArtifact] =
@@ -287,6 +308,7 @@ object HotStuffTopic:
               )
               .asLeft[Option[ExactKnownSetScope]]
 
+  /** Creates a gossip topic contract for timeout vote artifacts. */
   def timeoutVoteContract(
       policy: HotStuffTopicPolicy,
   ): GossipTopicContract[HotStuffGossipArtifact] =
@@ -347,6 +369,7 @@ object HotStuffTopic:
               )
               .asLeft[Option[ExactKnownSetScope]]
 
+  /** Creates a gossip topic contract for new-view artifacts. */
   def newViewContract(
       policy: HotStuffTopicPolicy,
   ): GossipTopicContract[HotStuffGossipArtifact] =
@@ -404,6 +427,7 @@ object HotStuffTopic:
               )
               .asLeft[Option[ExactKnownSetScope]]
 
+  /** Creates a complete gossip topic contract registry for all HotStuff artifact types. */
   @SuppressWarnings(Array("org.wartremover.warts.DefaultArguments"))
   def registry(
       policy: HotStuffGossipPolicy = HotStuffGossipPolicy.default,
@@ -415,10 +439,12 @@ object HotStuffTopic:
       newViewContract(policy.newView),
     )
 
+/** A snapshot of the in-memory gossip artifact source state. */
 final case class InMemoryHotStuffSourceSnapshot(
     eventsByTopic: Map[ChainTopic, Vector[GossipEvent[HotStuffGossipArtifact]]],
 )
 
+/** A snapshot of the in-memory gossip artifact sink state, including all stored artifacts and QCs. */
 final case class InMemoryHotStuffSinkSnapshot(
     proposals: Map[ProposalId, Proposal],
     votes: Map[VoteId, Vote],
@@ -433,7 +459,9 @@ final case class InMemoryHotStuffSinkSnapshot(
     duplicates: Vector[GossipEvent[HotStuffGossipArtifact]],
 )
 
+/** Companion for `InMemoryHotStuffSinkSnapshot`. */
 object InMemoryHotStuffSinkSnapshot:
+  /** An empty sink snapshot. */
   val empty: InMemoryHotStuffSinkSnapshot =
     InMemoryHotStuffSinkSnapshot(
       proposals = Map.empty[ProposalId, Proposal],
@@ -450,12 +478,15 @@ object InMemoryHotStuffSinkSnapshot:
       duplicates = Vector.empty[GossipEvent[HotStuffGossipArtifact]],
     )
 
+/** Publishes HotStuff gossip artifacts to the local gossip source. */
 trait HotStuffArtifactPublisher[F[_]]:
+  /** Appends an artifact to the gossip source, returning the created gossip event. */
   def append(
       artifact: HotStuffGossipArtifact,
       ts: Instant,
   ): F[GossipEvent[HotStuffGossipArtifact]]
 
+/** In-memory implementation of a gossip artifact source and publisher for HotStuff artifacts. */
 final class InMemoryHotStuffArtifactSource[F[_]: Sync] private (
     clock: GossipClock[F],
     ref: Ref[F, Map[ChainTopic, Vector[
@@ -567,7 +598,9 @@ final class InMemoryHotStuffArtifactSource[F[_]: Sync] private (
           ),
         )
 
+/** Companion for `InMemoryHotStuffArtifactSource`. */
 object InMemoryHotStuffArtifactSource:
+  /** Creates a new in-memory gossip artifact source. */
   def create[F[_]: Sync](using
       clock: GossipClock[F],
   ): F[InMemoryHotStuffArtifactSource[F]] =
@@ -577,6 +610,7 @@ object InMemoryHotStuffArtifactSource:
       ]]](Map.empty)
       .map(new InMemoryHotStuffArtifactSource[F](clock, _))
 
+/** In-memory implementation of a gossip artifact sink for HotStuff artifacts, handling validation, QC assembly, and finalization tracking. */
 final class InMemoryHotStuffArtifactSink[F[_]: Sync] private (
     validatorSet: ValidatorSet,
     relayPolicy: HotStuffRelayPolicy,
@@ -892,9 +926,11 @@ final class InMemoryHotStuffArtifactSink[F[_]: Sync] private (
       ),
     )
 
+  /** Returns the current sink snapshot. */
   def snapshot: F[InMemoryHotStuffSinkSnapshot] =
     ref.get
 
+/** Companion for `InMemoryHotStuffArtifactSink`. */
 object InMemoryHotStuffArtifactSink:
   def create[F[_]: Sync](
       validatorSet: ValidatorSet,
@@ -935,6 +971,7 @@ object InMemoryHotStuffArtifactSink:
           _,
         )
 
+/** Input parameters for bootstrapping a HotStuff consensus node runtime. */
 @SuppressWarnings(Array("org.wartremover.warts.DefaultArguments"))
 final case class HotStuffRuntimeBootstrapInput(
     localPeer: PeerIdentity,
@@ -964,11 +1001,13 @@ final case class HotStuffRuntimeServices[F[_]](
     bootstrap: HotStuffBootstrapServices[F],
 )
 
+/** In-memory diagnostics handles for the gossip artifact source and sink. */
 final case class HotStuffInMemoryRuntimeDiagnostics[F[_]](
     source: InMemoryHotStuffArtifactSource[F],
     sink: InMemoryHotStuffArtifactSink[F],
 )
 
+/** The assembled HotStuff consensus node runtime, providing artifact emission, bootstrap, and diagnostics. */
 @SuppressWarnings(Array("org.wartremover.warts.DefaultArguments"))
 final case class HotStuffNodeRuntime[F[_]: Sync](
     bootstrapInput: HotStuffRuntimeBootstrapInput,
@@ -1355,7 +1394,9 @@ final case class HotStuffNodeRuntime[F[_]: Sync](
       case _ =>
         ().asRight[HotStuffPolicyViolation].pure[F]
 
+/** Companion for `HotStuffNodeRuntime`, providing validation and factory methods. */
 object HotStuffNodeRuntime:
+  /** Validates bootstrap input by checking for dual-active key holder violations. */
   def validateBootstrapInput(
       bootstrapInput: HotStuffRuntimeBootstrapInput,
   ): Either[HotStuffPolicyViolation, HotStuffRuntimeBootstrapInput] =

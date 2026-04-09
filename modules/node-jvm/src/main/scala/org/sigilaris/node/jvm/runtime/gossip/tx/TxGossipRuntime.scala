@@ -9,16 +9,34 @@ import org.sigilaris.core.util.SafeStringInterp.*
 import org.sigilaris.node.jvm.runtime.gossip.*
 import org.sigilaris.node.jvm.runtime.gossip.CanonicalRejection.*
 
+/** Outcome of processing a control batch. */
 enum ControlBatchOutcome:
-  case Applied, Deduplicated
 
+  /** The batch was freshly applied. */
+  case Applied
+
+  /** The batch was deduplicated via its idempotency key. */
+  case Deduplicated
+
+/** Optional overrides for session negotiation parameters.
+  *
+  * @param heartbeatInterval
+  *   optional heartbeat interval override
+  * @param livenessTimeout
+  *   optional liveness timeout override
+  * @param maxControlRetryInterval
+  *   optional max control retry interval override
+  */
 final case class TxSessionNegotiationOverrides(
     heartbeatInterval: Option[Duration],
     livenessTimeout: Option[Duration],
     maxControlRetryInterval: Option[Duration],
 )
 
+/** Companion for `TxSessionNegotiationOverrides`. */
 object TxSessionNegotiationOverrides:
+
+  /** Default overrides with no values set (uses policy defaults). */
   val default: TxSessionNegotiationOverrides =
     TxSessionNegotiationOverrides(
       heartbeatInterval = None,
@@ -26,20 +44,60 @@ object TxSessionNegotiationOverrides:
       maxControlRetryInterval = None,
     )
 
+/** Result of receiving and applying a batch of inbound events.
+  *
+  * @tparam A
+  *   the artifact payload type
+  * @param applied
+  *   events that were newly applied
+  * @param duplicates
+  *   events that were duplicates
+  * @param lastCursor
+  *   the cursor of the last processed event, if any
+  */
 final case class TxReceiveEventsResult[A](
     applied: Vector[GossipEvent[A]],
     duplicates: Vector[GossipEvent[A]],
     lastCursor: Option[CursorToken],
 )
 
+/** Strategy for selecting which live events to deliver based on peer-declared
+  * filters and known ids.
+  *
+  * @tparam A
+  *   the artifact payload type
+  */
 trait TxCascadeStrategy[A]:
+
+  /** Selects live events from candidates, filtering out known and
+    * Bloom-matched artifacts.
+    *
+    * @param filter
+    *   optional Bloom filter from the peer
+    * @param exactKnownIds
+    *   exact known artifact ids from the peer
+    * @param candidates
+    *   the candidate events to filter
+    * @return
+    *   the selected events, or a backfill-unavailable rejection
+    */
   def selectLiveEvents(
       filter: Option[GossipFilter.TxBloomFilter],
       exactKnownIds: Set[StableArtifactId],
       candidates: Vector[GossipEvent[A]],
   ): Either[CanonicalRejection.BackfillUnavailable, Vector[GossipEvent[A]]]
 
+/** Companion for `TxCascadeStrategy` providing default implementations. */
 object TxCascadeStrategy:
+
+  /** Creates a cascade strategy that requires exact known ids for
+    * Bloom-ambiguous events, rejecting with backfill-unavailable otherwise.
+    *
+    * @tparam A
+    *   the artifact payload type
+    * @return
+    *   the cascade strategy
+    */
   def exactKnownOrBackfillUnavailable[A]: TxCascadeStrategy[A] =
     new TxCascadeStrategy[A]:
       override def selectLiveEvents(
@@ -70,6 +128,14 @@ object TxCascadeStrategy:
               ),
             )
 
+/** Effectful runtime coordinating transaction gossip sessions, event
+  * production, event consumption, and control batch processing.
+  *
+  * @tparam F
+  *   the effect type
+  * @tparam A
+  *   the artifact payload type
+  */
 final class TxGossipRuntime[F[_]: Sync, A](
     peerAuthenticator: PeerAuthenticator[F],
     clock: GossipClock[F],
@@ -152,6 +218,16 @@ final class TxGossipRuntime[F[_]: Sync, A](
       case _ =>
         none[CanonicalRejection.HandshakeRejected].pure[F]
 
+  /** Initiates an outbound session to a peer with default negotiation
+    * overrides.
+    *
+    * @param peer
+    *   the target peer
+    * @param subscriptions
+    *   the chain-topic pairs to subscribe to
+    * @return
+    *   the proposal, or a rejection
+    */
   def startOutbound(
       peer: PeerIdentity,
       subscriptions: SessionSubscription,
@@ -162,6 +238,17 @@ final class TxGossipRuntime[F[_]: Sync, A](
       TxSessionNegotiationOverrides.default,
     )
 
+  /** Initiates an outbound session to a peer with custom negotiation overrides.
+    *
+    * @param peer
+    *   the target peer
+    * @param subscriptions
+    *   the chain-topic pairs to subscribe to
+    * @param negotiationOverrides
+    *   the negotiation parameter overrides
+    * @return
+    *   the proposal, or a rejection
+    */
   def startOutboundConfigured(
       peer: PeerIdentity,
       subscriptions: SessionSubscription,
@@ -194,6 +281,14 @@ final class TxGossipRuntime[F[_]: Sync, A](
                       proposal.asRight[HandshakeRejected],
                 )
 
+  /** Processes an inbound session open proposal using the initiator as the
+    * authenticated peer.
+    *
+    * @param proposal
+    *   the received proposal
+    * @return
+    *   the handshake result
+    */
   def handleInboundProposal(
       proposal: SessionOpenProposal,
   ): F[InboundHandshakeResult] =
@@ -202,6 +297,16 @@ final class TxGossipRuntime[F[_]: Sync, A](
       authenticatedPeer = proposal.initiator,
     )
 
+  /** Processes an inbound proposal with an externally authenticated peer
+    * identity.
+    *
+    * @param proposal
+    *   the received proposal
+    * @param authenticatedPeer
+    *   the peer identity verified by transport authentication
+    * @return
+    *   the handshake result
+    */
   def handleInboundProposalFromPeer(
       proposal: SessionOpenProposal,
       authenticatedPeer: PeerIdentity,
@@ -212,6 +317,17 @@ final class TxGossipRuntime[F[_]: Sync, A](
       TxSessionNegotiationOverrides.default,
     )
 
+  /** Processes an inbound proposal with custom negotiation overrides.
+    *
+    * @param proposal
+    *   the received proposal
+    * @param authenticatedPeer
+    *   the peer identity verified by transport authentication
+    * @param negotiationOverrides
+    *   the negotiation parameter overrides
+    * @return
+    *   the handshake result
+    */
   def handleInboundProposalConfigured(
       proposal: SessionOpenProposal,
       authenticatedPeer: PeerIdentity,
@@ -272,6 +388,13 @@ final class TxGossipRuntime[F[_]: Sync, A](
       case Some(session) =>
         session.asRight[CanonicalRejection.HandshakeRejected]
 
+  /** Applies a received handshake ack to complete an outbound session.
+    *
+    * @param ack
+    *   the received acknowledgement
+    * @return
+    *   unit on success, or a rejection
+    */
   def applyHandshakeAck(
       ack: SessionOpenAck,
   ): F[Either[HandshakeRejected, Unit]] =
@@ -304,6 +427,13 @@ final class TxGossipRuntime[F[_]: Sync, A](
                   ) -> ().asRight[HandshakeRejected],
           )
 
+  /** Gracefully closes a session.
+    *
+    * @param sessionId
+    *   the session to close
+    * @return
+    *   unit on success, or a rejection
+    */
   def closeSession(
       sessionId: DirectionalSessionId,
   ): F[Either[HandshakeRejected, Unit]] =
@@ -321,6 +451,13 @@ final class TxGossipRuntime[F[_]: Sync, A](
               ) -> ().asRight[HandshakeRejected],
           )
 
+  /** Marks a session as terminally dead.
+    *
+    * @param sessionId
+    *   the session to mark dead
+    * @return
+    *   unit on success, or a rejection
+    */
   def markSessionDead(
       sessionId: DirectionalSessionId,
   ): F[Either[HandshakeRejected, Unit]] =
@@ -338,6 +475,14 @@ final class TxGossipRuntime[F[_]: Sync, A](
               ) -> ().asRight[HandshakeRejected],
           )
 
+  /** Authorizes that a session exists and is open, touching its activity
+    * timestamp.
+    *
+    * @param sessionId
+    *   the session to authorize
+    * @return
+    *   the session, or a rejection
+    */
   def authorizeOpenSession(
       sessionId: DirectionalSessionId,
   ): F[Either[CanonicalRejection.HandshakeRejected, DirectionalSession]] =
@@ -362,6 +507,15 @@ final class TxGossipRuntime[F[_]: Sync, A](
                   session.asRight[CanonicalRejection.HandshakeRejected],
             )
 
+  /** Verifies that a session is owned by the given authenticated peer.
+    *
+    * @param sessionId
+    *   the session to check
+    * @param authenticatedPeer
+    *   the peer identity to verify ownership against
+    * @return
+    *   the session, or a rejection
+    */
   def authorizeSessionPeer(
       sessionId: DirectionalSessionId,
       authenticatedPeer: PeerIdentity,
@@ -372,6 +526,16 @@ final class TxGossipRuntime[F[_]: Sync, A](
         currentState ->
           sessionOwnedByPeer(currentState, sessionId, authenticatedPeer)
 
+  /** Authorizes that a session exists, is open, and is owned by the given
+    * authenticated peer.
+    *
+    * @param sessionId
+    *   the session to authorize
+    * @param authenticatedPeer
+    *   the peer identity to verify ownership against
+    * @return
+    *   the session, or a rejection
+    */
   def authorizeOpenSessionForPeer(
       sessionId: DirectionalSessionId,
       authenticatedPeer: PeerIdentity,
@@ -396,6 +560,16 @@ final class TxGossipRuntime[F[_]: Sync, A](
               ),
         )
 
+  /** Receives and applies a control batch from a consumer on an outbound
+    * session.
+    *
+    * @param sessionId
+    *   the session receiving the batch
+    * @param batch
+    *   the control batch to process
+    * @return
+    *   the batch outcome, or a rejection
+    */
   def receiveControlBatch(
       sessionId: DirectionalSessionId,
       batch: ControlBatch,
@@ -451,6 +625,14 @@ final class TxGossipRuntime[F[_]: Sync, A](
                 )
     yield result
 
+  /** Polls available events for an outbound session, batching according to QoS
+    * settings.
+    *
+    * @param sessionId
+    *   the outbound session to poll
+    * @return
+    *   the event stream messages, or a rejection
+    */
   def pollEvents(
       sessionId: DirectionalSessionId,
   ): F[Either[CanonicalRejection, Vector[EventStreamMessage[A]]]] =
@@ -507,6 +689,15 @@ final class TxGossipRuntime[F[_]: Sync, A](
           )
     yield result
 
+  /** Receives and applies inbound event stream messages on a consumer session.
+    *
+    * @param sessionId
+    *   the inbound session receiving events
+    * @param messages
+    *   the event stream messages
+    * @return
+    *   the receive result, or a rejection
+    */
   def receiveEvents(
       sessionId: DirectionalSessionId,
       messages: Vector[EventStreamMessage[A]],
@@ -566,6 +757,13 @@ final class TxGossipRuntime[F[_]: Sync, A](
                     ),
         )
 
+  /** Generates a keep-alive message for an outbound event stream session.
+    *
+    * @param sessionId
+    *   the outbound session
+    * @return
+    *   the keep-alive message, or a rejection
+    */
   def eventKeepAlive(
       sessionId: DirectionalSessionId,
   ): F[Either[CanonicalRejection.HandshakeRejected, EventStreamMessage[A]]] =
@@ -599,6 +797,14 @@ final class TxGossipRuntime[F[_]: Sync, A](
           )
     yield result
 
+  /** Generates a keep-alive acknowledgement for an outbound control channel
+    * session.
+    *
+    * @param sessionId
+    *   the outbound session
+    * @return
+    *   the ack message, or a rejection
+    */
   def controlKeepAlive(
       sessionId: DirectionalSessionId,
   ): F[Either[CanonicalRejection.ControlBatchRejected, ControlChannelMessage]] =
@@ -641,9 +847,22 @@ final class TxGossipRuntime[F[_]: Sync, A](
           )
     yield result
 
+  /** Returns a snapshot of the current runtime state after expiring timed-out
+    * sessions.
+    *
+    * @return
+    *   the current runtime state
+    */
   def snapshotState: F[TxGossipRuntimeState] =
     clock.now.flatMap(snapshotAt)
 
+  /** Returns the current relationship with the given peer, if any.
+    *
+    * @param peer
+    *   the peer identity
+    * @return
+    *   the relationship, or None
+    */
   def relationshipWith(peer: PeerIdentity): F[Option[PeerRelationship]] =
     snapshotState.map(_.engine.relationshipWith(peer))
 
@@ -1448,7 +1667,16 @@ final class TxGossipRuntime[F[_]: Sync, A](
       pendingRequestScopeIds = mergedPendingScopedRequests,
     )
 
+/** Companion for `TxGossipRuntime` providing factory methods. */
 object TxGossipRuntime:
+
+  /** Creates a runtime with the default policy and cascade strategy.
+    *
+    * @tparam F
+    *   the effect type
+    * @tparam A
+    *   the artifact payload type
+    */
   def default[F[_]: Sync, A](
       peerAuthenticator: PeerAuthenticator[F],
       clock: GossipClock[F],
@@ -1467,6 +1695,13 @@ object TxGossipRuntime:
       policy = TxRuntimePolicy(),
     )
 
+  /** Creates a runtime with a custom policy and the default cascade strategy.
+    *
+    * @tparam F
+    *   the effect type
+    * @tparam A
+    *   the artifact payload type
+    */
   def withPolicy[F[_]: Sync, A](
       peerAuthenticator: PeerAuthenticator[F],
       clock: GossipClock[F],
@@ -1487,6 +1722,14 @@ object TxGossipRuntime:
       cascadeStrategy = TxCascadeStrategy.exactKnownOrBackfillUnavailable[A],
     )
 
+  /** Creates a fully configured runtime with custom policy and cascade
+    * strategy.
+    *
+    * @tparam F
+    *   the effect type
+    * @tparam A
+    *   the artifact payload type
+    */
   def configured[F[_]: Sync, A](
       peerAuthenticator: PeerAuthenticator[F],
       clock: GossipClock[F],

@@ -97,7 +97,13 @@ trait ByteDecoder[A]:
     decode(bytes).flatMap:
       case DecodeResult(value, remainder) => f(value).decode(remainder)
 
-  /** Widens the decoder to a supertype. */
+  /** Widens the decoder to a supertype.
+    *
+    * @tparam AA
+    *   the supertype
+    * @return
+    *   a decoder for the wider type
+    */
   @SuppressWarnings(Array("org.wartremover.warts.AsInstanceOf"))
   def widen[AA >: A]: ByteDecoder[AA] = this.asInstanceOf[ByteDecoder[AA]]
 
@@ -317,6 +323,8 @@ object ByteDecoder:
 
   /** Creates a decoder for List with known size.
     *
+    * @tparam A
+    *   the element type
     * @param size
     *   number of elements to decode
     * @return
@@ -340,7 +348,15 @@ object ByteDecoder:
               loop(remainder, count - 1, value :: acc)
       loop(bytes, size, Nil)
 
-  /** Creates a decoder that always fails with a message. */
+  /** Creates a decoder that always fails with the given message.
+    *
+    * @tparam A
+    *   the target type (never actually produced)
+    * @param msg
+    *   the failure message
+    * @return
+    *   a decoder that always returns a DecodeFailure
+    */
   def failed[A](msg: String): ByteDecoder[A] = _ =>
     DecodeFailure(msg).asLeft[DecodeResult[A]]
 

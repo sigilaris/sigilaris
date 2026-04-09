@@ -21,7 +21,23 @@ import org.sigilaris.core.datatype.Utf8
 import org.sigilaris.core.failure.CryptoFailure
 import org.sigilaris.core.util.SafeStringInterp.*
 
+/** Utilities for recovering signer keys from signed transactions and verifying
+  * key ownership against registered accounts.
+  */
 object SignatureVerifier:
+  /** Recover the 20-byte key identifier from a signed transaction's signature.
+    *
+    * @tparam F
+    *   the effect type
+    * @tparam T
+    *   the transaction type
+    * @param signedTx
+    *   the signed transaction to recover from
+    * @param context
+    *   optional context string included in error messages on failure
+    * @return
+    *   the recovered `KeyId20`, or raises a `CryptoFailure`
+    */
   def recoverKeyId[F[_]: Monad, T <: Tx](
       signedTx: Signed[T],
       context: Option[String],

@@ -66,7 +66,11 @@ trait JsonEncoder[A]:
     def encode(value: B): JsonValue =
       self.encode(f(value))
 
-// Shared instance provider using an abstract config (top-level trait)
+/** Shared provider of JSON encoder instances parameterized by [[JsonConfig]].
+  *
+  * Subclassed by [[JsonEncoder]] (default config) and
+  * [[JsonEncoder.configured.Encoders]] (custom config).
+  */
 trait JsonEncoderInstances:
   protected def config: JsonConfig
   protected def mk[A](f: (A, JsonConfig) => JsonValue): JsonEncoder[A] =
@@ -102,37 +106,51 @@ trait JsonEncoderInstances:
       case FieldNamingPolicy.KebabCase =>
         name.replaceAll("([a-z0-9])([A-Z])", "$1-$2").toLowerCase(Locale.ROOT)
 
+  /** Encodes Boolean as JBool. */
   given booleanEncoder: JsonEncoder[Boolean] = mk((b, _) => JsonValue.JBool(b))
+
+  /** Encodes String as JString. */
   given stringEncoder: JsonEncoder[String] = mk((s, _) => JsonValue.JString(s))
+
+  /** Encodes Int as JNumber. */
   given intEncoder: JsonEncoder[Int] =
     mk((n, _) => JsonValue.JNumber(BigDecimal(n)))
+
+  /** Encodes Long as JNumber. */
   given longEncoder: JsonEncoder[Long] =
     mk((n, _) => JsonValue.JNumber(BigDecimal(n)))
+
+  /** Encodes Double as JNumber. */
   given doubleEncoder: JsonEncoder[Double] =
     mk((n, _) => JsonValue.JNumber(BigDecimal(n)))
 
+  /** Encodes BigInt as JString or JNumber depending on config. */
   given bigIntEncoder: JsonEncoder[BigInt] = mk: (n, cfg) =>
     if cfg.writeBigIntAsString then JsonValue.JString(n.toString)
     else JsonValue.JNumber(BigDecimal(n))
 
+  /** Encodes BigDecimal as JString or JNumber depending on config. */
   given bigDecimalEncoder: JsonEncoder[BigDecimal] = mk: (n, cfg) =>
     if cfg.writeBigDecimalAsString then JsonValue.JString(n.toString)
     else JsonValue.JNumber(n)
 
+  /** Encodes Instant as ISO-8601 string truncated to milliseconds. */
   given instantEncoder: JsonEncoder[Instant] = mk: (i, _) =>
     JsonValue.JString(i.truncatedTo(ChronoUnit.MILLIS).toString)
 
+  /** Encodes Option as the encoded inner value or JNull for None. */
   given optionEncoder[A: JsonEncoder]: JsonEncoder[Option[A]] = mk: (opt, _) =>
     opt.fold(JsonValue.JNull)(a => JsonEncoder[A].encode(a))
 
+  /** Encodes List as JArray. */
   given listEncoder[A: JsonEncoder]: JsonEncoder[List[A]] = mk: (xs, _) =>
     JsonValue.JArray(xs.iterator.map(a => JsonEncoder[A].encode(a)).toVector)
 
+  /** Encodes Vector as JArray. */
   given vectorEncoder[A: JsonEncoder]: JsonEncoder[Vector[A]] = mk: (xs, _) =>
     JsonValue.JArray(xs.iterator.map(a => JsonEncoder[A].encode(a)).toVector)
 
-  /** Encode Map[K, V] by converting keys with JsonKeyCodec[K] to field names.
-    */
+  /** Encodes Map as JObject by converting keys with [[JsonKeyCodec]] to field names. */
   given mapEncoder[K, V](using
       JsonKeyCodec[K],
       JsonEncoder[V],
@@ -148,7 +166,7 @@ trait JsonEncoderInstances:
         .toMap
       JsonValue.JObject(pairs)
 
-  // --- Derivation: Product -----------------------------------------------
+  /** Derives an encoder for product types (case classes) by encoding each field into a JObject. */
   @SuppressWarnings(Array("org.wartremover.warts.AsInstanceOf"))
   inline given derivedProductEncoder[A](using
       m: Mirror.ProductOf[A],
@@ -167,7 +185,7 @@ trait JsonEncoderInstances:
           case _                                     => Some(n -> jv)
       JsonValue.JObject(fields.toMap)
 
-  // --- Derivation: Sum (wrapped-by-type-key) -----------------------------
+  /** Derives an encoder for sum types (sealed traits/enums) using wrapped-by-type-key discriminator. */
   @SuppressWarnings(Array("org.wartremover.warts.AsInstanceOf"))
   inline given derivedSumEncoder[A](using m: Mirror.SumOf[A]): JsonEncoder[A] =
     mk: (a, cfg) =>
@@ -240,4 +258,12 @@ object JsonEncoder extends JsonEncoderInstances:
       * ```
       */
     final class Encoders(val config: JsonConfig) extends JsonEncoderInstances
+
+    /** Creates an encoder bundle bound to the given configuration.
+      *
+      * @param config
+      *   the JSON configuration
+      * @return
+      *   an Encoders instance providing configured given instances
+      */
     def apply(config: JsonConfig): Encoders = new Encoders(config)

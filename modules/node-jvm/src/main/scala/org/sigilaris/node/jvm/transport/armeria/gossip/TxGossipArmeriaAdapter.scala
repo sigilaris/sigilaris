@@ -21,14 +21,42 @@ import org.sigilaris.core.failure.DecodeFailure
 import org.sigilaris.node.jvm.runtime.gossip.*
 import org.sigilaris.node.jvm.runtime.gossip.tx.*
 
+/** Wire format for a chain-topic subscription pair.
+  *
+  * @param chainId
+  *   string identifier of the chain
+  * @param topic
+  *   gossip topic name
+  */
 final case class ChainTopicWire(
     chainId: String,
     topic: String,
 )
+
+/** JSON codec instances for `ChainTopicWire`. */
 object ChainTopicWire:
   given Decoder[ChainTopicWire] = deriveDecoder
   given Encoder[ChainTopicWire] = deriveEncoder
 
+/** Wire format for a session open proposal sent by the initiating peer.
+  *
+  * @param sessionId
+  *   proposed directional session identifier
+  * @param peerCorrelationId
+  *   correlation identifier assigned by the proposing peer
+  * @param initiator
+  *   identity of the session initiator
+  * @param acceptor
+  *   identity of the session acceptor
+  * @param subscriptions
+  *   chain-topic pairs the initiator wants to subscribe to
+  * @param heartbeatIntervalMs
+  *   proposed heartbeat interval in milliseconds
+  * @param livenessTimeoutMs
+  *   proposed liveness timeout in milliseconds
+  * @param maxControlRetryIntervalMs
+  *   proposed maximum control retry interval in milliseconds
+  */
 final case class SessionOpenProposalWire(
     sessionId: String,
     peerCorrelationId: String,
@@ -39,10 +67,31 @@ final case class SessionOpenProposalWire(
     livenessTimeoutMs: Option[Long],
     maxControlRetryIntervalMs: Option[Long],
 )
+
+/** JSON codec instances for `SessionOpenProposalWire`. */
 object SessionOpenProposalWire:
   given Decoder[SessionOpenProposalWire] = deriveDecoder
   given Encoder[SessionOpenProposalWire] = deriveEncoder
 
+/** Wire format for a session open acknowledgement returned by the accepting peer.
+  *
+  * @param sessionId
+  *   confirmed directional session identifier
+  * @param peerCorrelationId
+  *   correlation identifier from the original proposal
+  * @param initiator
+  *   identity of the session initiator
+  * @param acceptor
+  *   identity of the session acceptor
+  * @param subscriptions
+  *   negotiated chain-topic subscriptions
+  * @param heartbeatIntervalMs
+  *   negotiated heartbeat interval in milliseconds
+  * @param livenessTimeoutMs
+  *   negotiated liveness timeout in milliseconds
+  * @param maxControlRetryIntervalMs
+  *   negotiated maximum control retry interval in milliseconds
+  */
 final case class SessionOpenAckWire(
     sessionId: String,
     peerCorrelationId: String,
@@ -53,28 +102,73 @@ final case class SessionOpenAckWire(
     livenessTimeoutMs: Long,
     maxControlRetryIntervalMs: Long,
 )
+
+/** JSON codec instances for `SessionOpenAckWire`. */
 object SessionOpenAckWire:
   given Decoder[SessionOpenAckWire] = deriveDecoder
   given Encoder[SessionOpenAckWire] = deriveEncoder
 
+/** Wire format for a single cursor entry within a composite cursor.
+  *
+  * @param chainId
+  *   chain identifier for this cursor position
+  * @param topic
+  *   gossip topic for this cursor position
+  * @param token
+  *   Base64URL-encoded cursor token
+  */
 final case class CursorEntryWire(
     chainId: String,
     topic: String,
     token: String,
 )
+
+/** JSON codec instances for `CursorEntryWire`. */
 object CursorEntryWire:
   given Decoder[CursorEntryWire] = deriveDecoder
   given Encoder[CursorEntryWire] = deriveEncoder
 
+/** Wire format for a transaction Bloom filter used in gossip deduplication.
+  *
+  * @param bitsetBase64Url
+  *   Base64URL-encoded bitset bytes
+  * @param numHashes
+  *   number of hash functions used
+  * @param hashFamilyId
+  *   identifier of the hash family
+  */
 final case class TxBloomFilterWire(
     bitsetBase64Url: String,
     numHashes: Int,
     hashFamilyId: String,
 )
+
+/** JSON codec instances for `TxBloomFilterWire`. */
 object TxBloomFilterWire:
   given Decoder[TxBloomFilterWire] = deriveDecoder
   given Encoder[TxBloomFilterWire] = deriveEncoder
 
+/** Wire format for a single control operation within a control batch.
+  *
+  * @param kind
+  *   operation kind (e.g. "setFilter", "setCursor", "nack")
+  * @param chainId
+  *   optional chain identifier for chain-scoped operations
+  * @param topic
+  *   optional gossip topic for topic-scoped operations
+  * @param windowKey
+  *   optional hex-encoded topic window key for exact known set operations
+  * @param cursor
+  *   optional composite cursor entries for setCursor operations
+  * @param cursorToken
+  *   optional Base64URL-encoded cursor token for nack operations
+  * @param ids
+  *   optional hex-encoded artifact identifiers
+  * @param filter
+  *   optional Bloom filter for setFilter operations
+  * @param config
+  *   optional key-value configuration for config operations
+  */
 @SuppressWarnings(Array("org.wartremover.warts.DefaultArguments"))
 final case class ControlOpWire(
     kind: String,
@@ -87,44 +181,93 @@ final case class ControlOpWire(
     filter: Option[TxBloomFilterWire] = None,
     config: Option[Map[String, Long]] = None,
 )
+
+/** JSON codec instances for `ControlOpWire`. */
 object ControlOpWire:
   given Decoder[ControlOpWire] = deriveDecoder
   given Encoder[ControlOpWire] = deriveEncoder
 
+/** Wire format for a batch of control operations with an idempotency key.
+  *
+  * @param idempotencyKey
+  *   unique key for deduplicating repeated batch submissions
+  * @param ops
+  *   ordered control operations in this batch
+  */
 final case class ControlBatchWire(
     idempotencyKey: String,
     ops: Vector[ControlOpWire],
 )
+
+/** JSON codec instances for `ControlBatchWire`. */
 object ControlBatchWire:
   given Decoder[ControlBatchWire] = deriveDecoder
   given Encoder[ControlBatchWire] = deriveEncoder
 
+/** Wire format for a control channel request.
+  *
+  * @param kind
+  *   request kind (e.g. "batch", "controlKeepAlive")
+  * @param batch
+  *   optional control batch payload when kind is "batch"
+  */
 @SuppressWarnings(Array("org.wartremover.warts.DefaultArguments"))
 final case class ControlRequestWire(
     kind: String,
     batch: Option[ControlBatchWire] = None,
 )
+
+/** JSON codec instances for `ControlRequestWire`. */
 object ControlRequestWire:
   given Decoder[ControlRequestWire] = deriveDecoder
   given Encoder[ControlRequestWire] = deriveEncoder
 
+/** Wire format for an event stream request.
+  *
+  * @param kind
+  *   request kind (e.g. "poll", "eventKeepAlive")
+  */
 @SuppressWarnings(Array("org.wartremover.warts.DefaultArguments"))
 final case class EventRequestWire(
     kind: String = "poll",
 )
+
+/** JSON codec instances for `EventRequestWire`. */
 object EventRequestWire:
   given Decoder[EventRequestWire] = deriveDecoder
   given Encoder[EventRequestWire] = deriveEncoder
 
+/** Wire format for a canonical rejection response.
+  *
+  * @param rejectionClass
+  *   classification of the rejection (e.g. "handshakeRejected", "controlBatchRejected")
+  * @param reason
+  *   machine-readable reason code
+  * @param detail
+  *   optional human-readable detail message
+  */
 final case class RejectionWire(
     rejectionClass: String,
     reason: String,
     detail: Option[String],
 )
+
+/** JSON codec instances for `RejectionWire`. */
 object RejectionWire:
   given Decoder[RejectionWire] = deriveDecoder
   given Encoder[RejectionWire] = deriveEncoder
 
+/** Wire format for a control channel response.
+  *
+  * @param status
+  *   outcome status (e.g. "applied", "deduplicated", "ack")
+  * @param sessionId
+  *   optional session identifier echoed back in the response
+  * @param deduplicated
+  *   optional flag indicating whether the batch was deduplicated
+  * @param rejection
+  *   optional rejection payload when the control request was rejected
+  */
 @SuppressWarnings(Array("org.wartremover.warts.DefaultArguments"))
 final case class ControlResponseWire(
     status: String,
@@ -132,10 +275,29 @@ final case class ControlResponseWire(
     deduplicated: Option[Boolean] = None,
     rejection: Option[RejectionWire] = None,
 )
+
+/** JSON codec instances for `ControlResponseWire`. */
 object ControlResponseWire:
   given Decoder[ControlResponseWire] = deriveDecoder
   given Encoder[ControlResponseWire] = deriveEncoder
 
+/** Wire format for a single gossip event carrying an artifact payload.
+  *
+  * @tparam A
+  *   the payload type
+  * @param chainId
+  *   chain identifier the event belongs to
+  * @param topic
+  *   gossip topic the event belongs to
+  * @param id
+  *   hex-encoded stable artifact identifier
+  * @param cursor
+  *   Base64URL-encoded cursor token marking this event's position
+  * @param ts
+  *   event timestamp as epoch milliseconds
+  * @param payload
+  *   the artifact payload
+  */
 final case class EventWire[A](
     chainId: String,
     topic: String,
@@ -144,10 +306,27 @@ final case class EventWire[A](
     ts: Long,
     payload: A,
 )
+
+/** JSON codec instances for `EventWire`. */
 object EventWire:
   given [A: Decoder]: Decoder[EventWire[A]] = deriveDecoder
   given [A: Encoder]: Encoder[EventWire[A]] = deriveEncoder
 
+/** Wire format for an event stream envelope, which may carry an event, keep-alive, or rejection.
+  *
+  * @tparam A
+  *   the event payload type
+  * @param kind
+  *   envelope kind (e.g. "event", "keepAlive", "rejection")
+  * @param sessionId
+  *   session identifier this envelope belongs to
+  * @param atEpochMs
+  *   optional epoch milliseconds for keep-alive envelopes
+  * @param event
+  *   optional event payload when kind is "event"
+  * @param rejection
+  *   optional rejection payload when kind is "rejection"
+  */
 @SuppressWarnings(Array("org.wartremover.warts.DefaultArguments"))
 final case class EventEnvelopeWire[A](
     kind: String,
@@ -156,6 +335,8 @@ final case class EventEnvelopeWire[A](
     event: Option[EventWire[A]] = None,
     rejection: Option[RejectionWire] = None,
 )
+
+/** JSON codec instances for `EventEnvelopeWire`. */
 object EventEnvelopeWire:
   given [A: Decoder]: Decoder[EventEnvelopeWire[A]] = deriveDecoder
   given [A: Encoder]: Encoder[EventEnvelopeWire[A]] = deriveEncoder
@@ -173,9 +354,19 @@ private[gossip] enum BinaryEventEnvelope:
   case KeepAlive(sessionId: String, atEpochMs: Long)
   case Rejection(sessionId: String, rejection: RejectionWire)
 
+/** Binary codec for encoding and decoding streams of event envelopes in a compact frame format.
+  *
+  * Each frame is length-prefixed and tagged with a version byte and kind byte,
+  * enabling efficient binary transport of gossip events over HTTP.
+  */
 object BinaryEventStreamCodec:
+  /** MIME type for binary event stream responses. */
   val MediaType: String       = "application/octet-stream"
+
+  /** Current binary framing protocol version. */
   val CurrentVersion: Byte    = 1.toByte
+
+  /** Maximum allowed size in bytes for a single encoded event frame. */
   val MaxFrameSizeBytes: Long = 16L * 1024L * 1024L
 
   private val EventTag: Byte     = 1.toByte
@@ -265,11 +456,29 @@ object BinaryEventStreamCodec:
   ) derives ByteEncoder,
         ByteDecoder
 
+  /** Encodes a vector of event envelopes into a binary frame byte array.
+    *
+    * @tparam A
+    *   the event payload type
+    * @param events
+    *   event envelopes to encode
+    * @return
+    *   the encoded byte array, or an error message
+    */
   def encode[A: ByteEncoder](
       events: Vector[EventEnvelopeWire[A]],
   ): Either[String, Array[Byte]] =
     events.traverse(toBinaryEnvelope[A]).map(encodeBinary)
 
+  /** Decodes a binary frame byte array into a vector of event envelopes.
+    *
+    * @tparam A
+    *   the event payload type
+    * @param bytes
+    *   raw bytes to decode
+    * @return
+    *   the decoded event envelopes, or an error message
+    */
   def decode[A: ByteDecoder](
       bytes: Array[Byte],
   ): Either[String, Vector[EventEnvelopeWire[A]]] =
@@ -529,8 +738,26 @@ object BinaryEventStreamCodec:
       label + " had trailing bytes: " + remainder.size.toString,
     )
 
+/** Server-side Armeria/Tapir adapter for transaction gossip protocol endpoints.
+  *
+  * Exposes session open, event stream polling, control batch, and disconnect
+  * endpoints with transport authentication.
+  */
 @SuppressWarnings(Array("org.wartremover.warts.Any"))
 object TxGossipArmeriaAdapter:
+  /** Creates the list of Tapir server endpoints for the transaction gossip protocol.
+    *
+    * @tparam F
+    *   the effect type
+    * @tparam A
+    *   the gossip artifact type
+    * @param runtime
+    *   transaction gossip runtime handling session and message logic
+    * @param transportAuth
+    *   transport authentication for verifying peer requests
+    * @return
+    *   list of server endpoints for session open, events, control, and disconnect
+    */
   def endpoints[F[_]: Async, A: ByteEncoder](
       runtime: TxGossipRuntime[F, A],
       transportAuth: StaticPeerTransportAuth,

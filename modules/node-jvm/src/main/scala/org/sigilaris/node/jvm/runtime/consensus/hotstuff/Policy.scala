@@ -15,8 +15,10 @@ import org.sigilaris.node.jvm.runtime.gossip.{
   PeerIdentity,
 }
 
+/** Unique identifier for a consensus proposal, represented as a 256-bit hash. */
 opaque type ProposalId = UInt256
 
+/** Companion for `ProposalId`. */
 object ProposalId:
   private def renderHex(
       value: UInt256,
@@ -37,8 +39,10 @@ object ProposalId:
   given ByteEncoder[ProposalId] = ByteEncoder[UInt256].contramap(_.toUInt256)
   given Eq[ProposalId]          = Eq.by(_.toUInt256)
 
+/** Unique identifier for a consensus vote, represented as a 256-bit hash. */
 opaque type VoteId = UInt256
 
+/** Companion for `VoteId`. */
 object VoteId:
   private def renderHex(
       value: UInt256,
@@ -59,10 +63,13 @@ object VoteId:
   given ByteEncoder[VoteId] = ByteEncoder[UInt256].contramap(_.toUInt256)
   given Eq[VoteId]          = Eq.by(_.toUInt256)
 
+/** A validator's unique identity within the consensus protocol. */
 opaque type ValidatorId = String
 
+/** Companion for `ValidatorId`. */
 @SuppressWarnings(Array("org.wartremover.warts.Throw"))
 object ValidatorId:
+  /** Parses a validator ID from a string, validating the format. */
   def parse(
       value: String,
   ): Either[String, ValidatorId] =
@@ -70,6 +77,7 @@ object ValidatorId:
       .validateLowerAsciiToken("validatorId", value)
       .map(_ => value)
 
+  /** Parses a validator ID, throwing on invalid input. Intended for tests. */
   def unsafe(
       value: String,
   ): ValidatorId =
@@ -83,8 +91,10 @@ object ValidatorId:
     ByteEncoder[Utf8].contramap(id => Utf8(id.value))
   given Eq[ValidatorId] = Eq.by(_.value)
 
+/** The canonical hash of a validator set, used for cross-referencing between windows and sets. */
 opaque type ValidatorSetHash = UInt256
 
+/** Companion for `ValidatorSetHash`. */
 object ValidatorSetHash:
   private def renderHex(
       value: UInt256,
@@ -106,10 +116,13 @@ object ValidatorSetHash:
     ByteEncoder[UInt256].contramap(_.toUInt256)
   given Eq[ValidatorSetHash] = Eq.by(_.toUInt256)
 
+/** The block height within HotStuff consensus, represented as a non-negative big integer. */
 opaque type HotStuffHeight = BigNat
 
+/** Companion for `HotStuffHeight`. */
 @SuppressWarnings(Array("org.wartremover.warts.Throw"))
 object HotStuffHeight:
+  /** The genesis height (zero). */
   val Genesis: HotStuffHeight = BigNat.Zero
 
   def apply(
@@ -155,8 +168,10 @@ object HotStuffHeight:
   given Ordering[HotStuffHeight] =
     Ordering.by[HotStuffHeight, BigNat](_.toBigNat)(using BigNat.bignatOrdering)
 
+/** The view number within a HotStuff consensus height, represented as a non-negative big integer. */
 opaque type HotStuffView = BigNat
 
+/** Companion for `HotStuffView`. */
 @SuppressWarnings(Array("org.wartremover.warts.Throw"))
 object HotStuffView:
   val Zero: HotStuffView = BigNat.Zero
@@ -205,6 +220,13 @@ object HotStuffView:
   given Ordering[HotStuffView] =
     Ordering.by[HotStuffView, BigNat](_.toBigNat)(using BigNat.bignatOrdering)
 
+/** Identifies a specific consensus round by chain, height, view, and validator set.
+  *
+  * @param chainId the chain this window belongs to
+  * @param height the block height
+  * @param view the view number within this height
+  * @param validatorSetHash the hash of the active validator set
+  */
 final case class HotStuffWindow(
     chainId: ChainId,
     height: HotStuffHeight,
@@ -212,6 +234,7 @@ final case class HotStuffWindow(
     validatorSetHash: ValidatorSetHash,
 )
 
+/** Companion for `HotStuffWindow`. */
 object HotStuffWindow:
   given Eq[HotStuffWindow] = Eq.fromUniversalEquals
 
@@ -228,6 +251,7 @@ object HotStuffWindow:
       validatorSetHash = validatorSetHash,
     )
 
+/** Key for detecting equivocation (double-voting) by a validator in a specific window. */
 final case class EquivocationKey(
     chainId: ChainId,
     validatorId: ValidatorId,
@@ -235,6 +259,7 @@ final case class EquivocationKey(
     view: HotStuffView,
 )
 
+/** Companion for `EquivocationKey`. */
 object EquivocationKey:
   def apply(
       chainId: ChainId,
@@ -249,24 +274,41 @@ object EquivocationKey:
       view = HotStuffView.unsafeFromLong(view),
     )
 
+/** The role of the local node in the consensus network. */
 enum LocalNodeRole:
-  case Validator, Audit
+  /** A validator that actively participates in consensus. */
+  case Validator
+  /** An audit node that observes without voting. */
+  case Audit
 
+/** Companion for `LocalNodeRole`. */
 object LocalNodeRole:
   given Eq[LocalNodeRole] = Eq.fromUniversalEquals
 
+/** The operational status of a validator key holder. */
 enum ValidatorKeyHolderStatus:
-  case Active, Fenced
+  /** The key holder is active and allowed to sign. */
+  case Active
+  /** The key holder is fenced and signing is blocked. */
+  case Fenced
 
+/** Companion for `ValidatorKeyHolderStatus`. */
 object ValidatorKeyHolderStatus:
   given Eq[ValidatorKeyHolderStatus] = Eq.fromUniversalEquals
 
+/** Binds a validator ID to a peer that holds its signing key, with a status flag.
+  *
+  * @param validatorId the validator whose key is held
+  * @param holder the peer that holds the key
+  * @param status the current status (active or fenced)
+  */
 final case class ValidatorKeyHolder(
     validatorId: ValidatorId,
     holder: PeerIdentity,
     status: ValidatorKeyHolderStatus,
 )
 
+/** Policy limits for gossip request batching in the HotStuff protocol. */
 final case class HotStuffRequestPolicy(
     maxProposalRequestIds: Int,
     maxVoteRequestIds: Int,
@@ -279,7 +321,9 @@ final case class HotStuffRequestPolicy(
     "maxRetryAttemptsPerWindow must be non-negative",
   )
 
+/** Companion for `HotStuffRequestPolicy`. */
 object HotStuffRequestPolicy:
+  /** The default request policy. */
   val default: HotStuffRequestPolicy =
     HotStuffRequestPolicy(
       maxProposalRequestIds = 128,
@@ -287,6 +331,7 @@ object HotStuffRequestPolicy:
       maxRetryAttemptsPerWindow = 2,
     )
 
+/** Deployment target parameters for block production timing. */
 final case class HotStuffDeploymentTarget(
     blockProductionInterval: Duration,
 ):
@@ -299,15 +344,20 @@ final case class HotStuffDeploymentTarget(
     "blockProductionInterval must be positive",
   )
 
+/** Companion for `HotStuffDeploymentTarget`. */
 object HotStuffDeploymentTarget:
+  /** The default deployment target (100ms block production interval). */
   val default: HotStuffDeploymentTarget =
     HotStuffDeploymentTarget(blockProductionInterval = Duration.ofMillis(100))
 
+/** Controls whether validated artifacts are relayed to the gossip source for re-broadcast. */
 final case class HotStuffRelayPolicy(
     relayValidatedArtifacts: Boolean,
 )
 
+/** Companion for `HotStuffRelayPolicy`. */
 object HotStuffRelayPolicy:
+  /** Returns the relay policy appropriate for the given node role. */
   def forRole(
       role: LocalNodeRole,
   ): HotStuffRelayPolicy =
@@ -315,22 +365,29 @@ object HotStuffRelayPolicy:
       relayValidatedArtifacts = role === LocalNodeRole.Audit,
     )
 
+/** Represents a policy violation during HotStuff consensus operations. */
 final case class HotStuffPolicyViolation(
     reason: String,
     detail: Option[String],
 )
 
+/** Companion for `HotStuffPolicyViolation`. */
 object HotStuffPolicyViolation:
+  /** Creates a policy violation without detail. */
   def withoutDetail(
       reason: String,
   ): HotStuffPolicyViolation =
     HotStuffPolicyViolation(reason = reason, detail = None)
 
+/** Central policy constants and utility functions for the HotStuff consensus protocol. */
 object HotStuffPolicy:
+  /** The default request policy. */
   val requestPolicy: HotStuffRequestPolicy = HotStuffRequestPolicy.default
+  /** The default deployment target. */
   val deploymentTarget: HotStuffDeploymentTarget =
     HotStuffDeploymentTarget.default
 
+  /** Computes the BFT quorum size (n - f where f = (n-1)/3) for the given validator count. */
   def quorumSize(
       activeValidatorCount: Int,
   ): Int =
@@ -338,6 +395,7 @@ object HotStuffPolicy:
     val toleratedFaults = (activeValidatorCount - 1) / 3
     activeValidatorCount - toleratedFaults
 
+  /** Validates that no validator has multiple active key holders on different peers. */
   def ensureDistinctActiveKeyHolders(
       holders: Vector[ValidatorKeyHolder],
   ): Either[HotStuffPolicyViolation, Vector[ValidatorKeyHolder]] =
@@ -369,6 +427,7 @@ object HotStuffPolicy:
       case _ =>
         holders.asRight[HotStuffPolicyViolation]
 
+  /** Checks whether the local peer is allowed to emit consensus artifacts for the given validator. */
   def canEmitLocally(
       role: LocalNodeRole,
       localPeer: PeerIdentity,

@@ -9,9 +9,23 @@ import com.typesafe.config.Config
 import org.sigilaris.core.util.SafeStringInterp.*
 
 @SuppressWarnings(Array("org.wartremover.warts.DefaultArguments"))
+/** Loads a `StaticPeerTransportAuth` from Typesafe Config. */
 object StaticPeerTransportAuthConfig:
+
+  /** Default config path for transport auth settings. */
   val DefaultPath: String = StaticPeerTopologyConfig.DefaultPath
 
+  /** Loads transport auth from the given config at the specified path.
+    *
+    * @param config
+    *   the root config
+    * @param topology
+    *   the peer topology for validation
+    * @param path
+    *   the config path to read from
+    * @return
+    *   the transport auth, or an error message
+    */
   def load(
       config: Config,
       topology: StaticPeerTopology,
@@ -25,6 +39,15 @@ object StaticPeerTransportAuthConfig:
       )
       .flatMap(loadSection(_, topology))
 
+  /** Loads transport auth from a pre-resolved config section.
+    *
+    * @param section
+    *   the config section at the gossip path
+    * @param topology
+    *   the peer topology for validation
+    * @return
+    *   the transport auth, or an error message
+    */
   def loadSection(
       section: Config,
       topology: StaticPeerTopology,

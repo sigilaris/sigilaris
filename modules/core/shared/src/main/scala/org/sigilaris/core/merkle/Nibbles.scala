@@ -37,6 +37,7 @@ opaque type Nibbles = BitVector :| Nibbles.NibbleCond
 
 /** Companion object for Nibbles providing creation and manipulation methods. */
 object Nibbles:
+  /** Refinement constraint requiring the bit length to be a multiple of 4. */
   type NibbleCond = Length[Multiple[4L]]
 
   /** Empty Nibbles value. */

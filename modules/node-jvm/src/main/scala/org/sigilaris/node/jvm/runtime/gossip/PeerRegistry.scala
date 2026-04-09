@@ -2,18 +2,57 @@ package org.sigilaris.node.jvm.runtime.gossip
 
 import cats.syntax.all.*
 
+/** A static, immutable description of the peer topology for a gossip node.
+  *
+  * @param localNodeIdentity
+  *   the identity of the local node
+  * @param knownPeers
+  *   all known peer identities (excluding the local node)
+  * @param directNeighbors
+  *   the subset of known peers that are direct neighbors
+  */
 final case class StaticPeerTopology(
     localNodeIdentity: PeerIdentity,
     knownPeers: Set[PeerIdentity],
     directNeighbors: Set[PeerIdentity],
 ):
+
+  /** Checks whether the given peer is in the set of known peers.
+    *
+    * @param peer
+    *   the peer identity to check
+    * @return
+    *   true if known
+    */
   def isKnownPeer(peer: PeerIdentity): Boolean =
     knownPeers.contains(peer)
 
+  /** Checks whether the given peer is a direct neighbor.
+    *
+    * @param peer
+    *   the peer identity to check
+    * @return
+    *   true if a direct neighbor
+    */
   def isDirectNeighbor(peer: PeerIdentity): Boolean =
     directNeighbors.contains(peer)
 
+/** Companion for `StaticPeerTopology` providing parsing from raw strings. */
 object StaticPeerTopology:
+
+  /** Parses a static peer topology from raw string values, validating that
+    * direct neighbors are a subset of known peers and the local node is not in
+    * known peers.
+    *
+    * @param localNodeIdentity
+    *   the local node identity string
+    * @param knownPeers
+    *   the list of known peer identity strings
+    * @param directNeighbors
+    *   the list of direct neighbor identity strings
+    * @return
+    *   the validated topology, or an error message
+    */
   def parse(
       localNodeIdentity: String,
       knownPeers: List[String],

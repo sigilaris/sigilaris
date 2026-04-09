@@ -4,10 +4,23 @@ import scodec.bits.ByteVector
 
 import org.sigilaris.core.application.state.AccessLog
 
+/** Describes the set of state references a transaction reads from and writes to.
+  *
+  * Used by the batch scheduler to detect read-write and write-write conflicts
+  * between transactions within a batch.
+  *
+  * @param reads the state references read by the transaction
+  * @param writes the state references written by the transaction
+  */
 final case class ConflictFootprint(
     reads: Set[StateRef],
     writes: Set[StateRef],
 ):
+  /** Combines this footprint with another by unioning reads and writes.
+    *
+    * @param other the other footprint
+    * @return the combined footprint
+    */
   def combine(
       other: ConflictFootprint,
   ): ConflictFootprint =
@@ -16,6 +29,11 @@ final case class ConflictFootprint(
       writes = writes ++ other.writes,
     )
 
+  /** Tests whether this footprint conflicts with another.
+    *
+    * @param other the other footprint to test against
+    * @return true if there is a read-write or write-write overlap
+    */
   def conflictsWith(
       other: ConflictFootprint,
   ): Boolean =
@@ -24,6 +42,11 @@ final case class ConflictFootprint(
       writesSeen = writes,
     ).accept((), other).isLeft
 
+  /** Computes the reads and writes in this footprint that are not in the declared footprint.
+    *
+    * @param declared the declared footprint to compare against
+    * @return a footprint containing only the unexpected state references
+    */
   def unexpectedAgainst(
       declared: ConflictFootprint,
   ): ConflictFootprint =
@@ -32,18 +55,30 @@ final case class ConflictFootprint(
       writes = writes.diff(declared.writes),
     )
 
+/** Companion for [[ConflictFootprint]], providing construction from access logs. */
 object ConflictFootprint:
+  /** Indicates an access log entry where the stored key does not have the expected table prefix.
+    *
+    * @param tablePrefix the expected table prefix
+    * @param key the actual key that violates the invariant
+    */
   final case class AccessLogInvariantViolation(
       tablePrefix: ByteVector,
       key: ByteVector,
   )
 
+  /** An empty footprint with no reads or writes. */
   val empty: ConflictFootprint =
     ConflictFootprint(
       reads = Set.empty,
       writes = Set.empty,
     )
 
+  /** Constructs a ConflictFootprint from an access log, validating the prefix invariant.
+    *
+    * @param accessLog the access log recorded during transaction execution
+    * @return either an invariant violation or the derived footprint
+    */
   def fromAccessLog(
       accessLog: AccessLog,
   ): Either[AccessLogInvariantViolation, ConflictFootprint] =

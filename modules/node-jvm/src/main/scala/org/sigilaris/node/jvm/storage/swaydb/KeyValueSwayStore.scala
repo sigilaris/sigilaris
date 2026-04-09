@@ -18,6 +18,14 @@ import swaydb.data.slice.Slice
 
 import StoreIndexSwayInterpreter.given
 
+/** `KeyValueStore` implementation backed by a SwayDB persistent map.
+  *
+  * Values are serialized to byte arrays using `ByteEncoder`/`ByteDecoder`.
+  *
+  * @tparam K the key type
+  * @tparam V the value type, which must have byte codec instances
+  * @param map the underlying SwayDB map
+  */
 final class KeyValueSwayStore[K, V: ByteEncoder: ByteDecoder](
     map: Map[K, Array[Byte], Nothing, IO],
 ) extends KeyValueStore[IO, K, V]:
@@ -44,9 +52,11 @@ final class KeyValueSwayStore[K, V: ByteEncoder: ByteDecoder](
   override def remove(key: K): IO[Unit] =
     map.remove(key).void
 
+  /** Closes the underlying SwayDB map and releases resources. */
   def close(): IO[Unit] =
     map.close().void
 
+/** Factory methods for creating `KeyValueSwayStore` instances. */
 object KeyValueSwayStore:
   private[swaydb] def openMap[K: ByteEncoder: ByteDecoder](
       dir: Path,
@@ -63,6 +73,13 @@ object KeyValueSwayStore:
 
     swaydb.persistent.Map[K, Array[Byte], Nothing, IO](dir)
 
+  /** Creates a new `KeyValueSwayStore` by opening a persistent SwayDB map at the given directory.
+    *
+    * @tparam K the key type
+    * @tparam V the value type
+    * @param dir the filesystem directory for the SwayDB storage
+    * @return an IO that yields the constructed store
+    */
   def apply[K: ByteEncoder: ByteDecoder, V: ByteEncoder: ByteDecoder](
       dir: Path,
   )(using Bag.Async[IO]): IO[KeyValueSwayStore[K, V]] =

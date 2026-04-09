@@ -61,6 +61,7 @@ import failure.DecodeFailure
   */
 opaque type BigNat = BigInt :| Positive0
 
+/** Companion object providing constructors, arithmetic, and typeclass instances for [[BigNat]]. */
 object BigNat:
   /** The natural number zero. */
   val Zero: BigNat = BigInt(0)

@@ -21,6 +21,11 @@ import failure.DecodeFailure
   *
   * See also: [[JsonEncoder]] for encoding only, [[JsonDecoder]] for decoding
   * only
+  *
+  * @param encoder
+  *   the JSON encoder for type A
+  * @param decoder
+  *   the JSON decoder for type A
   */
 final case class JsonCodec[A](encoder: JsonEncoder[A], decoder: JsonDecoder[A]):
   /** Encodes a value using the bundled encoder.
@@ -45,18 +50,24 @@ final case class JsonCodec[A](encoder: JsonEncoder[A], decoder: JsonDecoder[A]):
 object JsonCodec:
   /** Builds a [[JsonCodec]] from explicit encoder and decoder.
     *
-    * ```scala
-    * val codec = JsonCodec.instance(myEncoder, myDecoder)
-    * ```
+    * @param enc
+    *   the encoder
+    * @param dec
+    *   the decoder
+    * @return
+    *   a JsonCodec wrapping both
     */
   def instance[A](enc: JsonEncoder[A], dec: JsonDecoder[A]): JsonCodec[A] =
     JsonCodec(enc, dec)
 
   /** Alias of `instance` for conciseness.
     *
-    * ```scala
-    * val codec = JsonCodec.of(myEncoder, myDecoder)
-    * ```
+    * @param enc
+    *   the encoder
+    * @param dec
+    *   the decoder
+    * @return
+    *   a JsonCodec wrapping both
     */
   def of[A](enc: JsonEncoder[A], dec: JsonDecoder[A]): JsonCodec[A] =
     JsonCodec(enc, dec)
@@ -111,6 +122,11 @@ object JsonCodec:
       * import MyCodecs.given
       * ```
       */
+    /** @param enc
+      *   the configured encoder bundle
+      * @param dec
+      *   the configured decoder bundle
+      */
     final class Codecs(
         val enc: JsonEncoder.configured.Encoders,
         val dec: JsonDecoder.configured.Decoders,
@@ -119,6 +135,11 @@ object JsonCodec:
       export dec.given
 
     /** Creates a codec bundle with a specific configuration.
+      *
+      * @param config
+      *   the JSON configuration to use
+      * @return
+      *   a codec bundle with encoder and decoder instances bound to the config
       *
       * ```scala
       * val cfg    = JsonConfig.default.copy(dropNullValues = false)

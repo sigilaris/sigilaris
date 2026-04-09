@@ -51,14 +51,19 @@ object AccountsSchema:
       keyIdResult.remainder,
     )
 
+  /** The accounts module table schema: accounts table and name-key lookup table. */
   type AccountsSchema = (
       Entry["accounts", Utf8, AccountInfo],
       Entry["nameKey", (Utf8, KeyId20), KeyInfo],
   )
 
+  /** Entry descriptor for the accounts table (name -> account info). */
   val accountsEntry = new Entry["accounts", Utf8, AccountInfo]("accounts")
+
+  /** Entry descriptor for the name-key table ((name, keyId) -> key info). */
   val nameKeyEntry  = new Entry["nameKey", (Utf8, KeyId20), KeyInfo]("nameKey")
 
+  /** All entry descriptors for the accounts module as a typed tuple. */
   val accountsEntries: AccountsSchema =
     accountsEntry *: nameKeyEntry *: EmptyTuple
 
@@ -74,6 +79,8 @@ object AccountsSchema:
   * Signature verification follows ADR-0012 and is delegated to the shared
   * `SignatureVerifier` utility to guarantee consistent key recovery and
   * expiration checks.
+  *
+  * @tparam F the effect type
   */
 @SuppressWarnings(
   Array(
@@ -594,6 +601,7 @@ class AccountsReducer[F[_]: Monad]
   * and Key Management).
   */
 object AccountsBP:
+  /** Tuple of all transaction types supported by the accounts module. */
   type AccountsTxs =
     CreateNamedAccount *: UpdateAccount *: AddKeyIds *: RemoveKeyIds *:
       RemoveAccount *: EmptyTuple
@@ -604,6 +612,12 @@ object AccountsBP:
   given ReducerCoverage[RemoveKeyIds] with       {}
   given ReducerCoverage[RemoveAccount] with      {}
 
+  /** Creates the accounts module blueprint for a given effect type.
+    *
+    * @tparam F the effect type
+    * @param nodeStore the MerkleTrie node store
+    * @return a ModuleBlueprint for the accounts module
+    */
   def apply[F[_]: Monad](using
       @annotation.unused nodeStore: org.sigilaris.core.merkle.MerkleTrie.NodeStore[
         F,

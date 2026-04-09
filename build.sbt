@@ -138,7 +138,7 @@ lazy val root = (project in file("."))
   .enablePlugins(TypelevelSitePlugin, ScalaUnidocPlugin)
   .settings(
     publish / skip := true,
-    (ScalaUnidoc / unidoc) / unidocProjectFilter := inProjects(core.jvm),
+    (ScalaUnidoc / unidoc) / unidocProjectFilter := inProjects(core.jvm, nodeJvm),
     // Map unidoc into site output so preview won't drop it
     ScalaUnidoc / siteSubdirName := "api",
     addMappingsToSiteDir(ScalaUnidoc / packageDoc / mappings, ScalaUnidoc / siteSubdirName),

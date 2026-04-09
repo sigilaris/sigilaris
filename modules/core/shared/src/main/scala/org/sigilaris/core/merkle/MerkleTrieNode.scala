@@ -210,6 +210,7 @@ object MerkleTrieNode:
   /** Array of 16 optional child node hashes. */
   type Children = Vector[Option[MerkleHash]] :| ChildrenCondition
 
+  /** Refinement constraint requiring exactly 16 elements in a Children vector. */
   type ChildrenCondition = Length[StrictEqual[16]]
 
   extension (c: Children)

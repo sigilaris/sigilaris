@@ -37,6 +37,7 @@ final case class CreateGroup(
   type Result = GroupsResult[Unit]
   type Event  = GroupsEvent[GroupCreated]
 
+/** Companion for [[CreateGroup]], providing codec and crypto instances. */
 object CreateGroup:
   given createGroupEq: Eq[CreateGroup]           = Eq.fromUniversalEquals
   given createGroupHash: Hash[CreateGroup]       = Hash.build
@@ -66,6 +67,7 @@ final case class DisbandGroup(
   type Result = GroupsResult[Unit]
   type Event  = GroupsEvent[GroupDisbanded]
 
+/** Companion for [[DisbandGroup]], providing codec and crypto instances. */
 object DisbandGroup:
   given disbandGroupEq: Eq[DisbandGroup]           = Eq.fromUniversalEquals
   given disbandGroupHash: Hash[DisbandGroup]       = Hash.build
@@ -100,6 +102,7 @@ final case class AddAccounts(
   type Result = GroupsResult[Unit]
   type Event  = GroupsEvent[GroupMembersAdded]
 
+/** Companion for [[AddAccounts]], providing codec and crypto instances. */
 object AddAccounts:
   given addAccountsEq: Eq[AddAccounts]           = Eq.fromUniversalEquals
   given addAccountsHash: Hash[AddAccounts]       = Hash.build
@@ -134,6 +137,7 @@ final case class RemoveAccounts(
   type Result = GroupsResult[Unit]
   type Event  = GroupsEvent[GroupMembersRemoved]
 
+/** Companion for [[RemoveAccounts]], providing codec and crypto instances. */
 object RemoveAccounts:
   given removeAccountsEq: Eq[RemoveAccounts]           = Eq.fromUniversalEquals
   given removeAccountsHash: Hash[RemoveAccounts]       = Hash.build
@@ -166,24 +170,55 @@ final case class ReplaceCoordinator(
   type Result = GroupsResult[Unit]
   type Event  = GroupsEvent[GroupCoordinatorReplaced]
 
+/** Companion for [[ReplaceCoordinator]], providing codec and crypto instances. */
 object ReplaceCoordinator:
   given replaceCoordinatorEq: Eq[ReplaceCoordinator] = Eq.fromUniversalEquals
   given replaceCoordinatorHash: Hash[ReplaceCoordinator]       = Hash.build
   given replaceCoordinatorRecover: Recover[ReplaceCoordinator] = Recover.build
 
-// Event types
+/** Sealed base trait for all group-related domain events. */
 sealed trait GroupEvent
 
+/** Event emitted when a new group is created.
+  *
+  * @param groupId the group identifier
+  * @param coordinator the initial coordinator account
+  * @param name the human-readable group name
+  */
 final case class GroupCreated(
     groupId: GroupId,
     coordinator: Account,
     name: Utf8,
 ) extends GroupEvent
+
+/** Event emitted when a group is disbanded.
+  *
+  * @param groupId the group identifier
+  */
 final case class GroupDisbanded(groupId: GroupId) extends GroupEvent
+
+/** Event emitted when members are added to a group.
+  *
+  * @param groupId the group identifier
+  * @param added the set of accounts actually added (excludes already-present members)
+  */
 final case class GroupMembersAdded(groupId: GroupId, added: Set[Account])
     extends GroupEvent
+
+/** Event emitted when members are removed from a group.
+  *
+  * @param groupId the group identifier
+  * @param removed the set of accounts actually removed
+  */
 final case class GroupMembersRemoved(groupId: GroupId, removed: Set[Account])
     extends GroupEvent
+
+/** Event emitted when a group's coordinator is replaced.
+  *
+  * @param groupId the group identifier
+  * @param oldCoordinator the previous coordinator account
+  * @param newCoordinator the new coordinator account
+  */
 final case class GroupCoordinatorReplaced(
     groupId: GroupId,
     oldCoordinator: Account,

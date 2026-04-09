@@ -8,16 +8,26 @@ import org.sigilaris.core.datatype.UInt256
 import org.sigilaris.core.util.SafeStringInterp.*
 import org.sigilaris.node.jvm.runtime.block.BlockHeader
 
+/** Outcome of recording a vote into the accumulator. */
 enum VoteRecordOutcome:
-  case Applied, Duplicate
+  /** The vote was successfully recorded. */
+  case Applied
+  /** The vote was already present. */
+  case Duplicate
 
+/** Outcome of recording a timeout vote into the accumulator. */
 enum TimeoutVoteRecordOutcome:
-  case Applied, Duplicate
+  /** The timeout vote was successfully recorded. */
+  case Applied
+  /** The timeout vote was already present. */
+  case Duplicate
 
+/** Accumulates votes and detects equivocations (double-voting). */
 final case class VoteAccumulator(
     votesById: Map[VoteId, Vote],
     votesByEquivocationKey: Map[EquivocationKey, Vote],
 ):
+  /** Records a vote, detecting duplicates and equivocations. */
   def record(
       vote: Vote,
   ): Either[HotStuffValidationFailure, (VoteAccumulator, VoteRecordOutcome)] =
@@ -47,6 +57,7 @@ final case class VoteAccumulator(
               ) -> VoteRecordOutcome.Applied
             ).asRight[HotStuffValidationFailure]
 
+  /** Returns all votes for the given window and proposal ID. */
   def votesFor(
       window: HotStuffWindow,
       proposalId: ProposalId,
@@ -58,13 +69,16 @@ final case class VoteAccumulator(
       .filter: vote =>
         vote.window === window && vote.targetProposalId === proposalId
 
+/** Companion for `VoteAccumulator`. */
 object VoteAccumulator:
+  /** An empty vote accumulator. */
   val empty: VoteAccumulator =
     VoteAccumulator(
       votesById = Map.empty[VoteId, Vote],
       votesByEquivocationKey = Map.empty[EquivocationKey, Vote],
     )
 
+/** Accumulates timeout votes and detects equivocations. */
 final case class TimeoutVoteAccumulator(
     votesById: Map[TimeoutVoteId, TimeoutVote],
     votesByEquivocationKey: Map[EquivocationKey, TimeoutVote],
@@ -107,14 +121,18 @@ final case class TimeoutVoteAccumulator(
   ): Vector[TimeoutVote] =
     votesById.values.toVector.filter(_.subject === subject)
 
+/** Companion for `TimeoutVoteAccumulator`. */
 object TimeoutVoteAccumulator:
+  /** An empty timeout vote accumulator. */
   val empty: TimeoutVoteAccumulator =
     TimeoutVoteAccumulator(
       votesById = Map.empty[TimeoutVoteId, TimeoutVote],
       votesByEquivocationKey = Map.empty[EquivocationKey, TimeoutVote],
     )
 
+/** Assembles a quorum certificate from collected votes, verifying signatures and quorum threshold. */
 object QuorumCertificateAssembler:
+  /** Assembles a QC from votes for the given subject, verifying each vote and checking the quorum. */
   def assemble(
       subject: QuorumCertificateSubject,
       votes: Vector[Vote],
@@ -164,7 +182,9 @@ object QuorumCertificateAssembler:
       votes = byValidator.values.toVector.sortBy(_.voter.value),
     )
 
+/** Assembles a timeout certificate from collected timeout votes, verifying signatures and quorum. */
 object TimeoutCertificateAssembler:
+  /** Assembles a TC from timeout votes for the given subject, verifying each vote and checking the quorum. */
   def assemble(
       subject: TimeoutVoteSubject,
       votes: Vector[TimeoutVote],
@@ -224,8 +244,10 @@ object TimeoutCertificateAssembler:
       ),
     )
 
+/** Validates HotStuff consensus artifacts: proposals, votes, QCs, timeout votes, TCs, and new views. */
 @SuppressWarnings(Array("org.wartremover.warts.DefaultArguments"))
 object HotStuffValidator:
+  /** Validates a proposal's structure, signature, and justify chain against the validator set. */
   def validateProposal(
       proposal: Proposal,
       validatorSet: ValidatorSet,
@@ -315,6 +337,7 @@ object HotStuffValidator:
       )
     yield ()
 
+  /** Validates a vote's structure, signature, and membership in the validator set. */
   def validateVote(
       vote: Vote,
       validatorSet: ValidatorSet,
@@ -365,6 +388,7 @@ object HotStuffValidator:
       )
     yield ()
 
+  /** Validates a quorum certificate by re-assembling it from the contained votes. */
   def validateQuorumCertificate(
       qc: QuorumCertificate,
       validatorSet: ValidatorSet,
@@ -380,6 +404,7 @@ object HotStuffValidator:
         .void
     yield ()
 
+  /** Validates a timeout vote's structure, signature, and membership. */
   def validateTimeoutVote(
       vote: TimeoutVote,
       validatorSet: ValidatorSet,
@@ -418,6 +443,7 @@ object HotStuffValidator:
       )
     yield ()
 
+  /** Validates a timeout certificate by re-assembling it from the contained votes. */
   def validateTimeoutCertificate(
       timeoutCertificate: TimeoutCertificate,
       validatorSet: ValidatorSet,
@@ -433,6 +459,7 @@ object HotStuffValidator:
         .void
     yield ()
 
+  /** Validates a new-view message's structure, signature, QC, TC, and window consistency. */
   def validateNewView(
       newView: NewView,
       validatorSet: ValidatorSet,

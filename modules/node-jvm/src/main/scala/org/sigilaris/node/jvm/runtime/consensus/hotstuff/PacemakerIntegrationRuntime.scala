@@ -19,11 +19,13 @@ import org.sigilaris.node.jvm.runtime.block.{
 }
 import org.sigilaris.node.jvm.runtime.gossip.*
 
+/** Identifies a pacemaker entry by chain and local validator. */
 final case class HotStuffPacemakerKey(
     chainId: ChainId,
     localValidator: ValidatorId,
 )
 
+/** A snapshot of a single pacemaker entry's state for diagnostics. */
 final case class HotStuffPacemakerEntrySnapshot(
     state: Option[HotStuffPacemakerState],
     diagnostics: Vector[HotStuffPacemakerDiagnostic],
@@ -31,11 +33,14 @@ final case class HotStuffPacemakerEntrySnapshot(
     emittedProposalWindow: Option[HotStuffWindow],
 )
 
+/** A snapshot of all pacemaker entries for diagnostics and testing. */
 final case class HotStuffPacemakerRuntimeSnapshot(
     entries: Map[HotStuffPacemakerKey, HotStuffPacemakerEntrySnapshot],
 )
 
+/** Companion for `HotStuffPacemakerRuntimeSnapshot`. */
 object HotStuffPacemakerRuntimeSnapshot:
+  /** An empty pacemaker runtime snapshot. */
   val empty: HotStuffPacemakerRuntimeSnapshot =
     HotStuffPacemakerRuntimeSnapshot(
       entries = Map.empty[HotStuffPacemakerKey, HotStuffPacemakerEntrySnapshot],

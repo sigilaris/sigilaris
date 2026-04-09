@@ -86,7 +86,11 @@ trait JsonDecoder[A]:
       def decode(json: JsonValue): Either[DecodeFailure, B] =
         self.decode(json).flatMap(f)
 
-// Shared instance provider using an abstract config (top-level trait)
+/** Shared provider of JSON decoder instances parameterized by [[JsonConfig]].
+  *
+  * Subclassed by [[JsonDecoder]] (default config) and
+  * [[JsonDecoder.configured.Decoders]] (custom config).
+  */
 trait JsonDecoderInstances:
   protected def config: JsonConfig
 
@@ -109,37 +113,44 @@ trait JsonDecoderInstances:
     DecodeFailure(ss"Expected ${expected}, got ${got.getClass.getSimpleName}")
       .asLeft[A]
 
+  /** Decodes JBool to Boolean. */
   given booleanDecoder: JsonDecoder[Boolean] = mk: (j, _) =>
     j match
       case JsonValue.JBool(b) => success(b)
       case other              => typeMismatch[Boolean]("boolean", other)
 
+  /** Decodes JString to String. */
   given stringDecoder: JsonDecoder[String] = mk: (j, _) =>
     j match
       case JsonValue.JString(s) => success(s)
       case other                => typeMismatch[String]("string", other)
 
+  /** Decodes JNumber to Int. */
   given intDecoder: JsonDecoder[Int] = mk: (j, _) =>
     j match
       case JsonValue.JNumber(n) => success(n.toInt)
       case other                => typeMismatch[Int]("number", other)
 
+  /** Decodes JNumber to Long. */
   given longDecoder: JsonDecoder[Long] = mk: (j, _) =>
     j match
       case JsonValue.JNumber(n) => success(n.toLong)
       case other                => typeMismatch[Long]("number", other)
 
+  /** Decodes JNumber to Double. */
   given doubleDecoder: JsonDecoder[Double] = mk: (j, _) =>
     j match
       case JsonValue.JNumber(n) => success(n.toDouble)
       case other                => typeMismatch[Double]("number", other)
 
+  /** Decodes BigInt from JString or JNumber depending on config. */
   given bigIntDecoder: JsonDecoder[BigInt] = mk: (j, cfg) =>
     j match
       case JsonValue.JString(s) if cfg.writeBigIntAsString => success(BigInt(s))
       case JsonValue.JNumber(n) => success(n.toBigInt)
       case other => typeMismatch[BigInt]("bigint (string or number)", other)
 
+  /** Decodes BigDecimal from JString or JNumber depending on config. */
   given bigDecimalDecoder: JsonDecoder[BigDecimal] = mk: (j, cfg) =>
     j match
       case JsonValue.JString(s) if cfg.writeBigDecimalAsString =>
@@ -148,17 +159,20 @@ trait JsonDecoderInstances:
       case other =>
         typeMismatch[BigDecimal]("bigdecimal (string or number)", other)
 
+  /** Decodes Instant from ISO-8601 JString. */
   given instantDecoder: JsonDecoder[Instant] = mk: (j, _) =>
     j match
       case JsonValue.JString(s) => success(Instant.parse(s))
       case other => typeMismatch[Instant]("instant (ISO-8601 string)", other)
 
+  /** Decodes Option, treating JNull as None. */
   given optionDecoder[A: JsonDecoder]: JsonDecoder[Option[A]] =
     mk: (j, _) =>
       j match
         case JsonValue.JNull => success(None)
         case other           => JsonDecoder[A].decode(other).map(Some(_))
 
+  /** Decodes JArray to List. */
   given listDecoder[A: JsonDecoder]: JsonDecoder[List[A]] = mk: (j, _) =>
     j match
       case JsonValue.JArray(arr) =>
@@ -169,13 +183,14 @@ trait JsonDecoderInstances:
           .map(_.reverse)
       case other => typeMismatch[List[A]]("array", other)
 
+  /** Decodes JArray to Vector. */
   given vectorDecoder[A: JsonDecoder]: JsonDecoder[Vector[A]] =
     mk: (j, _) =>
       listDecoder[A].decode(j).map(_.toVector)
 
-  /** Decode Map[K, V] by converting field names with JsonKeyCodec[K].
-    *   - Fails on key parse errors
-    *   - Fails on duplicate decoded keys after normalization
+  /** Decodes JObject to Map by converting field names with [[JsonKeyCodec]].
+    *
+    * Fails on key parse errors or duplicate decoded keys after normalization.
     */
   given mapDecoder[K: JsonKeyCodec, V: JsonDecoder]: JsonDecoder[Map[K, V]] =
     mk:
@@ -225,7 +240,7 @@ trait JsonDecoderInstances:
       case FieldNamingPolicy.KebabCase =>
         name.replaceAll("([a-z0-9])([A-Z])", "$1-$2").toLowerCase(Locale.ROOT)
 
-  // --- Derivation: Product -----------------------------------------------
+  /** Derives a decoder for product types (case classes) by decoding each field from a JObject. */
   @SuppressWarnings(
     Array(
       "org.wartremover.warts.AsInstanceOf",
@@ -262,7 +277,7 @@ trait JsonDecoderInstances:
         m.fromProduct(tuple)
     case (other, _) => typeMismatch[A]("object", other)
 
-  // --- Derivation: Sum (wrapped-by-type-key) -----------------------------
+  /** Derives a decoder for sum types (sealed traits/enums) using wrapped-by-type-key discriminator. */
   @SuppressWarnings(
     Array(
       "org.wartremover.warts.AsInstanceOf",
@@ -335,4 +350,12 @@ object JsonDecoder extends JsonDecoderInstances:
       * ```
       */
     final class Decoders(val config: JsonConfig) extends JsonDecoderInstances
+
+    /** Creates a decoder bundle bound to the given configuration.
+      *
+      * @param config
+      *   the JSON configuration
+      * @return
+      *   a Decoders instance providing configured given instances
+      */
     def apply(config: JsonConfig): Decoders = new Decoders(config)

@@ -6,42 +6,128 @@ import cats.syntax.all.*
 
 import org.sigilaris.core.codec.byte.ByteEncoder
 
+/** Read-only query interface for retrieving block headers, bodies, and views.
+  *
+  * @tparam F
+  *   effect type
+  * @tparam TxRef
+  *   transaction reference type
+  * @tparam ResultRef
+  *   result reference type
+  * @tparam Event
+  *   event type
+  */
 trait BlockQuery[F[_], TxRef, ResultRef, Event]:
+
+  /** Retrieves a block header by its identifier.
+    *
+    * @param blockId
+    *   the block identifier to look up
+    * @return
+    *   `Some(header)` if found, `None` otherwise
+    */
   def getHeader(
       blockId: BlockId,
   ): F[Option[BlockHeader]]
 
+  /** Retrieves a block body by the block identifier.
+    *
+    * @param blockId
+    *   the block identifier to look up
+    * @return
+    *   `Some(body)` if found, `None` otherwise
+    */
   def getBody(
       blockId: BlockId,
   ): F[Option[BlockBody[TxRef, ResultRef, Event]]]
 
+  /** Retrieves and validates a combined block view (header + body).
+    *
+    * @param blockId
+    *   the block identifier to look up
+    * @return
+    *   `Right(Some(view))` if both parts exist and are valid,
+    *   `Right(None)` if either part is missing, or
+    *   `Left(failure)` if validation fails
+    */
   def getView(
       blockId: BlockId,
   ): EitherT[F, BlockValidationFailure, Option[
     BlockView[TxRef, ResultRef, Event],
   ]]
 
+/** Mutable store for persisting and retrieving blocks, extending
+  * `BlockQuery` with write operations.
+  *
+  * @tparam F
+  *   effect type
+  * @tparam TxRef
+  *   transaction reference type
+  * @tparam ResultRef
+  *   result reference type
+  * @tparam Event
+  *   event type
+  */
 trait BlockStore[F[_], TxRef, ResultRef, Event]
     extends BlockQuery[F, TxRef, ResultRef, Event]:
 
+  /** Stores a block header and returns its computed `BlockId`.
+    *
+    * @param header
+    *   the block header to persist
+    * @return
+    *   the computed block identifier
+    */
   def putHeader(
       header: BlockHeader,
   ): F[BlockId]
 
-  // Split storage is allowed to receive a body before its header is available.
-  // When the header is already present, the write path rejects a mismatched
-  // `bodyRoot` immediately; otherwise `getView` remains the hydration-time
-  // integrity gate once both halves exist.
+  /** Stores a block body, optionally validating against an existing header.
+    *
+    * Split storage is allowed to receive a body before its header is available.
+    * When the header is already present, the write path rejects a mismatched
+    * `bodyRoot` immediately; otherwise `getView` remains the hydration-time
+    * integrity gate once both halves exist.
+    *
+    * @param blockId
+    *   the block identifier to associate the body with
+    * @param body
+    *   the block body to persist
+    * @return
+    *   `Right(())` on success, or `Left(failure)` on validation error
+    */
   def putBody(
       blockId: BlockId,
       body: BlockBody[TxRef, ResultRef, Event],
   ): EitherT[F, BlockValidationFailure, Unit]
 
+  /** Validates and stores a complete block view (header + body) atomically.
+    *
+    * @param view
+    *   the block view to persist
+    * @return
+    *   `Right(blockId)` on success, or `Left(failure)` on validation error
+    */
   def putView(
       view: BlockView[TxRef, ResultRef, Event],
   ): EitherT[F, BlockValidationFailure, BlockId]
 
+/** Companion for `BlockStore` providing factory methods. */
 object BlockStore:
+
+  /** Creates a new in-memory `BlockStore` backed by `Ref`-based maps.
+    *
+    * @tparam F
+    *   effect type with `Sync` capability
+    * @tparam TxRef
+    *   transaction reference type
+    * @tparam ResultRef
+    *   result reference type
+    * @tparam Event
+    *   event type
+    * @return
+    *   an effectfully allocated in-memory block store
+    */
   def inMemory[F[_]
     : Sync, TxRef: ByteEncoder, ResultRef: ByteEncoder, Event: ByteEncoder]
       : F[BlockStore[F, TxRef, ResultRef, Event]] =

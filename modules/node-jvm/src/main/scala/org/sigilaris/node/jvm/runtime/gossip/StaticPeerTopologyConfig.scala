@@ -7,9 +7,21 @@ import com.typesafe.config.Config
 import org.sigilaris.core.util.SafeStringInterp.*
 
 @SuppressWarnings(Array("org.wartremover.warts.DefaultArguments"))
+/** Loads a `StaticPeerTopology` from Typesafe Config. */
 object StaticPeerTopologyConfig:
+
+  /** Default config path for peer topology settings. */
   val DefaultPath: String = "sigilaris.node.gossip.peers"
 
+  /** Loads a peer topology from the given config at the specified path.
+    *
+    * @param config
+    *   the root config
+    * @param path
+    *   the config path to read from
+    * @return
+    *   the topology, or an error message
+    */
   def load(
       config: Config,
       path: String = DefaultPath,
@@ -22,6 +34,13 @@ object StaticPeerTopologyConfig:
       )
       .flatMap(loadSection)
 
+  /** Loads a peer topology from a pre-resolved config section.
+    *
+    * @param section
+    *   the config section at the gossip peers path
+    * @return
+    *   the topology, or an error message
+    */
   def loadSection(
       section: Config,
   ): Either[String, StaticPeerTopology] =

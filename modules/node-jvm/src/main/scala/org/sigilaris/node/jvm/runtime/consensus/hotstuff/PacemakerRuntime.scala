@@ -6,6 +6,14 @@ import cats.syntax.all.*
 
 import org.sigilaris.core.util.SafeStringInterp.*
 
+/** Configuration for pacemaker timeout behavior.
+  *
+  * @param baseTimeout the base timeout duration for a view
+  * @param maxBackoffExponent the maximum exponential backoff exponent
+  * @param jitterStep the per-slot jitter step duration
+  * @param maxJitterSlots the maximum number of jitter slots
+  * @param elevatedTimeoutAlertThreshold consecutive timeouts before alerting
+  */
 final case class HotStuffPacemakerPolicy(
     baseTimeout: Duration,
     maxBackoffExponent: Int,
@@ -23,7 +31,9 @@ final case class HotStuffPacemakerPolicy(
     "elevatedTimeoutAlertThreshold must be positive",
   )
 
+/** Companion for `HotStuffPacemakerPolicy`. */
 object HotStuffPacemakerPolicy:
+  /** The default pacemaker policy. */
   val default: HotStuffPacemakerPolicy =
     HotStuffPacemakerPolicy(
       baseTimeout = HotStuffPolicy.deploymentTarget.blockProductionInterval,
@@ -33,6 +43,7 @@ object HotStuffPacemakerPolicy:
       elevatedTimeoutAlertThreshold = 3,
     )
 
+/** Commands emitted by the pacemaker runtime to be executed by the integration driver. */
 enum HotStuffPacemakerCommand:
   case ActivateLeader(window: HotStuffWindow, leader: ValidatorId)
   case EmitTimeoutVote(
@@ -46,15 +57,18 @@ enum HotStuffPacemakerCommand:
       timeoutCertificate: TimeoutCertificate,
   )
 
+/** Describes the local validator's eligibility to propose in the current window. */
 enum HotStuffPacemakerProposalEligibility:
   case EligibleAsLeader(leader: ValidatorId)
   case Follower(expectedLeader: ValidatorId)
   case BootstrapHeld(reason: String, expectedLeader: ValidatorId)
   case TimeoutInProgress(expectedLeader: ValidatorId)
 
+/** The outcome of a pacemaker state transition step. */
 enum HotStuffPacemakerStepOutcome:
   case Started, Applied, AdvancedWindow, Duplicate, Stale, NoOp
 
+/** Diagnostic events emitted by the pacemaker for monitoring and alerting. */
 enum HotStuffPacemakerDiagnostic:
   case BootstrapHoldBlockedTimeout(window: HotStuffWindow, reason: String)
   case DivergentTimeoutSubjects(
@@ -66,6 +80,7 @@ enum HotStuffPacemakerDiagnostic:
       consecutiveTimeoutWindows: Int,
   )
 
+/** The mutable state of a pacemaker entry, tracking the active window, timeout, and local vote state. */
 final case class HotStuffPacemakerState(
     activeWindow: HotStuffWindow,
     currentLeader: ValidatorId,
@@ -80,6 +95,7 @@ final case class HotStuffPacemakerState(
     consecutiveTimeoutWindows: Int,
 )
 
+/** The result of a pacemaker state transition, including new state, commands, and diagnostics. */
 final case class HotStuffPacemakerStep(
     state: HotStuffPacemakerState,
     outcome: HotStuffPacemakerStepOutcome,
@@ -88,11 +104,13 @@ final case class HotStuffPacemakerStep(
     proposalEligibility: HotStuffPacemakerProposalEligibility,
 )
 
+/** Pure pacemaker runtime that drives state transitions for a single local validator. */
 final case class HotStuffPacemakerRuntime(
     localValidator: ValidatorId,
     validatorSet: ValidatorSet,
     policy: HotStuffPacemakerPolicy,
 ):
+  /** Initializes the pacemaker for a new consensus window. */
   def start(
       activeWindow: HotStuffWindow,
       highestKnownQc: QuorumCertificate,
@@ -122,6 +140,7 @@ final case class HotStuffPacemakerRuntime(
       Vector.empty[HotStuffPacemakerDiagnostic],
     )
 
+  /** Updates the bootstrap hold reason, potentially triggering leader activation. */
   def updateBootstrapHold(
       state: HotStuffPacemakerState,
       bootstrapHoldReason: Option[String],
@@ -139,6 +158,7 @@ final case class HotStuffPacemakerRuntime(
       Vector.empty[HotStuffPacemakerDiagnostic],
     )
 
+  /** Advances the pacemaker clock, potentially triggering a timeout vote. */
   def tick(
       state: HotStuffPacemakerState,
       now: Instant,
@@ -192,6 +212,7 @@ final case class HotStuffPacemakerRuntime(
             diagnostics,
           )
 
+  /** Processes an observed timeout vote, potentially assembling a timeout certificate. */
   def observeTimeoutVote(
       state: HotStuffPacemakerState,
       timeoutVote: TimeoutVote,
@@ -280,6 +301,7 @@ final case class HotStuffPacemakerRuntime(
               ),
             ).asLeft[HotStuffPacemakerStep]
 
+  /** Processes an observed new-view message, potentially advancing the window. */
   def observeNewView(
       state: HotStuffPacemakerState,
       newView: NewView,
@@ -344,6 +366,7 @@ final case class HotStuffPacemakerRuntime(
               ),
             ).asLeft[HotStuffPacemakerStep]
 
+  /** Computes the timeout duration for a given window and consecutive timeout count. */
   def timeoutFor(
       window: HotStuffWindow,
       consecutiveTimeoutWindows: Int,
@@ -364,6 +387,7 @@ final case class HotStuffPacemakerRuntime(
       .multipliedBy(multiplier)
       .plus(policy.jitterStep.multipliedBy(jitterSlots))
 
+  /** Determines the local validator's proposal eligibility for the current state. */
   def proposalEligibility(
       state: HotStuffPacemakerState,
   ): HotStuffPacemakerProposalEligibility =
@@ -499,7 +523,9 @@ final case class HotStuffPacemakerRuntime(
   ): String =
     ss"${window.height.render}:${window.view.render}"
 
+/** Companion for `HotStuffPacemakerRuntime`. */
 object HotStuffPacemakerRuntime:
+  /** Creates a pacemaker runtime with the default policy. */
   def default(
       localValidator: ValidatorId,
       validatorSet: ValidatorSet,

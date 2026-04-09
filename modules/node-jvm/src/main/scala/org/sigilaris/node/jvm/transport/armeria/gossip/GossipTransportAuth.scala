@@ -17,9 +17,19 @@ import org.sigilaris.node.jvm.runtime.gossip.{
   StaticPeerTransportAuth,
 }
 
+/** HMAC-based transport authentication for gossip protocol requests.
+  *
+  * Provides facilities for issuing and verifying transport proofs and bootstrap capabilities
+  * that authenticate peer-to-peer gossip HTTP requests.
+  */
 private[gossip] object GossipTransportAuth:
+  /** HTTP header name carrying the authenticated peer identity. */
   val AuthenticatedPeerHeaderName: String = "x-sigilaris-peer-identity"
+
+  /** HTTP header name carrying the HMAC transport proof. */
   val TransportProofHeaderName: String    = "x-sigilaris-transport-proof"
+
+  /** HTTP header name carrying the bootstrap capability token. */
   val BootstrapCapabilityHeaderName: String =
     "x-sigilaris-bootstrap-capability"
 
@@ -30,6 +40,21 @@ private[gossip] object GossipTransportAuth:
   private val Sha256Algorithm: String = "SHA-256"
   private val MacLength: Int          = 32
 
+  /** Computes a Base64URL-encoded HMAC transport proof for an outgoing request.
+    *
+    * @param transportAuth
+    *   the static peer transport auth containing shared secrets
+    * @param authenticatedPeer
+    *   identity of the peer this proof is for
+    * @param httpMethod
+    *   HTTP method of the request (e.g. "POST")
+    * @param requestPath
+    *   path component of the request URI
+    * @param requestBodyBytes
+    *   raw request body bytes
+    * @return
+    *   the Base64URL-encoded HMAC proof, or an error if the peer secret is unknown
+    */
   def issueTransportProof(
       transportAuth: StaticPeerTransportAuth,
       authenticatedPeer: PeerIdentity,
@@ -52,6 +77,26 @@ private[gossip] object GossipTransportAuth:
           ),
         )
 
+  /** Authenticates an inbound request by verifying the transport proof header.
+    *
+    * Parses the peer identity and transport proof from request headers, recomputes the expected
+    * HMAC, and performs a constant-time comparison.
+    *
+    * @param transportAuth
+    *   the static peer transport auth containing shared secrets
+    * @param authenticatedPeerRaw
+    *   raw value of the peer identity header
+    * @param transportProofRaw
+    *   raw value of the transport proof header
+    * @param httpMethod
+    *   HTTP method of the request
+    * @param requestPath
+    *   path component of the request URI
+    * @param requestBodyBytes
+    *   raw request body bytes
+    * @return
+    *   the verified peer identity, or a handshake rejection
+    */
   def authenticateRequest(
       transportAuth: StaticPeerTransportAuth,
       authenticatedPeerRaw: Option[String],
@@ -80,6 +125,25 @@ private[gossip] object GossipTransportAuth:
       )
     yield authenticatedPeer
 
+  /** Computes a Base64URL-encoded HMAC bootstrap capability token for a session request.
+    *
+    * @param transportAuth
+    *   the static peer transport auth containing shared secrets
+    * @param authenticatedPeer
+    *   identity of the requesting peer
+    * @param targetPeer
+    *   identity of the target peer for the bootstrap session
+    * @param sessionId
+    *   directional session identifier
+    * @param httpMethod
+    *   HTTP method of the request
+    * @param requestPath
+    *   path component of the request URI
+    * @param requestBodyBytes
+    *   raw request body bytes
+    * @return
+    *   the Base64URL-encoded capability token, or an error if the peer secret is unknown
+    */
   def issueBootstrapCapability(
       transportAuth: StaticPeerTransportAuth,
       authenticatedPeer: PeerIdentity,
@@ -106,6 +170,27 @@ private[gossip] object GossipTransportAuth:
           ),
         )
 
+  /** Verifies an inbound bootstrap capability header against the expected HMAC.
+    *
+    * @param transportAuth
+    *   the static peer transport auth containing shared secrets
+    * @param raw
+    *   raw value of the bootstrap capability header
+    * @param authenticatedPeer
+    *   the already-verified peer identity
+    * @param targetPeer
+    *   identity of the target peer for the bootstrap session
+    * @param sessionId
+    *   directional session identifier
+    * @param httpMethod
+    *   HTTP method of the request
+    * @param requestPath
+    *   path component of the request URI
+    * @param requestBodyBytes
+    *   raw request body bytes
+    * @return
+    *   unit on success, or a handshake rejection
+    */
   def verifyBootstrapCapability(
       transportAuth: StaticPeerTransportAuth,
       raw: Option[String],

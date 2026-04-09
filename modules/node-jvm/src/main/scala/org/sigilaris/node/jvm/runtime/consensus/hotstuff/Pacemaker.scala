@@ -9,8 +9,10 @@ import org.sigilaris.core.crypto.{KeyPair, Signature}
 import org.sigilaris.core.datatype.{UInt256, Utf8}
 import org.sigilaris.node.jvm.runtime.gossip.ChainId
 
+/** Unique identifier for a timeout vote, represented as a 256-bit hash. */
 opaque type TimeoutVoteId = UInt256
 
+/** Companion for `TimeoutVoteId`. */
 object TimeoutVoteId:
   private def renderHex(
       value: UInt256,
@@ -34,8 +36,10 @@ object TimeoutVoteId:
     ByteEncoder[UInt256].contramap(_.toUInt256)
   given Eq[TimeoutVoteId] = Eq.by(_.toUInt256)
 
+/** Unique identifier for a new-view message, represented as a 256-bit hash. */
 opaque type NewViewId = UInt256
 
+/** Companion for `NewViewId`. */
 object NewViewId:
   private def renderHex(
       value: UInt256,
@@ -59,25 +63,30 @@ object NewViewId:
     ByteEncoder[UInt256].contramap(_.toUInt256)
   given Eq[NewViewId] = Eq.by(_.toUInt256)
 
+/** The subject of a timeout vote, combining the consensus window and the voter's highest known QC. */
 final case class TimeoutVoteSubject(
     window: HotStuffWindow,
     highestKnownQc: QuorumCertificateSubject,
 ) derives ByteEncoder
 
+/** Companion for `TimeoutVoteSubject`. */
 object TimeoutVoteSubject:
   given Eq[TimeoutVoteSubject] = Eq.fromUniversalEquals
 
+/** An unsigned timeout vote before signing. */
 final case class UnsignedTimeoutVote(
     subject: TimeoutVoteSubject,
     voter: ValidatorId,
 )
 
+/** A signed timeout vote emitted when a validator's view timer expires. */
 final case class TimeoutVote(
     timeoutVoteId: TimeoutVoteId,
     subject: TimeoutVoteSubject,
     voter: ValidatorId,
     signature: Signature,
 ) derives ByteEncoder:
+  /** Returns the equivocation key for detecting conflicting timeout votes. */
   def equivocationKey: EquivocationKey =
     EquivocationKey(
       chainId = subject.window.chainId,
@@ -86,6 +95,7 @@ final case class TimeoutVote(
       view = subject.window.view,
     )
 
+/** Companion for `TimeoutVote`, providing signing and identity operations. */
 object TimeoutVote:
   def sign(
       unsigned: UnsignedTimeoutVote,
@@ -126,11 +136,13 @@ object TimeoutVote:
         signature = timeoutVote.signature,
       )
 
+/** A certificate aggregating sufficient timeout votes to trigger a view change. */
 final case class TimeoutCertificate(
     subject: TimeoutVoteSubject,
     votes: Vector[TimeoutVote],
 ) derives ByteEncoder
 
+/** An unsigned new-view message before signing. */
 final case class UnsignedNewView(
     window: HotStuffWindow,
     sender: ValidatorId,
@@ -139,6 +151,7 @@ final case class UnsignedNewView(
     timeoutCertificate: TimeoutCertificate,
 )
 
+/** A signed new-view message sent to the next leader after a timeout certificate is formed. */
 final case class NewView(
     newViewId: NewViewId,
     window: HotStuffWindow,
@@ -149,6 +162,7 @@ final case class NewView(
     signature: Signature,
 ) derives ByteEncoder
 
+/** Companion for `NewView`, providing signing and identity operations. */
 object NewView:
   def sign(
       unsigned: UnsignedNewView,
@@ -198,7 +212,9 @@ object NewView:
         signature = newView.signature,
       )
 
+/** Core pacemaker utilities for deterministic leader election and window advancement. */
 object HotStuffPacemaker:
+  /** Selects the leader for the given window using a deterministic round-robin scheme. */
   def deterministicLeader(
       window: HotStuffWindow,
       validatorSet: ValidatorSet,
@@ -211,11 +227,13 @@ object HotStuffPacemaker:
       ).toInt
     members(index).id
 
+  /** Returns the next consensus window by incrementing the view number. */
   def nextWindowAfter(
       window: HotStuffWindow,
   ): HotStuffWindow =
     window.copy(view = window.view.next)
 
+/** Canonical encoding and hashing operations for pacemaker artifacts (timeout votes and new views). */
 object HotStuffPacemakerCanonicalEncoding:
   private val TimeoutVoteSignDomain: Utf8 =
     Utf8("sigilaris.hotstuff.timeout-vote.sign.v1")

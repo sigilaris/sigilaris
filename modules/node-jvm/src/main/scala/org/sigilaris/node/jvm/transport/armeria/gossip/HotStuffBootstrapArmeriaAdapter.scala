@@ -30,58 +30,132 @@ import org.sigilaris.node.jvm.runtime.consensus.hotstuff.given
 import org.sigilaris.node.jvm.runtime.gossip.*
 import org.sigilaris.node.jvm.runtime.gossip.tx.TxGossipRuntime
 
+/** Wire format for a finalized anchor suggestion response.
+  *
+  * @param suggestionBase64Url
+  *   Base64URL-encoded finalized anchor suggestion, or None if unavailable
+  */
 final case class FinalizedSuggestionResponseWire(
     suggestionBase64Url: Option[String],
 )
+
+/** JSON codec instances for `FinalizedSuggestionResponseWire`. */
 object FinalizedSuggestionResponseWire:
   given Decoder[FinalizedSuggestionResponseWire] = deriveDecoder
   given Encoder[FinalizedSuggestionResponseWire] = deriveEncoder
 
+/** Wire format for a snapshot node fetch request.
+  *
+  * @param stateRoot
+  *   hex-encoded state root hash
+  * @param hashes
+  *   hex-encoded Merkle trie node hashes to fetch
+  */
 final case class SnapshotNodeFetchRequestWire(
     stateRoot: String,
     hashes: Vector[String],
 )
+
+/** JSON codec instances for `SnapshotNodeFetchRequestWire`. */
 object SnapshotNodeFetchRequestWire:
   given Decoder[SnapshotNodeFetchRequestWire] = deriveDecoder
   given Encoder[SnapshotNodeFetchRequestWire] = deriveEncoder
 
+/** Wire format for a single snapshot Merkle trie node.
+  *
+  * @param hash
+  *   hex-encoded hash of the node
+  * @param nodeBase64Url
+  *   Base64URL-encoded serialized node data
+  */
 final case class SnapshotNodeWire(
     hash: String,
     nodeBase64Url: String,
 )
+
+/** JSON codec instances for `SnapshotNodeWire`. */
 object SnapshotNodeWire:
   given Decoder[SnapshotNodeWire] = deriveDecoder
   given Encoder[SnapshotNodeWire] = deriveEncoder
 
+/** Wire format for a snapshot node fetch response containing fetched nodes.
+  *
+  * @param nodes
+  *   the fetched Merkle trie nodes
+  */
 final case class SnapshotNodeFetchResponseWire(
     nodes: Vector[SnapshotNodeWire],
 )
+
+/** JSON codec instances for `SnapshotNodeFetchResponseWire`. */
 object SnapshotNodeFetchResponseWire:
   given Decoder[SnapshotNodeFetchResponseWire] = deriveDecoder
   given Encoder[SnapshotNodeFetchResponseWire] = deriveEncoder
 
+/** Wire format for a paginated proposal fetch request.
+  *
+  * @param blockId
+  *   hex-encoded block identifier used as the anchor or boundary
+  * @param height
+  *   string-encoded block height
+  * @param limit
+  *   maximum number of proposals to return
+  */
 final case class ProposalPageRequestWire(
     blockId: String,
     height: String,
     limit: Int,
 )
+
+/** JSON codec instances for `ProposalPageRequestWire`. */
 object ProposalPageRequestWire:
   given Decoder[ProposalPageRequestWire] = deriveDecoder
   given Encoder[ProposalPageRequestWire] = deriveEncoder
 
+/** Wire format for a batch of proposals returned from replay or backfill requests.
+  *
+  * @param proposalsBase64Url
+  *   Base64URL-encoded serialized proposals
+  */
 final case class ProposalBatchResponseWire(
     proposalsBase64Url: Vector[String],
 )
+
+/** JSON codec instances for `ProposalBatchResponseWire`. */
 object ProposalBatchResponseWire:
   given Decoder[ProposalBatchResponseWire] = deriveDecoder
   given Encoder[ProposalBatchResponseWire] = deriveEncoder
 
+/** Transport-level limits for HotStuff bootstrap requests. */
 object HotStuffBootstrapTransportLimits:
+  /** Maximum number of snapshot node hashes allowed per fetch request. */
   val MaxSnapshotNodeHashes: Int = 256
+
+  /** Maximum page size for proposal replay and backfill requests. */
   val MaxProposalPageLimit: Int  = 256
 
+/** Server-side Armeria/Tapir adapter for HotStuff bootstrap protocol endpoints.
+  *
+  * Exposes finalized suggestion, snapshot fetch, proposal replay, and historical backfill
+  * endpoints with transport authentication and bootstrap capability verification.
+  */
 @SuppressWarnings(Array("org.wartremover.warts.Any"))
 object HotStuffBootstrapArmeriaAdapter:
+  /** Creates the list of Tapir server endpoints for the HotStuff bootstrap protocol.
+    *
+    * @tparam F
+    *   the effect type
+    * @tparam A
+    *   the gossip artifact type
+    * @param sessionRuntime
+    *   runtime for authorizing gossip sessions
+    * @param bootstrapServices
+    *   services providing finalized suggestions, snapshots, replay, and backfill
+    * @param transportAuth
+    *   transport authentication for verifying peer requests
+    * @return
+    *   list of server endpoints
+    */
   def endpoints[F[_]: Async, A](
       sessionRuntime: TxGossipRuntime[F, A],
       bootstrapServices: HotStuffBootstrapServices[F],
@@ -608,10 +682,37 @@ object HotStuffBootstrapArmeriaAdapter:
       detail = Some(detail),
     )
 
+/** Client-side HTTP transport for HotStuff bootstrap protocol requests.
+  *
+  * Sends authenticated HTTP requests to peer nodes for finalized suggestions,
+  * snapshot fetching, proposal replay, and historical backfill.
+  */
 object HotStuffBootstrapHttpTransport:
+  /** Default timeout for individual bootstrap HTTP requests. */
   val DefaultRequestTimeout: Duration   = Duration.ofSeconds(10L)
+
+  /** Default maximum number of concurrent outbound bootstrap requests. */
   val DefaultMaxConcurrentRequests: Int = 16
 
+  /** Creates the full set of bootstrap transport service implementations backed by HTTP.
+    *
+    * @tparam F
+    *   the effect type
+    * @param peerBaseUris
+    *   mapping from peer identity to HTTP base URI
+    * @param transportAuth
+    *   transport authentication for signing outbound requests
+    * @param httpClient
+    *   Java HTTP client to use for outbound requests
+    * @param requestTimeout
+    *   timeout per request
+    * @param maxConcurrentRequests
+    *   semaphore-based concurrency limit for outbound requests
+    * @param proposalCatchUpReadiness
+    *   optional readiness gate for proposal catch-up
+    * @return
+    *   assembled bootstrap transport services
+    */
   @SuppressWarnings(Array("org.wartremover.warts.DefaultArguments"))
   def services[F[_]: Async](
       peerBaseUris: Map[PeerIdentity, String],
@@ -937,7 +1038,17 @@ object HotStuffBootstrapHttpTransport:
                         .asLeft[String],
               )(_ => Async[F].delay(requestGate.release()).void)
 
+/** Convenience adapter combining transaction gossip and HotStuff bootstrap endpoints. */
 object HotStuffGossipArmeriaAdapter:
+  /** Creates all server endpoints for both transaction gossip and HotStuff bootstrap protocols.
+    *
+    * @tparam F
+    *   the effect type
+    * @param bootstrap
+    *   the HotStuff runtime bootstrap containing runtime, auth, and consensus services
+    * @return
+    *   combined list of gossip and bootstrap server endpoints
+    */
   def endpoints[F[_]: Async](
       bootstrap: HotStuffRuntimeBootstrap[F],
   )(using ByteEncoder[HotStuffGossipArtifact]) =

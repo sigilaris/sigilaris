@@ -16,6 +16,12 @@ import swaydb.data.slice.Slice
 import swaydb.serializers.Serializer
 import swaydb.serializers.Default.ByteArraySerializer
 
+/** `StoreIndex` implementation backed by a SwayDB persistent map, supporting range queries.
+  *
+  * @tparam K the key type
+  * @tparam V the value type, which must have byte codec instances
+  * @param map the underlying SwayDB map
+  */
 final class StoreIndexSwayInterpreter[K, V: ByteEncoder: ByteDecoder](
     map: Map[K, Array[Byte], Nothing, IO],
 ) extends StoreIndex[IO, K, V]:
@@ -52,6 +58,7 @@ final class StoreIndexSwayInterpreter[K, V: ByteEncoder: ByteDecoder](
                   .ensureNoRemainder(result, "decoded value has remainder")
               .map(decodedValue => (decodedKey, decodedValue))
 
+  /** Closes the underlying SwayDB map and releases resources. */
   def close(): IO[Unit] =
     keyValue.close()
 
@@ -61,7 +68,16 @@ final class StoreIndexSwayInterpreter[K, V: ByteEncoder: ByteDecoder](
     "org.wartremover.warts.MutableDataStructures",
   ),
 )
+/** Factory and SwayDB serializer givens for `StoreIndexSwayInterpreter`. */
 object StoreIndexSwayInterpreter:
+
+  /** Creates a new `StoreIndexSwayInterpreter` by opening a persistent SwayDB map at the given directory.
+    *
+    * @tparam K the key type
+    * @tparam V the value type
+    * @param dir the filesystem directory for the SwayDB storage
+    * @return an IO that yields the constructed store index
+    */
   def apply[K: ByteEncoder: ByteDecoder, V: ByteEncoder: ByteDecoder](
       dir: Path,
   )(using Bag.Async[IO]): IO[StoreIndexSwayInterpreter[K, V]] =
@@ -69,6 +85,13 @@ object StoreIndexSwayInterpreter:
       .openMap[K](dir)
       .map(new StoreIndexSwayInterpreter[K, V](_))
 
+  /** Validates that a decode result consumed all bytes, returning a `DecodeFailure` if not.
+    *
+    * @tparam A the decoded value type
+    * @param decoded the decode result to validate
+    * @param message the error message if there is a non-empty remainder
+    * @return the decoded value, or a `DecodeFailure`
+    */
   def ensureNoRemainder[A](
       decoded: DecodeResult[A],
       message: String,

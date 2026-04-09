@@ -19,9 +19,19 @@ import org.sigilaris.core.failure.DecodeFailure
   * Unnamed accounts use KeyId20 (20-byte hash) and have no recovery mechanism.
   */
 enum Account:
+  /** A named account identified by a UTF-8 string, supporting key recovery.
+    *
+    * @param name the account name
+    */
   case Named(name: Utf8)
+
+  /** An unnamed account identified only by a KeyId20, with no recovery mechanism.
+    *
+    * @param keyId the 20-byte key identifier
+    */
   case Unnamed(keyId: KeyId20)
 
+/** Companion for [[Account]], providing codec instances and equality. */
 @SuppressWarnings(
   Array("org.wartremover.warts.Any", "org.wartremover.warts.Nothing"),
 )
@@ -64,6 +74,7 @@ object Account:
   */
 opaque type KeyId20 = ByteVector :| FixedLength[20]
 
+/** Companion for [[KeyId20]], providing construction, codec instances, and equality. */
 object KeyId20:
   // Import the LengthByteVector constraint from util.iron
   import org.sigilaris.core.util.iron.given
@@ -86,7 +97,12 @@ object KeyId20:
   def unsafeApply(bytes: ByteVector): KeyId20 =
     bytes.refineUnsafe[FixedLength[20]]
 
-  extension (k: KeyId20) def bytes: ByteVector = k
+  extension (k: KeyId20)
+    /** Access the underlying raw bytes.
+      *
+      * @return the 20-byte vector
+      */
+    def bytes: ByteVector = k
 
   given keyId20Eq: Eq[KeyId20] = Eq.fromUniversalEquals
 
@@ -121,6 +137,7 @@ final case class AccountInfo(
 ) derives ByteEncoder,
       ByteDecoder
 
+/** Companion for [[AccountInfo]], providing equality. */
 object AccountInfo:
   given accountInfoEq: Eq[AccountInfo] = Eq.fromUniversalEquals
 
@@ -140,5 +157,6 @@ final case class KeyInfo(
 ) derives ByteEncoder,
       ByteDecoder
 
+/** Companion for [[KeyInfo]], providing equality. */
 object KeyInfo:
   given keyInfoEq: Eq[KeyInfo] = Eq.fromUniversalEquals

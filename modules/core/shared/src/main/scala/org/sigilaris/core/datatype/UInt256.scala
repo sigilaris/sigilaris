@@ -76,6 +76,7 @@ import org.sigilaris.core.failure.{
   */
 opaque type UInt256 = ByteVector
 
+/** Companion object providing constructors, conversions, and typeclass instances for [[UInt256]]. */
 object UInt256:
   /** Fixed size in bytes for UInt256 (32 bytes = 256 bits). */
   val Size: Int = 32

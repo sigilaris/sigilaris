@@ -42,51 +42,87 @@ import org.sigilaris.core.application.transactions.Signed
 import org.sigilaris.core.failure.SigilarisFailure
 import org.sigilaris.core.merkle.MerkleTrie
 
+/** Union type of all transaction types supported by the current application. */
 type CurrentApplicationTx =
   CreateNamedAccount | UpdateAccount | AddKeyIds | RemoveKeyIds |
     RemoveAccount | CreateGroup | DisbandGroup | AddAccounts | RemoveAccounts |
     ReplaceCoordinator
 
+/** A signed transaction for the current application. */
 type CurrentApplicationSignedTx = Signed[CurrentApplicationTx]
 
+/** A batch of signed transactions submitted for execution.
+  *
+  * @param idempotencyKey unique key for deduplication across retries
+  * @param items the ordered transactions in this batch
+  */
 final case class CurrentApplicationBatch(
     idempotencyKey: String,
     items: Vector[CurrentApplicationSignedTx],
 )
 
+/** Describes the execution mode used for a batch. */
 enum CurrentApplicationBatchMode:
+  /** All transactions were schedulable (conflict-free). */
   case Schedulable
+  /** Batch fell back to compatibility mode due to non-schedulable transactions. */
   case Compatibility(
       reason: CompatibilityReason,
       mode: CompatibilityMode,
   )
 
+/** Diagnostic information collected during batch planning.
+  *
+  * @param mode the execution mode (schedulable or compatibility)
+  * @param duplicatesDropped transactions removed during deduplication
+  * @param classifications scheduling classification for each transaction
+  */
 final case class CurrentApplicationBatchDiagnostics(
     mode: CurrentApplicationBatchMode,
     duplicatesDropped: Vector[CurrentApplicationSignedTx],
     classifications: Vector[ClassifiedItem[CurrentApplicationSignedTx]],
 )
 
+/** A single executed transaction with its execution trace.
+  *
+  * @param tx the original signed transaction
+  * @param execution the execution result containing state changes and actual footprint
+  */
 final case class CurrentApplicationExecutedTx(
     tx: CurrentApplicationSignedTx,
     execution: TxExecution[?, ?],
 )
 
+/** Receipt produced after a batch is fully executed.
+  *
+  * @param diagnostics planning diagnostics for the batch
+  * @param executions per-transaction execution results in order
+  */
 final case class CurrentApplicationBatchReceipt(
     diagnostics: CurrentApplicationBatchDiagnostics,
     executions: Vector[CurrentApplicationExecutedTx],
 )
 
+/** Outcome of applying a batch to the runtime state. */
 enum CurrentApplicationBatchOutcome:
+  /** The batch was newly applied. */
   case Applied(receipt: CurrentApplicationBatchReceipt)
+  /** The batch was a duplicate (idempotency key already seen). */
   case Deduplicated(receipt: CurrentApplicationBatchReceipt)
 
+/** Mutable-free runtime state for batch processing.
+  *
+  * @param storeState the current Merkle trie store state
+  * @param receiptsByIdempotencyKey map of processed batch receipts keyed by idempotency key
+  */
 final case class CurrentApplicationBatchRuntimeState(
     storeState: StoreState,
     receiptsByIdempotencyKey: Map[String, CurrentApplicationBatchReceipt],
 )
 
+/** Companion for [[CurrentApplicationBatchRuntimeState]]. */
 object CurrentApplicationBatchRuntimeState:
+  /** An empty initial runtime state with no stored data. */
   val empty: CurrentApplicationBatchRuntimeState =
     CurrentApplicationBatchRuntimeState(
       storeState = StoreState.empty,
@@ -94,11 +130,14 @@ object CurrentApplicationBatchRuntimeState:
         Map.empty[String, CurrentApplicationBatchReceipt],
     )
 
+/** Reasons a batch may be rejected during planning or execution. */
 enum CurrentApplicationBatchRejected:
+  /** Two transactions in the batch have conflicting state footprints. */
   case SchedulingConflict(
       conflict: FootprintConflict[CurrentApplicationSignedTx],
       diagnostics: CurrentApplicationBatchDiagnostics,
   )
+  /** A schedulable transaction failed during execution or footprint conformance. */
   case SchedulableExecutionFailed(
       failure: SchedulableExecutionFailure[
         CurrentApplicationSignedTx,
@@ -106,19 +145,31 @@ enum CurrentApplicationBatchRejected:
       ],
       diagnostics: CurrentApplicationBatchDiagnostics,
   )
+  /** A compatibility-mode transaction failed during execution. */
   case CompatibilityExecutionFailed(
       tx: CurrentApplicationSignedTx,
       cause: SigilarisFailure,
       diagnostics: CurrentApplicationBatchDiagnostics,
   )
 
+/** Factory and type aliases for [[CurrentApplicationBatchRuntime]]. */
 object CurrentApplicationBatchRuntime:
+  /** The effect type used by the runtime (synchronous Either). */
   type RuntimeF[A] = Either[SigilarisFailure, A]
+
+  /** Function type that classifies a signed transaction for scheduling. */
   type Classifier  = CurrentApplicationSignedTx => SchedulingClassification
 
+  /** The default classifier that delegates to [[CurrentApplicationScheduling.classify]]. */
   val defaultClassifier: Classifier =
     signedTx => CurrentApplicationScheduling.classify(signedTx)
 
+  /** Creates a runtime with a custom transaction classifier.
+    *
+    * @param classifyTx the classification function
+    * @param nodeStore the MerkleTrie node store
+    * @return a new batch runtime instance
+    */
   def createWithClassifier(
       classifyTx: Classifier,
   )(using
@@ -126,11 +177,22 @@ object CurrentApplicationBatchRuntime:
   ): CurrentApplicationBatchRuntime =
     new CurrentApplicationBatchRuntime(classifyTx)
 
+  /** Creates a runtime using the default transaction classifier.
+    *
+    * @param nodeStore the MerkleTrie node store
+    * @return a new batch runtime instance
+    */
   def createDefault()(using
       nodeStore: MerkleTrie.NodeStore[RuntimeF],
   ): CurrentApplicationBatchRuntime =
     createWithClassifier(defaultClassifier)
 
+/** Batch transaction runtime for the current application.
+  *
+  * Mounts the accounts and groups modules, wires their dependencies,
+  * and provides batch execution with scheduling, deduplication, and
+  * compatibility fallback.
+  */
 final class CurrentApplicationBatchRuntime private (
     classifyTx: CurrentApplicationBatchRuntime.Classifier,
 )(using
@@ -148,6 +210,16 @@ final class CurrentApplicationBatchRuntime private (
         GroupsBP[RuntimeF](TablesProvider.fromModule(accountsModule)),
       )
 
+  /** Applies a batch of transactions to the given runtime state.
+    *
+    * Handles deduplication via idempotency keys, schedules transactions
+    * using the configured classifier, and falls back to compatibility
+    * mode when necessary.
+    *
+    * @param state the current runtime state
+    * @param batch the batch of transactions to apply
+    * @return either a rejection reason or the updated state with outcome
+    */
   def applyBatch(
       state: CurrentApplicationBatchRuntimeState,
       batch: CurrentApplicationBatch,

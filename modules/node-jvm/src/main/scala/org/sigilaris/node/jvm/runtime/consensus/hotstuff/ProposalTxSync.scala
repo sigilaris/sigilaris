@@ -10,13 +10,16 @@ import org.sigilaris.node.jvm.runtime.gossip.{
 }
 import org.sigilaris.node.jvm.runtime.gossip.tx.TxRuntimePolicy
 
+/** Utilities for synchronizing transaction payloads referenced by consensus proposals. */
 object HotStuffProposalTxSync:
+  /** Returns the transaction IDs from the proposal that are not in the known set. */
   def missingTxIds(
       proposal: Proposal,
       knownTxIds: Set[StableArtifactId],
   ): Vector[StableArtifactId] =
     proposal.txSet.txIds.filterNot(knownTxIds.contains)
 
+  /** Builds a gossip control batch to request missing transaction payloads for a proposal. */
   def controlBatchForProposal(
       proposal: Proposal,
       knownTxIds: Set[StableArtifactId],

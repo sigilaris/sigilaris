@@ -7,6 +7,24 @@ import com.typesafe.config.Config
 
 import org.sigilaris.node.jvm.runtime.gossip.*
 
+/** Assembled bootstrap bundle containing all components needed to run
+  * transaction gossip.
+  *
+  * @tparam F
+  *   the effect type
+  * @tparam A
+  *   the artifact payload type
+  * @param topology
+  *   the static peer topology
+  * @param registry
+  *   the peer registry
+  * @param authenticator
+  *   the peer authenticator
+  * @param transportAuth
+  *   the transport authentication configuration
+  * @param runtime
+  *   the transaction gossip runtime
+  */
 final case class TxGossipBootstrap[F[_], A](
     topology: StaticPeerTopology,
     registry: StaticPeerRegistry,
@@ -16,7 +34,36 @@ final case class TxGossipBootstrap[F[_], A](
 )
 
 @SuppressWarnings(Array("org.wartremover.warts.DefaultArguments"))
+/** Factory for bootstrapping a `TxGossipRuntime` from configuration or
+  * topology.
+  */
 object TxGossipRuntimeBootstrap:
+
+  /** Bootstraps a transaction gossip runtime from Typesafe Config.
+    *
+    * @tparam F
+    *   the effect type
+    * @tparam A
+    *   the artifact payload type
+    * @param config
+    *   the root config
+    * @param clock
+    *   the gossip clock
+    * @param source
+    *   the artifact source
+    * @param sink
+    *   the artifact sink
+    * @param topicContracts
+    *   the topic contract registry
+    * @param runtimePolicy
+    *   the runtime policy
+    * @param handshakePolicy
+    *   the handshake policy
+    * @param configPath
+    *   the config path to read topology from
+    * @return
+    *   the bootstrap bundle, or an error
+    */
   def fromConfig[F[_]: Sync, A](
       config: Config,
       clock: GossipClock[F],
@@ -46,6 +93,31 @@ object TxGossipRuntimeBootstrap:
               handshakePolicy = handshakePolicy,
             ).map(_.asRight[String])
 
+  /** Bootstraps a transaction gossip runtime from a pre-parsed topology.
+    *
+    * @tparam F
+    *   the effect type
+    * @tparam A
+    *   the artifact payload type
+    * @param topology
+    *   the static peer topology
+    * @param transportAuth
+    *   the transport authentication configuration
+    * @param clock
+    *   the gossip clock
+    * @param source
+    *   the artifact source
+    * @param sink
+    *   the artifact sink
+    * @param topicContracts
+    *   the topic contract registry
+    * @param runtimePolicy
+    *   the runtime policy
+    * @param handshakePolicy
+    *   the handshake policy
+    * @return
+    *   the bootstrap bundle
+    */
   def fromTopology[F[_]: Sync, A](
       topology: StaticPeerTopology,
       transportAuth: StaticPeerTransportAuth,
