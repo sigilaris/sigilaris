@@ -1,4 +1,4 @@
-package org.sigilaris.node.jvm.runtime.gossip
+package org.sigilaris.node.gossip
 
 import java.nio.charset.StandardCharsets
 

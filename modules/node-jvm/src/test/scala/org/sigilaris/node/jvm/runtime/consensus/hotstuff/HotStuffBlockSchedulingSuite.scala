@@ -23,7 +23,7 @@ import org.sigilaris.node.jvm.runtime.block.{
   BodyRoot,
   StateRoot,
 }
-import org.sigilaris.node.jvm.runtime.gossip.ChainId
+import org.sigilaris.node.gossip.ChainId
 
 final class HotStuffBlockSchedulingSuite extends FunSuite:
   private val chainId       = ChainId.unsafe("chain-main")

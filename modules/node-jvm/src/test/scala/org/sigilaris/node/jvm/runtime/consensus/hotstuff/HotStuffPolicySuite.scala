@@ -3,7 +3,7 @@ package org.sigilaris.node.jvm.runtime.consensus.hotstuff
 import munit.FunSuite
 
 import org.sigilaris.core.datatype.UInt256
-import org.sigilaris.node.jvm.runtime.gossip.{ChainId, PeerIdentity}
+import org.sigilaris.node.gossip.{ChainId, PeerIdentity}
 
 final class HotStuffPolicySuite extends FunSuite:
 

@@ -7,6 +7,7 @@ import scala.jdk.CollectionConverters.*
 import com.typesafe.config.Config
 
 import org.sigilaris.core.util.SafeStringInterp.*
+import org.sigilaris.node.gossip.{StaticPeerTopology, StaticPeerTransportAuth}
 
 @SuppressWarnings(Array("org.wartremover.warts.DefaultArguments"))
 /** Loads a `StaticPeerTransportAuth` from Typesafe Config. */

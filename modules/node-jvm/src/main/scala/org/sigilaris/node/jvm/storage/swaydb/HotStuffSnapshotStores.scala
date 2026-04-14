@@ -9,7 +9,7 @@ import org.sigilaris.node.jvm.runtime.consensus.hotstuff.{
   SnapshotNodeStore,
   given,
 }
-import org.sigilaris.node.jvm.runtime.gossip.ChainId
+import org.sigilaris.node.gossip.ChainId
 
 /** Factory for creating SwayDB-backed HotStuff snapshot stores. */
 object HotStuffSnapshotStores:

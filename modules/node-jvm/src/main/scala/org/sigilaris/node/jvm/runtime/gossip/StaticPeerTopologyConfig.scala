@@ -5,6 +5,7 @@ import scala.jdk.CollectionConverters.*
 import com.typesafe.config.Config
 
 import org.sigilaris.core.util.SafeStringInterp.*
+import org.sigilaris.node.gossip.StaticPeerTopology
 
 @SuppressWarnings(Array("org.wartremover.warts.DefaultArguments"))
 /** Loads a `StaticPeerTopology` from Typesafe Config. */

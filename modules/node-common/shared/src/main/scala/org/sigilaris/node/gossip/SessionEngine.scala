@@ -1,4 +1,4 @@
-package org.sigilaris.node.jvm.runtime.gossip
+package org.sigilaris.node.gossip
 
 import java.time.Instant
 
@@ -6,7 +6,7 @@ import cats.Eq
 import cats.syntax.all.*
 
 import org.sigilaris.core.util.SafeStringInterp.*
-import org.sigilaris.node.jvm.runtime.gossip.CanonicalRejection.HandshakeRejected
+import org.sigilaris.node.gossip.CanonicalRejection.HandshakeRejected
 
 /** Direction of a gossip session relative to the local node. */
 enum SessionDirection:
@@ -709,14 +709,18 @@ final case class GossipSessionEngine(
                     if !now.isBefore(
                       session.createdAt.plus(policy.openingHandshakeTimeout),
                     ) =>
-                  acc.markSessionDead(session.sessionId).getOrElse(acc)
+                  acc.markSessionDead(session.sessionId) match
+                    case Right(updatedEngine) => updatedEngine
+                    case Left(_)              => acc
                 case DirectionalSessionStatus.Open
                     if session.negotiated.exists(params =>
                       !now.isBefore(
                         session.lastActivityAt.plus(params.livenessTimeout),
                       ),
                     ) =>
-                  acc.markSessionDead(session.sessionId).getOrElse(acc)
+                  acc.markSessionDead(session.sessionId) match
+                    case Right(updatedEngine) => updatedEngine
+                    case Left(_)              => acc
                 case _ =>
                   acc
 
@@ -820,9 +824,3 @@ final case class GossipSessionEngine(
         detail = Some(peer.value),
       ),
     )
-
-extension [A, B](either: Either[A, B])
-  private[gossip] def getOrElse(default: => B): B =
-    either match
-      case Right(value) => value
-      case Left(_)      => default

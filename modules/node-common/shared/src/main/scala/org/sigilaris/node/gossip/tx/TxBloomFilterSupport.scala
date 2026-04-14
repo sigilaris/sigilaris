@@ -1,4 +1,4 @@
-package org.sigilaris.node.jvm.runtime.gossip.tx
+package org.sigilaris.node.gossip.tx
 
 import scala.util.hashing.MurmurHash3
 
@@ -6,7 +6,7 @@ import cats.syntax.all.*
 import scodec.bits.ByteVector
 
 import org.sigilaris.core.util.SafeStringInterp.*
-import org.sigilaris.node.jvm.runtime.gossip.*
+import org.sigilaris.node.gossip.*
 
 @SuppressWarnings(Array("org.wartremover.warts.DefaultArguments"))
 /** Bloom filter operations for transaction gossip deduplication. */

@@ -11,13 +11,13 @@ import org.sigilaris.core.codec.byte.ByteEncoder
 import org.sigilaris.core.crypto.Hash
 import org.sigilaris.core.datatype.BigNat
 import org.sigilaris.node.jvm.runtime.block.{BlockHeight, BlockQuery}
-import org.sigilaris.node.jvm.runtime.gossip.{
+import org.sigilaris.node.gossip.{
   CanonicalRejection,
   ChainId,
   ControlBatch,
   StableArtifactId,
 }
-import org.sigilaris.node.jvm.runtime.gossip.tx.TxRuntimePolicy
+import org.sigilaris.node.gossip.tx.TxRuntimePolicy
 
 /** Controls retry timing for bootstrap coordination attempts.
   *

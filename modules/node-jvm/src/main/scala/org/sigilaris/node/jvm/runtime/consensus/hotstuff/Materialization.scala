@@ -12,7 +12,7 @@ import scodec.bits.ByteVector
 import org.sigilaris.core.codec.byte.{ByteDecoder, ByteEncoder, DecodeResult}
 import org.sigilaris.core.failure.DecodeFailure
 import org.sigilaris.node.jvm.runtime.block.BlockHeight
-import org.sigilaris.node.jvm.runtime.gossip.{ChainId, ControlBatch}
+import org.sigilaris.node.gossip.{ChainId, ControlBatch}
 import org.sigilaris.node.jvm.storage.swaydb.{Bag, StorageLayout, SwayStores}
 
 /** Captures the materialized state of a forward catch-up for persistence or replay. */

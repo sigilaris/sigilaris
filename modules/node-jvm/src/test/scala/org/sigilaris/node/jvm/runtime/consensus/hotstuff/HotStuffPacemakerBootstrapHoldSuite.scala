@@ -24,7 +24,7 @@ import org.sigilaris.core.datatype.{UInt256, Utf8}
 import org.sigilaris.core.merkle.MerkleTrieNode
 import org.sigilaris.core.merkle.Nibbles.*
 import org.sigilaris.node.jvm.runtime.block.*
-import org.sigilaris.node.jvm.runtime.gossip.*
+import org.sigilaris.node.gossip.*
 import org.sigilaris.node.jvm.storage.swaydb.StorageLayout
 
 final class HotStuffPacemakerBootstrapHoldSuite extends CatsEffectSuite:

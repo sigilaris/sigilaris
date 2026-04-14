@@ -16,7 +16,7 @@ import org.sigilaris.node.jvm.runtime.block.{
   BodyRoot,
   StateRoot,
 }
-import org.sigilaris.node.jvm.runtime.gossip.{
+import org.sigilaris.node.gossip.{
   CanonicalRejection,
   ChainId,
   ControlBatch,
@@ -544,8 +544,8 @@ final class HotStuffReplayBackfillMaterializationSuite extends CatsEffectSuite:
 
   private def proposalIdAsTxId(
       proposalId: ProposalId,
-  ): org.sigilaris.node.jvm.runtime.gossip.StableArtifactId =
-    org.sigilaris.node.jvm.runtime.gossip.StableArtifactId.unsafeFromBytes(
+  ): org.sigilaris.node.gossip.StableArtifactId =
+    org.sigilaris.node.gossip.StableArtifactId.unsafeFromBytes(
       proposalId.toUInt256.bytes,
     )
 

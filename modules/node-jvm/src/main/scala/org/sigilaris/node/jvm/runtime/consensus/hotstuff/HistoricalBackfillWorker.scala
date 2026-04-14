@@ -11,7 +11,7 @@ import cats.effect.Ref
 import cats.syntax.all.*
 
 import org.sigilaris.node.jvm.runtime.block.BlockHeight
-import org.sigilaris.node.jvm.runtime.gossip.{CanonicalRejection, ChainId}
+import org.sigilaris.node.gossip.{CanonicalRejection, ChainId}
 
 /** Configuration for historical backfill behavior.
   *

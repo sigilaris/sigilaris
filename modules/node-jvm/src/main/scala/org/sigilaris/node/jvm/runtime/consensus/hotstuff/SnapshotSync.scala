@@ -16,7 +16,7 @@ import org.sigilaris.node.jvm.storage.KeyValueStore
 /** Persistent store for snapshot synchronization metadata, keyed by chain ID. */
 trait SnapshotMetadataStore[F[_]]:
   def get(
-      chainId: org.sigilaris.node.jvm.runtime.gossip.ChainId,
+      chainId: org.sigilaris.node.gossip.ChainId,
   ): F[Option[SnapshotMetadata]]
 
   def getForAnchor(
@@ -24,7 +24,7 @@ trait SnapshotMetadataStore[F[_]]:
   ): F[Option[SnapshotMetadata]]
 
   def list(
-      chainId: org.sigilaris.node.jvm.runtime.gossip.ChainId,
+      chainId: org.sigilaris.node.gossip.ChainId,
   ): F[Vector[SnapshotMetadata]]
 
   def put(
@@ -32,7 +32,7 @@ trait SnapshotMetadataStore[F[_]]:
   ): F[Unit]
 
   def remove(
-      chainId: org.sigilaris.node.jvm.runtime.gossip.ChainId,
+      chainId: org.sigilaris.node.gossip.ChainId,
   ): F[Unit]
 
 /** Companion for `SnapshotMetadataStore`, providing in-memory and key-value-backed implementations. */
@@ -53,7 +53,7 @@ object SnapshotMetadataStore:
   /** Creates an in-memory metadata store backed by a Ref. */
   def inMemory[F[_]: Sync]: F[SnapshotMetadataStore[F]] =
     Ref
-      .of[F, Map[org.sigilaris.node.jvm.runtime.gossip.ChainId, Vector[
+      .of[F, Map[org.sigilaris.node.gossip.ChainId, Vector[
         SnapshotMetadata,
       ]]](
         Map.empty,
@@ -64,14 +64,14 @@ object SnapshotMetadataStore:
   def fromKeyValueStore[F[_]: Concurrent](
       keyValueStore: KeyValueStore[
         F,
-        org.sigilaris.node.jvm.runtime.gossip.ChainId,
+        org.sigilaris.node.gossip.ChainId,
         Vector[SnapshotMetadata],
       ],
   ): F[SnapshotMetadataStore[F]] =
     Semaphore[F](1).map: writeLock =>
       new SnapshotMetadataStore[F]:
         override def get(
-            chainId: org.sigilaris.node.jvm.runtime.gossip.ChainId,
+            chainId: org.sigilaris.node.gossip.ChainId,
         ): F[Option[SnapshotMetadata]] =
           keyValueStore
             .get(chainId)
@@ -90,7 +90,7 @@ object SnapshotMetadataStore:
           )
 
         override def list(
-            chainId: org.sigilaris.node.jvm.runtime.gossip.ChainId,
+            chainId: org.sigilaris.node.gossip.ChainId,
         ): F[Vector[SnapshotMetadata]] =
           keyValueStore
             .get(chainId)
@@ -112,17 +112,17 @@ object SnapshotMetadataStore:
               )
 
         override def remove(
-            chainId: org.sigilaris.node.jvm.runtime.gossip.ChainId,
+            chainId: org.sigilaris.node.gossip.ChainId,
         ): F[Unit] =
           keyValueStore.remove(chainId)
 
   private final class InMemorySnapshotMetadataStore[F[_]: Sync](
-      ref: Ref[F, Map[org.sigilaris.node.jvm.runtime.gossip.ChainId, Vector[
+      ref: Ref[F, Map[org.sigilaris.node.gossip.ChainId, Vector[
         SnapshotMetadata,
       ]]],
   ) extends SnapshotMetadataStore[F]:
     override def get(
-        chainId: org.sigilaris.node.jvm.runtime.gossip.ChainId,
+        chainId: org.sigilaris.node.gossip.ChainId,
     ): F[Option[SnapshotMetadata]] =
       ref.get.map: historyByChain =>
         latestMetadata(historyByChain.getOrElse(chainId, Vector.empty))
@@ -135,7 +135,7 @@ object SnapshotMetadataStore:
       )
 
     override def list(
-        chainId: org.sigilaris.node.jvm.runtime.gossip.ChainId,
+        chainId: org.sigilaris.node.gossip.ChainId,
     ): F[Vector[SnapshotMetadata]] =
       ref.get.map: historyByChain =>
         sortHistory(historyByChain.getOrElse(chainId, Vector.empty))
@@ -153,7 +153,7 @@ object SnapshotMetadataStore:
         )
 
     override def remove(
-        chainId: org.sigilaris.node.jvm.runtime.gossip.ChainId,
+        chainId: org.sigilaris.node.gossip.ChainId,
     ): F[Unit] =
       ref.update(_ - chainId)
 
@@ -320,11 +320,11 @@ object SnapshotNodeFetchServiceRuntime:
     new SnapshotNodeFetchService[F]:
       override def fetchNodes(
           session: BootstrapSessionBinding,
-          chainId: org.sigilaris.node.jvm.runtime.gossip.ChainId,
+          chainId: org.sigilaris.node.gossip.ChainId,
           stateRoot: org.sigilaris.node.jvm.runtime.block.StateRoot,
           hashes: Vector[MerkleTrieNode.MerkleHash],
       ): F[
-        Either[org.sigilaris.node.jvm.runtime.gossip.CanonicalRejection, Vector[
+        Either[org.sigilaris.node.gossip.CanonicalRejection, Vector[
           SnapshotTrieNode,
         ]],
       ] =
@@ -333,12 +333,12 @@ object SnapshotNodeFetchServiceRuntime:
             nodeStore.get(hash).map(_.map(node => SnapshotTrieNode(hash, node)))
           .map: loaded =>
             loaded.flatten
-              .asRight[org.sigilaris.node.jvm.runtime.gossip.CanonicalRejection]
+              .asRight[org.sigilaris.node.gossip.CanonicalRejection]
 
 /** Companion for `SnapshotCoordinator`, providing factory methods with varying configuration. */
 object SnapshotCoordinator:
   def create[F[_]: Sync: Clock](
-      chainId: org.sigilaris.node.jvm.runtime.gossip.ChainId,
+      chainId: org.sigilaris.node.gossip.ChainId,
       metadataStore: SnapshotMetadataStore[F],
       nodeStore: SnapshotNodeStore[F],
       fetchService: SnapshotNodeFetchService[F],
@@ -353,7 +353,7 @@ object SnapshotCoordinator:
     )
 
   def createWithNow[F[_]: Sync](
-      chainId: org.sigilaris.node.jvm.runtime.gossip.ChainId,
+      chainId: org.sigilaris.node.gossip.ChainId,
       metadataStore: SnapshotMetadataStore[F],
       nodeStore: SnapshotNodeStore[F],
       fetchService: SnapshotNodeFetchService[F],
@@ -369,7 +369,7 @@ object SnapshotCoordinator:
     )
 
   def createWithPolicy[F[_]: Sync: Clock](
-      chainId: org.sigilaris.node.jvm.runtime.gossip.ChainId,
+      chainId: org.sigilaris.node.gossip.ChainId,
       metadataStore: SnapshotMetadataStore[F],
       nodeStore: SnapshotNodeStore[F],
       fetchService: SnapshotNodeFetchService[F],
@@ -385,7 +385,7 @@ object SnapshotCoordinator:
     )
 
   def createWithPolicyAndNow[F[_]: Sync](
-      chainId: org.sigilaris.node.jvm.runtime.gossip.ChainId,
+      chainId: org.sigilaris.node.gossip.ChainId,
       metadataStore: SnapshotMetadataStore[F],
       nodeStore: SnapshotNodeStore[F],
       fetchService: SnapshotNodeFetchService[F],

@@ -130,6 +130,8 @@ lazy val root = (project in file("."))
   .aggregate(
     core.jvm,
     core.js,
+    nodeCommon.jvm,
+    nodeCommon.js,
     nodeJvm,
     benchmarks,
     tools,
@@ -138,7 +140,11 @@ lazy val root = (project in file("."))
   .enablePlugins(TypelevelSitePlugin, ScalaUnidocPlugin)
   .settings(
     publish / skip := true,
-    (ScalaUnidoc / unidoc) / unidocProjectFilter := inProjects(core.jvm, nodeJvm),
+    (ScalaUnidoc / unidoc) / unidocProjectFilter := inProjects(
+      core.jvm,
+      nodeCommon.jvm,
+      nodeJvm,
+    ),
     // Map unidoc into site output so preview won't drop it
     ScalaUnidoc / siteSubdirName := "api",
     addMappingsToSiteDir(ScalaUnidoc / packageDoc / mappings, ScalaUnidoc / siteSubdirName),
@@ -219,6 +225,29 @@ lazy val benchmarks = (project in file("benchmarks"))
     Test / fork := true,
   )
 
+lazy val nodeCommon = crossProject(JSPlatform, JVMPlatform)
+  .crossType(CrossType.Full)
+  .in(file("modules/node-common"))
+  .dependsOn(core)
+  .settings(Dependencies.tests)
+  .settings(
+    moduleName := "sigilaris-node-common",
+    Compile / compile / wartremoverErrors ++= Warts
+      .allBut(Wart.SeqApply, Wart.SeqUpdated),
+  )
+  .jsSettings(
+    // Shared gossip model uses java.time on JS as well.
+    libraryDependencies += "io.github.cquiroz" %%% "scala-java-time" % V.scalaJavaTime,
+    useYarn := true,
+    Test / scalaJSLinkerConfig ~= (_.withModuleKind(ModuleKind.CommonJSModule)),
+    Test / webpackBundlingMode := scalajsbundler.BundlingMode.LibraryAndApplication(),
+    Test / logBuffered := false,
+    Test / fork := false,
+  )
+  .jsConfigure { project =>
+    project.enablePlugins(ScalaJSBundlerPlugin)
+  }
+
 lazy val tools = (project in file("tools"))
   .settings(
     publish / skip := true,
@@ -233,7 +262,7 @@ lazy val tools = (project in file("tools"))
   )
 
 lazy val nodeJvm = (project in file("modules/node-jvm"))
-  .dependsOn(core.jvm)
+  .dependsOn(nodeCommon.jvm)
   .settings(Dependencies.nodeJvm)
   .settings(Dependencies.tests)
   .settings(

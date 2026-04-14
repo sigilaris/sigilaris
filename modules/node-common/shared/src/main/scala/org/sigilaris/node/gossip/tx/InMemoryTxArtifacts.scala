@@ -1,4 +1,4 @@
-package org.sigilaris.node.jvm.runtime.gossip.tx
+package org.sigilaris.node.gossip.tx
 
 import java.nio.ByteBuffer
 import java.time.Instant
@@ -8,7 +8,7 @@ import cats.syntax.all.*
 import scodec.bits.ByteVector
 
 import org.sigilaris.core.util.SafeStringInterp.*
-import org.sigilaris.node.jvm.runtime.gossip.*
+import org.sigilaris.node.gossip.*
 
 /** Snapshot of the in-memory transaction sink state for testing and inspection.
   *

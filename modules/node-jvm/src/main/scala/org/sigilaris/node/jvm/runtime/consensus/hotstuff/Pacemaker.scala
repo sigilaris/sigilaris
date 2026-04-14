@@ -7,7 +7,7 @@ import org.sigilaris.core.codec.byte.ByteEncoder
 import org.sigilaris.core.codec.byte.ByteEncoder.ops.*
 import org.sigilaris.core.crypto.{KeyPair, Signature}
 import org.sigilaris.core.datatype.{UInt256, Utf8}
-import org.sigilaris.node.jvm.runtime.gossip.ChainId
+import org.sigilaris.node.gossip.ChainId
 
 /** Unique identifier for a timeout vote, represented as a 256-bit hash. */
 opaque type TimeoutVoteId = UInt256

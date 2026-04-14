@@ -24,7 +24,7 @@ import org.sigilaris.node.jvm.runtime.block.{
   BodyRoot,
   StateRoot,
 }
-import org.sigilaris.node.jvm.runtime.gossip.{
+import org.sigilaris.node.gossip.{
   CanonicalRejection,
   ChainId,
   DirectionalSessionId,
@@ -135,7 +135,7 @@ final class HotStuffSnapshotSyncSuite extends CatsEffectSuite:
             stateRoot: StateRoot,
             hashes: Vector[MerkleTrieNode.MerkleHash],
         ): IO[Either[
-          org.sigilaris.node.jvm.runtime.gossip.CanonicalRejection,
+          org.sigilaris.node.gossip.CanonicalRejection,
           Vector[SnapshotTrieNode],
         ]] =
           IO.pure(Right(Vector(invalidNode)))
@@ -476,7 +476,7 @@ final class HotStuffSnapshotSyncSuite extends CatsEffectSuite:
           stateRoot: StateRoot,
           hashes: Vector[MerkleTrieNode.MerkleHash],
       ): IO[
-        Either[org.sigilaris.node.jvm.runtime.gossip.CanonicalRejection, Vector[
+        Either[org.sigilaris.node.gossip.CanonicalRejection, Vector[
           SnapshotTrieNode,
         ]],
       ] =

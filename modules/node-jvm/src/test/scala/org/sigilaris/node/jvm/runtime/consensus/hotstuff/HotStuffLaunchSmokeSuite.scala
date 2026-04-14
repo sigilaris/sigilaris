@@ -44,7 +44,8 @@ import org.sigilaris.node.jvm.runtime.block.{
   StateRoot,
 }
 import org.sigilaris.node.jvm.runtime.consensus.hotstuff.given
-import org.sigilaris.node.jvm.runtime.gossip.*
+import org.sigilaris.node.gossip.*
+import org.sigilaris.node.jvm.runtime.gossip.StaticPeerTopologyConfig
 import org.sigilaris.node.jvm.storage.swaydb.StorageLayout
 import org.sigilaris.node.jvm.transport.armeria.{
   ArmeriaServer,

@@ -1,7 +1,10 @@
 # ADR-0025: Shared Node Abstraction And Cross-Runtime Module Boundary
 
 ## Status
-Proposed
+Accepted
+
+## Acceptance Date
+2026-04-14
 
 ## Context
 - ADR-0015는 reusable JVM node infrastructure를 `sigilaris-node-jvm`으로 추출하고, 의존 방향을 `sigilaris-core` <- `sigilaris-node-jvm`으로 고정했다. 동시에 Cloudflare Workers 같은 두 번째 runtime 구현 압력이 생기면 shared node abstraction을 재검토한다고 명시했다.
@@ -91,9 +94,10 @@ Proposed
 - 어떤 type이 truly cross-runtime reusable 인지, 어떤 type이 JVM-only runtime concern인지 inventory가 필요해진다.
 
 ## Implementation Status
-- `2026-04-09` 기준 repository에는 cross-project `sigilaris-core`와 JVM-only `sigilaris-node-jvm`이 존재한다.
-- shared node abstraction 전용 module `sigilaris-node-common`은 아직 없다.
-- 현재 gossip/session/bootstrap 관련 transport-neutral concept는 주로 `org.sigilaris.node.jvm.runtime.*` 아래에 있고, 일부 HTTP contract는 `org.sigilaris.node.jvm.transport.armeria.gossip` 안의 Tapir endpoint definition과 함께 존재한다.
+- `2026-04-14` 기준 repository에는 cross-project `sigilaris-core`, cross-project `sigilaris-node-common`, JVM-only `sigilaris-node-jvm`이 존재한다.
+- transport-neutral gossip/session/bootstrap contract와 tx anti-entropy runtime logic의 first extraction slice는 `org.sigilaris.node.gossip` / `org.sigilaris.node.gossip.tx` 아래로 이동했다.
+- `sigilaris-node-jvm`은 extracted contract를 consume 하고, Typesafe Config loader / JVM bootstrap assembly / Armeria transport adapter / SwayDB integration 같은 runtime-specific code를 계속 소유한다.
+- shared HTTP contract는 first implementation에서 DTO / codec / semantic-model fallback 으로 잠겼고, Tapir endpoint definitions 자체는 `sigilaris-node-jvm`에 남아 있다.
 
 ## Rejected Alternatives
 1. **shared node abstraction을 `sigilaris-core`로 올린다**
@@ -115,13 +119,11 @@ Proposed
    - Tapir contract, wire DTO, session model 같은 shared surface의 drift 위험이 커진다.
 
 ## Follow-Up
-- `sigilaris-node-common` 도입과 package move 를 다루는 implementation plan을 별도로 작성한다.
-- `sigilaris-node-common`의 exact build wiring과 dependency set을 정하고, JVM + JS crossProject baseline 을 build 설정으로 고정한다.
-- current `sigilaris-node-jvm` 안에서 truly cross-runtime reusable 한 type / package inventory를 만들고 move target을 확정한다.
-- 새 module boundary에 맞는 import/dependency rule test를 추가한다.
-- shared HTTP contract가 필요하다면, exact Tapir module availability 를 JVM + JS target 기준으로 검증하고, 실패 시 DTO / codec / semantic model fallback 규칙을 implementation plan 과 build/dependency rule에 반영한다.
-- `ADR-0015`의 follow-up 문구와 이후 implementation plan 문서에서, shared node abstraction re-evaluation 결과를 이 ADR 참조로 치환한다.
-- concrete implementation handoff 의 canonical record 는 [0010 - Node Common Extraction And Cross-Runtime Contract Plan](../plans/0010-node-common-extraction-and-cross-runtime-contract-plan.md) 이 소유한다.
+- remaining consensus/runtime/shared candidate inventory 확장은 explicit future work 로 남기고, 새 extraction batch 가 승인될 때 별도 plan 으로 기록한다.
+- shared HTTP contract가 실제 cross-runtime consumer 를 갖게 되면 DTO / codec / semantic model extraction 범위를 재검토한다.
+- future `sigilaris-node-cloudflare-workers` runtime plan 에서 `sigilaris-node-common` surface 를 재사용 기준으로 삼는다.
+- 필요 시 `sigilaris-node-common` public API curation / compatibility policy 를 문서화한다.
+- first extraction batch implementation handoff 의 canonical record 는 [0010 - Node Common Extraction And Cross-Runtime Contract Plan](../plans/0010-node-common-extraction-and-cross-runtime-contract-plan.md) 이 소유한다.
 
 ## References
 - [ADR-0015: JVM Node Bundle Boundary And Packaging](0015-jvm-node-bundle-boundary-and-packaging.md)

@@ -27,8 +27,8 @@ import org.sigilaris.core.util.SafeStringInterp.*
 import org.sigilaris.node.jvm.runtime.block.{BlockHeight, BlockId, StateRoot}
 import org.sigilaris.node.jvm.runtime.consensus.hotstuff.*
 import org.sigilaris.node.jvm.runtime.consensus.hotstuff.given
-import org.sigilaris.node.jvm.runtime.gossip.*
-import org.sigilaris.node.jvm.runtime.gossip.tx.TxGossipRuntime
+import org.sigilaris.node.gossip.*
+import org.sigilaris.node.gossip.tx.TxGossipRuntime
 
 /** Wire format for a finalized anchor suggestion response.
   *

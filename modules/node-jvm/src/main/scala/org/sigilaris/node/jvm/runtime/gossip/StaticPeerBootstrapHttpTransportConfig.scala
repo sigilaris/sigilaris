@@ -9,6 +9,7 @@ import cats.syntax.all.*
 import com.typesafe.config.Config
 
 import org.sigilaris.core.util.SafeStringInterp.*
+import org.sigilaris.node.gossip.{PeerIdentity, StaticPeerTopology}
 
 /** Configuration for HTTP-based bootstrap transport to static peers.
   *

@@ -1,13 +1,12 @@
-package org.sigilaris.node.jvm.runtime.gossip
+package org.sigilaris.node.gossip
 
 import java.time.{Duration, Instant}
-import java.util.{Base64, UUID}
 
-import scala.util.Try
+import scala.util.Random
 
 import cats.Eq
 import cats.syntax.all.*
-import scodec.bits.ByteVector
+import scodec.bits.{Bases, ByteVector}
 
 import org.sigilaris.core.util.SafeStringInterp.*
 
@@ -97,6 +96,10 @@ object CanonicalRejection:
 object GossipFieldValidation:
   private val LowerAsciiToken = "^[a-z0-9][a-z0-9._-]*$".r
   private val LowerAsciiTopic = "^[a-z0-9][a-z0-9._-]*$".r
+  private val CanonicalUuidV4 =
+    "^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$".r
+  private val UuidLike =
+    "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$".r
 
   /** Validates that a value is a non-empty lowercase ASCII token.
     *
@@ -138,22 +141,38 @@ object GossipFieldValidation:
     * @param value
     *   the UUID string to validate
     * @return
-    *   the parsed UUID or an error message
+    *   the validated UUID string or an error message
     */
-  def validateUuidV4(kind: String, value: String): Either[String, UUID] =
-    Try(UUID.fromString(value)).toEither.left
-      .map(_ => ss"${kind} must be a UUIDv4 string")
-      .flatMap: uuid =>
-        Either.cond(
-          uuid.version() === 4 && uuid.toString === value,
-          uuid,
-          ss"${kind} must be a lowercase canonical UUIDv4 string",
-        )
+  def validateUuidV4(kind: String, value: String): Either[String, String] =
+    if CanonicalUuidV4.matches(value) then Right[String, String](value)
+    else if UuidLike.matches(value) then
+      Left[String, String](
+        ss"${kind} must be a lowercase canonical UUIDv4 string",
+      )
+    else Left[String, String](ss"${kind} must be a UUIDv4 string")
 
 /** Opaque type representing a unique identifier for one direction of a gossip
   * session.
   */
 opaque type DirectionalSessionId = String
+
+private object CrossRuntimeUuid:
+  private def byteToHex(byte: Byte): String =
+    ((byte & 0xff) + 0x100).toHexString.substring(1)
+
+  private def randomUuidV4String(random: Random): String =
+    val bytes = Array.ofDim[Byte](16)
+    random.nextBytes(bytes)
+    bytes(6) = ((bytes(6) & 0x0f) | 0x40).toByte
+    bytes(8) = ((bytes(8) & 0x3f) | 0x80).toByte
+    val hex = bytes.iterator.map(byteToHex).mkString
+    ss"${hex.substring(0, 8)}-${hex.substring(8, 12)}-${hex.substring(12, 16)}-${hex.substring(16, 20)}-${hex.substring(20, 32)}"
+
+  def randomUuidV4(): String =
+    randomUuidV4From(Random)
+
+  def randomUuidV4From(random: Random): String =
+    randomUuidV4String(random)
 
 /** Companion for `DirectionalSessionId`. */
 object DirectionalSessionId:
@@ -164,7 +183,10 @@ object DirectionalSessionId:
     *   a new random session id
     */
   def random(): DirectionalSessionId =
-    UUID.randomUUID().toString
+    CrossRuntimeUuid.randomUuidV4()
+
+  private[gossip] def fromRandom(random: Random): DirectionalSessionId =
+    CrossRuntimeUuid.randomUuidV4From(random)
 
   /** Parses a string into a validated directional session id.
     *
@@ -196,7 +218,10 @@ object PeerCorrelationId:
     *   a new random correlation id
     */
   def random(): PeerCorrelationId =
-    UUID.randomUUID().toString
+    CrossRuntimeUuid.randomUuidV4()
+
+  private[gossip] def fromRandom(random: Random): PeerCorrelationId =
+    CrossRuntimeUuid.randomUuidV4From(random)
 
   /** Parses a string into a validated peer correlation id.
     *
@@ -482,7 +507,7 @@ object StableArtifactId:
     ByteVector
       .fromHexDescriptive(value)
       .left
-      .map(error => s"invalid stable artifact id hex: $error")
+      .map(error => ss"invalid stable artifact id hex: ${error}")
       .flatMap(fromBytes)
 
   /** Parses a hex-encoded stable artifact id, throwing on invalid input.
@@ -663,8 +688,8 @@ object CursorToken:
     *   the token, or an error message
     */
   def decodeBase64Url(value: String): Either[String, CursorToken] =
-    Try(ByteVector.view(Base64.getUrlDecoder.decode(value))).toEither.left
-      .map(_ => "cursor token must be base64url without padding")
+    ByteVector
+      .fromBase64Descriptive(value, Bases.Alphabets.Base64UrlNoPad)
       .flatMap(fromBytes)
 
   extension (token: CursorToken)
@@ -672,7 +697,7 @@ object CursorToken:
     def version: Int        = token.head.toInt & 0xff
     def payload: ByteVector = token.drop(1)
     def toBase64Url: String =
-      Base64.getUrlEncoder.withoutPadding().encodeToString(token.toArray)
+      token.toBase64UrlNoPad
 
     def validateVersion(
         expected: Int = CurrentVersion,

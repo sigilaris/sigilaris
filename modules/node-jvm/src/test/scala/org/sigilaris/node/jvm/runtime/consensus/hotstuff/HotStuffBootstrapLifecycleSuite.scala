@@ -20,7 +20,7 @@ import org.sigilaris.node.jvm.runtime.block.{
   BodyRoot,
   StateRoot,
 }
-import org.sigilaris.node.jvm.runtime.gossip.ChainId
+import org.sigilaris.node.gossip.ChainId
 
 final class HotStuffBootstrapLifecycleSuite extends CatsEffectSuite:
 
@@ -174,8 +174,8 @@ final class HotStuffBootstrapLifecycleSuite extends CatsEffectSuite:
     val session = Vector(
       BootstrapSessionBinding(
         peer =
-          org.sigilaris.node.jvm.runtime.gossip.PeerIdentity.unsafe("node-b"),
-        sessionId = org.sigilaris.node.jvm.runtime.gossip.DirectionalSessionId
+          org.sigilaris.node.gossip.PeerIdentity.unsafe("node-b"),
+        sessionId = org.sigilaris.node.gossip.DirectionalSessionId
           .parse("aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa")
           .toOption
           .get,
@@ -204,14 +204,14 @@ final class HotStuffBootstrapLifecycleSuite extends CatsEffectSuite:
               session: BootstrapSessionBinding,
               chainId: ChainId,
           ): IO[Either[
-            org.sigilaris.node.jvm.runtime.gossip.CanonicalRejection,
+            org.sigilaris.node.gossip.CanonicalRejection,
             Option[FinalizedAnchorSuggestion],
           ]] =
             suggestionAvailable.get.map: enabled =>
               Option
                 .when(enabled)(anchor)
                 .asRight[
-                  org.sigilaris.node.jvm.runtime.gossip.CanonicalRejection,
+                  org.sigilaris.node.gossip.CanonicalRejection,
                 ]
         ,
         snapshotNodeFetch = new SnapshotNodeFetchService[IO]:
@@ -221,7 +221,7 @@ final class HotStuffBootstrapLifecycleSuite extends CatsEffectSuite:
               stateRoot: StateRoot,
               hashes: Vector[MerkleTrieNode.MerkleHash],
           ): IO[Either[
-            org.sigilaris.node.jvm.runtime.gossip.CanonicalRejection,
+            org.sigilaris.node.gossip.CanonicalRejection,
             Vector[SnapshotTrieNode],
           ]] =
             IO.pure(
@@ -229,7 +229,7 @@ final class HotStuffBootstrapLifecycleSuite extends CatsEffectSuite:
                 .filter(_ === rootHash)
                 .map(_ => SnapshotTrieNode(rootHash, root))
                 .asRight[
-                  org.sigilaris.node.jvm.runtime.gossip.CanonicalRejection,
+                  org.sigilaris.node.gossip.CanonicalRejection,
                 ],
             )
         ,
@@ -241,7 +241,7 @@ final class HotStuffBootstrapLifecycleSuite extends CatsEffectSuite:
               nextHeight: org.sigilaris.node.jvm.runtime.block.BlockHeight,
               limit: Int,
           ): IO[Either[
-            org.sigilaris.node.jvm.runtime.gossip.CanonicalRejection,
+            org.sigilaris.node.gossip.CanonicalRejection,
             Vector[Proposal],
           ]] =
             IO.pure(Right(Vector.empty))
@@ -254,7 +254,7 @@ final class HotStuffBootstrapLifecycleSuite extends CatsEffectSuite:
               beforeHeight: org.sigilaris.node.jvm.runtime.block.BlockHeight,
               limit: Int,
           ): IO[Either[
-            org.sigilaris.node.jvm.runtime.gossip.CanonicalRejection,
+            org.sigilaris.node.gossip.CanonicalRejection,
             Vector[Proposal],
           ]] =
             IO.pure(Right(Vector.empty))
@@ -305,8 +305,8 @@ final class HotStuffBootstrapLifecycleSuite extends CatsEffectSuite:
     val session = Vector(
       BootstrapSessionBinding(
         peer =
-          org.sigilaris.node.jvm.runtime.gossip.PeerIdentity.unsafe("node-b"),
-        sessionId = org.sigilaris.node.jvm.runtime.gossip.DirectionalSessionId
+          org.sigilaris.node.gossip.PeerIdentity.unsafe("node-b"),
+        sessionId = org.sigilaris.node.gossip.DirectionalSessionId
           .parse("bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb")
           .toOption
           .get,
@@ -335,12 +335,12 @@ final class HotStuffBootstrapLifecycleSuite extends CatsEffectSuite:
               session: BootstrapSessionBinding,
               chainId: ChainId,
           ): IO[Either[
-            org.sigilaris.node.jvm.runtime.gossip.CanonicalRejection,
+            org.sigilaris.node.gossip.CanonicalRejection,
             Option[FinalizedAnchorSuggestion],
           ]] =
             IO.pure(
               Option(anchor).asRight[
-                org.sigilaris.node.jvm.runtime.gossip.CanonicalRejection,
+                org.sigilaris.node.gossip.CanonicalRejection,
               ],
             )
         ,
@@ -351,7 +351,7 @@ final class HotStuffBootstrapLifecycleSuite extends CatsEffectSuite:
               stateRoot: StateRoot,
               hashes: Vector[MerkleTrieNode.MerkleHash],
           ): IO[Either[
-            org.sigilaris.node.jvm.runtime.gossip.CanonicalRejection,
+            org.sigilaris.node.gossip.CanonicalRejection,
             Vector[SnapshotTrieNode],
           ]] =
             IO.pure(
@@ -359,7 +359,7 @@ final class HotStuffBootstrapLifecycleSuite extends CatsEffectSuite:
                 .filter(_ === rootHash)
                 .map(_ => SnapshotTrieNode(rootHash, root))
                 .asRight[
-                  org.sigilaris.node.jvm.runtime.gossip.CanonicalRejection,
+                  org.sigilaris.node.gossip.CanonicalRejection,
                 ],
             )
         ,
@@ -371,7 +371,7 @@ final class HotStuffBootstrapLifecycleSuite extends CatsEffectSuite:
               nextHeight: org.sigilaris.node.jvm.runtime.block.BlockHeight,
               limit: Int,
           ): IO[Either[
-            org.sigilaris.node.jvm.runtime.gossip.CanonicalRejection,
+            org.sigilaris.node.gossip.CanonicalRejection,
             Vector[Proposal],
           ]] =
             IO.pure(Right(Vector.empty))
@@ -384,7 +384,7 @@ final class HotStuffBootstrapLifecycleSuite extends CatsEffectSuite:
               beforeHeight: org.sigilaris.node.jvm.runtime.block.BlockHeight,
               limit: Int,
           ): IO[Either[
-            org.sigilaris.node.jvm.runtime.gossip.CanonicalRejection,
+            org.sigilaris.node.gossip.CanonicalRejection,
             Vector[Proposal],
           ]] =
             backfillCalls.update(_ + 1) *> IO.pure(Right(Vector.empty))

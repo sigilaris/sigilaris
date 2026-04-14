@@ -8,7 +8,7 @@ import cats.syntax.all.*
 
 import org.sigilaris.core.util.SafeStringInterp.*
 import org.sigilaris.node.jvm.runtime.block.BlockHeight
-import org.sigilaris.node.jvm.runtime.gossip.{CanonicalRejection, ChainId}
+import org.sigilaris.node.gossip.{CanonicalRejection, ChainId}
 
 /** Represents a failure when verifying a finalized anchor suggestion. */
 final case class FinalizedAnchorVerificationFailure(

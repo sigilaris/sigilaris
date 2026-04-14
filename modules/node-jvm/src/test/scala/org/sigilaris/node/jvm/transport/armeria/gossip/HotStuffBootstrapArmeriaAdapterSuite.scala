@@ -33,8 +33,8 @@ import org.sigilaris.node.jvm.runtime.block.{
   StateRoot,
 }
 import org.sigilaris.node.jvm.runtime.consensus.hotstuff.*
-import org.sigilaris.node.jvm.runtime.gossip.*
-import org.sigilaris.node.jvm.runtime.gossip.tx.*
+import org.sigilaris.node.gossip.*
+import org.sigilaris.node.gossip.tx.*
 import org.sigilaris.node.jvm.storage.swaydb.StorageLayout
 import org.sigilaris.node.jvm.transport.armeria.{
   ArmeriaServer,

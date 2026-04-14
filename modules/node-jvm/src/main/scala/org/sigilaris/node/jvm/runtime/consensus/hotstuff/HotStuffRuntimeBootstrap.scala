@@ -21,13 +21,15 @@ import org.sigilaris.core.crypto.Hash
 import org.sigilaris.core.datatype.UInt256
 import org.sigilaris.core.util.SafeStringInterp.*
 import org.sigilaris.node.jvm.runtime.block.BlockQuery
-import org.sigilaris.node.jvm.runtime.gossip.*
-import org.sigilaris.node.jvm.storage.swaydb.StorageLayout
-import org.sigilaris.node.jvm.runtime.gossip.tx.{
-  TxGossipRuntime,
-  TxGossipRuntimeBootstrap,
-  TxRuntimePolicy,
+import org.sigilaris.node.gossip.*
+import org.sigilaris.node.gossip.tx.{TxGossipRuntime, TxRuntimePolicy}
+import org.sigilaris.node.jvm.runtime.gossip.{
+  StaticPeerBootstrapHttpTransportConfig,
+  StaticPeerTopologyConfig,
+  StaticPeerTransportAuthConfig,
 }
+import org.sigilaris.node.jvm.runtime.gossip.tx.TxGossipRuntimeBootstrap
+import org.sigilaris.node.jvm.storage.swaydb.StorageLayout
 import org.sigilaris.node.jvm.transport.armeria.gossip.HotStuffBootstrapHttpTransport
 
 /** Configuration for bootstrapping a HotStuff consensus node.

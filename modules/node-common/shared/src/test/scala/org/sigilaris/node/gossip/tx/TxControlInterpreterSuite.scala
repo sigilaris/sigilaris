@@ -1,4 +1,4 @@
-package org.sigilaris.node.jvm.runtime.gossip.tx
+package org.sigilaris.node.gossip.tx
 
 import java.time.{Duration, Instant}
 
@@ -13,7 +13,7 @@ import org.sigilaris.core.codec.byte.ByteEncoder
 import org.sigilaris.core.crypto.Hash
 import org.sigilaris.core.crypto.Hash.ops.*
 import org.sigilaris.core.datatype.Utf8
-import org.sigilaris.node.jvm.runtime.gossip.*
+import org.sigilaris.node.gossip.*
 
 final class TxControlInterpreterSuite extends CatsEffectSuite:
 

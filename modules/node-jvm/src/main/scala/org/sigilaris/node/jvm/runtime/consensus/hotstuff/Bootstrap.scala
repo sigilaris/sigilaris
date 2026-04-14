@@ -7,7 +7,7 @@ import cats.syntax.all.*
 
 import org.sigilaris.core.merkle.MerkleTrieNode
 import org.sigilaris.node.jvm.runtime.block.{BlockHeight, BlockId, StateRoot}
-import org.sigilaris.node.jvm.runtime.gossip.{
+import org.sigilaris.node.gossip.{
   CanonicalRejection,
   ChainId,
   DirectionalSessionId,

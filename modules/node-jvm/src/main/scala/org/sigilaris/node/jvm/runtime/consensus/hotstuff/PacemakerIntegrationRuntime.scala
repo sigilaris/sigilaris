@@ -17,7 +17,7 @@ import org.sigilaris.node.jvm.runtime.block.{
   BodyRoot,
   StateRoot,
 }
-import org.sigilaris.node.jvm.runtime.gossip.*
+import org.sigilaris.node.gossip.*
 
 /** Identifies a pacemaker entry by chain and local validator. */
 final case class HotStuffPacemakerKey(

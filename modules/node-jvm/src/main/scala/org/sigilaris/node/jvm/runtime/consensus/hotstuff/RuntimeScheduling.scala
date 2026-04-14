@@ -36,7 +36,7 @@ object HotStuffRuntimeRejection:
 final case class HotStuffProposalEmission[TxRef, ResultRef, Event](
     selection: ConflictFreeBlockBodySelection[TxRef, ResultRef, Event],
     view: BlockView[TxRef, ResultRef, Event],
-    event: org.sigilaris.node.jvm.runtime.gossip.GossipEvent[
+    event: org.sigilaris.node.gossip.GossipEvent[
       HotStuffGossipArtifact,
     ],
 )

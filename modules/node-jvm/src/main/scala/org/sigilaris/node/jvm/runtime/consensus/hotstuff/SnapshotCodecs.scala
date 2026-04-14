@@ -16,7 +16,7 @@ import org.sigilaris.node.jvm.runtime.block.{
   BodyRoot,
   StateRoot,
 }
-import org.sigilaris.node.jvm.runtime.gossip.{ChainId, StableArtifactId}
+import org.sigilaris.node.gossip.{ChainId, StableArtifactId}
 
 given ByteDecoder[ChainId] =
   ByteDecoder[Utf8].emap: utf8 =>

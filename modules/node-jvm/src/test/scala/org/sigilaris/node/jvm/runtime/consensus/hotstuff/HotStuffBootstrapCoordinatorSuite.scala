@@ -24,7 +24,7 @@ import org.sigilaris.node.jvm.runtime.block.{
   BodyRoot,
   StateRoot,
 }
-import org.sigilaris.node.jvm.runtime.gossip.{
+import org.sigilaris.node.gossip.{
   CanonicalRejection,
   ChainId,
   ControlOp,
@@ -32,7 +32,7 @@ import org.sigilaris.node.jvm.runtime.gossip.{
   PeerIdentity,
   StableArtifactId,
 }
-import org.sigilaris.node.jvm.runtime.gossip.tx.TxRuntimePolicy
+import org.sigilaris.node.gossip.tx.TxRuntimePolicy
 
 final class HotStuffBootstrapCoordinatorSuite extends CatsEffectSuite:
 

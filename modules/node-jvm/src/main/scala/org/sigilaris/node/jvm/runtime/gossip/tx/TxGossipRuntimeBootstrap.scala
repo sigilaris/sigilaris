@@ -5,7 +5,12 @@ import cats.syntax.all.*
 
 import com.typesafe.config.Config
 
-import org.sigilaris.node.jvm.runtime.gossip.*
+import org.sigilaris.node.gossip.*
+import org.sigilaris.node.gossip.tx.*
+import org.sigilaris.node.jvm.runtime.gossip.{
+  StaticPeerTopologyConfig,
+  StaticPeerTransportAuthConfig,
+}
 
 /** Assembled bootstrap bundle containing all components needed to run
   * transaction gossip.

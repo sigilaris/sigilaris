@@ -1,13 +1,13 @@
 # 0010 - Node Common Extraction And Cross-Runtime Contract Plan
 
 ## Status
-Draft
+Phase 4 Complete
 
 ## Created
 2026-04-09
 
 ## Last Updated
-2026-04-09
+2026-04-14
 
 ## Background
 - ADR-0025는 `sigilaris-core`를 node-agnostic 으로 유지하면서, cross-runtime reusable node contract의 owner를 새 cross-project module `sigilaris-node-common`으로 고정했다.
@@ -33,6 +33,7 @@ Draft
 - `sigilaris-node-common`의 canonical package root `org.sigilaris.node`와 JVM/JS source layout을 만든다.
 - `modules/node-jvm` 안의 shared candidate inventory를 만들고, first extraction slice의 target mapping을 고정한다.
 - first extraction slice로 적합한 transport-neutral gossip/session/bootstrap contract를 `node-common`으로 이동한다.
+- extraction 과정에서 previously co-located shared helper/type를 dedicated shared file로 split 하는 refactor는 허용하되, semantic behavior expansion은 scope 밖에 둔다.
 - `node-jvm`이 extracted contract를 참조하도록 import/package/build wiring을 갱신한다.
 - 새 module boundary에 맞는 compile/import/dependency rule test를 추가한다.
 - `ADR-0025`와 관련 문서에 implementation handoff 링크를 정리한다.
@@ -86,6 +87,34 @@ Draft
   - `node-common` 과 `node-jvm` 사이 circular dependency
   - locked non-goal 이었던 config/transport/storage glue move 필요
   - shared candidate 하나를 옮기기 위해 `5`개 이상 JVM-specific residue type 을 추가 이동해야 하는 경우
+
+## Phase 0 Output
+- shared HTTP contract strategy는 이번 배치에서 `DTO / codec / semantic model shared, Tapir definition은 runtime-specific 유지` 로 잠갔다.
+- first extraction batch 는 transport-neutral gossip/session/bootstrap contract와 tx anti-entropy runtime logic까지만 `sigilaris-node-common`으로 이동하고, JVM config/bootstrap/transport assembly 는 `sigilaris-node-jvm`에 남긴다.
+
+| source package/type | classification | rationale | target package | blocking dependency or portability note |
+| --- | --- | --- | --- | --- |
+| `org.sigilaris.node.jvm.runtime.gossip.{Model, Contracts, PeerRegistry, ProducerSession, SessionEngine, StaticPeerTransportAuth}` | `shared` | transport-neutral model, service contract, session engine, and shared transport-auth value objects only depend on `core`, Cats, `scodec`, and `java.time`; the overall `node-common` module additionally carries Cats Effect via the `org.sigilaris.node.gossip.tx` extraction below | `org.sigilaris.node.gossip` | JS baseline is green with existing `java.time` compatibility; random UUID generation was replaced with a cross-runtime helper |
+| `org.sigilaris.node.jvm.runtime.gossip.tx` tx anti-entropy runtime family, including extracted shared `TxTopic` / `TxIdentity` helpers | `shared` | tx anti-entropy runtime logic is runtime-neutral and depends only on shared gossip contracts, Cats Effect, and `core`; extraction split the shared topic/id helpers into a dedicated shared file under the new package | `org.sigilaris.node.gossip.tx` | `TxGossipRuntimeBootstrap` stays JVM-specific because config/bootstrap assembly is bundle-owned |
+| `org.sigilaris.node.jvm.runtime.gossip.StaticPeerTopologyConfig` | `jvm-specific` | Typesafe Config loader for static topology is a JVM deployment concern, not a shared node contract | - | `com.typesafe.config` |
+| `org.sigilaris.node.jvm.runtime.gossip.StaticPeerTransportAuthConfig` | `jvm-specific` | config loader for shared transport auth remains JVM-owned assembly glue | - | `com.typesafe.config` |
+| `org.sigilaris.node.jvm.runtime.gossip.StaticPeerBootstrapHttpTransportConfig` | `jvm-specific` | outbound HTTP tuning and peer base URI config are runtime-specific transport assembly concerns | - | `com.typesafe.config` |
+| `org.sigilaris.node.jvm.runtime.gossip.tx.TxGossipRuntimeBootstrap` | `jvm-specific` | config-driven bootstrap composition depends on JVM config loaders and the opinionated JVM bundle graph | - | `com.typesafe.config`, JVM bootstrap assembly |
+| `org.sigilaris.node.jvm.transport.armeria.gossip.GossipTransportAuth` | `jvm-specific` | transport proof/capability implementation uses JCA/JVM crypto APIs and HTTP header glue | - | `javax.crypto`, `java.security.MessageDigest` |
+| `org.sigilaris.node.jvm.transport.armeria.gossip.TxGossipArmeriaAdapter` | `defer` | file mixes wire DTOs with Tapir server endpoints, binary wire codec, and Armeria runtime transport logic | `org.sigilaris.node.http.tx` (later, if needed) | exact Tapir shared availability is not locked for this batch; endpoint definitions remain runtime-specific |
+| `org.sigilaris.node.jvm.transport.armeria.gossip.HotStuffBootstrapArmeriaAdapter` | `defer` | bootstrap wire DTOs are co-located with Tapir endpoints, Java HTTP client transport, and HotStuff-specific runtime glue | `org.sigilaris.node.http.bootstrap` (later, if needed) | first batch keeps DTOs local; Tapir/OpenAPI/HttpClient stay in `node-jvm` |
+
+Target package mapping:
+- `org.sigilaris.node.gossip`: canonical shared gossip/session/bootstrap contract root
+- `org.sigilaris.node.gossip.tx`: shared tx anti-entropy/runtime-neutral layer
+- `org.sigilaris.node.jvm.runtime.gossip`: JVM config loaders and HTTP bootstrap transport config only
+- `org.sigilaris.node.jvm.runtime.gossip.tx`: JVM bootstrap assembly only
+- `org.sigilaris.node.jvm.transport.armeria.gossip`: runtime-specific Tapir/Armeria/Java HTTP client transport layer
+
+Boundary rules locked in code/tests:
+- `core -X-> org.sigilaris.node.*`
+- `node-common -X-> org.sigilaris.node.jvm`
+- `node-common -X-> com.linecorp.armeria|swaydb|com.typesafe.config|java.net.http`
 
 ## Change Areas
 
@@ -196,36 +225,36 @@ Draft
 ## Checklist
 
 ### Phase 0: Inventory And Portability Lock
-- [ ] shared candidate vs JVM-specific residue inventory를 작성한다.
-- [ ] inventory table 을 locked column format 으로 남긴다.
-- [ ] shared HTTP contract strategy를 Tapir shared 또는 DTO fallback 중 하나로 잠근다.
-- [ ] `java.time` compatibility handling 을 build/dependency 관점에서 확인한다.
-- [ ] target package mapping과 boundary rule 목록을 문서에 남긴다.
+- [x] shared candidate vs JVM-specific residue inventory를 작성한다.
+- [x] inventory table 을 locked column format 으로 남긴다.
+- [x] shared HTTP contract strategy를 Tapir shared 또는 DTO fallback 중 하나로 잠근다.
+- [x] `java.time` compatibility handling 을 build/dependency 관점에서 확인한다.
+- [x] target package mapping과 boundary rule 목록을 문서에 남긴다.
 
 ### Phase 1: Module Skeleton And Build Wiring
-- [ ] `build.sbt`에 `sigilaris-node-common` crossProject를 추가한다.
-- [ ] root aggregate와 `core <- node-common <- node-jvm` dependency wiring을 갱신한다.
-- [ ] `modules/node-common` JVM/JS source layout과 최소 compile smoke를 만든다.
+- [x] `build.sbt`에 `sigilaris-node-common` crossProject를 추가한다.
+- [x] root aggregate와 `core <- node-common <- node-jvm` dependency wiring을 갱신한다.
+- [x] `modules/node-common` JVM/JS source layout과 최소 compile smoke를 만든다.
 
 ### Phase 2: First Shared Contract Extraction
-- [ ] first extraction slice를 `org.sigilaris.node` namespace 아래로 이동한다.
-- [ ] `node-jvm` import/reference를 shared contract 기준으로 갱신한다.
-- [ ] JVM-specific config/transport glue가 shared source set에 남지 않도록 정리한다.
-- [ ] 각 extraction batch 뒤 `node-common` JVM/JS compile green 을 확인한다.
-- [ ] rollback trigger 발생 시 batch 를 재분류하고 smaller slice 로 다시 쪼갠다.
+- [x] first extraction slice를 `org.sigilaris.node` namespace 아래로 이동한다.
+- [x] `node-jvm` import/reference를 shared contract 기준으로 갱신한다.
+- [x] JVM-specific config/transport glue가 shared source set에 남지 않도록 정리한다.
+- [x] 각 extraction batch 뒤 `node-common` JVM/JS compile green 을 확인한다.
+- [x] rollback trigger 발생 시 batch 를 재분류하고 smaller slice 로 다시 쪼갠다.
 
 ### Phase 3: JVM Integration And Boundary Enforcement
-- [ ] `core`, `node-common`, `node-jvm` import/dependency rule test를 추가한다.
-- [ ] package move로 영향 받은 gossip/runtime/transport regression suite를 정리한다.
-- [ ] JS compile failure 또는 boundary violation이 CI-visible 하게 surface 되도록 한다.
+- [x] `core`, `node-common`, `node-jvm` import/dependency rule test를 추가한다.
+- [x] package move로 영향 받은 gossip/runtime/transport regression suite를 정리한다.
+- [x] JS compile failure 또는 boundary violation이 CI-visible 하게 surface 되도록 한다.
 
 ### Phase 4: Verification And Docs
-- [ ] `node-common` JVM + JS compile/test를 green 으로 만든다.
-- [ ] `node-jvm` targeted regression suite를 실행한다.
-- [ ] ADR-0025와 관련 docs를 새 plan 기준으로 정리한다.
+- [x] `node-common` JVM + JS compile/test를 green 으로 만든다.
+- [x] `node-jvm` targeted regression suite를 실행한다.
+- [x] ADR-0025와 관련 docs를 새 plan 기준으로 정리한다.
 
 ## Follow-Ups
 - future `sigilaris-node-cloudflare-workers` runtime plan
-- first extraction slice 이후 remaining consensus/runtime/shared contract inventory
+- first extraction slice 이후 remaining consensus/runtime/shared contract inventory를 다룰 별도 follow-up extraction plan
 - shared HTTP contract strategy가 DTO fallback으로 잠길 경우, later Tapir portability 재평가 plan
 - 필요 시 `node-common` public API curation / compatibility policy 문서화

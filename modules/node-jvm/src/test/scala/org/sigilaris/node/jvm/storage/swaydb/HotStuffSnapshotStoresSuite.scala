@@ -21,7 +21,7 @@ import org.sigilaris.node.jvm.runtime.consensus.hotstuff.{
   SnapshotMetadata,
   SnapshotStatus,
 }
-import org.sigilaris.node.jvm.runtime.gossip.ChainId
+import org.sigilaris.node.gossip.ChainId
 
 final class HotStuffSnapshotStoresSuite extends CatsEffectSuite:
   private given Bag.Async[IO] = Bag.global

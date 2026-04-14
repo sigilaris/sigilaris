@@ -6,7 +6,7 @@ import munit.CatsEffectSuite
 import org.sigilaris.core.crypto.CryptoOps
 import org.sigilaris.core.datatype.UInt256
 import org.sigilaris.node.jvm.runtime.block.{BlockHeight, BlockId, StateRoot}
-import org.sigilaris.node.jvm.runtime.gossip.{
+import org.sigilaris.node.gossip.{
   ChainId,
   DirectionalSessionId,
   PeerIdentity,

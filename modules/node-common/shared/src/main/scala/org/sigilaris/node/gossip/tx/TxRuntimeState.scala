@@ -1,11 +1,11 @@
-package org.sigilaris.node.jvm.runtime.gossip.tx
+package org.sigilaris.node.gossip.tx
 
 import java.time.{Duration, Instant}
 
 import cats.effect.kernel.{Ref, Sync}
 import cats.syntax.all.*
 
-import org.sigilaris.node.jvm.runtime.gossip.*
+import org.sigilaris.node.gossip.*
 
 /** Transaction-specific batching configuration implementing
   * `GossipProducerQoS`.

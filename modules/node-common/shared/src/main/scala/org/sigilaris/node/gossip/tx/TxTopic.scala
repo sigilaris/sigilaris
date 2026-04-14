@@ -1,8 +1,8 @@
-package org.sigilaris.node.jvm.runtime.gossip.tx
+package org.sigilaris.node.gossip.tx
 
 import org.sigilaris.core.crypto.Hash
 import org.sigilaris.core.crypto.Hash.ops.*
-import org.sigilaris.node.jvm.runtime.gossip.*
+import org.sigilaris.node.gossip.*
 
 /** Type class for computing a stable content-addressable identifier from a
   * transaction payload.

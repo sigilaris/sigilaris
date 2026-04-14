@@ -19,7 +19,7 @@ import org.sigilaris.node.jvm.runtime.block.{
   BlockView,
   BodyRoot,
 }
-import org.sigilaris.node.jvm.runtime.gossip.StableArtifactId
+import org.sigilaris.node.gossip.StableArtifactId
 
 /** Provides an application-neutral view over proposals, where the block body
   * is derived entirely from the carried transaction set without application-specific logic.
@@ -36,7 +36,7 @@ object ApplicationNeutralProposalView:
 
   private final case class LegacyAutomaticProposalSeed(
       domain: Utf8,
-      chainId: org.sigilaris.node.jvm.runtime.gossip.ChainId,
+      chainId: org.sigilaris.node.gossip.ChainId,
       window: HotStuffWindow,
       leader: ValidatorId,
       highestKnownQc: QuorumCertificateSubject,

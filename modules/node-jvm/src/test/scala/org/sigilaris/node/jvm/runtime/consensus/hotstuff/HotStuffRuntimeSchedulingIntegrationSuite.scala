@@ -25,7 +25,7 @@ import org.sigilaris.node.jvm.runtime.block.{
   BlockView,
   StateRoot,
 }
-import org.sigilaris.node.jvm.runtime.gossip.{
+import org.sigilaris.node.gossip.{
   ChainId,
   GossipClock,
   GossipEvent,

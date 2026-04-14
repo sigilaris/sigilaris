@@ -41,7 +41,8 @@ import org.sigilaris.node.jvm.runtime.block.{
   BodyRoot,
   StateRoot,
 }
-import org.sigilaris.node.jvm.runtime.gossip.*
+import org.sigilaris.node.gossip.*
+import org.sigilaris.node.jvm.runtime.gossip.StaticPeerTopologyConfig
 import org.sigilaris.node.jvm.storage.swaydb.StorageLayout
 
 final class HotStuffRuntimeBootstrapSuite extends CatsEffectSuite:

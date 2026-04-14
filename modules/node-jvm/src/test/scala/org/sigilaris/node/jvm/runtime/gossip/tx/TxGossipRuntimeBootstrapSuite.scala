@@ -14,7 +14,9 @@ import com.typesafe.config.{Config, ConfigFactory}
 import org.sigilaris.core.codec.byte.ByteEncoder
 import org.sigilaris.core.crypto.Hash
 import org.sigilaris.core.datatype.Utf8
-import org.sigilaris.node.jvm.runtime.gossip.*
+import org.sigilaris.node.gossip.*
+import org.sigilaris.node.gossip.tx.*
+import org.sigilaris.node.jvm.runtime.gossip.StaticPeerTopologyConfig
 
 final class TxGossipRuntimeBootstrapSuite extends CatsEffectSuite:
 

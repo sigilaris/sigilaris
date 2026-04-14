@@ -22,8 +22,8 @@ import org.sigilaris.core.codec.byte.{ByteDecoder, ByteEncoder}
 import org.sigilaris.core.datatype.BigNat
 import org.sigilaris.core.crypto.Hash
 import org.sigilaris.core.datatype.Utf8
-import org.sigilaris.node.jvm.runtime.gossip.*
-import org.sigilaris.node.jvm.runtime.gossip.tx.*
+import org.sigilaris.node.gossip.*
+import org.sigilaris.node.gossip.tx.*
 import org.sigilaris.node.jvm.transport.armeria.{
   ArmeriaServer,
   ArmeriaServerConfig,

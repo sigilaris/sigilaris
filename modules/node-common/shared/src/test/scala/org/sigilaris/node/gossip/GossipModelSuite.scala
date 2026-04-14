@@ -1,9 +1,10 @@
-package org.sigilaris.node.jvm.runtime.gossip
+package org.sigilaris.node.gossip
 
 import java.time.{Duration, Instant}
 
 import munit.FunSuite
 import scodec.bits.ByteVector
+import scala.util.Random
 
 final class GossipModelSuite extends FunSuite:
 
@@ -35,6 +36,17 @@ final class GossipModelSuite extends FunSuite:
 
     assert(PeerCorrelationId.lexicographicCompare(smaller, larger) < 0)
     assert(PeerCorrelationId.lexicographicCompare(larger, smaller) > 0)
+
+  test("random id helpers support reproducible seeded generation"):
+    val sessionA = DirectionalSessionId.fromRandom(Random(42L))
+    val sessionB = DirectionalSessionId.fromRandom(Random(42L))
+    val correlationA = PeerCorrelationId.fromRandom(Random(99L))
+    val correlationB = PeerCorrelationId.fromRandom(Random(99L))
+
+    assertEquals(sessionA.value, sessionB.value)
+    assertEquals(correlationA.value, correlationB.value)
+    assert(DirectionalSessionId.parse(sessionA.value).isRight)
+    assert(PeerCorrelationId.parse(correlationA.value).isRight)
 
   test("handshake negotiation applies defaults and validates ranges"):
     val proposal = SessionOpenProposal(
@@ -490,6 +502,7 @@ final class GossipModelSuite extends FunSuite:
     assert(CompositeCursor.empty.isOriginReplay(txKey))
     assertEquals(token.version, CursorToken.CurrentVersion)
     assert(token.validateVersion().isRight)
+    assertEquals(CursorToken.decodeBase64Url(token.toBase64Url), Right(token))
 
     val stale = CursorToken.issue(ByteVector.fromByte(0x7f.toByte), version = 2)
     assert(stale.validateVersion().isLeft)

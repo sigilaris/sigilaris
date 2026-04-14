@@ -5,7 +5,7 @@ import java.time.Instant
 import cats.effect.kernel.{Async, Deferred, Ref, Sync}
 import cats.syntax.all.*
 
-import org.sigilaris.node.jvm.runtime.gossip.ChainId
+import org.sigilaris.node.gossip.ChainId
 
 /** Manages the full lifecycle of HotStuff bootstrap, including stores, coordinator creation, and shutdown. */
 trait HotStuffBootstrapLifecycle[F[_]] extends BootstrapDiagnosticsSource[F]:

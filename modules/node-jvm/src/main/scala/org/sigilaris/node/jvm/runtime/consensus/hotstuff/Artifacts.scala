@@ -23,7 +23,7 @@ import org.sigilaris.core.crypto.{
 import org.sigilaris.core.crypto.Hash.ops.*
 import org.sigilaris.core.datatype.{UInt256, Utf8}
 import org.sigilaris.node.jvm.runtime.block.BlockHeader
-import org.sigilaris.node.jvm.runtime.gossip.{ChainId, StableArtifactId}
+import org.sigilaris.node.gossip.{ChainId, StableArtifactId}
 
 given ByteEncoder[ChainId] =
   ByteEncoder[Utf8].contramap(chainId => Utf8(chainId.value))

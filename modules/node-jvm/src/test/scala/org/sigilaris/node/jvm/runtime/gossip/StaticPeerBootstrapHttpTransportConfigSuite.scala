@@ -5,6 +5,7 @@ import java.time.Duration
 import munit.FunSuite
 
 import com.typesafe.config.ConfigFactory
+import org.sigilaris.node.gossip.{PeerIdentity, StaticPeerTopology}
 
 final class StaticPeerBootstrapHttpTransportConfigSuite extends FunSuite:
 

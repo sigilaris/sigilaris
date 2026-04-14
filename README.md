@@ -31,23 +31,28 @@ Cross-platform support:
 - `%%` for JVM-only projects
 - `%%%` for cross-platform (JVM + Scala.js) projects
 
-When you need the JVM node/runtime bundle as well:
+When you need the shared node contract layer directly on JVM/JS, add
+`sigilaris-node-common`. When you need the JVM runtime bundle, add
+`sigilaris-node-jvm` (it already depends on `sigilaris-node-common`):
 
 ```scala
 libraryDependencies ++= Seq(
   "org.sigilaris" %%% "sigilaris-core" % "VERSION",
-  "org.sigilaris" %% "sigilaris-node-jvm" % "VERSION",
+  "org.sigilaris" %%% "sigilaris-node-common" % "VERSION", // optional when consuming shared node contracts directly
+  "org.sigilaris" %% "sigilaris-node-jvm" % "VERSION",     // optional JVM runtime bundle; transitively depends on node-common
 )
 ```
 
 ## Core Modules
 
 - `sigilaris-core`: cross-platform deterministic blockchain primitives, codecs, crypto, and state/model abstractions.
-- `sigilaris-node-jvm`: JVM-only node bundle layered on top of `sigilaris-core`, providing runtime lifecycle seams, runtime-owned gossip/session sync substrate, Armeria HTTP transport adapters, and SwayDB storage helpers.
+- `sigilaris-node-common`: cross-platform node contract layer layered on top of `sigilaris-core`, providing transport-neutral gossip/session/bootstrap model, service contracts, and tx anti-entropy runtime logic.
+- `sigilaris-node-jvm`: JVM-only node bundle layered on top of `sigilaris-node-common`, providing runtime lifecycle seams, config/bootstrap assembly, HotStuff consensus runtime integration, Armeria HTTP transport adapters, and SwayDB storage helpers.
 
-### JVM Networking Baseline
-- `sigilaris-node-jvm` now ships a runtime-owned tx gossip/session substrate under `org.sigilaris.node.jvm.runtime.gossip` and `org.sigilaris.node.jvm.runtime.gossip.tx`.
-- The current HTTP-friendly baseline maps directional sessions to Armeria resources for session-open handshake, binary event polling/keepalive (`application/octet-stream` length-prefixed frames), and batched JSON control requests.
+### Node Networking Baseline
+- `sigilaris-node-common` now ships the transport-neutral gossip/session substrate under `org.sigilaris.node.gossip` and `org.sigilaris.node.gossip.tx`.
+- `sigilaris-node-jvm` consumes the shared contracts while keeping JVM-only config loaders, bootstrap assembly, transport adapters, and storage integrations under `org.sigilaris.node.jvm.*`.
+- On the JVM transport baseline, Armeria maps directional sessions to resources for session-open handshake, binary event polling/keepalive (`application/octet-stream` length-prefixed frames), and batched JSON control requests.
 - Negotiated heartbeat/liveness, opening timeout expiry, and pre-open reject-and-close are now enforced by the shipped runtime/Armeria baseline rather than manual disconnect hooks alone.
 - Static peer topology and direct-neighbor admission are the current deployment baseline. Dynamic discovery and peer scoring remain follow-up work.
 - The concrete JVM baseline loader reads static peer topology from `sigilaris.node.gossip.peers` (`local-node-identity`, `known-peers`, `direct-neighbors`) and wires it into runtime bootstrap/admission.
@@ -56,10 +61,10 @@ libraryDependencies ++= Seq(
 - The shipped bootstrap trust root still remains the static validator set from `HotStuffBootstrapConfig.validatorSet`; ADR-0023 now drafts validator-set rotation, checkpoint / weak-subjectivity trust-root classes, and historical lookup semantics, while concrete checkpoint/root runtime integration lives in `docs/plans/0007-snapshot-sync-and-background-backfill-plan.md` and archive-grade backfill acceleration remains explicit follow-up work.
 - The shipped transport now enforces static peer principal binding with per-peer shared-secret HMAC request proofs and session-bound bootstrap capability tokens; parent session open-state revalidation, principal mismatch rejection, and stale capability rejection are part of the current baseline.
 - Reconnect now replays a full re-handshake under the existing peer correlation id for half-open recovery, and new directional sessions start with empty filter/control state instead of carrying prior `setFilter` state.
-- Topic-neutral producer session state, polling, and batching/QoS hooks are available under `org.sigilaris.node.jvm.runtime.gossip`, so follow-up topic owners do not need to rewrite the tx runtime internals just to reuse the substrate.
+- Topic-neutral producer session state, polling, batching/QoS hooks, and tx anti-entropy runtime logic now live in `sigilaris-node-common`, so follow-up runtime modules do not need to rewrite the substrate to reuse it.
 - The shipped JVM baseline now includes HotStuff non-threshold-signature proposal/vote/QC artifact modeling under `org.sigilaris.node.jvm.runtime.consensus.hotstuff`, plus `consensus.proposal` / `consensus.vote` gossip integration with exact known-set windows, bounded `requestById`, same-window retry budget enforcement, QC assembly, audit read-only follow, validated-artifact relay, and consensus-priority QoS.
 - Canonical block modeling now lives under `org.sigilaris.node.jvm.runtime.block`, with `BlockHeader` / `BlockBody` / `BlockView`, header-only `BlockId`, deterministic `bodyRoot` verification, and a consensus-neutral `BlockStore` query/storage seam for split header/body lookup.
-- Import-rule tests keep `org.sigilaris.node.jvm.runtime.gossip` free of direct consensus/HotStuff imports and prevent `org.sigilaris.node.jvm.runtime.consensus.hotstuff` from importing transport implementations or the current concrete storage packages (`org.sigilaris.node.jvm.storage.memory`, `org.sigilaris.node.jvm.storage.swaydb`) directly.
+- Import-rule tests keep `sigilaris-core` free of `org.sigilaris.node.*`, keep `sigilaris-node-common` free of JVM-specific packages, and prevent `org.sigilaris.node.jvm.runtime.consensus.hotstuff` from importing transport implementations or the current concrete storage packages (`org.sigilaris.node.jvm.storage.memory`, `org.sigilaris.node.jvm.storage.swaydb`) directly.
 - State snapshot transport, remote body fetch, proof-serving, receipt/event sub-root expansion, and persisted block compatibility policy remain explicit follow-up work owned by ADR-0019 and `docs/plans/0005-canonical-block-structure-migration-plan.md`.
 - Pacemaker timeout vote / timeout certificate / new-view modeling, validation, topic contracts, timer/backoff wiring, deterministic leader activation, and runtime-owned timeout/view-change progression are now part of the shipped JVM HotStuff baseline.
 
@@ -170,6 +175,8 @@ Built with:
 **Maven Coordinates:**
 - JVM core: `org.sigilaris:sigilaris-core_3:VERSION`
 - Scala.js core: `org.sigilaris:sigilaris-core_sjs1_3:VERSION`
+- JVM node-common: `org.sigilaris:sigilaris-node-common_3:VERSION`
+- Scala.js node-common: `org.sigilaris:sigilaris-node-common_sjs1_3:VERSION`
 - JVM node bundle: `org.sigilaris:sigilaris-node-jvm_3:VERSION`
 
 Current downstream adoption work in this repository uses local `0.1.2-SNAPSHOT` artifacts via `publishLocal`.

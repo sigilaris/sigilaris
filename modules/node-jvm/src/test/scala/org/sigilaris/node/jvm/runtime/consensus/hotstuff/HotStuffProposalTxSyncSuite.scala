@@ -16,8 +16,8 @@ import org.sigilaris.node.jvm.runtime.block.{
   BodyRoot,
   StateRoot,
 }
-import org.sigilaris.node.jvm.runtime.gossip.*
-import org.sigilaris.node.jvm.runtime.gossip.tx.{
+import org.sigilaris.node.gossip.*
+import org.sigilaris.node.gossip.tx.{
   InMemoryTxArtifactSink,
   InMemoryTxArtifactSource,
   TxBatchingConfig,

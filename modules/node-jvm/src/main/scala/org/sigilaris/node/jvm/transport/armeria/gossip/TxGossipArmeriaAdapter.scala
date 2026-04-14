@@ -18,8 +18,8 @@ import sttp.tapir.server.ServerEndpoint
 import org.sigilaris.core.codec.byte.{ByteDecoder, ByteEncoder, DecodeResult}
 import org.sigilaris.core.datatype.{BigNat, Utf8}
 import org.sigilaris.core.failure.DecodeFailure
-import org.sigilaris.node.jvm.runtime.gossip.*
-import org.sigilaris.node.jvm.runtime.gossip.tx.*
+import org.sigilaris.node.gossip.*
+import org.sigilaris.node.gossip.tx.*
 
 /** Wire format for a chain-topic subscription pair.
   *

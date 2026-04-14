@@ -1,4 +1,4 @@
-package org.sigilaris.node.jvm.runtime.gossip.tx
+package org.sigilaris.node.gossip.tx
 
 import java.time.{Duration, Instant}
 
@@ -6,8 +6,8 @@ import cats.effect.kernel.Sync
 import cats.syntax.all.*
 
 import org.sigilaris.core.util.SafeStringInterp.*
-import org.sigilaris.node.jvm.runtime.gossip.*
-import org.sigilaris.node.jvm.runtime.gossip.CanonicalRejection.*
+import org.sigilaris.node.gossip.*
+import org.sigilaris.node.gossip.CanonicalRejection.*
 
 /** Outcome of processing a control batch. */
 enum ControlBatchOutcome:

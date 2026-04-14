@@ -7,7 +7,7 @@ import munit.FunSuite
 import org.sigilaris.core.crypto.CryptoOps
 import org.sigilaris.core.datatype.UInt256
 import org.sigilaris.node.jvm.runtime.block.BlockId
-import org.sigilaris.node.jvm.runtime.gossip.ChainId
+import org.sigilaris.node.gossip.ChainId
 
 final class HotStuffPacemakerRuntimeSuite extends FunSuite:
 
