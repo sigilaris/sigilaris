@@ -139,7 +139,8 @@ object GossipFieldValidation:
     * @param kind
     *   the field name, used in error messages
     * @param value
-    *   the UUID string to validate
+    *   the UUID string to validate; uppercase forms are rejected to keep the
+    *   wire representation canonical
     * @return
     *   the validated UUID string or an error message
     */
@@ -157,6 +158,8 @@ object GossipFieldValidation:
 opaque type DirectionalSessionId = String
 
 private object CrossRuntimeUuid:
+  // Shared node-common code also targets Scala.js, so UUID generation stays
+  // local instead of depending on JVM-only UUID helpers.
   private def byteToHex(byte: Byte): String =
     ((byte & 0xff) + 0x100).toHexString.substring(1)
 
@@ -191,7 +194,7 @@ object DirectionalSessionId:
   /** Parses a string into a validated directional session id.
     *
     * @param value
-    *   the raw string
+    *   the raw string; must already be a lowercase canonical UUIDv4
     * @return
     *   the validated id or an error message
     */
@@ -226,7 +229,7 @@ object PeerCorrelationId:
   /** Parses a string into a validated peer correlation id.
     *
     * @param value
-    *   the raw string
+    *   the raw string; must already be a lowercase canonical UUIDv4
     * @return
     *   the validated id or an error message
     */
@@ -949,7 +952,7 @@ object ControlIdempotencyKey:
   /** Parses and validates a control idempotency key.
     *
     * @param value
-    *   the raw string
+    *   the raw string; must already be a lowercase canonical UUIDv4
     * @return
     *   the validated key, or a control batch rejection
     */

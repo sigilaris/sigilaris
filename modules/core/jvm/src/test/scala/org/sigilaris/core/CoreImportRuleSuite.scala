@@ -30,6 +30,8 @@ final class CoreImportRuleSuite extends FunSuite:
 
     assert(sources.nonEmpty, s"Expected Scala sources under $sourceRoots")
 
+    // A lightweight text scan is enough here because this suite only guards the
+    // top-level module boundary against obvious import drift.
     val violations =
       for
         source <- sources

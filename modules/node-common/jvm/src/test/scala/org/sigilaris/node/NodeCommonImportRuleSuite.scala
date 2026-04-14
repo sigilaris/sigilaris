@@ -36,6 +36,8 @@ final class NodeCommonImportRuleSuite extends FunSuite:
 
     assert(sources.nonEmpty, s"Expected Scala sources under $sharedRoot")
 
+    // Keep the guard cheap and explicit; if this ever gets noisy we can
+    // replace it with a compiler-enforced boundary rule.
     val violations =
       for
         source <- sources
