@@ -1,7 +1,7 @@
 # 0011 - Codebase Quality Improvement Opportunity Catalog And Sequencing Plan
 
 ## Status
-Draft
+Phase 3 Complete; Implementation Waves And Batch Handoff Scoped
 
 ## Created
 2026-04-14
@@ -50,6 +50,7 @@ Draft
 - ADR-0010: Blockchain Account Model And Key Management
 - ADR-0011: Blockchain Account Group Management
 - ADR-0012: Signed Transaction Requirement
+- ADR-0016: Multiplexed Gossip Session Sync Substrate
 - ADR-0020: Conflict-Free Block Scheduling With State References And Object-Centric Seams
 - ADR-0025: Shared Node Abstraction And Cross-Runtime Module Boundary
 - `docs/plans/0010-node-common-extraction-and-cross-runtime-contract-plan.md`
@@ -85,7 +86,7 @@ Draft
 | structured failure surface normalization | `ClientFailureMessage` / `ConflictMessage` / reducer-local wrapper 통합, `reason/detail/msg` string family 정리, failure render/parse round-trip property test 도입 |
 | typed config parser layer for `StaticPeerTopologyConfig.scala` / `StaticPeerTransportAuthConfig.scala` / `StaticPeerBootstrapHttpTransportConfig.scala` | config alias equivalence, missing-key rejection, unknown-peer rejection property test를 generator-friendly input model 위에서 검증 가능하게 함 |
 | shared property-test generator/law harness for gossip/hotstuff/config | parser round-trip, negotiation law, validator set law, config alias equivalence 검증의 중복 감소 |
-| `node-common` shared contract curation aligned with ADR-0025 | shared `org.sigilaris.node` contract와 runtime-specific `node-jvm` adapter/file split을 같은 방향으로 묶어 정리 가능 |
+| `node-common` shared contract curation aligned with ADR-0025 | shared `org.sigilaris.node` contract와 runtime-specific `node-jvm` adapter/file split을 같은 방향으로 묶어 정리 가능. primary ownership batch는 `W2-B1` ~ `W2-B3`, `W2-B5`, `W2-B6`이고, `W2-B4`는 shared contract curation 자체보다는 runtime-only auth seam 정리로서 adjacent 하다. |
 
 ## Prioritized Implementation Sequence
 - 순서는 `dependency leverage -> hotspot simplification -> typed boundary rollout -> runtime hardening -> domain semantic cleanup` 기준으로 잡는다.
@@ -98,6 +99,8 @@ Draft
 - catalog row는 중복 배정 없이 정확히 하나의 wave에 속해야 한다.
 - ambiguous하기 쉬운 항목은 wave 본문에서 직접 이름을 적어 배정 사실을 고정한다.
   - `SessionSubscription` `NonEmpty*` strengthening은 `Wave 3`
+  - `GossipTransportAuth.scala` pure-crypto / HTTP parsing split은 `W2-B4`
+  - `GossipIntegration.scala` hotspot split은 `W5-B4`. hotspot 자체는 split concern이지만, 실제 seam은 HotStuff artifact/rejection translation hardening과 함께 움직이므로 `Wave 2`가 아니라 `Wave 5`에 둔다.
   - `documentedCompatibilityFamilies` closed enum화는 `Wave 6`
   - `Bag.scala` unsafe boundary isolation은 dependency가 아니라 priority-tail cleanup으로 `Wave 6`
 - `Phase 3` handoff에서는 이 배정을 유지한 채 wave 내부 batch만 더 잘게 나눈다.
@@ -147,7 +150,10 @@ Draft
   - hotstuff 쪽 shared abstraction과 validator/height/view typing도 같은 패턴으로 가져갈 수 있다.
 
 ### Wave 4. Transport And Config Boundary Rollout
-- 왜 네 번째인가: shared contract가 안정된 뒤에야 wire DTO와 config surface를 ADT/typed parser로 밀어올릴 수 있다.
+- 왜 네 번째인가: shared contract가 안정된 뒤에야 대부분의 wire DTO와 config surface를 ADT/typed parser로 밀어올릴 수 있다.
+- 특히 config rollout은 `PeerIdentity` / `ChainId` 같은 shared identifier surface를 직접 소비하므로 `Wave 3` typed parsing 결과를 전제로 둔다.
+- `W4-B1`은 parsed config를 실제 bootstrap assembly seam에 꽂아야 하므로 `W2-B6` split 이후가 기본 전제다.
+- 예외적으로 `W4-B3` bootstrap request typing은 adapter-local decode 정리라서 `Wave 2` split 이후 existing node-jvm domain type 위에서 먼저 진행할 수 있다. stricter constructor tightening은 `Wave 5`에서 후속 적용한다.
 - 포함 항목:
   - `modules/node-jvm/src/main/scala/org/sigilaris/node/jvm/runtime/gossip/{StaticPeerTopologyConfig,StaticPeerTransportAuthConfig,StaticPeerBootstrapHttpTransportConfig}.scala`, `modules/node-jvm/src/main/scala/org/sigilaris/node/jvm/runtime/consensus/hotstuff/HotStuffRuntimeBootstrap.scala`에 typed config parser layer 실제 적용
   - `modules/node-common/shared/src/main/scala/org/sigilaris/node/gossip/StaticPeerTransportAuth.scala`의 parse/completeness validation 분리
@@ -170,6 +176,7 @@ Draft
   - `modules/node-jvm/src/main/scala/org/sigilaris/node/jvm/runtime/consensus/hotstuff/Policy.scala`의 `ValidatorId`, `HotStuffHeight`, `HotStuffView` 공통 abstraction
   - `modules/node-jvm/src/main/scala/org/sigilaris/node/jvm/runtime/consensus/hotstuff/Artifacts.scala`의 `ProposalTxId`
   - `modules/node-jvm/src/main/scala/org/sigilaris/node/jvm/runtime/consensus/hotstuff/SnapshotSync.scala` typed failure 유지와 common algebra + adapter split
+  - `modules/node-jvm/src/main/scala/org/sigilaris/node/jvm/runtime/consensus/hotstuff/GossipIntegration.scala`의 gossip artifact bridge / validation translation / pacemaker emission seam split
   - `modules/node-jvm/src/test/scala/org/sigilaris/node/jvm/runtime/consensus/hotstuff` property suite
   - `modules/node-jvm/src/main/scala/org/sigilaris/node/jvm/runtime/consensus/hotstuff/Artifacts.scala`의 `ValidatorSet` / `ProposalTxSet` law
   - `modules/node-jvm/src/main/scala/org/sigilaris/node/jvm/runtime/consensus/hotstuff/PacemakerRuntime.scala` generative model test
@@ -178,6 +185,7 @@ Draft
 
 ### Wave 6. Core Domain Semantics And Remaining Boundary Cleanup
 - 왜 마지막인가: core application semantic cleanup은 앞선 primitive/helper/failure/runtime boundary가 정리된 뒤에 가장 깔끔하게 끝낼 수 있다. 다만 `Bag.scala`는 strict dependency가 아니라 leverage 기준으로 뒤에 둔 low-conflict tail cleanup이다.
+- 특히 execution/receipt surface cleanup은 normalized failure/diagnostic surface 위에서 닫히는 편이 더 명확하므로 `W1-B4` 이후로 둔다.
 - 포함 항목:
   - `modules/core/shared/src/main/scala/org/sigilaris/core/application/feature/group/domain/GroupTypes.scala`, `modules/core/shared/src/main/scala/org/sigilaris/core/application/feature/scheduling/CurrentApplicationBatchRuntime.scala`, `modules/core/shared/src/main/scala/org/sigilaris/core/application/feature/accounts/domain/AccountsTypes.scala`의 `GroupId`, batch idempotency key, nonce/member-count domain typing
   - `modules/core/shared/src/main/scala/org/sigilaris/core/application/feature/group/transactions/GroupTransactions.scala`, `modules/core/shared/src/main/scala/org/sigilaris/core/application/feature/accounts/transactions/AccountsTransactions.scala`의 `NonEmpty*` transaction shape
@@ -190,6 +198,102 @@ Draft
   - `modules/core/shared/src/main/scala/org/sigilaris/core/application/state/AccessLog.scala`, `modules/core/shared/src/main/scala/org/sigilaris/core/application/scheduling/ConflictFootprint.scala` law property
 - 이 wave가 닫히면:
   - catalog의 core semantic / effect isolation / property gap이 모두 정리되고, 남는 것은 implementation detail polish 수준이 된다.
+
+## Phase 3 Handoff Output
+- 이 section의 목적은 wave를 실제 issue/PR lane 크기로 쪼개고, ADR/doc escalation이 필요한 batch를 선별하는 것이다.
+- 기본 규칙은 `one batch = one primary merge surface = one issue`다. cross-module batch가 unavoidable 하더라도 ownership과 exit gate는 하나로 묶는다.
+- `Wave 1a || Wave 2 -> Wave 1b` 병렬성은 유지하되, Phase 3 issue breakdown에서는 dependency edge를 명시적으로 남긴다.
+- 아래 batch와 surface 이름은 later `Opportunity Catalog` section의 canonical labels를 그대로 재사용한다. top-down으로 읽을 때는 이 section을 handoff index로, later catalog를 상세 anchor로 보면 된다.
+
+### Batch Breakdown
+
+| batch id | wave | scope | representative catalog surfaces | prerequisite | exit gate |
+| --- | --- | --- | --- | --- | --- |
+| `W1-B1` | `Wave 1a` | shared scalar totality | `FailureCode`, `BigNat`, `UInt256` | none | unsafe/partial constructor 축소, existing unit/property suite green |
+| `W1-B2` | `Wave 1a` | shared byte-ID helper + generator scaffold | `AccountsTypes.scala` fixed-width helper, shared property-test generator/law harness bootstrap | none | helper가 `KeyId20`/future tx-id/hash-like family를 수용하고 test generator가 재사용 가능 |
+| `W1-B3` | `Wave 1a` | typed config parser scaffold | `StaticPeerTopologyConfig`, `StaticPeerTransportAuthConfig`, `StaticPeerBootstrapHttpTransportConfig` common parser layer skeleton | none | config parser helper가 runtime assembly와 분리되고 config property generator input model이 생김 |
+| `W1-B4` | `Wave 1b after W2` | failure / diagnostic normalization | `ClientFailureMessage`, `ConflictMessage`, `SigilarisFailure`, `FootprintDeriver`, `CanonicalRejection`, `HotStuffValidationFailure`, `HotStuffPolicyViolation`, `SnapshotSyncFailure` | `W2-B1` 권장. 최소 `W1-B1` | stringly diagnostic family가 closed/typed surface로 정리되고 failure render/parse property green |
+| `W2-B1` | `Wave 2` | `Model.scala` concept split | session/cursor/control/negotiation/channel message split, `GossipFieldValidation` landing zones | none. `W1-B2` helper 있으면 더 쉬움 | split 후 public/shared contract drift 없음, existing node-common suite green |
+| `W2-B2` | `Wave 2` | `TxGossipRuntime.scala` interpreter split | runtime state transition vs control/batching/replay/dedup integration | none | split 후 semantic regression 없음, existing tx gossip suite green |
+| `W2-B3` | `Wave 2` | `TxGossipArmeriaAdapter.scala` transport split | DTO/codec/frame codec/endpoint/auth/runtime translation 분리 | none. `W2-B1` 선행이면 더 쉬움 | adapter regression suite green, runtime/shared contract drift 없음 |
+| `W2-B4` | `Wave 2` | auth seam split | `GossipTransportAuth` pure crypto core vs HTTP parsing surface 분리 | none | auth regression suite green, crypto core vs HTTP parsing seam 고정 |
+| `W2-B5` | `Wave 2` | bootstrap transport split | `HotStuffBootstrapArmeriaAdapter` inbound/outbound adapter 분리 | none. `W2-B4` 있으면 더 쉬움 | bootstrap transport regression suite green, runtime/shared contract drift 없음 |
+| `W2-B6` | `Wave 2` | bootstrap runtime assembly split | `HotStuffRuntimeBootstrap` parsed config / assembly plan / resource wiring 분리 | none | bootstrap assembly regression suite green, parsed config와 resource wiring seam 고정 |
+| `W3-B1` | `Wave 3` | byte-backed gossip constructor typing | `StableArtifactId`, `TopicWindowKey`, `CursorToken`, `CursorToken.issue` (`A1` node-common `Model.scala` row) | `W1-B2`, `W2-B1` | raw bytes/version partiality가 typed parser로 이동하고 parse/render closure property green |
+| `W3-B2` | `Wave 3` | gossip identifier/token typing | `PeerIdentity`, `ChainId`, `GossipTopic`, `ControlIdempotencyKey`, `GossipFieldValidation` | `W1-B2`, `W2-B1` | raw `String` parse/unsafe duplication 제거, invalid-input rejection property green |
+| `W3-B3` | `Wave 3` | session/control policy typing | `SessionSubscription` `NonEmpty*`, `TxRuntimePolicy` config-parse alignment, negotiation law property | `W2-B1`, `W2-B2`. `TxRuntimePolicy` parse rollout을 같이 하면 `W1-B3` 권장 | illegal empty state 제거, negotiation/session property/fuzz suite green |
+| `W4-B1` | `Wave 4` | typed config parser rollout | `StaticPeer*Config`, `StaticPeerTransportAuth.configure`, `peerBaseUris` URI typing | `W1-B3`, `W2-B6`, `W3-B2` | config alias/missing-key/unknown-peer property green, config surface가 typed identifier를 직접 소비하고 runtime bootstrap이 parsed config만 소비 |
+| `W4-B2` | `Wave 4` | tx transport wire ADT promotion | `ControlOpWire`, `ControlRequestWire`, `EventRequestWire`, `RejectionWire`, `BinaryEventStreamCodec` | `W2-B3`, `W3-B1`, `W3-B2` | wire DTO가 typed decode를 사용하고 binary codec round-trip/rejection property green |
+| `W4-B3` | `Wave 4` | bootstrap request typing | `HotStuffBootstrapArmeriaAdapter` request decode, pre-`Wave 5` existing domain type decode for `HotStuffHeight`/`BlockId`/`StateRoot` | `W2-B5`. existing scalar/domain constructor cleanup alignment이 필요하면 `W1-B1` 권장 | bootstrap request parse failures가 existing rejection family 위에서 일관되게 정리되고 transport property/regression green. stricter constructor tightening은 `W5-B1` / `W5-B2`에서 후속 적용 |
+| `W5-B1` | `Wave 5` | hotstuff policy/value totalization | `HotStuffRequestPolicy`, `HotStuffDeploymentTarget`, `HotStuffPacemakerPolicy`, `HotStuffHeight.+`, `HotStuffView.+`, `HotStuffWindow.apply`, `EquivocationKey.apply` | `W1-B1` | numeric/duration invariant가 `require`/`throw` 밖으로 이동하고 policy tests green |
+| `W5-B2` | `Wave 5` | consensus identifier tightening + snapshot sync errors | `ValidatorId`, `HotStuffHeight`, `HotStuffView`, `ProposalTxId`, `SnapshotSync` typed failure/common algebra | `W1-B2`, `W5-B1` 권장 | consensus identifier family가 공통 abstraction 위에 올라가고 snapshot sync error channel이 typed로 유지 |
+| `W5-B3` | `Wave 5` | consensus property suite | `ValidatorSet`, `ProposalTxSet`, `PacemakerRuntime`, hotstuff test dir coverage | `W5-B1`, `W5-B2` | consensus safety property/model test green |
+| `W5-B4` | `Wave 5` | gossip-consensus bridge split | `GossipIntegration.scala` artifact bridge / rejection-validation translation / pacemaker emission seam 분리 | `W5-B1`, `W5-B2` 권장 | bridge split 후 semantic regression 없음, rejection/validation translation drift가 줄고 hotstuff/gossip integration suite green |
+| `W6-B1` | `Wave 6` | core domain type tightening | `GroupId`, batch idempotency key, `AccountNonce`/`GroupNonce`/`MemberCount`, group/accounts `NonEmpty*` tx shape | `W1-B1`, `W1-B2` | domain identifier/count/collection invariant가 model에 고정되고 reducer empty-check 제거 |
+| `W6-B2` | `Wave 6` | reducer/helper dedup | branding helper, reducer support utility, tuple-key helper, nonce/member-count helper, key-id derivation SoT | `W6-B1` 권장 | accounts/group reducer duplication 감소, shared helper surface 고정, regression suite green |
+| `W6-B3` | `Wave 6` | execution / receipt surface cleanup | `StateModuleExecutor`, `TxExecution`, receipt projection | `W1-B4`, `W6-B2` | witness-vs-continuation/receipt semantics가 더 작은 public surface로 닫히고 compatibility drift 감소 |
+| `W6-B4` | `Wave 6` | tail cleanup + remaining law/property gates | `Bag.scala`, `documentedCompatibilityFamilies` closed enum, `CurrentApplicationScheduling` footprint property, `AccessLog` / `ConflictFootprint` laws | `W6-B3` 권장. `Bag.scala` 자체는 독립 | `Bag.scala` unsafe boundary isolation 완료, compatibility family drift 감소, core correctness laws/property green |
+
+### ADR And Doc Escalation Triage
+
+| seam / batch family | default handling | escalate when | target |
+| --- | --- | --- | --- |
+| `W2-B1` ~ `W2-B6` shared-vs-runtime seam split | 새 ADR 없이 plan + ADR-0025 follow-up reference 정리 | shared ownership, package root, runtime boundary rule이 ADR-0025의 locked rule을 넘어 바뀌는 경우 | `ADR-0025` follow-up note 또는 amendment |
+| `W3-B1` / `W3-B2` shared gossip parse contract tightening | 기본은 implementation plan 범위 | `StableArtifactId` / `CursorToken` byte layout, version policy, token grammar처럼 interop parse contract가 바뀌는 경우 | gossip/session protocol note 또는 `ADR-0016` follow-up |
+| `W4-B2` / `W4-B3` wire DTO ADT promotion | 기본은 implementation plan 범위 | shipped wire JSON/binary shape, rejection contract, compatibility policy를 바꾸는 경우 | protocol note 또는 transport contract plan |
+| `W5-B1` / `W5-B2` hotstuff typed policy / identifier tightening | 기본은 implementation plan 범위 | consensus wire/sign-bytes/canonical bytes 또는 validator identity semantics가 바뀌는 경우 | HotStuff companion ADR/spec 후보 |
+| `W6-B1` core domain identifier tightening | 기본은 implementation plan 범위 | `GroupId` 등 도메인 identifier semantics가 business rule 수준으로 강화되는 경우 | `ADR-0010` / `ADR-0011` addendum 또는 short design note |
+| `W6-B3` execution / receipt / compatibility surface cleanup | short design note 먼저 | `TxExecution` / receipt surface가 ADR-0009 application contract의 normative surface로 승격되는 경우 | `ADR-0009` follow-up note 또는 new ADR candidate |
+| `W1-B4` failure / diagnostic normalization | 새 ADR 불필요 | external machine-readable failure contract를 cross-service/public API로 고정해야 하는 경우 | failure contract note 수준이면 충분 |
+
+### Suggested Issue Breakdown
+- issue는 batch id 단위로 생성한다. milestone은 wave 단위로 묶고, 초기 병렬 lane 후보는 `W1-B1`, `W1-B2`, `W1-B3`, `W2-B1`, `W2-B2`, `W2-B3`, `W2-B4`, `W2-B5`, `W2-B6`다. `W2-B3`와 `W2-B5`는 둘 다 hard prerequisite는 없지만 각각 `W2-B1`, `W2-B4`가 먼저 있으면 더 수월하므로 팀 상황에 따라 soft ordering을 둘 수 있다.
+- `W2-B6`는 hard prerequisite는 없지만 `W4-B1`의 direct prerequisite라서 같은 병렬 후보 중에서도 상대적으로 critical-path 성격이 강하다.
+- `W1-B4`는 문서상 `Wave 1`이지만 scheduling은 `Wave 2` split 이후 tail-normalization lane으로 둔다.
+- 실제 issue 생성 anchor는 아래 table을 사용한다.
+
+| batch id | milestone | suggested issue title | primary owner surface |
+| --- | --- | --- | --- |
+| `W1-B1` | `Wave 1a` | Shared Scalar Totality | `FailureCode`, `BigNat`, `UInt256` |
+| `W1-B2` | `Wave 1a` | Shared Byte-ID Helper And Generator Harness | `AccountsTypes.scala` fixed-width helper, shared generators |
+| `W1-B3` | `Wave 1a` | Typed Config Parser Scaffold | `StaticPeer*Config` parser scaffold |
+| `W1-B4` | `Wave 1b after W2` | Failure And Diagnostic Surface Normalization | failure/diagnostic family across `core` / `node-common` / `node-jvm` |
+| `W2-B1` | `Wave 2` | Split `Model.scala` By Concept | `node-common` `Model.scala` |
+| `W2-B2` | `Wave 2` | Split `TxGossipRuntime.scala` Interpreter Core | `TxGossipRuntime.scala` |
+| `W2-B3` | `Wave 2` | Split `TxGossipArmeriaAdapter.scala` Transport Surface | `TxGossipArmeriaAdapter.scala` |
+| `W2-B4` | `Wave 2` | Split `GossipTransportAuth.scala` Auth Seam | `GossipTransportAuth.scala` |
+| `W2-B5` | `Wave 2` | Split `HotStuffBootstrapArmeriaAdapter.scala` Bootstrap Transport | `HotStuffBootstrapArmeriaAdapter.scala` |
+| `W2-B6` | `Wave 2` | Split `HotStuffRuntimeBootstrap.scala` Assembly Seam | `HotStuffRuntimeBootstrap.scala` |
+| `W3-B1` | `Wave 3` | Type Byte-Backed Gossip Constructors | `StableArtifactId`, `TopicWindowKey`, `CursorToken` |
+| `W3-B2` | `Wave 3` | Type Gossip Identifier And Token Surface | `PeerIdentity`, `ChainId`, `GossipTopic`, `ControlIdempotencyKey` |
+| `W3-B3` | `Wave 3` | Type Session Control Policy Surface | `SessionSubscription`, `TxRuntimePolicy`, negotiation laws |
+| `W4-B1` | `Wave 4` | Roll Out Typed Config Parsing | `StaticPeer*Config`, `StaticPeerTransportAuth.configure` |
+| `W4-B2` | `Wave 4` | Promote Tx Transport Wire ADTs | `ControlOpWire`, `ControlRequestWire`, `EventRequestWire`, `RejectionWire` |
+| `W4-B3` | `Wave 4` | Type Bootstrap Request Decode | `HotStuffBootstrapArmeriaAdapter` request decode |
+| `W5-B1` | `Wave 5` | Totalize HotStuff Policy Values | `Policy.scala`, `PacemakerRuntime.scala` |
+| `W5-B2` | `Wave 5` | Tighten Consensus Identifiers And Snapshot Errors | `ValidatorId`, `HotStuffHeight`, `HotStuffView`, `ProposalTxId`, `SnapshotSync` |
+| `W5-B3` | `Wave 5` | Add Consensus Property Suite | hotstuff property/model tests |
+| `W5-B4` | `Wave 5` | Split `GossipIntegration.scala` Bridge Surface | `GossipIntegration.scala` |
+| `W6-B1` | `Wave 6` | Tighten Core Domain Types | `GroupId`, batch idempotency key, nonce/member-count, `NonEmpty*` tx shape |
+| `W6-B2` | `Wave 6` | Deduplicate Reducer And Helper Surface | branding/reducer support/key-derivation helpers |
+| `W6-B3` | `Wave 6` | Clean Up Execution And Receipt Surface | `StateModuleExecutor`, `TxExecution`, receipt projection |
+| `W6-B4` | `Wave 6` | Finish Tail Cleanup And Law Gates | `Bag.scala`, `documentedCompatibilityFamilies`, scheduling/access-log laws |
+
+- cross-module batch라도 primary owner file family는 하나로 잡는다.
+  - 예: `W1-B4` primary owner는 failure/diagnostic surface
+  - 예: `W2-B4` primary owner는 auth seam
+  - 예: `W2-B5` primary owner는 bootstrap transport seam
+- issue template에는 최소한 아래 항목을 넣는다.
+  - `Batch ID`
+  - `Prerequisites`
+  - `Representative Catalog Surfaces`
+  - `Required Test / Regression Gate`
+  - `ADR / Doc Escalation Trigger`
+
+### Phase 3 Completion Status
+- `각 wave를 smaller implementation batches로 분해한다`: completed
+- `구조적 항목 중 ADR 승격이 필요한 것을 선별한다`: completed
+- `실제 구현 plan 또는 issue breakdown으로 옮긴다`: completed via batch-level issue breakdown in this document
 
 ## Change Areas
 
@@ -263,6 +367,7 @@ Draft
 | `modules/node-common/shared/src/main/scala/org/sigilaris/node/gossip/tx/TxGossipRuntime.scala` | `intention`, `least power` | runtime state transition, control interpretation, batching, replay, dedup가 한 file에 몰려 있다. pure interpreter core와 effectful integration surface를 쪼갤 여지가 크다. Background hotspot 참고. shared `org.sigilaris.node` contract와 runtime-specific interpreter seam을 더 분명히 하려는 ADR-0025 방향과도 연결된다. |
 | `modules/node-jvm/src/main/scala/org/sigilaris/node/jvm/transport/armeria/gossip/TxGossipArmeriaAdapter.scala` | `dedup`, `intention` | wire DTO, Circe codec, binary frame codec, Tapir endpoint, auth choreography, runtime translation이 한 file에 섞여 있다. model/codec/translator/server adapter로 분리해야 읽힌다. Background hotspot 참고. runtime-specific adapter를 `node-jvm`에 남기고 shared contract를 더 좁히려는 ADR-0025 경계와도 맞물린다. |
 | `modules/node-jvm/src/main/scala/org/sigilaris/node/jvm/transport/armeria/gossip/HotStuffBootstrapArmeriaAdapter.scala` | `dedup`, `intention` | server endpoint, wire DTO, bootstrap translation, Java `HttpClient` outbound logic가 한 file에 섞여 있다. inbound server adapter와 outbound client adapter를 분리할 수 있다. runtime-specific bootstrap adapter ownership을 더 선명히 하는 ADR-0025 boundary cleanup과 연결된다. |
+| `modules/node-jvm/src/main/scala/org/sigilaris/node/jvm/runtime/consensus/hotstuff/GossipIntegration.scala` | `intention`, `dedup` | gossip artifact bridge, rejection/validation translation, pacemaker/runtime emission seam이 한 file에 몰려 있다. artifact-contract bridge와 runtime emission surface를 쪼개야 HotStuff hardening과 gossip boundary cleanup이 서로 덜 얽힌다. Background hotspot 참고. |
 | `modules/node-jvm/src/main/scala/org/sigilaris/node/jvm/transport/armeria/gossip/TxGossipArmeriaAdapter.scala`, `modules/node-common/shared/src/main/scala/org/sigilaris/node/gossip/Model.scala` | `dedup`, `intention` | `RejectionWire`가 `CanonicalRejection`을 raw fields로 다시 풀어쓴다. wire codec을 ADT 쪽으로 붙이면 duplicate mapping layer를 줄일 수 있다. |
 | `modules/core/shared/src/main/scala/org/sigilaris/core/application/feature/accounts/module/AccountsBlueprint.scala`, `modules/core/shared/src/main/scala/org/sigilaris/core/application/feature/group/module/GroupsBlueprint.scala` | `dedup` | `BigNat.unsafeFromBigInt(... + 1)` 같은 nonce increment/update가 반복된다. domain-level `nextNonce`, `incrementMemberCount`, `decrementMemberCount` helper가 있으면 intent가 코드로 드러난다. |
 
@@ -307,6 +412,7 @@ Draft
 - wave가 커지면 다시 거대한 refactor가 될 수 있다. 각 wave 안에서도 helper extraction -> type rollout -> test gate 순서로 더 잘게 나눈다.
 - `Wave 1`이 과도하게 넓어질 수 있다. 그래서 `Wave 1a` scaffolding과 `Wave 1b` cross-module normalization을 구분하고, 후자는 가능하면 `Wave 2` split 이후에 마무리한다.
 - `Wave 1`과 `Wave 2`를 strict serial로 오해할 수 있다. 문서상으로는 순서를 두되, 실제 실행은 `Wave 1a || Wave 2 -> Wave 1b` 형태의 부분 병렬을 허용한다.
+- `W1-B4`가 늦어지면 `W6-B3` / `W6-B4`까지 연쇄로 밀릴 수 있다. execution/receipt cleanup은 먼저 local refactor를 열어 둘 수 있지만, final public-surface closure는 normalized failure surface 이후 gate로 잠근다.
 - 구현이 아닌 catalog 단계라 표현이 너무 추상적으로 흐를 수 있다. 가능한 한 file/type 단위로 anchor를 남긴다.
 - 구조적 항목과 소규모 cleanup 항목이 섞여 산만해질 수 있다. category를 `typed parsing`, `duplication`, `side effects`, `property test`로 분리해 읽기 비용을 낮춘다.
 
@@ -337,9 +443,9 @@ Draft
 - [x] catalog↔wave completeness check와 ambiguous 항목 배정을 문서에 명시한다.
 
 ### Phase 3: Follow-Up Handoff
-- [ ] 각 wave를 smaller implementation batches로 분해한다.
-- [ ] 구조적 항목 중 ADR 승격이 필요한 것을 선별한다.
-- [ ] 실제 구현 plan 또는 issue breakdown으로 옮긴다.
+- [x] 각 wave를 smaller implementation batches로 분해한다.
+- [x] 구조적 항목 중 ADR 승격이 필요한 것을 선별한다.
+- [x] 실제 구현 plan 또는 issue breakdown으로 옮긴다.
 
 ## Follow-Ups
 - `Wave 2`와 `Wave 5`는 범위가 넓어서 별도 implementation plan으로 다시 쪼갤 가능성이 높다.
