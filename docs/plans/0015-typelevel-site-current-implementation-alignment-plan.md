@@ -1,7 +1,7 @@
 # 0015 - Typelevel Site Current Implementation Alignment Plan
 
 ## Status
-Draft
+Completed
 
 ## Created
 2026-04-15
@@ -195,32 +195,32 @@ Draft
 ## Checklist
 
 ### Phase 0: IA And Source-Of-Truth Lock
-- [ ] `Appendix A` page ownership matrix와 snippet mode inventory 작성
-- [ ] `Appendix B` target nav / section outline 확정
-- [ ] `Appendix C` wording / snippet / navigation policy 고정
+- [x] `Appendix A` page ownership matrix와 snippet mode inventory 작성
+- [x] `Appendix B` target nav / section outline 확정
+- [x] `Appendix C` wording / snippet / navigation policy 고정
 
 ### Phase 1: Landing Page And Navigation Realignment
-- [ ] `site/src/README.md` rewrite
-- [ ] `site/src/laika.conf` metadata update
-- [ ] EN/KO top-level nav update
-- [ ] `datatype` 및 새 node section discoverability 확보
+- [x] `site/src/README.md` rewrite
+- [x] `site/src/laika.conf` metadata update
+- [x] EN/KO top-level nav update
+- [x] `datatype` 및 새 node section discoverability 확보
 
 ### Phase 2: Node Narrative Rollout
-- [ ] `node-common` section landed
-- [ ] `node-jvm` overview landed
-- [ ] HotStuff / bootstrap / launch baseline page landed
-- [ ] EN/KO node docs skeleton parity 확보
+- [x] `node-common` section landed
+- [x] `node-jvm` overview landed
+- [x] HotStuff / bootstrap / launch baseline page landed
+- [x] EN/KO node docs skeleton parity 확보
 
 ### Phase 3: Core Narrative Refresh And Language Parity
-- [ ] `application` / `assembly` narrative refresh
-- [ ] `accounts` / `group` current-model drift 제거
-- [ ] touched page의 manual chrome cleanup
-- [ ] EN/KO parity review
+- [x] `application` / `assembly` narrative refresh
+- [x] `accounts` / `group` current-model drift 제거
+- [x] touched page의 manual chrome cleanup
+- [x] EN/KO parity review
 
 ### Phase 4: Verification And Publication Readiness
-- [ ] `sbt ";unidoc;tlSite"` green
-- [ ] generated site nav / link / `/api` 확인
-- [ ] 남은 문서 갭 follow-up 정리
+- [x] `sbt ";unidoc;tlSite"` green
+- [x] generated site nav / link / `/api` 확인
+- [x] 남은 문서 갭 follow-up 정리
 
 ## Follow-Ups
 - operator-focused deployment/runbook이 필요해지면 site section이 아니라 별도 docs tranche로 분리한다.
@@ -231,13 +231,75 @@ Draft
 ## Phase 0 Appendices
 
 ### Appendix A: Page Ownership Matrix
-- Phase 0에서 채운다.
-- 최소 항목: page path, owner/source of truth, snippet mode, EN/KO parity 여부.
+| page path | owner / source of truth | snippet mode | EN/KO parity | notes |
+| --- | --- | --- | --- | --- |
+| `site/src/README.md` | root `README.md`, `build.sbt`, `.github/workflows/site.yml` | prose only | N/A | curated landing page; facts must not drift from root README |
+| `site/src/laika.conf` | current public module stack in root `README.md` | N/A | N/A | metadata only |
+| `site/src/en/directory.conf`, `site/src/ko/directory.conf` | target IA locked in Appendix B | N/A | same inventory required | top-level discovery must not rely on homepage links |
+| `site/src/en/application/directory.conf`, `site/src/ko/application/directory.conf` | touched section inventory in this appendix | N/A | same inventory required | expose `accounts` and `group` in section nav |
+| `site/src/en/application/README.md`, `site/src/ko/application/README.md` | ADR-0009, root `README.md`, public package surface under `org.sigilaris.core.application.*` | `mdoc:compile-only` for public surface examples; prose elsewhere | required | no historical placeholder schema sold as current public API |
+| `site/src/en/application/accounts.md`, `site/src/ko/application/accounts.md` | ADR-0010, `AccountsTypes.scala`, `AccountsTransactions.scala`, `CurrentApplicationDomainTypeSuite.scala` | `mdoc:compile-only` for current type/tx examples; explicit pseudocode only for operational recovery flow | required | remove `type KeyId20 = BigInt`, raw `BigInt :| Positive0` current-model examples |
+| `site/src/en/application/group.md`, `site/src/ko/application/group.md` | ADR-0011, `GroupTypes.scala`, `GroupTransactions.scala`, `CurrentApplicationDomainTypeSuite.scala` | `mdoc:compile-only` for current type/tx examples; explicit pseudocode only for coordinator workflow narrative | required | reflect `GroupId`, `GroupNonce`, `MemberCount`, `NonEmptyGroupAccounts` |
+| `site/src/en/assembly/README.md`, `site/src/ko/assembly/README.md` | ADR-0009, public package surface under `org.sigilaris.core.assembly.*` | `mdoc:compile-only` for DSL examples; prose elsewhere | required | explain assembly as mount/wiring layer, not placeholder domain model |
+| `site/src/en/node-common/README.md`, `site/src/ko/node-common/README.md` | root `README.md`, ADR-0024, ADR-0025, `modules/node-common/shared/src/main/scala/org/sigilaris/node/gossip/**` | prose only | required | one-page overview section; point detailed API usage to `/api` |
+| `site/src/en/node-jvm/README.md`, `site/src/ko/node-jvm/README.md` | root `README.md`, ADR-0018, ADR-0021, ADR-0022, ADR-0024, ADR-0025, `modules/node-jvm/src/main/scala/org/sigilaris/node/jvm/**` | prose only | required | section overview for lifecycle/config/storage/transport seams |
+| `site/src/en/node-jvm/bootstrap-and-sync.md`, `site/src/ko/node-jvm/bootstrap-and-sync.md` | root `README.md`, ADR-0018, ADR-0021, `Bootstrap.scala`, `BootstrapCoordinator.scala`, `SnapshotSync.scala`, `HistoricalBackfillWorker.scala` | explicit pseudocode for config shape only; prose otherwise | required | describe current bootstrap baseline, trust root, snapshot sync, backfill |
+| `site/src/en/node-jvm/hotstuff-and-pacemaker.md`, `site/src/ko/node-jvm/hotstuff-and-pacemaker.md` | root `README.md`, ADR-0022, `HotStuffNodeRuntime.scala`, `Pacemaker.scala`, `PacemakerRuntime.scala`, `Validation.scala` | prose only | required | current baseline vs current limitations vs follow-up work must be separated |
+| `site/src/en/node-jvm/static-launch.md`, `site/src/ko/node-jvm/static-launch.md` | root `README.md`, `HotStuffLaunchSmokeSuite.scala`, `HotStuffRuntimeBootstrapSuite.scala`, `.github/workflows/site.yml` | explicit pseudocode for config shape and commands | required | smoke harness, static peer config, restart/DR notes, operator-owned steps |
 
 ### Appendix B: Target IA And Page Outline
-- Phase 0에서 채운다.
-- 최소 항목: top-level nav order, section별 required page, node narrative depth cap.
+- top-level nav order는 EN/KO 모두 아래 순서로 고정한다.
+  - `datatype`
+  - `byte-codec`
+  - `json-codec`
+  - `crypto`
+  - `merkle`
+  - `assembly`
+  - `application`
+  - `node-common`
+  - `node-jvm`
+  - `performance`
+- `application` section required pages:
+  - `README.md`
+  - `accounts.md`
+  - `group.md`
+  - `api.md`
+- `assembly` section required pages:
+  - `README.md`
+  - `api.md`
+- `node-common` section required pages:
+  - `README.md`
+  - section depth cap: overview only, no Phase 2 subpage expansion
+- `node-jvm` section required pages:
+  - `README.md`
+  - `bootstrap-and-sync.md`
+  - `hotstuff-and-pacemaker.md`
+  - `static-launch.md`
+  - section depth cap: overview 포함 최대 4 page에서 닫는다
+- homepage required outgoing discovery links:
+  - core docs entry (`datatype`, `assembly`, `application`)
+  - node docs entry (`node-common`, `node-jvm`)
+  - generated API reference (`/api`)
+- top-level nav/section naming rules:
+  - slug는 EN/KO 모두 동일하게 유지한다
+  - page split은 overview 중심으로 유지하고, implementation detail dump는 `/api` 또는 ADR 링크로 보낸다
+  - `performance`는 existing page inventory를 유지하고 이번 tranche에서 확장하지 않는다
 
 ### Appendix C: Writing / Snippet / Navigation Policy
-- Phase 0에서 채운다.
-- 최소 항목: current baseline wording, limitation/follow-up wording, pseudocode label rule, manual chrome/footer 처리 규칙.
+- baseline wording:
+  - 이미 public repo에 landed 된 surface는 `Current Baseline` 또는 현재 시제 문장으로 서술한다
+  - 아직 미구현이거나 partial인 항목은 `Current Limitations` 또는 `Follow-Up Work`로 분리한다
+  - `Coming Soon` 같은 모호한 미래 시제 heading은 touched page에서 금지한다
+- API reference policy:
+  - narrative page는 module/package overview, boundary, config, operational caveat를 설명한다
+  - method/class inventory는 generated `/api`를 canonical reference로 둔다
+  - touched page는 가능한 한 section 말미에 `/api`로 내려가는 링크를 유지한다
+- snippet policy:
+  - compiling surface를 보여주는 snippet은 `mdoc` 또는 `mdoc:compile-only`만 사용한다
+  - output 자체가 설명에 필요하지 않으면 `mdoc:compile-only`를 기본값으로 둔다
+  - compile 대상으로 삼지 않는 설명용 snippet은 본문 바로 위에 `Pseudocode` 또는 `Non-compiling configuration sketch`라고 명시한다
+  - current model 소개 문단에서는 legacy alias / placeholder를 public type처럼 보이게 두지 않는다
+- navigation/chrome policy:
+  - touched page에서는 수동 `[← Main]`, 수동 language switch, 수동 `© 2025 ...` footer를 제거한다
+  - Laika navigation을 기본 탐색 수단으로 사용하고, cross-link는 본문 내 contextual link로 최소화한다
+  - untouched page에 남아 있는 legacy chrome은 이번 tranche outside scope로 두되, Follow-Ups에 남긴다
