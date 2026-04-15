@@ -1,7 +1,7 @@
 # 0011 - Codebase Quality Improvement Opportunity Catalog And Sequencing Plan
 
 ## Status
-Phase 3 Complete; Implementation Waves And Batch Handoff Scoped
+Phase 3 Complete; Companion Plans And ADR Drafted
 
 ## Created
 2026-04-14
@@ -54,6 +54,10 @@ Phase 3 Complete; Implementation Waves And Batch Handoff Scoped
 - ADR-0020: Conflict-Free Block Scheduling With State References And Object-Centric Seams
 - ADR-0025: Shared Node Abstraction And Cross-Runtime Module Boundary
 - `docs/plans/0010-node-common-extraction-and-cross-runtime-contract-plan.md`
+- `docs/plans/0012-node-runtime-hotspot-split-and-boundary-cleanup-plan.md`
+- `docs/plans/0013-hotstuff-runtime-hardening-and-gossip-bridge-cleanup-plan.md`
+- `docs/plans/0014-tx-execution-and-receipt-surface-cleanup-plan.md`
+- `docs/adr/0026-tx-execution-witness-and-receipt-projection-boundary.md`
 - [Parse, don't validate](https://lexi-lambda.github.io/blog/2019/11/05/parse-don-t-validate/)
 - [Principle of Least Power](https://www.lihaoyi.com/post/StrategicScalaStylePrincipleofLeastPower.html)
 - [Iron overview](https://iltotore.github.io/iron/docs/overview.html)
@@ -205,6 +209,17 @@ Phase 3 Complete; Implementation Waves And Batch Handoff Scoped
 - `Wave 1a || Wave 2 -> Wave 1b` 병렬성은 유지하되, Phase 3 issue breakdown에서는 dependency edge를 명시적으로 남긴다.
 - 아래 batch와 surface 이름은 later `Opportunity Catalog` section의 canonical labels를 그대로 재사용한다. top-down으로 읽을 때는 이 section을 handoff index로, later catalog를 상세 anchor로 보면 된다.
 
+### Companion Ownership Index
+
+- 아래 표는 `wave/batch family -> owner companion doc` 매핑을 한눈에 보기 위한 index다.
+
+| wave / batch family | owner doc | role |
+| --- | --- | --- |
+| `Wave 2` / `W2-B1` ~ `W2-B6` | `docs/plans/0012-node-runtime-hotspot-split-and-boundary-cleanup-plan.md` | split-only implementation owner |
+| `Wave 5` / `W5-B1` ~ `W5-B4` | `docs/plans/0013-hotstuff-runtime-hardening-and-gossip-bridge-cleanup-plan.md` | hardening + consensus property gate owner |
+| `Wave 6` / `W6-B3` | `docs/plans/0014-tx-execution-and-receipt-surface-cleanup-plan.md` | execution/receipt tranche implementation owner |
+| `Wave 6` / `W6-B3` semantic lock | `docs/adr/0026-tx-execution-witness-and-receipt-projection-boundary.md` | witness vs continuation vs receipt projection decision owner |
+
 ### Batch Breakdown
 
 | batch id | wave | scope | representative catalog surfaces | prerequisite | exit gate |
@@ -243,7 +258,7 @@ Phase 3 Complete; Implementation Waves And Batch Handoff Scoped
 | `W4-B2` / `W4-B3` wire DTO ADT promotion | 기본은 implementation plan 범위 | shipped wire JSON/binary shape, rejection contract, compatibility policy를 바꾸는 경우 | protocol note 또는 transport contract plan |
 | `W5-B1` / `W5-B2` hotstuff typed policy / identifier tightening | 기본은 implementation plan 범위 | consensus wire/sign-bytes/canonical bytes 또는 validator identity semantics가 바뀌는 경우 | HotStuff companion ADR/spec 후보 |
 | `W6-B1` core domain identifier tightening | 기본은 implementation plan 범위 | `GroupId` 등 도메인 identifier semantics가 business rule 수준으로 강화되는 경우 | `ADR-0010` / `ADR-0011` addendum 또는 short design note |
-| `W6-B3` execution / receipt / compatibility surface cleanup | short design note 먼저 | `TxExecution` / receipt surface가 ADR-0009 application contract의 normative surface로 승격되는 경우 | `ADR-0009` follow-up note 또는 new ADR candidate |
+| `W6-B3` execution / receipt / compatibility surface cleanup | implementation plan + `ADR-0026` draft | `TxExecution` / receipt surface가 `ADR-0026`을 넘어 ADR-0009 application contract의 normative surface로 확장되는 경우 | `ADR-0026` promotion 및 필요 시 `ADR-0009` follow-up |
 | `W1-B4` failure / diagnostic normalization | 새 ADR 불필요 | external machine-readable failure contract를 cross-service/public API로 고정해야 하는 경우 | failure contract note 수준이면 충분 |
 
 ### Suggested Issue Breakdown
@@ -293,7 +308,7 @@ Phase 3 Complete; Implementation Waves And Batch Handoff Scoped
 ### Phase 3 Completion Status
 - `각 wave를 smaller implementation batches로 분해한다`: completed
 - `구조적 항목 중 ADR 승격이 필요한 것을 선별한다`: completed
-- `실제 구현 plan 또는 issue breakdown으로 옮긴다`: completed via batch-level issue breakdown in this document
+- `실제 구현 plan 또는 issue breakdown으로 옮긴다`: completed via batch-level issue breakdown in this document plus companion docs `0012`, `0013`, `0014`, `0026`
 
 ## Change Areas
 
@@ -306,6 +321,10 @@ Phase 3 Complete; Implementation Waves And Batch Handoff Scoped
 
 ### Docs
 - 본 문서
+- `docs/plans/0012-node-runtime-hotspot-split-and-boundary-cleanup-plan.md`
+- `docs/plans/0013-hotstuff-runtime-hardening-and-gossip-bridge-cleanup-plan.md`
+- `docs/plans/0014-tx-execution-and-receipt-surface-cleanup-plan.md`
+- `docs/adr/0026-tx-execution-witness-and-receipt-projection-boundary.md`
 
 ## Opportunity Catalog
 
@@ -448,6 +467,7 @@ Phase 3 Complete; Implementation Waves And Batch Handoff Scoped
 - [x] 실제 구현 plan 또는 issue breakdown으로 옮긴다.
 
 ## Follow-Ups
-- `Wave 2`와 `Wave 5`는 범위가 넓어서 별도 implementation plan으로 다시 쪼갤 가능성이 높다.
-- `TxExecution` / `StateModuleExecutor` witness-vs-continuation surface는 `Wave 6` 안에서도 별도 설계 메모가 필요할 수 있다.
+- `Wave 2` implementation owner 문서는 `docs/plans/0012-node-runtime-hotspot-split-and-boundary-cleanup-plan.md`가 소유한다.
+- `Wave 5` implementation owner 문서는 `docs/plans/0013-hotstuff-runtime-hardening-and-gossip-bridge-cleanup-plan.md`가 소유한다.
+- `W6-B3` execution/receipt owner 문서는 `docs/plans/0014-tx-execution-and-receipt-surface-cleanup-plan.md`이고, semantic ownership lock은 `docs/adr/0026-tx-execution-witness-and-receipt-projection-boundary.md`가 맡는다.
 - refined type 도입은 `Wave 1` helper를 기준으로 domain/application/node 쪽으로 확장하는 단계적 plan으로 가져간다.
