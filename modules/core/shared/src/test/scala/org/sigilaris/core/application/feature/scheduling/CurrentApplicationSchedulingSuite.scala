@@ -63,8 +63,7 @@ final class CurrentApplicationSchedulingSuite extends FunSuite:
   private def deriveKeyId(
       keyPair: KeyPair,
   ): KeyId20 =
-    val hash = CryptoOps.keccak256(keyPair.publicKey.toBytes.toArray)
-    KeyId20.unsafeApply(ByteVector.view(hash).takeRight(20))
+    KeyId20.fromPublicKey(keyPair.publicKey)
 
   private def signTx[A <: Tx: Hash: Sign](
       tx: A,
@@ -202,7 +201,7 @@ final class CurrentApplicationSchedulingSuite extends FunSuite:
 
     val addedKey = deriveKeyId(carolKeyPair)
     val addKeys = signTx(
-      AddKeyIds(
+      AddKeyIds.unsafe(
         envelope = TxEnvelope(networkId, now, None),
         name = Utf8("alice"),
         nonce = BigNat.Zero,
@@ -218,7 +217,7 @@ final class CurrentApplicationSchedulingSuite extends FunSuite:
 
     val addState = addExecution.nextState
     val removeKeys = signTx(
-      RemoveKeyIds(
+      RemoveKeyIds.unsafe(
         envelope = TxEnvelope(networkId, now, None),
         name = Utf8("alice"),
         nonce = BigNat.unsafeFromBigInt(1),
@@ -258,7 +257,7 @@ final class CurrentApplicationSchedulingSuite extends FunSuite:
     val signedTx = signTx(
       CreateGroup(
         envelope = TxEnvelope(networkId, now, None),
-        groupId = GroupId(Utf8("unnamed-group")),
+        groupId = GroupId.unsafe(Utf8("unnamed-group")),
         name = Utf8("Unnamed Group"),
         coordinator = unnamedAccount,
       ),
@@ -279,7 +278,7 @@ final class CurrentApplicationSchedulingSuite extends FunSuite:
     val createGroup = signTx(
       CreateGroup(
         envelope = TxEnvelope(networkId, now, None),
-        groupId = GroupId(Utf8("core")),
+        groupId = GroupId.unsafe(Utf8("core")),
         name = Utf8("Core"),
         coordinator = alice,
       ),
@@ -292,9 +291,9 @@ final class CurrentApplicationSchedulingSuite extends FunSuite:
 
     val groupState = createExecution.nextState
     val addAccounts = signTx(
-      AddAccounts(
+      AddAccounts.unsafe(
         envelope = TxEnvelope(networkId, now, None),
-        groupId = GroupId(Utf8("core")),
+        groupId = GroupId.unsafe(Utf8("core")),
         accounts = Set(bob),
         groupNonce = BigNat.Zero,
       ),
@@ -306,9 +305,9 @@ final class CurrentApplicationSchedulingSuite extends FunSuite:
     assertConformant(addDerived, addExecution.actualFootprint.toOption.get)
 
     val removeAccounts = signTx(
-      RemoveAccounts(
+      RemoveAccounts.unsafe(
         envelope = TxEnvelope(networkId, now, None),
-        groupId = GroupId(Utf8("core")),
+        groupId = GroupId.unsafe(Utf8("core")),
         accounts = Set(bob),
         groupNonce = BigNat.unsafeFromBigInt(1),
       ),
@@ -322,7 +321,7 @@ final class CurrentApplicationSchedulingSuite extends FunSuite:
     val replaceCoordinator = signTx(
       ReplaceCoordinator(
         envelope = TxEnvelope(networkId, now, None),
-        groupId = GroupId(Utf8("core")),
+        groupId = GroupId.unsafe(Utf8("core")),
         newCoordinator = bob,
         groupNonce = BigNat.unsafeFromBigInt(2),
       ),
@@ -336,7 +335,7 @@ final class CurrentApplicationSchedulingSuite extends FunSuite:
     val disband = signTx(
       DisbandGroup(
         envelope = TxEnvelope(networkId, now, None),
-        groupId = GroupId(Utf8("core")),
+        groupId = GroupId.unsafe(Utf8("core")),
         groupNonce = BigNat.unsafeFromBigInt(3),
       ),
       bob,
@@ -352,7 +351,7 @@ final class CurrentApplicationSchedulingSuite extends FunSuite:
     val createGroup = signTx(
       CreateGroup(
         envelope = TxEnvelope(networkId, now, None),
-        groupId = GroupId(Utf8("non-empty")),
+        groupId = GroupId.unsafe(Utf8("non-empty")),
         name = Utf8("Non Empty"),
         coordinator = alice,
       ),
@@ -361,9 +360,9 @@ final class CurrentApplicationSchedulingSuite extends FunSuite:
     )
     val groupState = executeGroup(baseState, createGroup).nextState
     val addAccounts = signTx(
-      AddAccounts(
+      AddAccounts.unsafe(
         envelope = TxEnvelope(networkId, now, None),
-        groupId = GroupId(Utf8("non-empty")),
+        groupId = GroupId.unsafe(Utf8("non-empty")),
         accounts = Set(bob),
         groupNonce = BigNat.Zero,
       ),
@@ -374,7 +373,7 @@ final class CurrentApplicationSchedulingSuite extends FunSuite:
     val disband = signTx(
       DisbandGroup(
         envelope = TxEnvelope(networkId, now, None),
-        groupId = GroupId(Utf8("non-empty")),
+        groupId = GroupId.unsafe(Utf8("non-empty")),
         groupNonce = BigNat.unsafeFromBigInt(1),
       ),
       alice,
@@ -406,7 +405,7 @@ final class CurrentApplicationSchedulingSuite extends FunSuite:
     val createGroup = signTx(
       CreateGroup(
         envelope = TxEnvelope(networkId, now, None),
-        groupId = GroupId(Utf8("mixed")),
+        groupId = GroupId.unsafe(Utf8("mixed")),
         name = Utf8("Mixed"),
         coordinator = alice,
       ),

@@ -49,7 +49,7 @@ final class OpaqueValueCompanionSuite extends FunSuite:
       inline def nonce: BigNat = value.repr.nonce
 
   test("GroupId forwards byte/json codecs and JsonKeyCodec from Utf8"):
-    val groupId   = GroupId(Utf8("developers"))
+    val groupId   = GroupId.unsafe(Utf8("developers"))
     val bytes     = ByteEncoder[GroupId].encode(groupId)
     val json      = JsonEncoder[Map[GroupId, Int]].encode(Map(groupId -> 1))
     val eqGroupId = summon[Eq[GroupId]]
@@ -72,8 +72,8 @@ final class OpaqueValueCompanionSuite extends FunSuite:
       JsonDecoder[Map[GroupId, Int]].decode(json),
       Right(Map(groupId -> 1)),
     )
-    assertEquals(eqGroupId.eqv(groupId, GroupId(Utf8("developers"))), true)
-    assertEquals(eqGroupId.eqv(groupId, GroupId(Utf8("ops"))), false)
+    assertEquals(eqGroupId.eqv(groupId, GroupId.unsafe(Utf8("developers"))), true)
+    assertEquals(eqGroupId.eqv(groupId, GroupId.unsafe(Utf8("ops"))), false)
     assertEquals(groupId.toUtf8, Utf8("developers"))
 
   test("NetworkId forwards byte and json codecs from BigNat"):

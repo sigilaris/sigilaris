@@ -2,13 +2,22 @@ package org.sigilaris.core.application.feature.accounts.domain
 
 import java.time.Instant
 
+import scala.annotation.targetName
+
 import cats.Eq
 import scodec.bits.ByteVector
 
 import org.sigilaris.core.codec.byte.{ByteDecoder, ByteEncoder, DecodeResult}
 import org.sigilaris.core.codec.byte.ByteEncoder.ops.*
-import org.sigilaris.core.datatype.{BigNat, FixedSizeByteValueCompanion, Utf8}
+import org.sigilaris.core.datatype.{
+  BigNat,
+  FixedSizeByteValueCompanion,
+  OpaqueValueCompanion,
+  Utf8,
+  ValidatedOpaqueValueCompanion,
+}
 import org.sigilaris.core.failure.DecodeFailure
+import org.sigilaris.core.crypto.{CryptoOps, PublicKey}
 
 /** Account identifier - can be either Named or Unnamed.
   *
@@ -76,8 +85,106 @@ object KeyId20 extends FixedSizeByteValueCompanion[KeyId20]:
 
   override protected def unwrap(value: KeyId20): ByteVector = value
 
+  /** Deterministically derives the key identifier for a public key. */
+  def fromPublicKey(publicKey: PublicKey): KeyId20 =
+    unsafe:
+      ByteVector.view(
+        CryptoOps.keccak256(publicKey.toBytes.toArray),
+      ).takeRight(20)
+
   /** Unsafe version that assumes bytes is exactly 20 bytes (for internal use). */
   def unsafeApply(bytes: ByteVector): KeyId20 = unsafe(bytes)
+
+/** Account nonce stored on-chain and used for replay protection. */
+opaque type AccountNonce = BigNat
+
+/** Companion for [[AccountNonce]]. */
+object AccountNonce extends OpaqueValueCompanion[AccountNonce, BigNat]:
+  inline def apply(nonce: BigNat): AccountNonce = nonce
+
+  val Zero: AccountNonce = apply(BigNat.Zero)
+
+  def unsafeFromLong(value: Long): AccountNonce =
+    apply(BigNat.unsafeFromLong(value))
+
+  protected def wrap(repr: BigNat): AccountNonce = repr
+
+  protected def unwrap(value: AccountNonce): BigNat = value
+
+  extension (nonce: AccountNonce)
+    inline def toBigNat: BigNat = nonce
+
+    def next: AccountNonce =
+      apply(BigNat.add(nonce.toBigNat, BigNat.One))
+
+/** Non-empty map of key identifiers to descriptions used by AddKeyIds. */
+opaque type NonEmptyKeyIdDescriptions = Map[KeyId20, Utf8]
+
+/** Companion for [[NonEmptyKeyIdDescriptions]]. */
+object NonEmptyKeyIdDescriptions
+    extends ValidatedOpaqueValueCompanion[
+      NonEmptyKeyIdDescriptions,
+      Map[KeyId20, Utf8],
+    ]:
+  def apply(
+      entries: Map[KeyId20, Utf8],
+  ): Either[String, NonEmptyKeyIdDescriptions] =
+    Either.cond(entries.nonEmpty, wrap(entries), "keyIds must be non-empty")
+
+  protected def wrap(
+      repr: Map[KeyId20, Utf8],
+  ): NonEmptyKeyIdDescriptions = repr
+
+  protected def unwrap(
+      value: NonEmptyKeyIdDescriptions,
+  ): Map[KeyId20, Utf8] = value
+
+  // Byte decoding stays backward-compatible with legacy empty payloads;
+  // constructor-validated entry points still reject them for new values.
+  override protected def decodeByteRepr(
+      repr: Map[KeyId20, Utf8],
+  ): Either[DecodeFailure, NonEmptyKeyIdDescriptions] =
+    Right[DecodeFailure, NonEmptyKeyIdDescriptions](wrap(repr))
+
+  override protected def decodeJsonRepr(
+      repr: Map[KeyId20, Utf8],
+  ): Either[DecodeFailure, NonEmptyKeyIdDescriptions] =
+    Right[DecodeFailure, NonEmptyKeyIdDescriptions](wrap(repr))
+
+  extension (entries: NonEmptyKeyIdDescriptions)
+    inline def toMap: Map[KeyId20, Utf8] = entries
+
+    inline def keySet: Set[KeyId20] = entries.toMap.keySet
+
+/** Non-empty set of key identifiers used by RemoveKeyIds. */
+opaque type NonEmptyKeyIds = Set[KeyId20]
+
+/** Companion for [[NonEmptyKeyIds]]. */
+object NonEmptyKeyIds
+    extends ValidatedOpaqueValueCompanion[NonEmptyKeyIds, Set[KeyId20]]:
+  def apply(
+      entries: Set[KeyId20],
+  ): Either[String, NonEmptyKeyIds] =
+    Either.cond(entries.nonEmpty, wrap(entries), "keyIds must be non-empty")
+
+  protected def wrap(repr: Set[KeyId20]): NonEmptyKeyIds = repr
+
+  protected def unwrap(value: NonEmptyKeyIds): Set[KeyId20] = value
+
+  // Byte decoding stays backward-compatible with legacy empty payloads;
+  // constructor-validated entry points still reject them for new values.
+  override protected def decodeByteRepr(
+      repr: Set[KeyId20],
+  ): Either[DecodeFailure, NonEmptyKeyIds] =
+    Right[DecodeFailure, NonEmptyKeyIds](wrap(repr))
+
+  override protected def decodeJsonRepr(
+      repr: Set[KeyId20],
+  ): Either[DecodeFailure, NonEmptyKeyIds] =
+    Right[DecodeFailure, NonEmptyKeyIds](wrap(repr))
+
+  extension (entries: NonEmptyKeyIds)
+    inline def toSet: Set[KeyId20] = entries
 
 /** Account information stored on-chain.
   *
@@ -88,12 +195,19 @@ object KeyId20 extends FixedSizeByteValueCompanion[KeyId20]:
   */
 final case class AccountInfo(
     guardian: Option[Account],
-    nonce: BigNat,
+    nonce: AccountNonce,
 ) derives ByteEncoder,
       ByteDecoder
 
 /** Companion for [[AccountInfo]], providing equality. */
 object AccountInfo:
+  @targetName("applyBigNat")
+  def apply(
+      guardian: Option[Account],
+      nonce: BigNat,
+  ): AccountInfo =
+    AccountInfo(guardian = guardian, nonce = AccountNonce(nonce))
+
   given accountInfoEq: Eq[AccountInfo] = Eq.fromUniversalEquals
 
 /** Key registration information for Named accounts.

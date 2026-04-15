@@ -39,7 +39,8 @@ import org.sigilaris.core.application.scheduling.{
 }
 import org.sigilaris.core.application.state.StoreState
 import org.sigilaris.core.application.transactions.Signed
-import org.sigilaris.core.failure.SigilarisFailure
+import org.sigilaris.core.failure.{DecodeFailure, SigilarisFailure}
+import org.sigilaris.core.datatype.{Utf8, ValidatedOpaqueValueCompanion}
 import org.sigilaris.core.merkle.MerkleTrie
 
 /** Union type of all transaction types supported by the current application. */
@@ -51,15 +52,72 @@ type CurrentApplicationTx =
 /** A signed transaction for the current application. */
 type CurrentApplicationSignedTx = Signed[CurrentApplicationTx]
 
+/** Idempotency key used to deduplicate repeated batch submissions. */
+opaque type BatchIdempotencyKey = Utf8
+
+/** Companion for [[BatchIdempotencyKey]]. */
+object BatchIdempotencyKey
+    extends ValidatedOpaqueValueCompanion[BatchIdempotencyKey, Utf8]:
+  def apply(value: Utf8): Either[String, BatchIdempotencyKey] =
+    Either.cond(
+      value.asString.nonEmpty,
+      wrap(value),
+      "BatchIdempotencyKey must be non-empty",
+    )
+
+  def fromString(value: String): Either[String, BatchIdempotencyKey] =
+    apply(Utf8(value))
+
+  @SuppressWarnings(Array("org.wartremover.warts.Throw"))
+  def unsafeFromString(value: String): BatchIdempotencyKey =
+    unsafe(Utf8(value))
+
+  protected def wrap(repr: Utf8): BatchIdempotencyKey = repr
+
+  protected def unwrap(value: BatchIdempotencyKey): Utf8 = value
+
+  // Byte decoding stays backward-compatible with legacy empty identifiers;
+  // constructor-validated entry points still reject them for new values.
+  override protected def decodeByteRepr(
+      repr: Utf8,
+  ): Either[DecodeFailure, BatchIdempotencyKey] =
+    Right[DecodeFailure, BatchIdempotencyKey](wrap(repr))
+
+  override protected def decodeJsonRepr(
+      repr: Utf8,
+  ): Either[DecodeFailure, BatchIdempotencyKey] =
+    Right[DecodeFailure, BatchIdempotencyKey](wrap(repr))
+
+  extension (key: BatchIdempotencyKey)
+    inline def toUtf8: Utf8 = key
+
 /** A batch of signed transactions submitted for execution.
   *
   * @param idempotencyKey unique key for deduplication across retries
   * @param items the ordered transactions in this batch
   */
 final case class CurrentApplicationBatch(
-    idempotencyKey: String,
+    idempotencyKey: BatchIdempotencyKey,
     items: Vector[CurrentApplicationSignedTx],
 )
+
+/** Companion for [[CurrentApplicationBatch]]. */
+object CurrentApplicationBatch:
+  def apply(
+      idempotencyKey: String,
+      items: Vector[CurrentApplicationSignedTx],
+  ): Either[String, CurrentApplicationBatch] =
+    BatchIdempotencyKey.fromString(idempotencyKey).map:
+      CurrentApplicationBatch(_, items)
+
+  @SuppressWarnings(Array("org.wartremover.warts.Throw"))
+  def unsafe(
+      idempotencyKey: String,
+      items: Vector[CurrentApplicationSignedTx],
+  ): CurrentApplicationBatch =
+    apply(idempotencyKey = idempotencyKey, items = items) match
+      case Right(batch)  => batch
+      case Left(error)   => throw new IllegalArgumentException(error)
 
 /** Describes the execution mode used for a batch. */
 enum CurrentApplicationBatchMode:
@@ -117,7 +175,7 @@ enum CurrentApplicationBatchOutcome:
   */
 final case class CurrentApplicationBatchRuntimeState(
     storeState: StoreState,
-    receiptsByIdempotencyKey: Map[String, CurrentApplicationBatchReceipt],
+    receiptsByIdempotencyKey: Map[BatchIdempotencyKey, CurrentApplicationBatchReceipt],
 )
 
 /** Companion for [[CurrentApplicationBatchRuntimeState]]. */
@@ -127,7 +185,7 @@ object CurrentApplicationBatchRuntimeState:
     CurrentApplicationBatchRuntimeState(
       storeState = StoreState.empty,
       receiptsByIdempotencyKey =
-        Map.empty[String, CurrentApplicationBatchReceipt],
+        Map.empty[BatchIdempotencyKey, CurrentApplicationBatchReceipt],
     )
 
 /** Reasons a batch may be rejected during planning or execution. */

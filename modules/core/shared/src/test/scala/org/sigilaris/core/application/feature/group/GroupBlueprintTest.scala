@@ -6,8 +6,9 @@ import cats.Id
 import cats.data.{EitherT, Kleisli}
 import munit.FunSuite
 
-import scodec.bits.ByteVector
-
+import org.sigilaris.core.codec.byte.ByteEncoder
+import org.sigilaris.core.codec.byte.ByteDecoder.ops.*
+import org.sigilaris.core.codec.byte.ByteEncoder.ops.*
 import org.sigilaris.core.application.state.StoreState
 import org.sigilaris.core.application.feature.accounts.domain.{Account, KeyId20}
 import org.sigilaris.core.application.feature.accounts.module.AccountsBP
@@ -73,9 +74,7 @@ class GroupBlueprintTest extends FunSuite:
 
   /** Helper to derive KeyId20 from a keypair. */
   def deriveKeyId(keyPair: KeyPair): KeyId20 =
-    val pubKeyBytes = keyPair.publicKey.toBytes
-    val keyHash = CryptoOps.keccak256(pubKeyBytes.toArray)
-    KeyId20.unsafeApply(ByteVector.view(keyHash).takeRight(20))
+    KeyId20.fromPublicKey(keyPair.publicKey)
 
   /** Helper to create a signed transaction. */
   def signTx[A <: Tx: Hash: Sign](tx: A, account: Account, keyPair: KeyPair): Signed[A] =
@@ -89,7 +88,7 @@ class GroupBlueprintTest extends FunSuite:
 
     val aliceKeyId = deriveKeyId(aliceKeyPair)
     val coordinator = Account.Unnamed(aliceKeyId)
-    val groupId = GroupId(Utf8("developers"))
+    val groupId = GroupId.unsafe(Utf8("developers"))
 
     val envelope = TxEnvelope(
       networkId = networkIdOne,
@@ -125,7 +124,7 @@ class GroupBlueprintTest extends FunSuite:
 
     val aliceKeyId = deriveKeyId(aliceKeyPair)
     val coordinator = Account.Unnamed(aliceKeyId)
-    val groupId = GroupId(Utf8("admins"))
+    val groupId = GroupId.unsafe(Utf8("admins"))
 
     val envelope = TxEnvelope(
       networkId = networkIdOne,
@@ -166,7 +165,7 @@ class GroupBlueprintTest extends FunSuite:
 
     val aliceKeyId = deriveKeyId(aliceKeyPair)
     val coordinator = Account.Unnamed(aliceKeyId)
-    val groupId = GroupId(Utf8("team"))
+    val groupId = GroupId.unsafe(Utf8("team"))
 
     // Create group
     val envelope1 = TxEnvelope(
@@ -199,7 +198,7 @@ class GroupBlueprintTest extends FunSuite:
       memo = None,
     )
 
-    val addTx = AddAccounts(
+    val addTx = AddAccounts.unsafe(
       envelope = envelope2,
       groupId = groupId,
       accounts = Set(bobAccount, charlieAccount),
@@ -222,13 +221,98 @@ class GroupBlueprintTest extends FunSuite:
       case Left(err) =>
         fail(s"Unexpected error: $err")
 
+  test(
+    "GroupsBP: legacy empty member payloads remain decodable but fail with structured invalid request",
+  ):
+    val bp = GroupsBP[Id](stubGroupsNeedsProvider)
+    val mounted = StateModule.mount[("app", "groups")](bp)
+
+    val aliceKeyId = deriveKeyId(aliceKeyPair)
+    val coordinator = Account.Unnamed(aliceKeyId)
+    val groupId = GroupId.unsafe(Utf8("legacy-team"))
+
+    val envelope1 = TxEnvelope(
+      networkId = networkIdOne,
+      createdAt = Instant.now(),
+      memo = None,
+    )
+
+    val createTx = CreateGroup(
+      envelope = envelope1,
+      groupId = groupId,
+      name = Utf8("Legacy Team Group"),
+      coordinator = coordinator,
+    )
+    val signedCreateTx = signTx(createTx, coordinator, aliceKeyPair)
+
+    val result1 = mounted.reducer.apply(signedCreateTx).run(initialState).value
+    assert(result1.isRight)
+    val stateAfterCreate = result1.toOption.get._1
+
+    val envelope2 = TxEnvelope(
+      networkId = networkIdOne,
+      createdAt = Instant.now(),
+      memo = None,
+    )
+
+    val legacyAddAccounts =
+      (
+        envelope2.toBytes ++
+          groupId.toBytes ++
+          ByteEncoder[Set[Account]].encode(Set.empty) ++
+          BigNat.Zero.toBytes
+      ).to[AddAccounts] match
+        case Right(tx)    => tx
+        case Left(error)  => fail(s"Expected legacy AddAccounts bytes to decode, got: $error")
+
+    val legacyRemoveAccounts =
+      (
+        envelope2.toBytes ++
+          groupId.toBytes ++
+          ByteEncoder[Set[Account]].encode(Set.empty) ++
+          BigNat.Zero.toBytes
+      ).to[RemoveAccounts] match
+        case Right(tx)    => tx
+        case Left(error)  => fail(s"Expected legacy RemoveAccounts bytes to decode, got: $error")
+
+    val addResult =
+      mounted.reducer
+        .apply(signTx(legacyAddAccounts, coordinator, aliceKeyPair))
+        .run(stateAfterCreate)
+        .value
+    val removeResult =
+      mounted.reducer
+        .apply(signTx(legacyRemoveAccounts, coordinator, aliceKeyPair))
+        .run(stateAfterCreate)
+        .value
+
+    addResult match
+      case Left(err) =>
+        assert(
+          err.msg.startsWith("invalid_request.groups.accounts_empty:"),
+          s"Expected structured invalid request, got: ${err.msg}",
+        )
+        assert(err.msg.contains("groupId=legacy-team"))
+      case Right(_) =>
+        fail("Expected legacy empty AddAccounts payload to fail")
+
+    removeResult match
+      case Left(err) =>
+        assert(
+          err.msg.startsWith("invalid_request.groups.accounts_empty:"),
+          s"Expected structured invalid request, got: ${err.msg}",
+        )
+        assert(err.msg.contains("groupId=legacy-team"))
+      case Right(_) =>
+        fail("Expected legacy empty RemoveAccounts payload to fail")
+
   test("GroupsBP: add accounts is idempotent"):
     val bp = GroupsBP[Id](stubGroupsNeedsProvider)
     val mounted = StateModule.mount[("app", "groups")](bp)
 
     val aliceKeyId = deriveKeyId(aliceKeyPair)
     val coordinator = Account.Unnamed(aliceKeyId)
-    val groupId = GroupId(Utf8("idempotent-test"))
+    val groupId = GroupId.unsafe(Utf8("idempotent-test"))
 
     // Create group
     val envelope1 = TxEnvelope(
@@ -259,7 +343,7 @@ class GroupBlueprintTest extends FunSuite:
       memo = None,
     )
 
-    val addTx1 = AddAccounts(
+    val addTx1 = AddAccounts.unsafe(
       envelope = envelope2,
       groupId = groupId,
       accounts = Set(bobAccount),
@@ -278,7 +362,7 @@ class GroupBlueprintTest extends FunSuite:
       memo = None,
     )
 
-    val addTx2 = AddAccounts(
+    val addTx2 = AddAccounts.unsafe(
       envelope = envelope3,
       groupId = groupId,
       accounts = Set(bobAccount),
@@ -304,7 +388,7 @@ class GroupBlueprintTest extends FunSuite:
 
     val aliceKeyId = deriveKeyId(aliceKeyPair)
     val coordinator = Account.Unnamed(aliceKeyId)
-    val groupId = GroupId(Utf8("removal-test"))
+    val groupId = GroupId.unsafe(Utf8("removal-test"))
 
     // Create group
     val envelope1 = TxEnvelope(
@@ -337,7 +421,7 @@ class GroupBlueprintTest extends FunSuite:
       memo = None,
     )
 
-    val addTx = AddAccounts(
+    val addTx = AddAccounts.unsafe(
       envelope = envelope2,
       groupId = groupId,
       accounts = Set(bobAccount, charlieAccount),
@@ -356,7 +440,7 @@ class GroupBlueprintTest extends FunSuite:
       memo = None,
     )
 
-    val removeTx = RemoveAccounts(
+    val removeTx = RemoveAccounts.unsafe(
       envelope = envelope3,
       groupId = groupId,
       accounts = Set(bobAccount),
@@ -384,7 +468,7 @@ class GroupBlueprintTest extends FunSuite:
 
     val aliceKeyId = deriveKeyId(aliceKeyPair)
     val coordinator = Account.Unnamed(aliceKeyId)
-    val groupId = GroupId(Utf8("coordinator-test"))
+    val groupId = GroupId.unsafe(Utf8("coordinator-test"))
 
     // Create group
     val envelope1 = TxEnvelope(
@@ -443,7 +527,7 @@ class GroupBlueprintTest extends FunSuite:
 
     val aliceKeyId = deriveKeyId(aliceKeyPair)
     val coordinator = Account.Unnamed(aliceKeyId)
-    val groupId = GroupId(Utf8("disband-test"))
+    val groupId = GroupId.unsafe(Utf8("disband-test"))
 
     // Create group
     val envelope1 = TxEnvelope(
@@ -496,7 +580,7 @@ class GroupBlueprintTest extends FunSuite:
 
     val aliceKeyId = deriveKeyId(aliceKeyPair)
     val coordinator = Account.Unnamed(aliceKeyId)
-    val groupId = GroupId(Utf8("nonce-test"))
+    val groupId = GroupId.unsafe(Utf8("nonce-test"))
 
     // Create group
     val envelope1 = TxEnvelope(
@@ -527,7 +611,7 @@ class GroupBlueprintTest extends FunSuite:
       memo = None,
     )
 
-    val addTx = AddAccounts(
+    val addTx = AddAccounts.unsafe(
       envelope = envelope2,
       groupId = groupId,
       accounts = Set(bobAccount),
@@ -553,7 +637,7 @@ class GroupBlueprintTest extends FunSuite:
 
     val aliceKeyId = deriveKeyId(aliceKeyPair)
     val coordinator = Account.Unnamed(aliceKeyId)
-    val groupId = GroupId(Utf8("missing-group"))
+    val groupId = GroupId.unsafe(Utf8("missing-group"))
 
     val disbandTx = DisbandGroup(
       envelope = TxEnvelope(
@@ -589,7 +673,7 @@ class GroupBlueprintTest extends FunSuite:
         createdAt = Instant.now(),
         memo = None,
       ),
-      groupId = GroupId(Utf8("developers")),
+      groupId = GroupId.unsafe(Utf8("developers")),
       name = Utf8("Developers"),
       coordinator = coordinator,
     )
@@ -617,7 +701,7 @@ class GroupBlueprintTest extends FunSuite:
 
     val aliceKeyId = deriveKeyId(aliceKeyPair)
     val coordinator = Account.Unnamed(aliceKeyId)
-    val groupId = GroupId(Utf8("auth-test"))
+    val groupId = GroupId.unsafe(Utf8("auth-test"))
 
     // Create group with Alice as coordinator
     val envelope1 = TxEnvelope(
@@ -650,7 +734,7 @@ class GroupBlueprintTest extends FunSuite:
       memo = None,
     )
 
-    val addTx = AddAccounts(
+    val addTx = AddAccounts.unsafe(
       envelope = envelope2,
       groupId = groupId,
       accounts = Set(charlieAccount),
@@ -669,7 +753,7 @@ class GroupBlueprintTest extends FunSuite:
     val bobKeyId = deriveKeyId(bobKeyPair)
     val coordinator = Account.Unnamed(aliceKeyId)
     val member = Account.Unnamed(bobKeyId)
-    val groupId = GroupId(Utf8("non-empty-group"))
+    val groupId = GroupId.unsafe(Utf8("non-empty-group"))
 
     // Create group
     val envelope1 = TxEnvelope(
@@ -697,7 +781,7 @@ class GroupBlueprintTest extends FunSuite:
       memo = None,
     )
 
-    val addTx = AddAccounts(
+    val addTx = AddAccounts.unsafe(
       envelope = envelope2,
       groupId = groupId,
       accounts = Set(member),
@@ -740,7 +824,7 @@ class GroupBlueprintTest extends FunSuite:
       memo = None,
     )
 
-    val removeTx = RemoveAccounts(
+    val removeTx = RemoveAccounts.unsafe(
       envelope = envelope4,
       groupId = groupId,
       accounts = Set(member),

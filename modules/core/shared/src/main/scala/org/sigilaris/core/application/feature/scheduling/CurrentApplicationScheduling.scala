@@ -29,7 +29,7 @@ import org.sigilaris.core.application.scheduling.{
 import org.sigilaris.core.application.support.encoding.tablePrefixRuntime
 import org.sigilaris.core.application.transactions.{Signed, Tx}
 import org.sigilaris.core.codec.byte.ByteCodec
-import org.sigilaris.core.crypto.{CryptoOps, Hash, PublicKey, Recover}
+import org.sigilaris.core.crypto.{Hash, PublicKey, Recover}
 
 /** Conflict footprint derivation and scheduling classification for the current application's transaction types.
   *
@@ -87,8 +87,7 @@ object CurrentApplicationScheduling:
   private def deriveRecoveredKeyId(
       publicKey: PublicKey,
   ): KeyId20 =
-    val hash = CryptoOps.keccak256(publicKey.toBytes.toArray)
-    KeyId20.unsafeApply(ByteVector.view(hash).takeRight(20))
+    KeyId20.fromPublicKey(publicKey)
 
   private def recoverSignerKeyId[T <: Tx](
       signed: Signed[T],
@@ -219,7 +218,8 @@ object CurrentApplicationScheduling:
     signerKeyReads(signed).map: signerReads =>
       val tx           = signed.value
       val accountState = accountRef(tx.name)
-      val keyRefs      = tx.keyIds.map(keyId => nameKeyRef(tx.name, keyId))
+      val keyRefs =
+        tx.keyIds.toSet.map(keyId => nameKeyRef(tx.name, keyId))
       ConflictFootprint(
         reads = signerReads + accountState ++ keyRefs,
         writes = Set(accountState) ++ keyRefs,
@@ -270,7 +270,7 @@ object CurrentApplicationScheduling:
     deriveGroupMembershipFootprint(
       signed,
       signed.value.groupId,
-      signed.value.accounts,
+      signed.value.accounts.toSet,
     )
 
   /** Derives the conflict footprint for a RemoveAccounts transaction.
@@ -284,7 +284,7 @@ object CurrentApplicationScheduling:
     deriveGroupMembershipFootprint(
       signed,
       signed.value.groupId,
-      signed.value.accounts,
+      signed.value.accounts.toSet,
     )
 
   /** Derives the conflict footprint for a ReplaceCoordinator transaction.

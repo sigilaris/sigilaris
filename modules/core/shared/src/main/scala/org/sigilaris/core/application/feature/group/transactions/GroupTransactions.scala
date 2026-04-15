@@ -1,6 +1,7 @@
 package org.sigilaris.core.application.feature.group.transactions
 
 import cats.Eq
+import scala.annotation.targetName
 
 import org.sigilaris.core.codec.byte.{ByteDecoder, ByteEncoder}
 import org.sigilaris.core.crypto.{Hash, Recover}
@@ -57,7 +58,7 @@ object CreateGroup:
 final case class DisbandGroup(
     envelope: TxEnvelope,
     groupId: GroupId,
-    groupNonce: BigNat,
+    groupNonce: GroupNonce,
 ) extends Tx
     derives ByteEncoder,
       ByteDecoder:
@@ -69,6 +70,18 @@ final case class DisbandGroup(
 
 /** Companion for [[DisbandGroup]], providing codec and crypto instances. */
 object DisbandGroup:
+  @targetName("applyBigNat")
+  def apply(
+      envelope: TxEnvelope,
+      groupId: GroupId,
+      groupNonce: BigNat,
+  ): DisbandGroup =
+    DisbandGroup(
+      envelope = envelope,
+      groupId = groupId,
+      groupNonce = GroupNonce(groupNonce),
+    )
+
   given disbandGroupEq: Eq[DisbandGroup]           = Eq.fromUniversalEquals
   given disbandGroupHash: Hash[DisbandGroup]       = Hash.build
   given disbandGroupRecover: Recover[DisbandGroup] = Recover.build
@@ -87,11 +100,11 @@ object DisbandGroup:
   * @param groupNonce
   *   must match current group nonce
   */
-final case class AddAccounts(
+final case class AddAccounts private (
     envelope: TxEnvelope,
     groupId: GroupId,
-    accounts: Set[Account],
-    groupNonce: BigNat,
+    accounts: NonEmptyGroupAccounts,
+    groupNonce: GroupNonce,
 ) extends Tx
     derives ByteEncoder,
       ByteDecoder:
@@ -104,6 +117,36 @@ final case class AddAccounts(
 
 /** Companion for [[AddAccounts]], providing codec and crypto instances. */
 object AddAccounts:
+  def apply(
+      envelope: TxEnvelope,
+      groupId: GroupId,
+      accounts: Set[Account],
+      groupNonce: BigNat,
+  ): Either[String, AddAccounts] =
+    NonEmptyGroupAccounts(accounts).map: validatedAccounts =>
+        AddAccounts(
+          envelope = envelope,
+          groupId = groupId,
+          accounts = validatedAccounts,
+          groupNonce = GroupNonce(groupNonce),
+        )
+
+  @SuppressWarnings(Array("org.wartremover.warts.Throw"))
+  def unsafe(
+      envelope: TxEnvelope,
+      groupId: GroupId,
+      accounts: Set[Account],
+      groupNonce: BigNat,
+  ): AddAccounts =
+    apply(
+      envelope = envelope,
+      groupId = groupId,
+      accounts = accounts,
+      groupNonce = groupNonce,
+    ) match
+      case Right(tx)    => tx
+      case Left(error)  => throw new IllegalArgumentException(error)
+
   given addAccountsEq: Eq[AddAccounts]           = Eq.fromUniversalEquals
   given addAccountsHash: Hash[AddAccounts]       = Hash.build
   given addAccountsRecover: Recover[AddAccounts] = Recover.build
@@ -122,11 +165,11 @@ object AddAccounts:
   * @param groupNonce
   *   must match current group nonce
   */
-final case class RemoveAccounts(
+final case class RemoveAccounts private (
     envelope: TxEnvelope,
     groupId: GroupId,
-    accounts: Set[Account],
-    groupNonce: BigNat,
+    accounts: NonEmptyGroupAccounts,
+    groupNonce: GroupNonce,
 ) extends Tx
     derives ByteEncoder,
       ByteDecoder:
@@ -139,6 +182,36 @@ final case class RemoveAccounts(
 
 /** Companion for [[RemoveAccounts]], providing codec and crypto instances. */
 object RemoveAccounts:
+  def apply(
+      envelope: TxEnvelope,
+      groupId: GroupId,
+      accounts: Set[Account],
+      groupNonce: BigNat,
+  ): Either[String, RemoveAccounts] =
+    NonEmptyGroupAccounts(accounts).map: validatedAccounts =>
+        RemoveAccounts(
+          envelope = envelope,
+          groupId = groupId,
+          accounts = validatedAccounts,
+          groupNonce = GroupNonce(groupNonce),
+        )
+
+  @SuppressWarnings(Array("org.wartremover.warts.Throw"))
+  def unsafe(
+      envelope: TxEnvelope,
+      groupId: GroupId,
+      accounts: Set[Account],
+      groupNonce: BigNat,
+  ): RemoveAccounts =
+    apply(
+      envelope = envelope,
+      groupId = groupId,
+      accounts = accounts,
+      groupNonce = groupNonce,
+    ) match
+      case Right(tx)    => tx
+      case Left(error)  => throw new IllegalArgumentException(error)
+
   given removeAccountsEq: Eq[RemoveAccounts]           = Eq.fromUniversalEquals
   given removeAccountsHash: Hash[RemoveAccounts]       = Hash.build
   given removeAccountsRecover: Recover[RemoveAccounts] = Recover.build
@@ -161,7 +234,7 @@ final case class ReplaceCoordinator(
     envelope: TxEnvelope,
     groupId: GroupId,
     newCoordinator: Account,
-    groupNonce: BigNat,
+    groupNonce: GroupNonce,
 ) extends Tx
     derives ByteEncoder,
       ByteDecoder:
@@ -172,6 +245,20 @@ final case class ReplaceCoordinator(
 
 /** Companion for [[ReplaceCoordinator]], providing codec and crypto instances. */
 object ReplaceCoordinator:
+  @targetName("applyBigNat")
+  def apply(
+      envelope: TxEnvelope,
+      groupId: GroupId,
+      newCoordinator: Account,
+      groupNonce: BigNat,
+  ): ReplaceCoordinator =
+    ReplaceCoordinator(
+      envelope = envelope,
+      groupId = groupId,
+      newCoordinator = newCoordinator,
+      groupNonce = GroupNonce(groupNonce),
+    )
+
   given replaceCoordinatorEq: Eq[ReplaceCoordinator] = Eq.fromUniversalEquals
   given replaceCoordinatorHash: Hash[ReplaceCoordinator]       = Hash.build
   given replaceCoordinatorRecover: Recover[ReplaceCoordinator] = Recover.build

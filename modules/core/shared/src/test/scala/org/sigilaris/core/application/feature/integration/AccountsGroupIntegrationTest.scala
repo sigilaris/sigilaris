@@ -5,7 +5,6 @@ import java.time.Instant
 import cats.Id
 import cats.data.{EitherT, Kleisli}
 import munit.FunSuite
-import scodec.bits.ByteVector
 
 import org.sigilaris.core.application.state.StoreState
 import org.sigilaris.core.application.feature.accounts.domain.{Account, KeyId20}
@@ -47,9 +46,7 @@ class AccountsGroupIntegrationTest extends FunSuite:
 
   /** Helper to derive KeyId20 from a keypair. */
   def deriveKeyId(keyPair: KeyPair): KeyId20 =
-    val pubKeyBytes = keyPair.publicKey.toBytes
-    val keyHash = CryptoOps.keccak256(pubKeyBytes.toArray)
-    KeyId20.unsafeApply(ByteVector.view(keyHash).takeRight(20))
+    KeyId20.fromPublicKey(keyPair.publicKey)
 
   /** Helper to create a signed transaction. */
   def signTx[A <: Tx: Hash: Sign](tx: A, account: Account, keyPair: KeyPair): Signed[A] =
@@ -122,7 +119,7 @@ class AccountsGroupIntegrationTest extends FunSuite:
     val stateAfterBob = result2.toOption.get._1
 
     // Step 3: Create a group with Alice as coordinator
-    val groupId = GroupId(Utf8("developers"))
+    val groupId = GroupId.unsafe(Utf8("developers"))
     val createGroupTx = CreateGroup(
       envelope = TxEnvelope(networkId, now, Some(Utf8("Create Developers Group"))),
       groupId = groupId,
@@ -147,7 +144,7 @@ class AccountsGroupIntegrationTest extends FunSuite:
         fail(s"Unexpected error creating group: $err")
 
     // Step 4: Add Bob to the group
-    val addMemberTx = AddAccounts(
+    val addMemberTx = AddAccounts.unsafe(
       envelope = TxEnvelope(networkId, now, Some(Utf8("Add Bob to group"))),
       groupId = groupId,
       accounts = Set(bobAccount),
@@ -227,7 +224,7 @@ class AccountsGroupIntegrationTest extends FunSuite:
     val state2 = accountsModule.reducer.apply(signedCreateBob).run(state1).value.toOption.get._1
 
     // Create group with Alice as coordinator
-    val groupId = GroupId(Utf8("restricted"))
+    val groupId = GroupId.unsafe(Utf8("restricted"))
     val createGroupTx = CreateGroup(
       envelope = TxEnvelope(networkId, now, None),
       groupId = groupId,
@@ -238,7 +235,7 @@ class AccountsGroupIntegrationTest extends FunSuite:
     val state3 = groupsModule.reducer.apply(signedCreateGroup).run(state2).value.toOption.get._1
 
     // Add Bob as a member
-    val addBobTx = AddAccounts(
+    val addBobTx = AddAccounts.unsafe(
       envelope = TxEnvelope(networkId, now, None),
       groupId = groupId,
       accounts = Set(bobAccount),

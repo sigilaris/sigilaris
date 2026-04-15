@@ -110,7 +110,4 @@ object SignatureVerifier:
   /** Derive KeyId20 from a recovered public key following Ethereum convention.
     */
   private def deriveKeyId20(pubKey: PublicKey): KeyId20 =
-    val pubKeyBytes = pubKey.toBytes
-    val hash =
-      org.sigilaris.core.crypto.CryptoOps.keccak256(pubKeyBytes.toArray)
-    KeyId20.unsafeApply(scodec.bits.ByteVector.view(hash).takeRight(20))
+    KeyId20.fromPublicKey(pubKey)

@@ -4,11 +4,8 @@ import cats.Monad
 import cats.syntax.eq.*
 
 import org.sigilaris.core.codec.byte.{ByteDecoder, ByteEncoder}
-import org.sigilaris.core.codec.byte.ByteEncoder.ops.*
 import org.sigilaris.core.datatype.{BigNat, Utf8}
 import org.sigilaris.core.failure.{
-  ClientFailureMessage,
-  ConflictMessage,
   CryptoFailure,
   FailureCode,
   TrieFailure,
@@ -22,7 +19,9 @@ import org.sigilaris.core.application.module.blueprint.{
 import org.sigilaris.core.application.module.provider.TablesProvider
 import org.sigilaris.core.application.security.SignatureVerifier
 import org.sigilaris.core.application.state.{Entry, StoreF, Tables}
+import org.sigilaris.core.application.support.ReducerMessageSupport
 import org.sigilaris.core.application.support.compiletime.Requires
+import org.sigilaris.core.application.support.encoding.TupleKeyCodecs
 import org.sigilaris.core.application.transactions.{
   AccountSignature,
   ReducerCoverage,
@@ -38,18 +37,11 @@ import org.sigilaris.core.application.transactions.{
   *   - nameKey: (name, keyId) -> KeyInfo (addedAt, expiresAt, description)
   */
 object AccountsSchema:
-  // Need ByteCodec for tuple keys
-  given tupleByteEncoder: ByteEncoder[(Utf8, KeyId20)] = (t: (Utf8, KeyId20)) =>
-    t._1.toBytes ++ t._2.toBytes
+  given tupleByteEncoder: ByteEncoder[(Utf8, KeyId20)] =
+    TupleKeyCodecs.pairEncoder[Utf8, KeyId20]
 
-  given tupleByteDecoder: ByteDecoder[(Utf8, KeyId20)] = bytes =>
-    for
-      nameResult  <- ByteDecoder[Utf8].decode(bytes)
-      keyIdResult <- ByteDecoder[KeyId20].decode(nameResult.remainder)
-    yield org.sigilaris.core.codec.byte.DecodeResult(
-      (nameResult.value, keyIdResult.value),
-      keyIdResult.remainder,
-    )
+  given tupleByteDecoder: ByteDecoder[(Utf8, KeyId20)] =
+    TupleKeyCodecs.pairDecoder[Utf8, KeyId20]
 
   /** The accounts module table schema: accounts table and name-key lookup table. */
   type AccountsSchema = (
@@ -101,6 +93,8 @@ class AccountsReducer[F[_]: Monad]
     "accounts.account_already_exists"
   private val AccountNonceMismatchCode = FailureCode.unsafe:
     "accounts.account_nonce_mismatch"
+  private val KeyIdsEmptyCode =
+    FailureCode.unsafe("accounts.key_ids_empty")
 
   private inline def resultOf[A](value: A): AccountsResult[A] = AccountsResult:
     value
@@ -113,12 +107,12 @@ class AccountsReducer[F[_]: Monad]
       message: String,
       detail: Option[String],
   ): String =
-    ClientFailureMessage.invalidRequestWithCode(
+    ReducerMessageSupport.invalidRequest(
       "accounts",
+      code,
       reason,
       message,
       detail,
-      code,
     )
 
   private def notFound(
@@ -127,13 +121,7 @@ class AccountsReducer[F[_]: Monad]
       message: String,
       detail: Option[String],
   ): String =
-    ClientFailureMessage.notFoundWithCode(
-      "accounts",
-      reason,
-      message,
-      detail,
-      code,
-    )
+    ReducerMessageSupport.notFound("accounts", code, reason, message, detail)
 
   private def conflict(
       code: FailureCode,
@@ -141,7 +129,7 @@ class AccountsReducer[F[_]: Monad]
       message: String,
       detail: Option[String],
   ): String =
-    ConflictMessage.formatWithCode("accounts", reason, message, detail, code)
+    ReducerMessageSupport.conflict("accounts", code, reason, message, detail)
 
   /** Verify authorization for account mutation operations.
     *
@@ -294,7 +282,10 @@ class AccountsReducer[F[_]: Monad]
                     )
               case None =>
                 val accountInfo =
-                  AccountInfo(guardian = tx.guardian, nonce = BigNat.Zero)
+                  AccountInfo(
+                    guardian = tx.guardian,
+                    nonce = AccountNonce.Zero,
+                  )
                 val keyInfo = KeyInfo(
                   addedAt = tx.envelope.createdAt,
                   expiresAt = None,
@@ -348,7 +339,7 @@ class AccountsReducer[F[_]: Monad]
           if info.nonce === tx.nonce then
             val newInfo = AccountInfo(
               guardian = tx.newGuardian,
-              nonce = BigNat.unsafeFromBigInt(info.nonce.toBigInt + 1),
+              nonce = info.nonce.next,
             )
             for _ <- accountsTable.put(accountsTable.brand(tx.name), newInfo)
             yield (
@@ -403,64 +394,81 @@ class AccountsReducer[F[_]: Monad]
   ): StoreF[F][(tx.Result, List[tx.Event])] =
     val (accountsTable *: nameKeyTable *: EmptyTuple) = ownsTables
 
-    for
-      maybeInfo <- accountsTable.get(accountsTable.brand(tx.name))
-      result <- maybeInfo match
-        case Some(info) =>
-          if info.nonce === tx.nonce then
-            // Add all keys sequentially
-            val addKeysEffect = tx.keyIds.foldLeft(StoreF.pure[F, Unit](())):
-              case (acc, (keyId, description)) =>
-                for
-                  _ <- acc
-                  maybeExisting <- nameKeyTable.get:
-                    nameKeyTable.brand((tx.name, keyId))
-                  _ <- maybeExisting match
-                    case Some(_) => StoreF.pure[F, Unit](()) // Skip existing
-                    case None =>
-                      val keyInfo = KeyInfo(
-                        addedAt = tx.envelope.createdAt,
-                        expiresAt = tx.expiresAt,
-                        description = description,
-                      )
-                      nameKeyTable.put(
+    if tx.keyIds.toMap.isEmpty then
+      // Legacy byte/json decoders still accept historical empty payloads, so
+      // reducers keep this runtime guard for backwards-compatible decoding.
+      StoreF
+        .raise[F, (AccountsResult[Unit], List[AccountsEvent[KeysAdded]])]:
+          TrieFailure:
+            invalidRequest(
+              KeyIdsEmptyCode,
+              "key_ids_empty",
+              "AddKeyIds requires non-empty keyIds map",
+              Some(s"name=${tx.name.asString}"),
+            )
+    else
+      for
+        maybeInfo <- accountsTable.get(accountsTable.brand(tx.name))
+        result <- maybeInfo match
+          case Some(info) =>
+            if info.nonce === tx.nonce then
+              // Add all keys sequentially
+              val addKeysEffect =
+                tx.keyIds.toMap.foldLeft(StoreF.pure[F, Unit](())) {
+                  case (acc, (keyId, description)) =>
+                    for
+                      _ <- acc
+                      maybeExisting <- nameKeyTable.get(
                         nameKeyTable.brand((tx.name, keyId)),
-                        keyInfo,
                       )
-                yield ()
+                      _ <- maybeExisting match
+                        case Some(_) =>
+                          StoreF.pure[F, Unit](())
+                        case None =>
+                          val keyInfo = KeyInfo(
+                            addedAt = tx.envelope.createdAt,
+                            expiresAt = tx.expiresAt,
+                            description = description,
+                          )
+                          nameKeyTable.put(
+                            nameKeyTable.brand((tx.name, keyId)),
+                            keyInfo,
+                          )
+                    yield ()
+                }
 
-            val newInfo = AccountInfo(
-              guardian = info.guardian,
-              nonce = BigNat.unsafeFromBigInt(info.nonce.toBigInt + 1),
-            )
-            for
-              _ <- addKeysEffect
-              _ <- accountsTable.put(accountsTable.brand(tx.name), newInfo)
-            yield (
-              resultOf(()),
-              List(eventOf(KeysAdded(tx.name, tx.keyIds.keySet))),
-            )
-          else
+              val newInfo = AccountInfo(
+                guardian = info.guardian,
+                nonce = info.nonce.next,
+              )
+              for
+                _ <- addKeysEffect
+                _ <- accountsTable.put(accountsTable.brand(tx.name), newInfo)
+              yield (
+                resultOf(()),
+                List(eventOf(KeysAdded(tx.name, tx.keyIds.keySet))),
+              )
+            else
+              StoreF
+                .raise[F, (AccountsResult[Unit], List[AccountsEvent[KeysAdded]])]:
+                  TrieFailure:
+                    invalidRequest(
+                      AccountNonceMismatchCode,
+                      "account_nonce_mismatch",
+                      s"Nonce mismatch: expected ${info.nonce}, got ${tx.nonce}",
+                      Some(s"name=${tx.name.asString}"),
+                    )
+          case None =>
             StoreF
               .raise[F, (AccountsResult[Unit], List[AccountsEvent[KeysAdded]])]:
                 TrieFailure:
-                  invalidRequest(
-                    AccountNonceMismatchCode,
-                    "account_nonce_mismatch",
-                    s"Nonce mismatch: expected ${info.nonce}, got ${tx.nonce}",
+                  notFound(
+                    AccountNotFoundCode,
+                    "account_not_found",
+                    s"Account ${tx.name.asString} not found",
                     Some(s"name=${tx.name.asString}"),
                   )
-        case None =>
-          StoreF
-            .raise[F, (AccountsResult[Unit], List[AccountsEvent[KeysAdded]])]:
-              TrieFailure:
-                notFound(
-                  AccountNotFoundCode,
-                  "account_not_found",
-                  s"Account ${tx.name.asString} not found",
-                  Some(s"name=${tx.name.asString}"),
-                )
-    yield result
+      yield result
 
   private def verifyAndHandleRemoveKeyIds(
       tx: RemoveKeyIds,
@@ -487,52 +495,68 @@ class AccountsReducer[F[_]: Monad]
   ): StoreF[F][(tx.Result, List[tx.Event])] =
     val (accountsTable *: nameKeyTable *: EmptyTuple) = ownsTables
 
-    for
-      maybeInfo <- accountsTable.get(accountsTable.brand(tx.name))
-      result <- maybeInfo match
-        case Some(info) =>
-          if info.nonce === tx.nonce then
-            // Remove all keys sequentially
-            val removeKeysEffect =
-              tx.keyIds.foldLeft(StoreF.pure[F, Unit](())):
-                case (acc, keyId) =>
-                  for
-                    _ <- acc
-                    _ <- nameKeyTable.remove:
-                      nameKeyTable.brand((tx.name, keyId))
-                  yield ()
-
-            val newInfo = AccountInfo(
-              guardian = info.guardian,
-              nonce = BigNat.unsafeFromBigInt(info.nonce.toBigInt + 1),
+    if tx.keyIds.toSet.isEmpty then
+      // Legacy byte/json decoders still accept historical empty payloads, so
+      // reducers keep this runtime guard for backwards-compatible decoding.
+      StoreF
+        .raise[F, (AccountsResult[Unit], List[AccountsEvent[KeysRemoved]])]:
+          TrieFailure:
+            invalidRequest(
+              KeyIdsEmptyCode,
+              "key_ids_empty",
+              "RemoveKeyIds requires non-empty keyIds set",
+              Some(s"name=${tx.name.asString}"),
             )
-            for
-              _ <- removeKeysEffect
-              _ <- accountsTable.put(accountsTable.brand(tx.name), newInfo)
-            yield (resultOf(()), List(eventOf(KeysRemoved(tx.name, tx.keyIds))))
-          else
-            StoreF.raise[
-              F,
-              (AccountsResult[Unit], List[AccountsEvent[KeysRemoved]]),
-            ]:
-              TrieFailure:
-                invalidRequest(
-                  AccountNonceMismatchCode,
-                  "account_nonce_mismatch",
-                  s"Nonce mismatch: expected ${info.nonce}, got ${tx.nonce}",
-                  Some(s"name=${tx.name.asString}"),
-                )
-        case None =>
-          StoreF
-            .raise[F, (AccountsResult[Unit], List[AccountsEvent[KeysRemoved]])]:
-              TrieFailure:
-                notFound(
-                  AccountNotFoundCode,
-                  "account_not_found",
-                  s"Account ${tx.name.asString} not found",
-                  Some(s"name=${tx.name.asString}"),
-                )
-    yield result
+    else
+      for
+        maybeInfo <- accountsTable.get(accountsTable.brand(tx.name))
+        result <- maybeInfo match
+          case Some(info) =>
+            if info.nonce === tx.nonce then
+              // Remove all keys sequentially
+              val removeKeysEffect =
+                tx.keyIds.toSet.foldLeft(StoreF.pure[F, Unit](())):
+                  case (acc, keyId) =>
+                    for
+                      _ <- acc
+                      _ <- nameKeyTable.remove:
+                        nameKeyTable.brand((tx.name, keyId))
+                    yield ()
+
+              val newInfo = AccountInfo(
+                guardian = info.guardian,
+                nonce = info.nonce.next,
+              )
+              for
+                _ <- removeKeysEffect
+                _ <- accountsTable.put(accountsTable.brand(tx.name), newInfo)
+              yield (
+                resultOf(()),
+                List(eventOf(KeysRemoved(tx.name, tx.keyIds.toSet))),
+              )
+            else
+              StoreF.raise[
+                F,
+                (AccountsResult[Unit], List[AccountsEvent[KeysRemoved]]),
+              ]:
+                TrieFailure:
+                  invalidRequest(
+                    AccountNonceMismatchCode,
+                    "account_nonce_mismatch",
+                    s"Nonce mismatch: expected ${info.nonce}, got ${tx.nonce}",
+                    Some(s"name=${tx.name.asString}"),
+                  )
+          case None =>
+            StoreF
+              .raise[F, (AccountsResult[Unit], List[AccountsEvent[KeysRemoved]])]:
+                TrieFailure:
+                  notFound(
+                    AccountNotFoundCode,
+                    "account_not_found",
+                    s"Account ${tx.name.asString} not found",
+                    Some(s"name=${tx.name.asString}"),
+                  )
+      yield result
 
   private def verifyAndHandleRemoveAccount(
       tx: RemoveAccount,

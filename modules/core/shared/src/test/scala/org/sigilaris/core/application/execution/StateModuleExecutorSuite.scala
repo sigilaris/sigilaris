@@ -125,8 +125,7 @@ final class StateModuleExecutorSuite extends FunSuite:
   private def deriveKeyId(
       keyPair: KeyPair,
   ): KeyId20 =
-    val hash = CryptoOps.keccak256(keyPair.publicKey.toBytes.toArray)
-    KeyId20.unsafeApply(ByteVector.view(hash).takeRight(20))
+    KeyId20.fromPublicKey(keyPair.publicKey)
 
   private def createSignedCreateNamedAccount(
       name: String,

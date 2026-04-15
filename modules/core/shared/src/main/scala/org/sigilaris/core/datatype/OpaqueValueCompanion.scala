@@ -2,9 +2,11 @@ package org.sigilaris.core
 package datatype
 
 import cats.Eq
+import cats.syntax.either.*
 
 import org.sigilaris.core.codec.byte.{ByteDecoder, ByteEncoder}
 import org.sigilaris.core.codec.json.{JsonDecoder, JsonEncoder, JsonKeyCodec}
+import org.sigilaris.core.failure.DecodeFailure
 
 /** Reusable companion mix-in for opaque values backed by a representation type.
   *
@@ -66,3 +68,58 @@ trait KeyLikeOpaqueValueCompanion[A, Repr]
   /** JSON key codec derived from the representation's key codec. */
   given opaqueJsonKeyCodec(using JsonKeyCodec[Repr]): JsonKeyCodec[A] =
     JsonKeyCodec[Repr].imap(wrap, unwrap)
+
+/** Companion mix-in for opaque values whose constructor validates the backing representation.
+  *
+  * Byte / JSON decoding routes through [[apply]] so codecs cannot bypass the
+  * invariant enforced at construction time.
+  */
+trait ValidatedOpaqueValueCompanion[A, Repr]
+:
+  protected def wrap(repr: Repr): A
+
+  protected def unwrap(value: A): Repr
+
+  extension (value: A) def repr: Repr = unwrap(value)
+
+  def apply(repr: Repr): Either[String, A]
+
+  given opaqueEq(using eqRepr: Eq[Repr]): Eq[A] = new Eq[A]:
+    def eqv(x: A, y: A): Boolean =
+      eqRepr.eqv(unwrap(x), unwrap(y))
+
+  given opaqueByteEncoder(using ByteEncoder[Repr]): ByteEncoder[A] =
+    ByteEncoder[Repr].contramap(unwrap)
+
+  given opaqueJsonEncoder(using JsonEncoder[Repr]): JsonEncoder[A] =
+    JsonEncoder[Repr].contramap(unwrap)
+
+  @SuppressWarnings(Array("org.wartremover.warts.Throw"))
+  def unsafe(repr: Repr): A =
+    apply(repr) match
+      case Right(value) => value
+      case Left(error)  => throw new IllegalArgumentException(error)
+
+  protected def decodeByteRepr(repr: Repr): Either[DecodeFailure, A] =
+    apply(repr).leftMap(DecodeFailure(_))
+
+  protected def decodeJsonRepr(repr: Repr): Either[DecodeFailure, A] =
+    apply(repr).leftMap(DecodeFailure(_))
+
+  given opaqueByteDecoder(using ByteDecoder[Repr]): ByteDecoder[A] =
+    ByteDecoder[Repr].emap(decodeByteRepr)
+
+  given opaqueJsonDecoder(using JsonDecoder[Repr]): JsonDecoder[A] =
+    JsonDecoder[Repr].emap(decodeJsonRepr)
+
+/** Validated opaque companion that additionally supports JSON object keys. */
+trait ValidatedKeyLikeOpaqueValueCompanion[A, Repr]
+    extends ValidatedOpaqueValueCompanion[A, Repr]:
+  protected def decodeJsonKeyRepr(repr: Repr): Either[DecodeFailure, A] =
+    decodeJsonRepr(repr)
+
+  given opaqueJsonKeyCodec(using JsonKeyCodec[Repr]): JsonKeyCodec[A] =
+    JsonKeyCodec[Repr].narrow(
+      decodeJsonKeyRepr,
+      unwrap,
+    )

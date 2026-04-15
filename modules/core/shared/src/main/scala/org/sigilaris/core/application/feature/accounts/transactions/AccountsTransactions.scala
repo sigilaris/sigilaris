@@ -1,6 +1,7 @@
 package org.sigilaris.core.application.feature.accounts.transactions
 
 import java.time.Instant
+import scala.annotation.targetName
 
 import cats.Eq
 
@@ -62,7 +63,7 @@ object CreateNamedAccount:
 final case class UpdateAccount(
     envelope: TxEnvelope,
     name: Utf8,
-    nonce: BigNat,
+    nonce: AccountNonce,
     newGuardian: Option[Account],
 ) extends Tx
     derives ByteEncoder,
@@ -74,6 +75,20 @@ final case class UpdateAccount(
 
 /** Companion for [[UpdateAccount]], providing codec and crypto instances. */
 object UpdateAccount:
+  @targetName("applyBigNat")
+  def apply(
+      envelope: TxEnvelope,
+      name: Utf8,
+      nonce: BigNat,
+      newGuardian: Option[Account],
+  ): UpdateAccount =
+    UpdateAccount(
+      envelope = envelope,
+      name = name,
+      nonce = AccountNonce(nonce),
+      newGuardian = newGuardian,
+    )
+
   given updateAccountEq: Eq[UpdateAccount]           = Eq.fromUniversalEquals
   given updateAccountHash: Hash[UpdateAccount]       = Hash.build
   given updateAccountRecover: Recover[UpdateAccount] = Recover.build
@@ -94,11 +109,11 @@ object UpdateAccount:
   * @param expiresAt
   *   optional expiration timestamp applied to all new keys
   */
-final case class AddKeyIds(
+final case class AddKeyIds private (
     envelope: TxEnvelope,
     name: Utf8,
-    nonce: BigNat,
-    keyIds: Map[KeyId20, Utf8],
+    nonce: AccountNonce,
+    keyIds: NonEmptyKeyIdDescriptions,
     expiresAt: Option[Instant],
 ) extends Tx
     derives ByteEncoder,
@@ -112,6 +127,40 @@ final case class AddKeyIds(
 
 /** Companion for [[AddKeyIds]], providing codec and crypto instances. */
 object AddKeyIds:
+  def apply(
+      envelope: TxEnvelope,
+      name: Utf8,
+      nonce: BigNat,
+      keyIds: Map[KeyId20, Utf8],
+      expiresAt: Option[Instant],
+  ): Either[String, AddKeyIds] =
+    NonEmptyKeyIdDescriptions(keyIds).map: validatedKeyIds =>
+      AddKeyIds(
+        envelope = envelope,
+        name = name,
+        nonce = AccountNonce(nonce),
+        keyIds = validatedKeyIds,
+        expiresAt = expiresAt,
+      )
+
+  @SuppressWarnings(Array("org.wartremover.warts.Throw"))
+  def unsafe(
+      envelope: TxEnvelope,
+      name: Utf8,
+      nonce: BigNat,
+      keyIds: Map[KeyId20, Utf8],
+      expiresAt: Option[Instant],
+  ): AddKeyIds =
+    apply(
+      envelope = envelope,
+      name = name,
+      nonce = nonce,
+      keyIds = keyIds,
+      expiresAt = expiresAt,
+    ) match
+      case Right(tx)    => tx
+      case Left(error)  => throw new IllegalArgumentException(error)
+
   given addKeyIdsEq: Eq[AddKeyIds]           = Eq.fromUniversalEquals
   given addKeyIdsHash: Hash[AddKeyIds]       = Hash.build
   given addKeyIdsRecover: Recover[AddKeyIds] = Recover.build
@@ -130,11 +179,11 @@ object AddKeyIds:
   * @param keyIds
   *   set of KeyId20 to remove
   */
-final case class RemoveKeyIds(
+final case class RemoveKeyIds private (
     envelope: TxEnvelope,
     name: Utf8,
-    nonce: BigNat,
-    keyIds: Set[KeyId20],
+    nonce: AccountNonce,
+    keyIds: NonEmptyKeyIds,
 ) extends Tx
     derives ByteEncoder,
       ByteDecoder:
@@ -147,6 +196,36 @@ final case class RemoveKeyIds(
 
 /** Companion for [[RemoveKeyIds]], providing codec and crypto instances. */
 object RemoveKeyIds:
+  def apply(
+      envelope: TxEnvelope,
+      name: Utf8,
+      nonce: BigNat,
+      keyIds: Set[KeyId20],
+  ): Either[String, RemoveKeyIds] =
+    NonEmptyKeyIds(keyIds).map: validatedKeyIds =>
+      RemoveKeyIds(
+        envelope = envelope,
+        name = name,
+        nonce = AccountNonce(nonce),
+        keyIds = validatedKeyIds,
+      )
+
+  @SuppressWarnings(Array("org.wartremover.warts.Throw"))
+  def unsafe(
+      envelope: TxEnvelope,
+      name: Utf8,
+      nonce: BigNat,
+      keyIds: Set[KeyId20],
+  ): RemoveKeyIds =
+    apply(
+      envelope = envelope,
+      name = name,
+      nonce = nonce,
+      keyIds = keyIds,
+    ) match
+      case Right(tx)    => tx
+      case Left(error)  => throw new IllegalArgumentException(error)
+
   given removeKeyIdsEq: Eq[RemoveKeyIds]           = Eq.fromUniversalEquals
   given removeKeyIdsHash: Hash[RemoveKeyIds]       = Hash.build
   given removeKeyIdsRecover: Recover[RemoveKeyIds] = Recover.build
@@ -166,7 +245,7 @@ object RemoveKeyIds:
 final case class RemoveAccount(
     envelope: TxEnvelope,
     name: Utf8,
-    nonce: BigNat,
+    nonce: AccountNonce,
 ) extends Tx
     derives ByteEncoder,
       ByteDecoder:
@@ -178,6 +257,18 @@ final case class RemoveAccount(
 
 /** Companion for [[RemoveAccount]], providing codec and crypto instances. */
 object RemoveAccount:
+  @targetName("applyBigNat")
+  def apply(
+      envelope: TxEnvelope,
+      name: Utf8,
+      nonce: BigNat,
+  ): RemoveAccount =
+    RemoveAccount(
+      envelope = envelope,
+      name = name,
+      nonce = AccountNonce(nonce),
+    )
+
   given removeAccountEq: Eq[RemoveAccount]           = Eq.fromUniversalEquals
   given removeAccountHash: Hash[RemoveAccount]       = Hash.build
   given removeAccountRecover: Recover[RemoveAccount] = Recover.build

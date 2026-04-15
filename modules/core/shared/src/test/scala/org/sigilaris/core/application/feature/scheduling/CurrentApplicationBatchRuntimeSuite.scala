@@ -5,7 +5,6 @@ import java.time.Instant
 import cats.data.{EitherT, Kleisli}
 import cats.instances.either.given
 import munit.FunSuite
-import scodec.bits.ByteVector
 
 import org.sigilaris.core.application.feature.accounts.domain.{Account, KeyId20}
 import org.sigilaris.core.application.feature.accounts.transactions.{AddKeyIds, CreateNamedAccount, UpdateAccount}
@@ -36,8 +35,7 @@ final class CurrentApplicationBatchRuntimeSuite extends FunSuite:
   private def deriveKeyId(
       keyPair: KeyPair,
   ): KeyId20 =
-    val hash = CryptoOps.keccak256(keyPair.publicKey.toBytes.toArray)
-    KeyId20.unsafeApply(ByteVector.view(hash).takeRight(20))
+    KeyId20.fromPublicKey(keyPair.publicKey)
 
   private def signTx[A <: Tx: Hash: Sign](
       tx: A,
@@ -72,7 +70,7 @@ final class CurrentApplicationBatchRuntimeSuite extends FunSuite:
     signTx(
       CreateGroup(
         envelope = TxEnvelope(networkId, now, None),
-        groupId = GroupId(Utf8(groupId)),
+        groupId = GroupId.unsafe(Utf8(groupId)),
         name = Utf8(s"$groupId-group"),
         coordinator = coordinator,
       ),
@@ -106,7 +104,7 @@ final class CurrentApplicationBatchRuntimeSuite extends FunSuite:
       nonce: BigNat,
   ): Signed[AddKeyIds] =
     signTx(
-      AddKeyIds(
+      AddKeyIds.unsafe(
         envelope = TxEnvelope(networkId, now, None),
         name = Utf8(name),
         nonce = nonce,
@@ -145,7 +143,7 @@ final class CurrentApplicationBatchRuntimeSuite extends FunSuite:
     val runtime = CurrentApplicationBatchRuntime.createDefault()
     val aliceCreated = createAccountTx("alice", aliceKeyPair)
     val createAccountBatch =
-      CurrentApplicationBatch(
+      CurrentApplicationBatch.unsafe(
         idempotencyKey = "batch-accounts",
         items = Vector(aliceCreated),
       )
@@ -159,7 +157,7 @@ final class CurrentApplicationBatchRuntimeSuite extends FunSuite:
       )
 
     val createGroupBatch =
-      CurrentApplicationBatch(
+      CurrentApplicationBatch.unsafe(
         idempotencyKey = "batch-group",
         items = Vector(createGroupTx("ops", alice, aliceKeyPair)),
       )
@@ -179,7 +177,7 @@ final class CurrentApplicationBatchRuntimeSuite extends FunSuite:
   test("CurrentApplicationBatchRuntime executes conflict-free schedulable batches through the schedulable executor"):
     val runtime = CurrentApplicationBatchRuntime.createDefault()
     val batch =
-      CurrentApplicationBatch(
+      CurrentApplicationBatch.unsafe(
         idempotencyKey = "schedulable-batch",
         items = Vector(
           createAccountTx("alice", aliceKeyPair),
@@ -199,7 +197,7 @@ final class CurrentApplicationBatchRuntimeSuite extends FunSuite:
   test("CurrentApplicationBatchRuntime preserves idempotency behavior for schedulable batches"):
     val runtime = CurrentApplicationBatchRuntime.createDefault()
     val batch =
-      CurrentApplicationBatch(
+      CurrentApplicationBatch.unsafe(
         idempotencyKey = "schedulable-idempotency",
         items = Vector(createAccountTx("alice", aliceKeyPair)),
       )
@@ -221,7 +219,7 @@ final class CurrentApplicationBatchRuntimeSuite extends FunSuite:
       expectApplied(
         runtime.applyBatch(
           CurrentApplicationBatchRuntimeState.empty,
-          CurrentApplicationBatch(
+          CurrentApplicationBatch.unsafe(
             idempotencyKey = "seed-alice",
             items = Vector(createAccountTx("alice", aliceKeyPair)),
           ),
@@ -229,7 +227,7 @@ final class CurrentApplicationBatchRuntimeSuite extends FunSuite:
       )
 
     val conflictingBatch =
-      CurrentApplicationBatch(
+      CurrentApplicationBatch.unsafe(
         idempotencyKey = "conflict-alice",
         items = Vector(
           updateAccountTx(
@@ -266,7 +264,7 @@ final class CurrentApplicationBatchRuntimeSuite extends FunSuite:
     val result =
       runtime.applyBatch(
         CurrentApplicationBatchRuntimeState.empty,
-        CurrentApplicationBatch(
+        CurrentApplicationBatch.unsafe(
           idempotencyKey = "schedulable-failure",
           items = Vector(createAccountTx("alice", aliceKeyPair)),
         ),
@@ -298,7 +296,7 @@ final class CurrentApplicationBatchRuntimeSuite extends FunSuite:
             CurrentApplicationBatchRuntime.defaultClassifier(signedTx)
 
     val batch =
-      CurrentApplicationBatch(
+      CurrentApplicationBatch.unsafe(
         idempotencyKey = "mixed-batch",
         items = Vector(
           createAccountTx("alice", aliceKeyPair),
@@ -332,7 +330,7 @@ final class CurrentApplicationBatchRuntimeSuite extends FunSuite:
 
     val aliceCreated = createAccountTx("alice", aliceKeyPair)
     val batch =
-      CurrentApplicationBatch(
+      CurrentApplicationBatch.unsafe(
         idempotencyKey = "compat-dup",
         items = Vector(aliceCreated, aliceCreated),
       )
@@ -368,7 +366,7 @@ final class CurrentApplicationBatchRuntimeSuite extends FunSuite:
     val result =
       runtime.applyBatch(
         CurrentApplicationBatchRuntimeState.empty,
-        CurrentApplicationBatch(
+        CurrentApplicationBatch.unsafe(
           idempotencyKey = "compat-failure",
           items = Vector(
             updateAccountTx(
