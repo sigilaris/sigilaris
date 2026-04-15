@@ -126,6 +126,10 @@ ThisBuild / publishTo := {
   else sonatypePublishToBundle.value
 }
 
+lazy val copyUnidocIntoSite = taskKey[Unit](
+  "Copy Scala unidoc output into target/docs/site/api after tlSite generation.",
+)
+
 lazy val root = (project in file("."))
   .aggregate(
     core.jvm,
@@ -156,9 +160,25 @@ lazy val root = (project in file("."))
       "--scalac-options",
       "-Wconf:cat=unused:s",
     ),
+    copyUnidocIntoSite := {
+      val apiDir         = target.value / "docs" / "site" / "api"
+      val unidocMappings = (ScalaUnidoc / packageDoc / mappings).value
+      IO.delete(apiDir)
+      IO.copy(
+        unidocMappings.map { case (source, relativePath) =>
+          source -> (apiDir / relativePath)
+        },
+      )
+    },
+    tlSite := Def.sequential(
+      Def.task {
+        tlSite.value
+      },
+      copyUnidocIntoSite,
+    ).value,
   )
 
-// Note: Unidoc is mapped into the site under /api via sbt-site mappings.
+// Note: tlSite copies ScalaUnidoc packageDoc mappings into target/docs/site/api.
 
 lazy val core = crossProject(JSPlatform, JVMPlatform)
   .crossType(CrossType.Full)
