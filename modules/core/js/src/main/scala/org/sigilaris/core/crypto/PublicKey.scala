@@ -19,11 +19,13 @@ import util.SafeStringInterp.*
   *   - [[Point]]: wraps elliptic.js [[BasePoint]] and lazily computes x/y
   *
   * @note
-  *   Equality and hashCode are based solely on the 64-byte x||y
-  *   representation, ensuring consistency across both internal forms.
+  *   Equality and hashCode are based solely on the 64-byte x||y representation,
+  *   ensuring consistency across both internal forms.
   *
-  * @see [[PublicKeyLike]] for the cross-platform interface
-  * @see [[facade.BasePoint]] for the elliptic.js point wrapper
+  * @see
+  *   [[PublicKeyLike]] for the cross-platform interface
+  * @see
+  *   [[facade.BasePoint]] for the elliptic.js point wrapper
   */
 sealed trait PublicKey extends PublicKeyLike:
   /** Returns the 64-byte uncompressed representation (x||y). */
@@ -51,7 +53,7 @@ sealed trait PublicKey extends PublicKeyLike:
 object PublicKey:
   final case class XY(x: UInt256, y: UInt256) extends PublicKey:
     private lazy val xyBytes: ByteVector = x.bytes ++ y.bytes
-    override def toBytes: ByteVector      = xyBytes
+    override def toBytes: ByteVector     = xyBytes
 
   final case class Point(p: BasePoint) extends PublicKey:
     @SuppressWarnings(Array("org.wartremover.warts.Throw"))
@@ -69,7 +71,7 @@ object PublicKey:
         .getOrElse(throw new Exception(ss"Wrong public key y: ${yHex}"))
 
     private lazy val xyBytes: ByteVector = x.bytes ++ y.bytes
-    override def toBytes: ByteVector      = xyBytes
+    override def toBytes: ByteVector     = xyBytes
 
   /** Decodes a public key from a 64-byte array (x||y).
     *
@@ -85,7 +87,8 @@ object PublicKey:
   ): Either[UInt256Failure, PublicKey] =
     if array.length =!= 64 then
       Left:
-        UInt256Overflow(ss"Public key array size must be 64, got: ${array.length.toString}")
+        UInt256Overflow:
+          ss"Public key array size must be 64, got: ${array.length.toString}"
     else
       val (xArr, yArr) = array splitAt 32
       for
@@ -121,7 +124,9 @@ object PublicKey:
     def encode(pubkey: PublicKey): ByteVector = pubkey.toBytes
 
   given pubkeyByteDecoder: ByteDecoder[PublicKey] =
-    ByteDecoder.fromFixedSizeBytes(64)(identity).emap: bytes =>
-      fromByteArray(bytes.toArray).left.map(e => DecodeFailure(e.msg))
+    ByteDecoder
+      .fromFixedSizeBytes(64)(identity)
+      .emap: bytes =>
+        fromByteArray(bytes.toArray).left.map(e => DecodeFailure(e.msg))
 
   inline given Hash[PublicKey] = Hash.build

@@ -33,13 +33,20 @@ final class RuntimeImportRuleSuite extends FunSuite:
     "org.sigilaris.node.jvm.storage.swaydb",
   )
 
-  test("runtime production sources do not import transport or storage implementations"):
+  test(
+    "runtime production sources do not import transport or storage implementations",
+  ):
     val runtimeSources = Using.resource(Files.walk(runtimeRoot)): stream =>
       stream.iterator.asScala
-        .filter(path => Files.isRegularFile(path) && path.toString.endsWith(".scala"))
+        .filter(path =>
+          Files.isRegularFile(path) && path.toString.endsWith(".scala"),
+        )
         .toList
 
-    assert(runtimeSources.nonEmpty, s"Expected Scala sources under $runtimeRoot")
+    assert(
+      runtimeSources.nonEmpty,
+      s"Expected Scala sources under $runtimeRoot",
+    )
 
     val violations =
       for

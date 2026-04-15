@@ -38,8 +38,8 @@ import util.SafeStringInterp.*
   *
   *   // Hash and sign
   *   val message = "hello".getBytes
-  *   val hash = CryptoOps.keccak256(message)
-  *   val sig = CryptoOps.sign(keyPair, hash).toOption.get
+  *   val hash    = CryptoOps.keccak256(message)
+  *   val sig     = CryptoOps.sign(keyPair, hash).toOption.get
   *
   *   // Recover public key
   *   val recovered = CryptoOps.recover(sig, hash)
@@ -50,17 +50,19 @@ import util.SafeStringInterp.*
   *   This is the JVM-specific implementation. Cross-platform code should use
   *   [[CryptoOpsLike]] interface.
   *
-  * @see [[CryptoOpsLike]] for the cross-platform interface
-  * @see [[org.sigilaris.core.crypto.internal.CryptoParams]] for curve
-  *      parameters
-  * @see [[org.sigilaris.core.crypto.internal.KeccakPool]] for hashing
-  *      implementation
+  * @see
+  *   [[CryptoOpsLike]] for the cross-platform interface
+  * @see
+  *   [[org.sigilaris.core.crypto.internal.CryptoParams]] for curve parameters
+  * @see
+  *   [[org.sigilaris.core.crypto.internal.KeccakPool]] for hashing
+  *   implementation
   */
 object CryptoOps extends CryptoOpsLike:
   // Initialize BouncyCastle provider once at startup
-  private val _ = java.security.Security.addProvider(
+  private val _ = java.security.Security.addProvider:
     new org.bouncycastle.jce.provider.BouncyCastleProvider()
-  )
+
   /** Computes Keccak-256 hash using thread-local digest pool.
     *
     * @param input
@@ -77,22 +79,27 @@ object CryptoOps extends CryptoOpsLike:
     kecc.digest()
 
   // Use shared domain parameters from CryptoParams
-  private inline def CurveParams: X9ECParameters = internal.CryptoParams.curveParams
-  private inline def Curve: ECDomainParameters   = internal.CryptoParams.curve
-  private inline def HalfCurveOrder: BigInteger  = internal.CryptoParams.halfCurveOrder
+  private inline def CurveParams: X9ECParameters =
+    internal.CryptoParams.curveParams
+  private inline def Curve: ECDomainParameters = internal.CryptoParams.curve
+  private inline def HalfCurveOrder: BigInteger =
+    internal.CryptoParams.halfCurveOrder
 
-  /** Non-deterministic source for key generation (JVM default provider). */
+  /** Cryptographically secure random number generator for key generation.
+    *
+    * Uses the JVM's default `SecureRandom` provider.
+    */
   val secureRandom: SecureRandom = new SecureRandom()
 
+  /** Generates a new random secp256k1 key pair.
+    *
+    * @return
+    *   freshly generated [[KeyPair]] with 32-byte private key and 64-byte
+    *   uncompressed public key (x||y), big-endian
+    */
   @SuppressWarnings(
     Array("org.wartremover.warts.Throw", "org.wartremover.warts.ToString"),
   )
-  /** Generate a new secp256k1 key pair.
-    *
-    * @return
-    *   freshly generated `KeyPair` with 32-byte private key and 64-byte public
-    *   key (x||y), big-endian.
-    */
   def generate(): KeyPair =
     val gen  = KeyPairGenerator.getInstance("ECDSA", "BC")
     val spec = new ECGenParameterSpec("secp256k1")
@@ -112,12 +119,21 @@ object CryptoOps extends CryptoOpsLike:
     maybeKeyPair.getOrElse:
       throw new Exception(ss"Wrong keypair result: ${pair.toString}")
 
-  @SuppressWarnings(Array("org.wartremover.warts.Throw"))
-  /** Derive public key from a validated 32-byte private key.
+  /** Derives a [[KeyPair]] from an existing private key.
     *
-    * Pre-validated input assumed; length/endian checks are enforced at
-    * boundaries.
+    * Performs `privateKey mod n` then scalar multiplication on the secp256k1
+    * generator point to compute the corresponding public key. The caller is
+    * expected to supply a value in `[1, n-1]`; out-of-range inputs are reduced
+    * rather than rejected.
+    *
+    * @param privateKey
+    *   private key as BigInt; should be in range `[1, n-1]` (prevalidated)
+    * @return
+    *   [[KeyPair]] containing the private key and its derived public key
+    * @throws Exception
+    *   if `privateKey` cannot be represented as a `UInt256`
     */
+  @SuppressWarnings(Array("org.wartremover.warts.Throw"))
   def fromPrivate(privateKey: BigInt): KeyPair =
     val point: ECPoint = internal.CryptoParams.fixedPointMultiplier
       .multiply(Curve.getG, privateKey.bigInteger mod Curve.getN)
@@ -132,9 +148,18 @@ object CryptoOps extends CryptoOpsLike:
           ss"Failed to convert private key to UInt256: ${privateKey.toString}",
         )
 
-  /** ECDSA sign with deterministic-k and Low-S normalization.
+  /** Signs a message hash with ECDSA using deterministic k-generation (RFC 6979).
     *
-    * Ensures `s` is normalized to ≤ N/2 (Low-S) using secp256k1 curve order.
+    * Normalizes the s-value to Low-S form (s <= n/2) and computes the recovery
+    * parameter by trial recovery.
+    *
+    * @param keyPair
+    *   key pair whose private key is used for signing
+    * @param transactionHash
+    *   32-byte message hash to sign
+    * @return
+    *   Right([[Signature]]) with (v, r, s) on success, Left(failure) if signing
+    *   or recovery parameter computation fails
     */
   def sign(
       keyPair: KeyPair,
@@ -168,10 +193,18 @@ object CryptoOps extends CryptoOpsLike:
       v = recId + 27
     yield Signature(v, r256, s256)
 
-  /** Recover public key from a (v,r,s) signature and message hash.
+  /** Recovers the public key from a (v, r, s) signature and message hash.
     *
-    * Accepts signatures with either High-S or Low-S; internally normalizes `s`
-    * to Low-S.
+    * Accepts signatures with either High-S or Low-S; internally normalizes s
+    * to Low-S before recovery. The recovery parameter v determines which
+    * candidate public key to return.
+    *
+    * @param signature
+    *   ECDSA signature with recovery parameter v (27-30)
+    * @param hashArray
+    *   32-byte message hash that was signed
+    * @return
+    *   Right([[PublicKey]]) on success, Left(failure) if recovery fails
     */
   def recover(
       signature: Signature,

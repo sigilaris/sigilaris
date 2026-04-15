@@ -6,9 +6,18 @@ import cats.effect.IO
 import cats.effect.unsafe.IORuntime
 import swaydb.{IO as SwayIO}
 
+/** Provides a cats-effect IO-based `swaydb.Bag.Async` implementation for SwayDB integration. */
+@SuppressWarnings(Array("org.wartremover.warts.Nothing"))
 object Bag:
+
+  /** Type alias for the SwayDB asynchronous bag. */
   type Async[F[_]] = swaydb.Bag.Async[F]
 
+  /** Creates an asynchronous SwayDB bag backed by the given cats-effect IO runtime.
+    *
+    * @param runtime the IORuntime to use for executing IO effects
+    * @return an `Async[IO]` bag suitable for SwayDB operations
+    */
   def fromRuntime(runtime: IORuntime): Async[IO] =
     new swaydb.Bag.Async[IO]:
       given IORuntime = runtime
@@ -49,7 +58,9 @@ object Bag:
       override def complete[A](promise: Promise[A], a: IO[A]): Unit =
         promise.completeWith(a.unsafeToFuture())
 
-      override def fromIO[E: SwayIO.ExceptionHandler, A](a: SwayIO[E, A]): IO[A] =
+      override def fromIO[E: SwayIO.ExceptionHandler, A](
+          a: SwayIO[E, A],
+      ): IO[A] =
         IO.fromTry(a.toTry)
 
       override def fromFuture[A](a: Future[A]): IO[A] =
@@ -61,5 +72,6 @@ object Bag:
       override def flatten[A](fa: IO[IO[A]]): IO[A] =
         fa.flatMap(identity)
 
+  /** A global `Async[IO]` bag using the default cats-effect global runtime. */
   val global: Async[IO] =
     fromRuntime(cats.effect.unsafe.implicits.global)

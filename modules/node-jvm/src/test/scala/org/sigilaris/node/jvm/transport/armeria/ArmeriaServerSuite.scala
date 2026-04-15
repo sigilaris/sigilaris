@@ -30,7 +30,9 @@ final class ArmeriaServerSuite extends CatsEffectSuite:
         IO:
           assert(server.activeLocalPort() > 0)
 
-  test("resource serves HTTP responses for multiple endpoints and applies config"):
+  test(
+    "resource serves HTTP responses for multiple endpoints and applies config",
+  ):
     val config = ArmeriaServerConfig(
       port = 0,
       maxRequestLength = 1024L,
@@ -43,11 +45,15 @@ final class ArmeriaServerSuite extends CatsEffectSuite:
         IO.blocking:
           val client = HttpClient.newHttpClient()
           val request = HttpRequest
-            .newBuilder(URI.create(s"http://127.0.0.1:${server.activeLocalPort()}/version"))
+            .newBuilder(
+              URI
+                .create(s"http://127.0.0.1:${server.activeLocalPort()}/version"),
+            )
             .GET()
             .build()
 
-          val response = client.send(request, HttpResponse.BodyHandlers.ofString())
+          val response =
+            client.send(request, HttpResponse.BodyHandlers.ofString())
           assertEquals(response.statusCode(), 200)
           assertEquals(response.body(), "v1")
           val serviceConfig = server.config().serviceConfigs().get(0)

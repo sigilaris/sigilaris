@@ -37,10 +37,16 @@ object SignedTxBuilder:
   def forAccount(account: Account, keyPair: KeyPair): ForAccount =
     new ForAccount(account, keyPair)
 
-  /** Builder that caches the signing context. */
+  /** Builder that caches the signing context (account and key pair) for repeated use. */
   final class ForAccount private[SignedTxBuilder] (
       account: Account,
       keyPair: KeyPair,
   ):
+    /** Signs a transaction using the cached account and key pair.
+      *
+      * @tparam A the transaction type
+      * @param tx the transaction to sign
+      * @return either a signing failure or the signed transaction
+      */
     def sign[A <: Tx: Hash: Sign](tx: A): Either[SigilarisFailure, Signed[A]] =
       SignedTxBuilder.sign(tx, account, keyPair)

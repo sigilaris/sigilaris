@@ -10,23 +10,27 @@ final class JsonPrimitivesPropertySuite extends HedgehogSuite:
 
   property("Boolean roundtrip"):
     for b <- Gen.boolean.forAll
-    yield
-      Result.all(List(JsonLaws.roundTrip(b), JsonLaws.deterministicEncoding(b)))
+    yield Result.all(
+      List(JsonLaws.roundTrip(b), JsonLaws.deterministicEncoding(b)),
+    )
 
   property("String roundtrip"):
     for s <- Gen.string(Gen.unicode, Range.linear(0, 64)).forAll
-    yield
-      Result.all(List(JsonLaws.roundTrip(s), JsonLaws.deterministicEncoding(s)))
+    yield Result.all(
+      List(JsonLaws.roundTrip(s), JsonLaws.deterministicEncoding(s)),
+    )
 
   property("Int roundtrip"):
     for n <- Gen.int(Range.linearFrom(0, Int.MinValue, Int.MaxValue)).forAll
-    yield
-      Result.all(List(JsonLaws.roundTrip(n), JsonLaws.deterministicEncoding(n)))
+    yield Result.all(
+      List(JsonLaws.roundTrip(n), JsonLaws.deterministicEncoding(n)),
+    )
 
   property("Long roundtrip"):
     for n <- Gen.long(Range.linearFrom(0L, Long.MinValue, Long.MaxValue)).forAll
-    yield
-      Result.all(List(JsonLaws.roundTrip(n), JsonLaws.deterministicEncoding(n)))
+    yield Result.all(
+      List(JsonLaws.roundTrip(n), JsonLaws.deterministicEncoding(n)),
+    )
 
   property("BigInt roundtrip (default writes as string; decoder accepts both)"):
     for bi <- Gen.bytes(Range.linear(1, 64)).map(BigInt(_)).forAll
@@ -43,7 +47,9 @@ final class JsonPrimitivesPropertySuite extends HedgehogSuite:
           JsonLaws.deterministicEncoding(bi),
         )
 
-  property("BigDecimal roundtrip (default writes as string; decoder accepts both)"):
+  property(
+    "BigDecimal roundtrip (default writes as string; decoder accepts both)",
+  ):
     // generate BigDecimal from (unscaled, scale) to avoid Double rounding
     val genBigDecimal =
       for
@@ -69,10 +75,10 @@ final class JsonPrimitivesPropertySuite extends HedgehogSuite:
         .long(Range.linearFrom(0L, Long.MinValue, Long.MaxValue))
         .forAll
     yield
-      val inst = Instant.ofEpochMilli(epochMilli)
+      val inst      = Instant.ofEpochMilli(epochMilli)
       val truncated = inst.truncatedTo(java.time.temporal.ChronoUnit.MILLIS)
-      val encoded = JsonEncoder[Instant].encode(inst)
-      val decoded = JsonDecoder[Instant].decode(encoded)
+      val encoded   = JsonEncoder[Instant].encode(inst)
+      val decoded   = JsonDecoder[Instant].decode(encoded)
       Result.all(
         List(
           decoded ==== Right(truncated),

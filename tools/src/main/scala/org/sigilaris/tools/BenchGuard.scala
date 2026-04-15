@@ -59,10 +59,12 @@ object BenchGuard:
     val reports  = repoRoot.resolve("benchmarks").resolve("reports")
     Files.createDirectories(reports)
 
-    val baseline = cfg.baseline.orElse(discoverBaseline(reports)).getOrElse:
-      Console.err.println:
-        "No baseline found. Provide --baseline or place a baseline file under benchmarks/reports/."
-      sys.exit(2)
+    val baseline = cfg.baseline
+      .orElse(discoverBaseline(reports))
+      .getOrElse:
+        Console.err.println:
+          "No baseline found. Provide --baseline or place a baseline file under benchmarks/reports/."
+        sys.exit(2)
 
     val archived = archive(cfg, reports)
     val ok       = compare(baseline, archived, cfg)
@@ -104,9 +106,10 @@ object BenchGuard:
       .Process(Seq("git", "rev-parse", "--short", "HEAD"))
       .!!
     val sha = shaRaw.trimOption.map(sanitize).getOrElse("unknown")
-    val tagPart = cfg.tag.filter(_.nonEmpty).map(t => s"_${sanitize(t)}").getOrElse("")
-    val suffix  = if cfg.enableGc then "_jmh-gc.json" else "_jmh.json"
-    val dest    = reports.resolve(s"${utc}_${branch}_${sha}${tagPart}${suffix}")
+    val tagPart =
+      cfg.tag.filter(_.nonEmpty).map(t => s"_${sanitize(t)}").getOrElse("")
+    val suffix = if cfg.enableGc then "_jmh-gc.json" else "_jmh.json"
+    val dest   = reports.resolve(s"${utc}_${branch}_${sha}${tagPart}${suffix}")
     Files.copy(Paths.get(cfg.result), dest)
     println(s"> Archived to ${dest}")
     dest.toString

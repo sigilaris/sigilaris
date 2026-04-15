@@ -238,7 +238,8 @@ class MerkleTrieTest extends HedgehogSuite:
             )
           yield
             val (prefix, suffix) = bytes.splitAt(bytes.size - suffixSize)
-            val suffixOption: Option[Nibbles] = Option.when(suffixSize > 0)(suffix.toNibbles)
+            val suffixOption: Option[Nibbles] =
+              Option.when(suffixSize > 0)(suffix.toNibbles)
             ReverseStreamFrom(prefix.toNibbles, suffixOption)
 
       override def execute(
@@ -265,7 +266,7 @@ class MerkleTrieTest extends HedgehogSuite:
 
         val expected = i.keySuffix
           .fold(withPrefix): suffix =>
-            withPrefix.filter(_._1 <= i.keyPrefix.bytes ++ suffix.bytes) 
+            withPrefix.filter(_._1 <= i.keyPrefix.bytes ++ suffix.bytes)
           .takeRight(10)
           .toList
           .reverse
@@ -594,11 +595,13 @@ class MerkleTrieTest extends HedgehogSuite:
   test("put 80 -> streamFrom 00"):
     withMunitAssertions: assertions =>
 
-      def put(key: ByteVector) = MerkleTrie.put[SyncIO](key.toNibbles, ByteVector.empty)
-      def streamFrom(key: ByteVector) = MerkleTrie.streamFrom[SyncIO](key.toNibbles)
+      def put(key: ByteVector) =
+        MerkleTrie.put[SyncIO](key.toNibbles, ByteVector.empty)
+      def streamFrom(key: ByteVector) =
+        MerkleTrie.streamFrom[SyncIO](key.toNibbles)
 
       val program = for
-        _ <- put(hex"80")
+        _     <- put(hex"80")
         value <- streamFrom(hex"00")
       yield value
 
@@ -610,19 +613,22 @@ class MerkleTrieTest extends HedgehogSuite:
 
       val result = resultIO.unsafeRunSync()
 
-      val expected: List[(Nibbles, ByteVector)] = List((hex"80".toNibbles, ByteVector.empty))
+      val expected: List[(Nibbles, ByteVector)] =
+        List((hex"80".toNibbles, ByteVector.empty))
 
       assertions.assertEquals(result, expected.asRight[String])
 
   test("put 80 -> put empty -> streamFrom 00"):
     withMunitAssertions: assertions =>
 
-      def put(key: ByteVector) = MerkleTrie.put[SyncIO](key.toNibbles, ByteVector.empty)
-      def streamFrom(key: ByteVector) = MerkleTrie.streamFrom[SyncIO](key.toNibbles)
+      def put(key: ByteVector) =
+        MerkleTrie.put[SyncIO](key.toNibbles, ByteVector.empty)
+      def streamFrom(key: ByteVector) =
+        MerkleTrie.streamFrom[SyncIO](key.toNibbles)
 
       val program = for
-        _ <- put(hex"80")
-        _ <- put(ByteVector.empty)
+        _     <- put(hex"80")
+        _     <- put(ByteVector.empty)
         value <- streamFrom(hex"01")
       yield value
 
@@ -654,14 +660,16 @@ class MerkleTrieTest extends HedgehogSuite:
 
       val result = resultIO.unsafeRunSync()
 
-      val expected: List[(Nibbles, ByteVector)] = List((hex"80".toNibbles, ByteVector.empty))
+      val expected: List[(Nibbles, ByteVector)] =
+        List((hex"80".toNibbles, ByteVector.empty))
 
       assertions.assertEquals(result, expected.asRight[String])
 
   test("put empty -> reverseStreamFrom (00, None)"):
     withMunitAssertions: assertions =>
 
-      def put(key: ByteVector) = MerkleTrie.put[SyncIO](key.toNibbles, ByteVector.empty)
+      def put(key: ByteVector) =
+        MerkleTrie.put[SyncIO](key.toNibbles, ByteVector.empty)
       def reverseStreamFrom(keyPrefix: ByteVector, keySuffix: Option[Nibbles]) =
         MerkleTrie.reverseStreamFrom[SyncIO](keyPrefix.toNibbles, keySuffix)
 
@@ -695,7 +703,7 @@ class MerkleTrieTest extends HedgehogSuite:
           stream.compile.toList
         .value
 
-      val result = resultIO.unsafeRunSync()
+      val result                                = resultIO.unsafeRunSync()
       val expected: List[(Nibbles, ByteVector)] = List.empty
 
       assertions.assertEquals(result, expected.asRight[String])
@@ -703,7 +711,8 @@ class MerkleTrieTest extends HedgehogSuite:
   test("put 00 -> reverseStreamFrom (empty, None)"):
     withMunitAssertions: assertions =>
 
-      def put(key: ByteVector) = MerkleTrie.put[SyncIO](key.toNibbles, ByteVector.empty)
+      def put(key: ByteVector) =
+        MerkleTrie.put[SyncIO](key.toNibbles, ByteVector.empty)
       def reverseStreamFrom(keyPrefix: ByteVector, keySuffix: Option[Nibbles]) =
         MerkleTrie.reverseStreamFrom[SyncIO](keyPrefix.toNibbles, keySuffix)
 
@@ -739,15 +748,16 @@ class MerkleTrieTest extends HedgehogSuite:
 
       val result = resultIO.unsafeRunSync()
 
-      val expected: List[(Nibbles, ByteVector)] = List((hex"00".toNibbles, ByteVector.empty))
+      val expected: List[(Nibbles, ByteVector)] =
+        List((hex"00".toNibbles, ByteVector.empty))
 
       assertions.assertEquals(result, expected.asRight[String])
-
 
   test("put empty -> put 00 -> reverseStreamFrom (00, None)"):
     withMunitAssertions: assertions =>
 
-      def put(key: ByteVector) = MerkleTrie.put[SyncIO](key.toNibbles, ByteVector.empty)
+      def put(key: ByteVector) =
+        MerkleTrie.put[SyncIO](key.toNibbles, ByteVector.empty)
       def reverseStreamFrom(keyPrefix: ByteVector, keySuffix: Option[Nibbles]) =
         MerkleTrie.reverseStreamFrom[SyncIO](keyPrefix.toNibbles, keySuffix)
 
@@ -793,7 +803,8 @@ class MerkleTrieTest extends HedgehogSuite:
   test("put 00 -> put 0000 -> reverseStreamFrom (empty, None)"):
     withMunitAssertions: assertions =>
 
-      def put(key: ByteVector) = MerkleTrie.put[SyncIO](key.toNibbles, ByteVector.empty)
+      def put(key: ByteVector) =
+        MerkleTrie.put[SyncIO](key.toNibbles, ByteVector.empty)
       def reverseStreamFrom(keyPrefix: ByteVector, keySuffix: Option[Nibbles]) =
         MerkleTrie.reverseStreamFrom[SyncIO](keyPrefix.toNibbles, keySuffix)
 
@@ -818,11 +829,11 @@ class MerkleTrieTest extends HedgehogSuite:
 
       assertions.assertEquals(result, expected.asRight[String])
 
-
   test("put 0000 -> put 10 -> reverseStreamFrom (10, None)"):
     withMunitAssertions: assertions =>
 
-      def put(key: ByteVector) = MerkleTrie.put[SyncIO](key.toNibbles, ByteVector.empty)
+      def put(key: ByteVector) =
+        MerkleTrie.put[SyncIO](key.toNibbles, ByteVector.empty)
       def reverseStreamFrom(keyPrefix: ByteVector, keySuffix: Option[Nibbles]) =
         MerkleTrie.reverseStreamFrom[SyncIO](keyPrefix.toNibbles, keySuffix)
 

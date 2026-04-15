@@ -33,7 +33,9 @@ final class TransportImportRuleSuite extends FunSuite:
   test("transport sources do not import storage implementations"):
     val sources = Using.resource(Files.walk(transportRoot)): stream =>
       stream.iterator.asScala
-        .filter(path => Files.isRegularFile(path) && path.toString.endsWith(".scala"))
+        .filter(path =>
+          Files.isRegularFile(path) && path.toString.endsWith(".scala"),
+        )
         .toList
 
     assert(sources.nonEmpty, s"Expected Scala sources under $transportRoot")

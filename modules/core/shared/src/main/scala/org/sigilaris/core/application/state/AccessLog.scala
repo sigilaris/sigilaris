@@ -149,5 +149,6 @@ object AccessLog:
       m2: Map[ByteVector, Set[ByteVector]],
   ): Boolean =
     m1.exists: (prefix, keys1) =>
-      m2.get(prefix).exists: keys2 =>
-        keys1.exists(keys2.contains)
+      m2.get(prefix)
+        .exists: keys2 =>
+          keys1.exists(keys2.contains)

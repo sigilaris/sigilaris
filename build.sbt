@@ -78,6 +78,7 @@ val Dependencies = new {
       "com.softwaremill.sttp.tapir" %% "tapir-armeria-server-cats" % V.tapir,
       "com.softwaremill.sttp.tapir" %% "tapir-openapi-docs"        % V.tapir,
       "com.softwaremill.sttp.apispec" %% "openapi-circe-yaml"      % V.openApiCirceYaml,
+      "com.typesafe" % "config" % "1.4.3",
       ("io.swaydb" %% "swaydb" % V.sway).cross(CrossVersion.for3Use2_13),
     ),
     excludeDependencies ++= Seq(
@@ -125,10 +126,16 @@ ThisBuild / publishTo := {
   else sonatypePublishToBundle.value
 }
 
+lazy val copyUnidocIntoSite = taskKey[Unit](
+  "Copy Scala unidoc output into target/docs/site/api after tlSite generation.",
+)
+
 lazy val root = (project in file("."))
   .aggregate(
     core.jvm,
     core.js,
+    nodeCommon.jvm,
+    nodeCommon.js,
     nodeJvm,
     benchmarks,
     tools,
@@ -137,7 +144,11 @@ lazy val root = (project in file("."))
   .enablePlugins(TypelevelSitePlugin, ScalaUnidocPlugin)
   .settings(
     publish / skip := true,
-    (ScalaUnidoc / unidoc) / unidocProjectFilter := inProjects(core.jvm),
+    (ScalaUnidoc / unidoc) / unidocProjectFilter := inProjects(
+      core.jvm,
+      nodeCommon.jvm,
+      nodeJvm,
+    ),
     // Map unidoc into site output so preview won't drop it
     ScalaUnidoc / siteSubdirName := "api",
     addMappingsToSiteDir(ScalaUnidoc / packageDoc / mappings, ScalaUnidoc / siteSubdirName),
@@ -149,9 +160,25 @@ lazy val root = (project in file("."))
       "--scalac-options",
       "-Wconf:cat=unused:s",
     ),
+    copyUnidocIntoSite := {
+      val apiDir         = target.value / "docs" / "site" / "api"
+      val unidocMappings = (ScalaUnidoc / packageDoc / mappings).value
+      IO.delete(apiDir)
+      IO.copy(
+        unidocMappings.map { case (source, relativePath) =>
+          source -> (apiDir / relativePath)
+        },
+      )
+    },
+    tlSite := Def.sequential(
+      Def.task {
+        tlSite.value
+      },
+      copyUnidocIntoSite,
+    ).value,
   )
 
-// Note: Unidoc is mapped into the site under /api via sbt-site mappings.
+// Note: tlSite copies ScalaUnidoc packageDoc mappings into target/docs/site/api.
 
 lazy val core = crossProject(JSPlatform, JVMPlatform)
   .crossType(CrossType.Full)
@@ -218,6 +245,29 @@ lazy val benchmarks = (project in file("benchmarks"))
     Test / fork := true,
   )
 
+lazy val nodeCommon = crossProject(JSPlatform, JVMPlatform)
+  .crossType(CrossType.Full)
+  .in(file("modules/node-common"))
+  .dependsOn(core)
+  .settings(Dependencies.tests)
+  .settings(
+    moduleName := "sigilaris-node-common",
+    Compile / compile / wartremoverErrors ++= Warts
+      .allBut(Wart.SeqApply, Wart.SeqUpdated),
+  )
+  .jsSettings(
+    // Shared gossip model uses java.time on JS as well.
+    libraryDependencies += "io.github.cquiroz" %%% "scala-java-time" % V.scalaJavaTime,
+    useYarn := true,
+    Test / scalaJSLinkerConfig ~= (_.withModuleKind(ModuleKind.CommonJSModule)),
+    Test / webpackBundlingMode := scalajsbundler.BundlingMode.LibraryAndApplication(),
+    Test / logBuffered := false,
+    Test / fork := false,
+  )
+  .jsConfigure { project =>
+    project.enablePlugins(ScalaJSBundlerPlugin)
+  }
+
 lazy val tools = (project in file("tools"))
   .settings(
     publish / skip := true,
@@ -232,11 +282,13 @@ lazy val tools = (project in file("tools"))
   )
 
 lazy val nodeJvm = (project in file("modules/node-jvm"))
-  .dependsOn(core.jvm)
+  .dependsOn(nodeCommon.jvm)
   .settings(Dependencies.nodeJvm)
   .settings(Dependencies.tests)
   .settings(
     moduleName := "sigilaris-node-jvm",
+    Compile / compile / wartremoverErrors ++= Warts
+      .allBut(Wart.SeqApply, Wart.SeqUpdated),
   )
 
 // One-command aliases for Phase 6 (Scala-based orchestrations)

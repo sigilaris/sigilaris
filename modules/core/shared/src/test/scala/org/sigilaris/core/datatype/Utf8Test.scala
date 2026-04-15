@@ -11,7 +11,7 @@ final class Utf8Test extends HedgehogSuite:
 
   private val genUtf8String: Gen[String] =
     val ascii   = Gen.char(' ', '~')
-    val unicode = Gen.int(Range.linear(0x00A0, 0x07FF)).map(_.toChar)
+    val unicode = Gen.int(Range.linear(0x00a0, 0x07ff)).map(_.toChar)
     val chGen   = Gen.choice1(ascii, unicode)
     Gen.string(chGen, Range.linear(0, 64))
 
@@ -42,5 +42,3 @@ final class Utf8Test extends HedgehogSuite:
       summon[JsonKeyCodec[Utf8]].decodeKey(enc) match
         case Right(decoded) => decoded.asString ==== s
         case _              => Result.failure
-
-

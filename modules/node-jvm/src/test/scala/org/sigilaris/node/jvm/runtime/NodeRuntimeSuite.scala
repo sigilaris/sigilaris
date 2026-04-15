@@ -28,11 +28,14 @@ final class NodeRuntimeSuite extends CatsEffectSuite:
     ): Resource[IO, TestServices] =
       InMemoryStores
         .singleValue[IO, String]
-        .map(store => TestServices(store, s"persistent:${config.name}:${layout.path}"))
+        .map(store =>
+          TestServices(store, s"persistent:${config.name}:${layout.path}"),
+        )
 
   test("StorageMode.fromArgs selects in-memory when the flag is present"):
     IO:
-      val selected = StorageMode.fromArgs(List("--in-memory"), TestLayout("data"))
+      val selected =
+        StorageMode.fromArgs(List("--in-memory"), TestLayout("data"))
       assertEquals(selected, StorageMode.InMemory)
 
   test("StorageMode.fromArgs selects persistent when the flag is absent"):
@@ -49,10 +52,15 @@ final class NodeRuntimeSuite extends CatsEffectSuite:
       )
       assertEquals(selected, StorageMode.InMemory)
 
-  test("NodeRuntime.resource selects the persistent bootstrap for persistent mode"):
+  test(
+    "NodeRuntime.resource selects the persistent bootstrap for persistent mode",
+  ):
     val mode = StorageMode.Persistent(TestLayout("disk"))
     NodeRuntime
-      .resource[IO, TestConfig, TestServices, TestLayout](TestConfig("alpha"), mode)
+      .resource[IO, TestConfig, TestServices, TestLayout](
+        TestConfig("alpha"),
+        mode,
+      )
       .use: runtime =>
         IO:
           assertEquals(runtime.storage, mode)
@@ -65,7 +73,8 @@ final class NodeRuntimeSuite extends CatsEffectSuite:
         StorageMode.InMemory,
       )
 
-    val initializer = NodeInitializer[IO, TestServices](_.state.put("initialized"))
+    val initializer =
+      NodeInitializer[IO, TestServices](_.state.put("initialized"))
 
     NodeExecution
       .resource(
@@ -73,9 +82,12 @@ final class NodeRuntimeSuite extends CatsEffectSuite:
         initializer,
         services =>
           Resource.eval:
-            services.state.get().value.map: state =>
-              assertEquals(state, Right(Some("initialized")))
-              services.label,
+            services.state
+              .get()
+              .value
+              .map: state =>
+                assertEquals(state, Right(Some("initialized")))
+                services.label,
       )
       .use: label =>
         IO:

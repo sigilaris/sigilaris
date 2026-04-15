@@ -24,16 +24,19 @@ import Nibbles.{given, *}
   *   - `BranchWithData`: Branch node with both child nodes and a value
   *
   * @example
-  * ```scala
-  * val leaf = MerkleTrieNode.leaf(
-  *   prefix = ByteVector(0x12, 0x34).toNibbles,
-  *   value = ByteVector(0xab, 0xcd)
-  * )
-  * ```
+  *   ```scala
+  *   val leaf = MerkleTrieNode.leaf(
+  *     prefix = ByteVector(0x12, 0x34).toNibbles,
+  *     value = ByteVector(0xab, 0xcd),
+  *   )
+  *   ```
   *
-  * @see [[MerkleTrieNode.Leaf]] for terminal nodes
-  * @see [[MerkleTrieNode.Branch]] for branch nodes
-  * @see [[MerkleTrieNode.BranchWithData]] for branch nodes with values
+  * @see
+  *   [[MerkleTrieNode.Leaf]] for terminal nodes
+  * @see
+  *   [[MerkleTrieNode.Branch]] for branch nodes
+  * @see
+  *   [[MerkleTrieNode.BranchWithData]] for branch nodes with values
   */
 sealed trait MerkleTrieNode:
 
@@ -42,7 +45,8 @@ sealed trait MerkleTrieNode:
 
   /** Returns the children array if this node has children.
     *
-    * @return Some(children) for Branch or BranchWithData, None for Leaf
+    * @return
+    *   Some(children) for Branch or BranchWithData, None for Leaf
     */
   def getChildren: Option[MerkleTrieNode.Children] = this match
     case MerkleTrieNode.Leaf(_, _)                     => None
@@ -51,7 +55,8 @@ sealed trait MerkleTrieNode:
 
   /** Returns the value stored in this node if present.
     *
-    * @return Some(value) for Leaf or BranchWithData, None for Branch
+    * @return
+    *   Some(value) for Leaf or BranchWithData, None for Branch
     */
   def getValue: Option[ByteVector] = this match
     case MerkleTrieNode.Leaf(_, value)              => Some(value)
@@ -60,21 +65,25 @@ sealed trait MerkleTrieNode:
 
   /** Returns a new node with the updated prefix.
     *
-    * @param prefix the new prefix
-    * @return node with updated prefix
+    * @param prefix
+    *   the new prefix
+    * @return
+    *   node with updated prefix
     */
   def setPrefix(prefix: Nibbles): MerkleTrieNode =
     this match
       case MerkleTrieNode.Leaf(_, value) => MerkleTrieNode.Leaf(prefix, value)
       case MerkleTrieNode.Branch(_, children) =>
         MerkleTrieNode.Branch(prefix, children)
-      case MerkleTrieNode.BranchWithData(_, key, value) =>
-        MerkleTrieNode.BranchWithData(prefix, key, value)
+      case MerkleTrieNode.BranchWithData(_, children, value) =>
+        MerkleTrieNode.BranchWithData(prefix, children, value)
 
   /** Returns a new node with the updated children.
     *
-    * @param children the new children array
-    * @return node with updated children
+    * @param children
+    *   the new children array
+    * @return
+    *   node with updated children
     */
   def setChildren(
       children: MerkleTrieNode.Children,
@@ -88,8 +97,10 @@ sealed trait MerkleTrieNode:
 
   /** Returns a new node with the updated value.
     *
-    * @param value the new value
-    * @return node with updated value
+    * @param value
+    *   the new value
+    * @return
+    *   node with updated value
     */
   def setValue(value: ByteVector): MerkleTrieNode = this match
     case MerkleTrieNode.Leaf(prefix, _) => MerkleTrieNode.Leaf(prefix, value)
@@ -107,30 +118,39 @@ sealed trait MerkleTrieNode:
         .mkString("[", ",", "]")
     ss"MerkleTrieNode(${prefix.value.toHex}, $childrenString, ${getValue.fold("\"\"")(_.toHex)})"
 
-/** Companion object for [[MerkleTrieNode]] with constructors and type definitions. */
+/** Companion object for [[MerkleTrieNode]] with constructors and type
+  * definitions.
+  */
 object MerkleTrieNode:
 
   /** Terminal node storing a key-value pair.
     *
-    * @param prefix the key suffix for this leaf
-    * @param value the value stored in this leaf
+    * @param prefix
+    *   the key suffix for this leaf
+    * @param value
+    *   the value stored in this leaf
     */
   final case class Leaf(prefix: Nibbles, value: ByteVector)
       extends MerkleTrieNode
 
   /** Branch node with only child nodes.
     *
-    * @param prefix the common prefix for all children
-    * @param children array of 16 optional child node hashes
+    * @param prefix
+    *   the common prefix for all children
+    * @param children
+    *   array of 16 optional child node hashes
     */
   final case class Branch(prefix: Nibbles, children: Children)
       extends MerkleTrieNode
 
   /** Branch node with both child nodes and a value.
     *
-    * @param prefix the common prefix for all children
-    * @param children array of 16 optional child node hashes
-    * @param value the value stored at this branch
+    * @param prefix
+    *   the common prefix for all children
+    * @param children
+    *   array of 16 optional child node hashes
+    * @param value
+    *   the value stored at this branch
     */
   final case class BranchWithData(
       prefix: Nibbles,
@@ -140,18 +160,24 @@ object MerkleTrieNode:
 
   /** Creates a leaf node.
     *
-    * @param prefix the key suffix
-    * @param value the value to store
-    * @return new Leaf node
+    * @param prefix
+    *   the key suffix
+    * @param value
+    *   the value to store
+    * @return
+    *   new Leaf node
     */
   def leaf(prefix: Nibbles, value: ByteVector): MerkleTrieNode =
     Leaf(prefix, value)
 
   /** Creates a branch node.
     *
-    * @param prefix the common prefix
-    * @param children the children array
-    * @return new Branch node
+    * @param prefix
+    *   the common prefix
+    * @param children
+    *   the children array
+    * @return
+    *   new Branch node
     */
   def branch(
       prefix: Nibbles,
@@ -160,10 +186,14 @@ object MerkleTrieNode:
 
   /** Creates a branch node with data.
     *
-    * @param prefix the common prefix
-    * @param children the children array
-    * @param value the value to store
-    * @return new BranchWithData node
+    * @param prefix
+    *   the common prefix
+    * @param children
+    *   the children array
+    * @param value
+    *   the value to store
+    * @return
+    *   new BranchWithData node
     */
   def branchWithData(
       prefix: Nibbles,
@@ -180,14 +210,18 @@ object MerkleTrieNode:
   /** Array of 16 optional child node hashes. */
   type Children = Vector[Option[MerkleHash]] :| ChildrenCondition
 
+  /** Refinement constraint requiring exactly 16 elements in a Children vector. */
   type ChildrenCondition = Length[StrictEqual[16]]
 
   extension (c: Children)
     /** Updates a child at the given index.
       *
-      * @param i index (0-15)
-      * @param v new child hash value
-      * @return updated children array
+      * @param i
+      *   index (0-15)
+      * @param v
+      *   new child hash value
+      * @return
+      *   updated children array
       */
     def updateChild(i: Int, v: Option[MerkleHash]): Children =
       c.updated(i, v).assume

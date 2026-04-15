@@ -7,8 +7,8 @@ import org.sigilaris.core.failure.SigilarisFailure
   *
   * Provides a type-safe interface for recovering the public key that was used
   * to create a signature. The recovery process first hashes the value using
-  * [[Hash]], then uses the signature's recovery parameter to recover the
-  * public key.
+  * [[Hash]], then uses the signature's recovery parameter to recover the public
+  * key.
   *
   * @tparam A
   *   the type of value that was signed
@@ -17,8 +17,8 @@ import org.sigilaris.core.failure.SigilarisFailure
   *   ```scala
   *   import Recover.ops.*
   *
-  *   val keyPair = CryptoOps.generate()
-  *   val message = Utf8("hello")
+  *   val keyPair   = CryptoOps.generate()
+  *   val message   = Utf8("hello")
   *   val signature = keyPair.sign(message).toOption.get
   *
   *   // Recover public key from signature
@@ -29,9 +29,12 @@ import org.sigilaris.core.failure.SigilarisFailure
   *   assert(recovered.contains(keyPair.publicKey))
   *   ```
   *
-  * @see [[Sign]] for signature creation
-  * @see [[Signature]] for the signature representation
-  * @see [[CryptoOps.recover]] for the underlying recovery operation
+  * @see
+  *   [[Sign]] for signature creation
+  * @see
+  *   [[Signature]] for the signature representation
+  * @see
+  *   [[CryptoOps.recover]] for the underlying recovery operation
   */
 trait Recover[A]:
   /** Recovers the public key from a value and its signature.
@@ -113,5 +116,3 @@ object Recover:
       def recover(signature: Signature)(using
           r: Recover[A],
       ): Either[SigilarisFailure, PublicKey] = r.fromHash(hashValue, signature)
-
-

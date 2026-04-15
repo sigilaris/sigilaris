@@ -33,7 +33,9 @@ final class SwayDbImportRuleSuite extends FunSuite:
   test("swaydb storage sources do not import transport or downstream packages"):
     val sources = Using.resource(Files.walk(swayDbRoot)): stream =>
       stream.iterator.asScala
-        .filter(path => Files.isRegularFile(path) && path.toString.endsWith(".scala"))
+        .filter(path =>
+          Files.isRegularFile(path) && path.toString.endsWith(".scala"),
+        )
         .toList
 
     assert(sources.nonEmpty, s"Expected Scala sources under $swayDbRoot")

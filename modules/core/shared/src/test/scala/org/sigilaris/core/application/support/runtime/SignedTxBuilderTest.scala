@@ -5,7 +5,6 @@ import java.time.Instant
 import cats.data.{EitherT, Kleisli}
 import cats.instances.either.given
 import munit.FunSuite
-import scodec.bits.ByteVector
 
 import _root_.org.sigilaris.core.application.state.StoreState
 import _root_.org.sigilaris.core.application.feature.accounts.domain.{Account, AccountsResult, KeyId20}
@@ -28,8 +27,7 @@ class SignedTxBuilderTest extends FunSuite:
   private val initialState: StoreState = StoreState.empty
 
   private def deriveKeyId(keyPair: KeyPair): KeyId20 =
-    val hash = CryptoOps.keccak256(keyPair.publicKey.toBytes.toArray)
-    KeyId20.unsafeApply(ByteVector.view(hash).takeRight(20))
+    KeyId20.fromPublicKey(keyPair.publicKey)
 
   test("SignedTxBuilder.sign produces signed transaction and executes via StateModuleExecutor"):
     val accountsBP = AccountsBP[TestF]

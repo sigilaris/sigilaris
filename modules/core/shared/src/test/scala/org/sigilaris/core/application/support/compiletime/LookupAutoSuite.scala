@@ -16,12 +16,10 @@ class LookupAutoSuite extends FunSuite:
     assert(lookup ne null)
 
   test("derive emits descriptive error when table missing"):
-    val errors = compileErrors(
+    val errors = compileErrors:
       "LookupAuto.derive[TestSchema, \"baz\", Utf8, Utf8]"
-    )
     assert(clue(errors).contains("Lookup derivation failed."))
-    assert(
+    assert:
       clue(errors).contains(
         "Missing entry: Entry[\"baz\", org.sigilaris.core.datatype.Utf8$package.Utf8, org.sigilaris.core.datatype.Utf8$package.Utf8]"
       )
-    )

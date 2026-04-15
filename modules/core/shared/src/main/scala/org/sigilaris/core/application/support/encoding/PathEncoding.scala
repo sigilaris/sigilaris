@@ -134,10 +134,18 @@ trait PathEncoder[Path <: Tuple]:
     */
   def encode: ByteVector
 
-/** Helper to collect path segments as a list for encoding. */
+/** Helper typeclass to collect path segments as a list of strings for runtime encoding.
+  *
+  * @tparam T the path tuple type
+  */
 trait SegmentCollector[T <: Tuple]:
+  /** Collects all segments from the type-level path into a runtime list.
+    *
+    * @return the path segments in order
+    */
   def collect: List[String]
 
+/** Companion for [[SegmentCollector]], providing derivation instances. */
 object SegmentCollector:
   given emptyCollector: SegmentCollector[EmptyTuple] with
     def collect: List[String] = Nil
@@ -148,6 +156,7 @@ object SegmentCollector:
   ): SegmentCollector[H *: T] with
     def collect: List[String] = ev.value :: tailCollector.collect
 
+/** Companion for [[PathEncoder]], providing derivation instances for empty and non-empty paths. */
 object PathEncoder:
   /** Base case: empty path encodes to length header (0) only. */
   given empty: PathEncoder[EmptyTuple] with
@@ -210,5 +219,8 @@ def encodePathRuntime(path: List[String]): ByteVector =
   * @return
   *   the full table prefix
   */
-def tablePrefixRuntimeFromList(path: List[String], tableName: String): ByteVector =
+def tablePrefixRuntimeFromList(
+    path: List[String],
+    tableName: String,
+): ByteVector =
   encodePathRuntime(path) ++ encodeSegmentRuntime(tableName)

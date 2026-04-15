@@ -4,7 +4,10 @@ import scala.Tuple.++
 
 import org.sigilaris.core.application.module.runtime.StateModule
 import org.sigilaris.core.application.state.{Entry, Tables}
-import org.sigilaris.core.application.support.compiletime.{DifferentNames, Lookup}
+import org.sigilaris.core.application.support.compiletime.{
+  DifferentNames,
+  Lookup,
+}
 
 /** Provider for external table dependencies.
   *
@@ -101,6 +104,7 @@ private[module] trait TablesProjectionLowPriority:
       val restTables = restProjection.project(sourceTables)
       headTable *: restTables
 
+/** Companion for [[TablesProjection]], providing identity, prefix, and suffix projections. */
 object TablesProjection extends TablesProjectionLowPriority:
   given identityProjection[F[_], S <: Tuple]: TablesProjection[F, S, S] with
     def project(sourceTables: Tables[F, S]): Tables[F, S] = sourceTables
@@ -123,11 +127,23 @@ object TablesProjection extends TablesProjectionLowPriority:
     ): Tables[F, Head *: Tail] =
       sourceTables.drop(sizeS.value).asInstanceOf[Tables[F, Head *: Tail]]
 
+/** Companion for [[TablesProvider]], providing factory methods and provider composition. */
 object TablesProvider:
+  /** Creates an empty provider that supplies no tables.
+    *
+    * @tparam F the effect type
+    * @return an empty TablesProvider
+    */
   def empty[F[_]]: TablesProvider[F, EmptyTuple] =
     new TablesProvider[F, EmptyTuple]:
       def tables: Tables[F, EmptyTuple] = EmptyTuple
 
+  /** Creates a provider from a mounted state module, exposing its owned tables.
+    *
+    * @tparam F the effect type
+    * @param module the mounted state module
+    * @return a TablesProvider supplying the module's owned tables
+    */
   def fromModule[F[
       _,
   ], Path <: Tuple, Schema <: Tuple, Needs <: Tuple, Txs <: Tuple, R](
@@ -136,15 +152,21 @@ object TablesProvider:
     def tables: Tables[F, Schema] = module.tables
 
   @scala.annotation.implicitNotFound(
-"""Cannot merge provider schemas: overlapping tables detected.
+    """Cannot merge provider schemas: overlapping tables detected.
 Left schema: ${S1}
 Right schema: ${S2}
 
 Each Entry name must be unique across merged providers. Rename the tables or
-ensure dependent modules expose disjoint schemas before composing providers."""
+ensure dependent modules expose disjoint schemas before composing providers.""",
   )
+  /** Evidence that two schemas have no overlapping table names, enabling safe provider merging.
+    *
+    * @tparam S1 the first schema tuple
+    * @tparam S2 the second schema tuple
+    */
   trait DisjointSchemas[S1 <: Tuple, S2 <: Tuple]
 
+  /** Companion for [[DisjointSchemas]], providing derivation instances. */
   object DisjointSchemas:
     given emptyEmpty: DisjointSchemas[EmptyTuple, EmptyTuple] =
       new DisjointSchemas[EmptyTuple, EmptyTuple] {}
@@ -162,14 +184,20 @@ ensure dependent modules expose disjoint schemas before composing providers."""
       new DisjointSchemas[Entry[Name, K, V] *: T1, S2] {}
 
   @scala.annotation.implicitNotFound(
-"""Table ${E} already exists in schema ${S}.
+    """Table ${E} already exists in schema ${S}.
 
 Dependency schemas must not redefine the same table name. Remove the duplicate
 entry or refactor the module layout so that each table name is provided by a
-single module."""
+single module.""",
   )
+  /** Evidence that an entry does not exist in the given schema.
+    *
+    * @tparam E the entry to check
+    * @tparam S the schema to search
+    */
   trait NotInSchema[E <: Entry[?, ?, ?], S <: Tuple]
 
+  /** Companion for [[NotInSchema]], providing derivation instances. */
   object NotInSchema:
     given notInEmpty[E <: Entry[?, ?, ?]]: NotInSchema[E, EmptyTuple] =
       new NotInSchema[E, EmptyTuple] {}
@@ -181,6 +209,16 @@ single module."""
     ): NotInSchema[Entry[N1, K1, V1], Entry[N2, K2, V2] *: Tail] =
       new NotInSchema[Entry[N1, K1, V1], Entry[N2, K2, V2] *: Tail] {}
 
+  /** Merges two providers into one, requiring their schemas to be disjoint.
+    *
+    * @tparam F the effect type
+    * @tparam P1 the first provider's schema
+    * @tparam P2 the second provider's schema
+    * @param p1 the first provider
+    * @param p2 the second provider
+    * @param disjoint evidence that the schemas are disjoint
+    * @return a merged provider supplying tables from both schemas
+    */
   def merge[F[_], P1 <: Tuple, P2 <: Tuple](
       p1: TablesProvider[F, P1],
       p2: TablesProvider[F, P2],

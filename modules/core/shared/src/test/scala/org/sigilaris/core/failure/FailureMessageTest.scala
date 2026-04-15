@@ -6,7 +6,7 @@ import munit.FunSuite
 class FailureMessageTest extends FunSuite:
 
   test("ErrorKey keeps failure code while rendering client message keys"):
-    val code = FailureCode("accounts.account_not_found")
+    val code = FailureCode.unsafe("accounts.account_not_found")
     val key = ClientFailureMessage.errorKey(
       ClientFailureMessage.Kind.NotFound,
       domain = "accounts",
@@ -17,7 +17,9 @@ class FailureMessageTest extends FunSuite:
     assertEquals(key.rendered, "not_found.accounts.account_not_found")
     assertEquals(key.code, code)
 
-  test("ClientFailureMessage falls back to safe key for invalid domain or reason"):
+  test(
+    "ClientFailureMessage falls back to safe key for invalid domain or reason",
+  ):
     val message = ClientFailureMessage.invalidRequest(
       domain = "Bad-Domain",
       reason = "invalid reason",
@@ -25,7 +27,10 @@ class FailureMessageTest extends FunSuite:
       detail = None,
     )
 
-    assertEquals(message, "invalid_request.unknown.invalid_error_key: broken input")
+    assertEquals(
+      message,
+      "invalid_request.unknown.invalid_error_key: broken input",
+    )
 
   test("ClientFailureMessage preserves kind when falling back to a safe key"):
     val message = ClientFailureMessage.notFound(
@@ -35,7 +40,10 @@ class FailureMessageTest extends FunSuite:
       detail = None,
     )
 
-    assertEquals(message, "not_found.unknown.invalid_error_key: missing account")
+    assertEquals(
+      message,
+      "not_found.unknown.invalid_error_key: missing account",
+    )
 
   test("ClientFailureMessage supports forbidden kind"):
     val message = ClientFailureMessage.forbidden(
@@ -45,9 +53,14 @@ class FailureMessageTest extends FunSuite:
       detail = Some("name=alice"),
     )
 
-    assertEquals(message, "forbidden.accounts.unauthorized: access denied | name=alice")
+    assertEquals(
+      message,
+      "forbidden.accounts.unauthorized: access denied | name=alice",
+    )
 
-  test("ClientFailureMessage omits blank detail and supports empty message branch"):
+  test(
+    "ClientFailureMessage omits blank detail and supports empty message branch",
+  ):
     val message = ClientFailureMessage.notFound(
       domain = "accounts",
       reason = "account_not_found",
@@ -68,7 +81,7 @@ class FailureMessageTest extends FunSuite:
     assertEquals(message, "conflict.unknown.invalid_error_key: duplicate")
 
   test("ConflictMessage keeps failure code while rendering conflict keys"):
-    val code = FailureCode("groups.group_already_exists")
+    val code = FailureCode.unsafe("groups.group_already_exists")
     val key = ConflictMessage.errorKey(
       domain = "groups",
       reason = "group_already_exists",
@@ -86,11 +99,54 @@ class FailureMessageTest extends FunSuite:
     assertEquals(key.code, code)
     assertEquals(message, "conflict.groups.group_already_exists: duplicate")
 
-  test("SigilarisFailure exposes stable failure codes without changing messages"):
+  test(
+    "SigilarisFailure exposes stable failure codes without changing messages",
+  ):
     val failure = DecodeFailure("broken")
     assertEquals(failure.msg, "broken")
     assertEquals(failure.code, FailureCode.Decode)
+    assertEquals(failure.kind, SigilarisFailure.Kind.Decode)
+
+  test("FailureMessageEnvelope parses detail-only and empty-message branches"):
+    assertEquals(
+      FailureMessageEnvelope.parse(
+        "not_found.accounts.account_not_found | id=alice",
+      ),
+      FailureMessageEnvelope(
+        errorKey = "not_found.accounts.account_not_found",
+        message = None,
+        detail = Some("id=alice"),
+      ),
+    )
+
+  test("FailureMessageEnvelope keeps legacy detail payload after the first separator"):
+    assertEquals(
+      FailureMessageEnvelope.parse(
+        "conflict.groups.group_already_exists: duplicate | detail | extra",
+      ),
+      FailureMessageEnvelope(
+        errorKey = "conflict.groups.group_already_exists",
+        message = Some("duplicate"),
+        detail = Some("detail | extra"),
+      ),
+    )
+
+  test("FailureMessageEnvelope parses key-only envelopes"):
+    assertEquals(
+      FailureMessageEnvelope.parse("not_found.accounts.account_not_found"),
+      FailureMessageEnvelope(
+        errorKey = "not_found.accounts.account_not_found",
+        message = None,
+        detail = None,
+      ),
+    )
 
   test("FailureCode rejects non-machine-readable values"):
-    interceptMessage[IllegalArgumentException]("requirement failed: Invalid FailureCode: bad code"):
-      FailureCode("bad code")
+    assertEquals(
+      FailureCode("bad code"),
+      Left("Invalid FailureCode: bad code"),
+    )
+
+  test("FailureCode.unsafe preserves the throwing path for invalid constants"):
+    interceptMessage[IllegalArgumentException]("Invalid FailureCode: bad code"):
+      FailureCode.unsafe("bad code")

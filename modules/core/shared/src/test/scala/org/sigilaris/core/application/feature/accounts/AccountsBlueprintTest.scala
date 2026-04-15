@@ -7,6 +7,9 @@ import cats.data.{EitherT, Kleisli}
 import munit.FunSuite
 import scodec.bits.ByteVector
 
+import org.sigilaris.core.codec.byte.ByteEncoder
+import org.sigilaris.core.codec.byte.ByteDecoder.ops.*
+import org.sigilaris.core.codec.byte.ByteEncoder.ops.*
 import org.sigilaris.core.application.feature.accounts.domain.{Account, KeyId20}
 import org.sigilaris.core.application.feature.accounts.domain.AccountsEvent.*
 import org.sigilaris.core.application.feature.accounts.domain.AccountsResult.*
@@ -443,7 +446,7 @@ class AccountsBlueprintTest extends FunSuite:
       memo = None,
     )
 
-    val addKeysTx = AddKeyIds(
+    val addKeysTx = AddKeyIds.unsafe(
       envelope = envelope2,
       name = Utf8("frank"),
       nonce = BigNat.Zero,
@@ -467,6 +470,93 @@ class AccountsBlueprintTest extends FunSuite:
         assertEquals(event.keyIds, Set(keyId2, keyId3))
       case Left(err) =>
         fail(s"Unexpected error: $err")
+
+  test(
+    "AccountsBP: legacy empty key payloads remain decodable but fail with structured invalid request",
+  ):
+    val bp = AccountsBP[Id]
+    val mounted = StateModule.mount[("app", "accounts")](bp)
+
+    val frankPubKeyBytes = frankKeyPair.publicKey.toBytes
+    val frankKeyHash = CryptoOps.keccak256(frankPubKeyBytes.toArray)
+    val keyId = KeyId20.unsafeApply(ByteVector.view(frankKeyHash).takeRight(20))
+
+    val account = Account.Named(Utf8("legacy-frank"))
+    val envelope1 = TxEnvelope(
+      networkId = NetworkId.unsafeFromLong(1),
+      createdAt = Instant.now(),
+      memo = None,
+    )
+
+    val createTx = CreateNamedAccount(
+      envelope = envelope1,
+      name = Utf8("legacy-frank"),
+      initialKeyId = keyId,
+      guardian = None,
+    )
+    val signedCreateTx = signTx(createTx, account, frankKeyPair)
+
+    val result1 = mounted.reducer.apply(signedCreateTx).run(initialState).value
+    assert(result1.isRight)
+    val stateAfterCreate = result1.toOption.get._1
+
+    val envelope2 = TxEnvelope(
+      networkId = NetworkId.unsafeFromLong(1),
+      createdAt = Instant.now(),
+      memo = None,
+    )
+
+    val legacyAddKeyIds =
+      (
+        envelope2.toBytes ++
+          Utf8("legacy-frank").toBytes ++
+          BigNat.Zero.toBytes ++
+          ByteEncoder[Map[KeyId20, Utf8]].encode(Map.empty) ++
+          ByteEncoder[Option[Instant]].encode(None: Option[Instant])
+      ).to[AddKeyIds] match
+        case Right(tx)    => tx
+        case Left(error)  => fail(s"Expected legacy AddKeyIds bytes to decode, got: $error")
+
+    val legacyRemoveKeyIds =
+      (
+        envelope2.toBytes ++
+          Utf8("legacy-frank").toBytes ++
+          BigNat.Zero.toBytes ++
+          ByteEncoder[Set[KeyId20]].encode(Set.empty)
+      ).to[RemoveKeyIds] match
+        case Right(tx)    => tx
+        case Left(error)  => fail(s"Expected legacy RemoveKeyIds bytes to decode, got: $error")
+
+    val addResult =
+      mounted.reducer
+        .apply(signTx(legacyAddKeyIds, account, frankKeyPair))
+        .run(stateAfterCreate)
+        .value
+    val removeResult =
+      mounted.reducer
+        .apply(signTx(legacyRemoveKeyIds, account, frankKeyPair))
+        .run(stateAfterCreate)
+        .value
+
+    addResult match
+      case Left(err) =>
+        assert(
+          err.msg.startsWith("invalid_request.accounts.key_ids_empty:"),
+          s"Expected structured invalid request, got: ${err.msg}",
+        )
+        assert(err.msg.contains("name=legacy-frank"))
+      case Right(_) =>
+        fail("Expected legacy empty AddKeyIds payload to fail")
+
+    removeResult match
+      case Left(err) =>
+        assert(
+          err.msg.startsWith("invalid_request.accounts.key_ids_empty:"),
+          s"Expected structured invalid request, got: ${err.msg}",
+        )
+        assert(err.msg.contains("name=legacy-frank"))
+      case Right(_) =>
+        fail("Expected legacy empty RemoveKeyIds payload to fail")
 
   test("AccountsBP: remove keys from account"):
     val bp = AccountsBP[Id]
@@ -509,7 +599,7 @@ class AccountsBlueprintTest extends FunSuite:
       memo = None,
     )
 
-    val addKeysTx = AddKeyIds(
+    val addKeysTx = AddKeyIds.unsafe(
       envelope = envelope2,
       name = Utf8("grace"),
       nonce = BigNat.Zero,
@@ -529,7 +619,7 @@ class AccountsBlueprintTest extends FunSuite:
       memo = None,
     )
 
-    val removeKeysTx = RemoveKeyIds(
+    val removeKeysTx = RemoveKeyIds.unsafe(
       envelope = envelope3,
       name = Utf8("grace"),
       nonce = BigNat.unsafeFromLong(1), // Nonce incremented after AddKeyIds

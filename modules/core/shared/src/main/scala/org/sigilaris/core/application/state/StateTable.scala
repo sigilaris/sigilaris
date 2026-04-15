@@ -150,7 +150,8 @@ object StateTable:
             .flatMap:
               case (nextTrieState, None) =>
                 // Phase 8: Record read access
-                val nextLog = storeState.accessLog.recordRead(prefix, fullKeyBytes)
+                val nextLog =
+                  storeState.accessLog.recordRead(prefix, fullKeyBytes)
                 EitherT.rightT[F, SigilarisFailure]:
                   (StoreState(nextTrieState, nextLog), None)
               case (nextTrieState, Some(bytes)) =>
@@ -179,7 +180,8 @@ object StateTable:
             .leftMap(err => TrieFailure(err): SigilarisFailure)
             .map: (nextTrieState, result) =>
               // Phase 8: Record write access
-              val nextLog = storeState.accessLog.recordWrite(prefix, fullKeyBytes)
+              val nextLog =
+                storeState.accessLog.recordWrite(prefix, fullKeyBytes)
               (StoreState(nextTrieState, nextLog), result)
 
       def remove(k: Key): StoreF[F][Boolean] =
@@ -193,5 +195,6 @@ object StateTable:
             .leftMap(err => TrieFailure(err): SigilarisFailure)
             .map: (nextTrieState, result) =>
               // Phase 8: Record write access (removal is a write)
-              val nextLog = storeState.accessLog.recordWrite(prefix, fullKeyBytes)
+              val nextLog =
+                storeState.accessLog.recordWrite(prefix, fullKeyBytes)
               (StoreState(nextTrieState, nextLog), result)

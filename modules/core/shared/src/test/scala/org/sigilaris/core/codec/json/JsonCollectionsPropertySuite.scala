@@ -7,7 +7,12 @@ import hedgehog.*
 final class JsonCollectionsPropertySuite extends HedgehogSuite:
 
   property("List[Int] roundtrip"):
-    for xs <- Gen.list(Gen.int(Range.linearFrom(0, Int.MinValue, Int.MaxValue)), Range.linear(0, 30)).forAll
+    for xs <- Gen
+        .list(
+          Gen.int(Range.linearFrom(0, Int.MinValue, Int.MaxValue)),
+          Range.linear(0, 30),
+        )
+        .forAll
     yield
       val json = JsonEncoder[List[Int]].encode(xs)
       val res  = JsonDecoder[List[Int]].decode(json)
@@ -22,7 +27,10 @@ final class JsonCollectionsPropertySuite extends HedgehogSuite:
       res ==== Right(xs)
 
   property("Option[Int] roundtrip (None encoded as null; decoder treats null)"):
-    for oi <- Gen.int(Range.linearFrom(0, Int.MinValue, Int.MaxValue)).option.forAll
+    for oi <- Gen
+        .int(Range.linearFrom(0, Int.MinValue, Int.MaxValue))
+        .option
+        .forAll
     yield
       val json = JsonEncoder[Option[Int]].encode(oi)
       val res  = JsonDecoder[Option[Int]].decode(json)

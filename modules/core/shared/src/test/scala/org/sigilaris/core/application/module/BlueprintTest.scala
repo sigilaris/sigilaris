@@ -13,11 +13,20 @@ import org.sigilaris.core.application.state.{
   Tables,
   TableOf,
 }
-import org.sigilaris.core.application.module.blueprint.{ModuleBlueprint, SchemaMapper, StateReducer0}
+import org.sigilaris.core.application.module.blueprint.{
+  ModuleBlueprint,
+  SchemaMapper,
+  StateReducer0,
+}
 import org.sigilaris.core.application.module.provider.TablesProvider
 import org.sigilaris.core.application.module.runtime.StateModule
 import org.sigilaris.core.application.support.compiletime.Requires
-import org.sigilaris.core.application.support.encoding.{encodePath, encodeSegment, lenBytes, tablePrefix}
+import org.sigilaris.core.application.support.encoding.{
+  encodePath,
+  encodeSegment,
+  lenBytes,
+  tablePrefix,
+}
 import org.sigilaris.core.application.transactions.{Signed, Tx, TxRegistry}
 import org.sigilaris.core.codec.byte.{ByteCodec, ByteDecoder}
 import org.sigilaris.core.codec.byte.ByteDecoder.ops.*
@@ -33,12 +42,13 @@ class BlueprintTest extends FunSuite:
 
   // Simple test schema: one table
   type BalancesEntry = Entry["balances", Utf8, Long]
-  type SimpleSchema = BalancesEntry *: EmptyTuple
+  type SimpleSchema  = BalancesEntry *: EmptyTuple
 
   // Create a simple blueprint (no tables - just schema descriptor)
-  def createSimpleBlueprint(): ModuleBlueprint[Id, "simple", SimpleSchema, EmptyTuple, EmptyTuple] =
+  def createSimpleBlueprint()
+      : ModuleBlueprint[Id, "simple", SimpleSchema, EmptyTuple, EmptyTuple] =
     // Create the runtime Entry instance
-    val balancesEntry = Entry["balances", Utf8, Long]
+    val balancesEntry        = Entry["balances", Utf8, Long]
     val schema: SimpleSchema = balancesEntry *: EmptyTuple
 
     val reducer = new StateReducer0[Id, SimpleSchema, EmptyTuple]:
@@ -50,7 +60,11 @@ class BlueprintTest extends FunSuite:
       ): StoreF[Id][(signedTx.value.Result, List[signedTx.value.Event])] =
         // Trivial implementation for testing
         import cats.data.StateT
-        StateT.pure((null.asInstanceOf[signedTx.value.Result], List.empty[signedTx.value.Event]))
+        StateT.pure:
+          (
+            null.asInstanceOf[signedTx.value.Result],
+            List.empty[signedTx.value.Event],
+          )
 
     new ModuleBlueprint[Id, "simple", SimpleSchema, EmptyTuple, EmptyTuple](
       owns = schema,
@@ -69,7 +83,10 @@ class BlueprintTest extends FunSuite:
     // Verify module is created
     assert(module1 != null, clue = "StateModule should not be null")
     assert(module1.tables != null, clue = "Mounted module should expose tables")
-    assert(module1.reducer != null, clue = "Mounted module should expose reducer")
+    assert(
+      module1.reducer != null,
+      clue = "Mounted module should expose reducer",
+    )
 
   test("mounting same blueprint at different paths creates different modules"):
     val blueprint = createSimpleBlueprint()
@@ -94,9 +111,18 @@ class BlueprintTest extends FunSuite:
     val prefix3 = encodePath[Path3]
 
     // All prefixes should be different
-    assert(prefix1 != prefix2, clue = "Different paths should produce different prefixes")
-    assert(prefix1 != prefix3, clue = "Different paths should produce different prefixes")
-    assert(prefix2 != prefix3, clue = "Different paths should produce different prefixes")
+    assert(
+      prefix1 != prefix2,
+      clue = "Different paths should produce different prefixes",
+    )
+    assert(
+      prefix1 != prefix3,
+      clue = "Different paths should produce different prefixes",
+    )
+    assert(
+      prefix2 != prefix3,
+      clue = "Different paths should produce different prefixes",
+    )
 
     // All should be non-empty
     assert(prefix1.nonEmpty, clue = "Path prefix should not be empty")
@@ -108,9 +134,18 @@ class BlueprintTest extends FunSuite:
     val seg2 = encodeSegment["accounts"]
     val seg3 = encodeSegment["metadata"]
 
-    assert(seg1 != seg2, clue = "Distinct table names should encode differently")
-    assert(seg1 != seg3, clue = "Distinct table names should encode differently")
-    assert(seg2 != seg3, clue = "Distinct table names should encode differently")
+    assert(
+      seg1 != seg2,
+      clue = "Distinct table names should encode differently",
+    )
+    assert(
+      seg1 != seg3,
+      clue = "Distinct table names should encode differently",
+    )
+    assert(
+      seg2 != seg3,
+      clue = "Distinct table names should encode differently",
+    )
 
     // All should be non-empty
     assert(seg1.nonEmpty, clue = "Encoded segment should not be empty")
@@ -122,7 +157,7 @@ class BlueprintTest extends FunSuite:
     type Name = "balances"
 
     val computedPrefix = tablePrefix[Path, Name]
-    val manualPrefix = encodePath[Path] ++ encodeSegment[Name]
+    val manualPrefix   = encodePath[Path] ++ encodeSegment[Name]
 
     assertEquals(computedPrefix, manualPrefix)
 
@@ -134,12 +169,30 @@ class BlueprintTest extends FunSuite:
     val prefix3 = tablePrefix[Path, "metadata"]
 
     // No prefix should be a prefix of another
-    assert(!prefix1.startsWith(prefix2), s"prefix1 should not start with prefix2")
-    assert(!prefix1.startsWith(prefix3), s"prefix1 should not start with prefix3")
-    assert(!prefix2.startsWith(prefix1), s"prefix2 should not start with prefix1")
-    assert(!prefix2.startsWith(prefix3), s"prefix2 should not start with prefix3")
-    assert(!prefix3.startsWith(prefix1), s"prefix3 should not start with prefix1")
-    assert(!prefix3.startsWith(prefix2), s"prefix3 should not start with prefix2")
+    assert(
+      !prefix1.startsWith(prefix2),
+      s"prefix1 should not start with prefix2",
+    )
+    assert(
+      !prefix1.startsWith(prefix3),
+      s"prefix1 should not start with prefix3",
+    )
+    assert(
+      !prefix2.startsWith(prefix1),
+      s"prefix2 should not start with prefix1",
+    )
+    assert(
+      !prefix2.startsWith(prefix3),
+      s"prefix2 should not start with prefix3",
+    )
+    assert(
+      !prefix3.startsWith(prefix1),
+      s"prefix3 should not start with prefix1",
+    )
+    assert(
+      !prefix3.startsWith(prefix2),
+      s"prefix3 should not start with prefix2",
+    )
 
   test("tablePrefix is prefix-free across different paths"):
     val prefix1 = tablePrefix[("app", "v1"), "balances"]
@@ -147,9 +200,18 @@ class BlueprintTest extends FunSuite:
     val prefix3 = tablePrefix["app" *: EmptyTuple, "balances"]
 
     // Different paths should produce non-overlapping prefixes
-    assert(prefix1 != prefix2, clue = "Different paths should yield different prefixes")
-    assert(prefix1 != prefix3, clue = "Different paths should yield different prefixes")
-    assert(prefix2 != prefix3, clue = "Different paths should yield different prefixes")
+    assert(
+      prefix1 != prefix2,
+      clue = "Different paths should yield different prefixes",
+    )
+    assert(
+      prefix1 != prefix3,
+      clue = "Different paths should yield different prefixes",
+    )
+    assert(
+      prefix2 != prefix3,
+      clue = "Different paths should yield different prefixes",
+    )
 
     // Verify prefix-free property
     assert(!prefix1.startsWith(prefix2))
@@ -174,9 +236,9 @@ class BlueprintTest extends FunSuite:
     assertEquals(path1, path2, "Same path should encode identically")
 
   test("lenBytes encodes non-negative integers"):
-    val len0 = lenBytes(0)
-    val len1 = lenBytes(1)
-    val len10 = lenBytes(10)
+    val len0   = lenBytes(0)
+    val len1   = lenBytes(1)
+    val len10  = lenBytes(10)
     val len255 = lenBytes(255)
 
     assert(len0.nonEmpty, clue = "Zero-length encoding should be non-empty")
@@ -187,14 +249,18 @@ class BlueprintTest extends FunSuite:
     // Different lengths should produce different encodings
     assert(len0 != len1, clue = "Different lengths should encode differently")
     assert(len1 != len10, clue = "Different lengths should encode differently")
-    assert(len10 != len255, clue = "Different lengths should encode differently")
+    assert(
+      len10 != len255,
+      clue = "Different lengths should encode differently",
+    )
 
   test("encodeSegment format: length-prefix + bytes + null terminator"):
     val segment = encodeSegment["abc"]
 
     // "abc" is 3 bytes in UTF-8
     // Format should be: lenBytes(3) ++ ByteVector("abc") ++ 0x00
-    val expected = lenBytes(3) ++ ByteVector("abc".getBytes("UTF-8")) ++ ByteVector(0x00)
+    val expected =
+      lenBytes(3) ++ ByteVector("abc".getBytes("UTF-8")) ++ ByteVector(0x00)
 
     assertEquals(segment, expected)
 
@@ -212,14 +278,14 @@ class BlueprintTest extends FunSuite:
     // The type is Tables[Id, SimpleSchema] = TableOf[Id, BalancesEntry] *: EmptyTuple
     val module1Tables: Tables[Id, SimpleSchema] = module1.tables
     val module2Tables: Tables[Id, SimpleSchema] = module2.tables
-    val table1: TableOf[Id, BalancesEntry] = module1Tables.head
-    val table2: TableOf[Id, BalancesEntry] = module2Tables.head
+    val table1: TableOf[Id, BalancesEntry]      = module1Tables.head
+    val table2: TableOf[Id, BalancesEntry]      = module2Tables.head
 
     // Verify tables are different instances
     assert(table1 ne table2, "Each mount should create fresh table instances")
 
     // Verify prefixes by doing a put/get and checking the keys in the trie
-    val key = table1.brand(Utf8("test"))
+    val key         = table1.brand(Utf8("test"))
     val value: Long = 42L
 
     // Put to table1
@@ -227,7 +293,7 @@ class BlueprintTest extends FunSuite:
       table1.put(key, value).run(StoreState.empty).value
     val (state1, _) = result1 match
       case Right(pair) => pair
-      case Left(err) => fail(s"Put failed: $err")
+      case Left(err)   => fail(s"Put failed: $err")
 
     // Put same logical key to table2
     val key2 = table2.brand(Utf8("test"))
@@ -235,10 +301,13 @@ class BlueprintTest extends FunSuite:
       table2.put(key2, value).run(StoreState.empty).value
     val (state2, _) = result2 match
       case Right(pair) => pair
-      case Left(err) => fail(s"Put failed: $err")
+      case Left(err)   => fail(s"Put failed: $err")
 
     // The states should have different roots because the actual keys differ
-    assert(state1.trieState.root != state2.trieState.root, "Different paths should produce different trie keys")
+    assert(
+      state1.trieState.root != state2.trieState.root,
+      "Different paths should produce different trie keys",
+    )
 
   test("mounted tables carry correct computed prefixes"):
     val blueprint = createSimpleBlueprint()
@@ -251,12 +320,12 @@ class BlueprintTest extends FunSuite:
 
     // Extract the table using TableOf type alias
     val moduleTables: Tables[Id, SimpleSchema] = module.tables
-    val table: TableOf[Id, BalancesEntry] = moduleTables.head
+    val table: TableOf[Id, BalancesEntry]      = moduleTables.head
 
     // Verify by encoding a key and checking it starts with the expected prefix
-    val testKey = Utf8("alice")
+    val testKey    = Utf8("alice")
     val encodedKey = ByteCodec[Utf8].encode(testKey)
-    val fullKey = expectedPrefix ++ encodedKey
+    val fullKey    = expectedPrefix ++ encodedKey
 
     // Put a value using the table
     val key = table.brand(testKey)
@@ -264,7 +333,7 @@ class BlueprintTest extends FunSuite:
       table.put(key, 100L).run(StoreState.empty).value
     val (state, _) = putResult match
       case Right(pair) => pair
-      case Left(err) => fail(s"Put failed: $err")
+      case Left(err)   => fail(s"Put failed: $err")
 
     // The state should contain the full key (prefix ++ encoded key) as nibbles
     val fullKeyNibbles = org.sigilaris.core.merkle.Nibbles.toNibbles(fullKey)
@@ -274,12 +343,12 @@ class BlueprintTest extends FunSuite:
       MerkleTrie.get[Id](fullKeyNibbles).runA(state.trieState).value
     val retrieved = retrievedResult match
       case Right(Some(bytes)) => bytes
-      case Right(None) => fail("Key should exist in trie")
-      case Left(err) => fail(s"Get failed: $err")
+      case Right(None)        => fail("Key should exist in trie")
+      case Left(err)          => fail(s"Get failed: $err")
 
     // Decode and verify the value
     val decodedValue = retrieved.to[Long] match
-      case Right(v) => v
+      case Right(v)  => v
       case Left(err) => fail(s"Decode failed: $err")
 
     assertEquals(decodedValue, 100L, "Retrieved value should match")
