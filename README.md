@@ -179,6 +179,6 @@ Built with:
 - Scala.js node-common: `org.sigilaris:sigilaris-node-common_sjs1_3:VERSION`
 - JVM node bundle: `org.sigilaris:sigilaris-node-jvm_3:VERSION`
 
-Current downstream adoption work in this repository uses local `0.2.0` artifacts via `publishLocal`.
+Current downstream adoption work in this repository uses local `0.2.1-SNAPSHOT` artifacts via `publishLocal`.
 
 **Scala Version:** 3.7.3
