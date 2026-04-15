@@ -17,47 +17,65 @@ enum HotStuffGossipArtifact:
 
 /** Companion for `HotStuffGossipArtifact`, providing topic/ID resolution and encoding. */
 object HotStuffGossipArtifact:
+  private final case class ArtifactMetadata(
+      tag: Byte,
+      topic: GossipTopic,
+      stableId: StableArtifactId,
+      encodedPayload: ByteVector,
+  )
+
+  private def metadataOf(
+      artifact: HotStuffGossipArtifact,
+  ): ArtifactMetadata =
+    artifact match
+      case HotStuffGossipArtifact.ProposalArtifact(proposal) =>
+        ArtifactMetadata(
+          tag = 0x01.toByte,
+          topic = GossipTopic.consensusProposal,
+          stableId =
+            StableArtifactId.unsafeFromBytes(proposal.proposalId.toUInt256.bytes),
+          encodedPayload = proposal.toBytes,
+        )
+      case HotStuffGossipArtifact.VoteArtifact(vote) =>
+        ArtifactMetadata(
+          tag = 0x02.toByte,
+          topic = GossipTopic.consensusVote,
+          stableId =
+            StableArtifactId.unsafeFromBytes(vote.voteId.toUInt256.bytes),
+          encodedPayload = vote.toBytes,
+        )
+      case HotStuffGossipArtifact.TimeoutVoteArtifact(timeoutVote) =>
+        ArtifactMetadata(
+          tag = 0x03.toByte,
+          topic = GossipTopic.consensusTimeoutVote,
+          stableId = StableArtifactId.unsafeFromBytes:
+            timeoutVote.timeoutVoteId.toUInt256.bytes,
+          encodedPayload = timeoutVote.toBytes,
+        )
+      case HotStuffGossipArtifact.NewViewArtifact(newView) =>
+        ArtifactMetadata(
+          tag = 0x04.toByte,
+          topic = GossipTopic.consensusNewView,
+          stableId =
+            StableArtifactId.unsafeFromBytes(newView.newViewId.toUInt256.bytes),
+          encodedPayload = newView.toBytes,
+        )
+
   /** Returns the gossip topic for the given artifact type. */
   def topicOf(
       artifact: HotStuffGossipArtifact,
   ): GossipTopic =
-    artifact match
-      case HotStuffGossipArtifact.ProposalArtifact(_) =>
-        GossipTopic.consensusProposal
-      case HotStuffGossipArtifact.VoteArtifact(_) => GossipTopic.consensusVote
-      case HotStuffGossipArtifact.TimeoutVoteArtifact(_) =>
-        GossipTopic.consensusTimeoutVote
-      case HotStuffGossipArtifact.NewViewArtifact(_) =>
-        GossipTopic.consensusNewView
+    metadataOf(artifact).topic
 
   /** Returns the stable artifact ID for the given artifact. */
   def stableIdOf(
       artifact: HotStuffGossipArtifact,
   ): StableArtifactId =
-    artifact match
-      case HotStuffGossipArtifact.ProposalArtifact(proposal) =>
-        StableArtifactId.unsafeFromBytes:
-          proposal.proposalId.toUInt256.bytes
-      case HotStuffGossipArtifact.VoteArtifact(vote) =>
-        StableArtifactId.unsafeFromBytes:
-          vote.voteId.toUInt256.bytes
-      case HotStuffGossipArtifact.TimeoutVoteArtifact(timeoutVote) =>
-        StableArtifactId.unsafeFromBytes:
-          timeoutVote.timeoutVoteId.toUInt256.bytes
-      case HotStuffGossipArtifact.NewViewArtifact(newView) =>
-        StableArtifactId.unsafeFromBytes:
-          newView.newViewId.toUInt256.bytes
+    metadataOf(artifact).stableId
 
   given ByteEncoder[HotStuffGossipArtifact] = artifact =>
-    artifact match
-      case HotStuffGossipArtifact.ProposalArtifact(proposal) =>
-        ByteVector.fromByte(0x01.toByte) ++ proposal.toBytes
-      case HotStuffGossipArtifact.VoteArtifact(vote) =>
-        ByteVector.fromByte(0x02.toByte) ++ vote.toBytes
-      case HotStuffGossipArtifact.TimeoutVoteArtifact(timeoutVote) =>
-        ByteVector.fromByte(0x03.toByte) ++ timeoutVote.toBytes
-      case HotStuffGossipArtifact.NewViewArtifact(newView) =>
-        ByteVector.fromByte(0x04.toByte) ++ newView.toBytes
+    val metadata = metadataOf(artifact)
+    ByteVector.fromByte(metadata.tag) ++ metadata.encodedPayload
 
 /** Per-topic gossip configuration for a HotStuff artifact type.
   *
@@ -213,6 +231,113 @@ object HotStuffWindowKey:
 
 /** Creates gossip topic contracts for each HotStuff artifact type. */
 object HotStuffTopic:
+  private final case class ArtifactContractView(
+      stableId: StableArtifactId,
+      chainId: ChainId,
+      window: HotStuffWindow,
+      invalidDetail: String,
+  )
+
+  private def viewFor(
+      artifact: HotStuffGossipArtifact,
+      chainId: ChainId,
+      window: HotStuffWindow,
+      invalidDetail: String,
+  ): ArtifactContractView =
+    ArtifactContractView(
+      stableId = HotStuffGossipArtifact.stableIdOf(artifact),
+      chainId = chainId,
+      window = window,
+      invalidDetail = invalidDetail,
+    )
+
+  private trait ArtifactContractSpec:
+    def topic: GossipTopic
+    def invalidReason: String
+    def viewOf(
+        artifact: HotStuffGossipArtifact,
+    ): Option[ArtifactContractView]
+
+  private object ProposalContractSpec extends ArtifactContractSpec:
+    val topic: GossipTopic        = GossipTopic.consensusProposal
+    val invalidReason: String     = "invalidConsensusProposalEvent"
+
+    def viewOf(
+        artifact: HotStuffGossipArtifact,
+    ): Option[ArtifactContractView] =
+      artifact match
+        case HotStuffGossipArtifact.ProposalArtifact(proposal) =>
+          Some(
+            viewFor(
+              artifact = artifact,
+              chainId = proposal.window.chainId,
+              window = proposal.window,
+              invalidDetail = proposal.proposalId.toHexLower,
+            ),
+          )
+        case _ =>
+          None
+
+  private object VoteContractSpec extends ArtifactContractSpec:
+    val topic: GossipTopic        = GossipTopic.consensusVote
+    val invalidReason: String     = "invalidConsensusVoteEvent"
+
+    def viewOf(
+        artifact: HotStuffGossipArtifact,
+    ): Option[ArtifactContractView] =
+      artifact match
+        case HotStuffGossipArtifact.VoteArtifact(vote) =>
+          Some(
+            viewFor(
+              artifact = artifact,
+              chainId = vote.window.chainId,
+              window = vote.window,
+              invalidDetail = vote.voteId.toHexLower,
+            ),
+          )
+        case _ =>
+          None
+
+  private object TimeoutVoteContractSpec extends ArtifactContractSpec:
+    val topic: GossipTopic        = GossipTopic.consensusTimeoutVote
+    val invalidReason: String     = "invalidConsensusTimeoutVoteEvent"
+
+    def viewOf(
+        artifact: HotStuffGossipArtifact,
+    ): Option[ArtifactContractView] =
+      artifact match
+        case HotStuffGossipArtifact.TimeoutVoteArtifact(timeoutVote) =>
+          Some(
+            viewFor(
+              artifact = artifact,
+              chainId = timeoutVote.subject.window.chainId,
+              window = timeoutVote.subject.window,
+              invalidDetail = timeoutVote.timeoutVoteId.toHexLower,
+            ),
+          )
+        case _ =>
+          None
+
+  private object NewViewContractSpec extends ArtifactContractSpec:
+    val topic: GossipTopic        = GossipTopic.consensusNewView
+    val invalidReason: String     = "invalidConsensusNewViewEvent"
+
+    def viewOf(
+        artifact: HotStuffGossipArtifact,
+    ): Option[ArtifactContractView] =
+      artifact match
+        case HotStuffGossipArtifact.NewViewArtifact(newView) =>
+          Some(
+            viewFor(
+              artifact = artifact,
+              chainId = newView.window.chainId,
+              window = newView.window,
+              invalidDetail = newView.newViewId.toHexLower,
+            ),
+          )
+        case _ =>
+          None
+
   private def scopeForWindow(
       topic: GossipTopic,
       chainId: ChainId,
@@ -226,12 +351,20 @@ object HotStuffTopic:
       ),
     )
 
-  /** Creates a gossip topic contract for proposal artifacts. */
-  def proposalContract(
+  private def unexpectedTopicPayload(
+      topic: GossipTopic,
+  ): CanonicalRejection.ArtifactContractRejected =
+    CanonicalRejection.ArtifactContractRejected(
+      reason = "unexpectedTopicPayload",
+      detail = Some(topic.value),
+    )
+
+  private def contractFor(
       policy: HotStuffTopicPolicy,
+      spec: ArtifactContractSpec,
   ): GossipTopicContract[HotStuffGossipArtifact] =
     new GossipTopicContract[HotStuffGossipArtifact]:
-      override val topic: GossipTopic = GossipTopic.consensusProposal
+      override val topic: GossipTopic = spec.topic
       override val exactKnownSetLimit: Option[Int] = Some:
         policy.exactKnownSetLimit
       override val requestByIdLimit: Option[Int] = Some(policy.requestByIdLimit)
@@ -245,221 +378,56 @@ object HotStuffTopic:
       override def validateArtifact(
           event: GossipEvent[HotStuffGossipArtifact],
       ): Either[CanonicalRejection.ArtifactContractRejected, Unit] =
-        event.payload match
-          case HotStuffGossipArtifact.ProposalArtifact(proposal) =>
-            val expectedId = StableArtifactId.unsafeFromBytes:
-              proposal.proposalId.toUInt256.bytes
+        spec.viewOf(event.payload) match
+          case Some(view) =>
             Either.cond(
               event.topic === topic &&
-                event.chainId === proposal.window.chainId &&
-                event.id === expectedId,
+                event.chainId === view.chainId &&
+                event.id === view.stableId,
               (),
               CanonicalRejection.ArtifactContractRejected(
-                reason = "invalidConsensusProposalEvent",
-                detail = Some(proposal.proposalId.toHexLower),
+                reason = spec.invalidReason,
+                detail = Some(view.invalidDetail),
               ),
             )
-          case _ =>
-            CanonicalRejection
-              .ArtifactContractRejected(
-                reason = "unexpectedTopicPayload",
-                detail = Some(topic.value),
-              )
-              .asLeft[Unit]
+          case None =>
+            unexpectedTopicPayload(topic).asLeft[Unit]
 
       override def exactKnownScopeOf(
           event: GossipEvent[HotStuffGossipArtifact],
       ): Either[CanonicalRejection.ArtifactContractRejected, Option[
         ExactKnownSetScope,
       ]] =
-        event.payload match
-          case HotStuffGossipArtifact.ProposalArtifact(proposal) =>
-            scopeForWindow(topic, proposal.window.chainId, proposal.window)
+        spec.viewOf(event.payload) match
+          case Some(view) =>
+            scopeForWindow(topic, view.chainId, view.window)
               .asRight[CanonicalRejection.ArtifactContractRejected]
-          case _ =>
-            CanonicalRejection
-              .ArtifactContractRejected(
-                reason = "unexpectedTopicPayload",
-                detail = Some(topic.value),
-              )
-              .asLeft[Option[ExactKnownSetScope]]
+          case None =>
+            unexpectedTopicPayload(topic).asLeft[Option[ExactKnownSetScope]]
+
+  /** Creates a gossip topic contract for proposal artifacts. */
+  def proposalContract(
+      policy: HotStuffTopicPolicy,
+  ): GossipTopicContract[HotStuffGossipArtifact] =
+    contractFor(policy, ProposalContractSpec)
 
   /** Creates a gossip topic contract for vote artifacts. */
   def voteContract(
       policy: HotStuffTopicPolicy,
   ): GossipTopicContract[HotStuffGossipArtifact] =
-    new GossipTopicContract[HotStuffGossipArtifact]:
-      override val topic: GossipTopic = GossipTopic.consensusVote
-      override val exactKnownSetLimit: Option[Int] = Some:
-        policy.exactKnownSetLimit
-      override val requestByIdLimit: Option[Int] = Some(policy.requestByIdLimit)
-      override val deliveryPriority: Int         = policy.deliveryPriority
-
-      override def producerQoS(
-          default: GossipProducerQoS,
-      ): GossipProducerQoS =
-        policy.producerQoS
-
-      override def validateArtifact(
-          event: GossipEvent[HotStuffGossipArtifact],
-      ): Either[CanonicalRejection.ArtifactContractRejected, Unit] =
-        event.payload match
-          case HotStuffGossipArtifact.VoteArtifact(vote) =>
-            val expectedId = StableArtifactId.unsafeFromBytes:
-              vote.voteId.toUInt256.bytes
-            Either.cond(
-              event.topic === topic &&
-                event.chainId === vote.window.chainId &&
-                event.id === expectedId,
-              (),
-              CanonicalRejection.ArtifactContractRejected(
-                reason = "invalidConsensusVoteEvent",
-                detail = Some(vote.voteId.toHexLower),
-              ),
-            )
-          case _ =>
-            CanonicalRejection
-              .ArtifactContractRejected(
-                reason = "unexpectedTopicPayload",
-                detail = Some(topic.value),
-              )
-              .asLeft[Unit]
-
-      override def exactKnownScopeOf(
-          event: GossipEvent[HotStuffGossipArtifact],
-      ): Either[CanonicalRejection.ArtifactContractRejected, Option[
-        ExactKnownSetScope,
-      ]] =
-        event.payload match
-          case HotStuffGossipArtifact.VoteArtifact(vote) =>
-            scopeForWindow(topic, vote.window.chainId, vote.window)
-              .asRight[CanonicalRejection.ArtifactContractRejected]
-          case _ =>
-            CanonicalRejection
-              .ArtifactContractRejected(
-                reason = "unexpectedTopicPayload",
-                detail = Some(topic.value),
-              )
-              .asLeft[Option[ExactKnownSetScope]]
+    contractFor(policy, VoteContractSpec)
 
   /** Creates a gossip topic contract for timeout vote artifacts. */
   def timeoutVoteContract(
       policy: HotStuffTopicPolicy,
   ): GossipTopicContract[HotStuffGossipArtifact] =
-    new GossipTopicContract[HotStuffGossipArtifact]:
-      override val topic: GossipTopic = GossipTopic.consensusTimeoutVote
-      override val exactKnownSetLimit: Option[Int] = Some:
-        policy.exactKnownSetLimit
-      override val requestByIdLimit: Option[Int] = Some(policy.requestByIdLimit)
-      override val deliveryPriority: Int         = policy.deliveryPriority
-
-      override def producerQoS(
-          default: GossipProducerQoS,
-      ): GossipProducerQoS =
-        policy.producerQoS
-
-      override def validateArtifact(
-          event: GossipEvent[HotStuffGossipArtifact],
-      ): Either[CanonicalRejection.ArtifactContractRejected, Unit] =
-        event.payload match
-          case HotStuffGossipArtifact.TimeoutVoteArtifact(timeoutVote) =>
-            val expectedId = StableArtifactId.unsafeFromBytes:
-              timeoutVote.timeoutVoteId.toUInt256.bytes
-            Either.cond(
-              event.topic === topic &&
-                event.chainId === timeoutVote.subject.window.chainId &&
-                event.id === expectedId,
-              (),
-              CanonicalRejection.ArtifactContractRejected(
-                reason = "invalidConsensusTimeoutVoteEvent",
-                detail = Some(timeoutVote.timeoutVoteId.toHexLower),
-              ),
-            )
-          case _ =>
-            CanonicalRejection
-              .ArtifactContractRejected(
-                reason = "unexpectedTopicPayload",
-                detail = Some(topic.value),
-              )
-              .asLeft[Unit]
-
-      override def exactKnownScopeOf(
-          event: GossipEvent[HotStuffGossipArtifact],
-      ): Either[CanonicalRejection.ArtifactContractRejected, Option[
-        ExactKnownSetScope,
-      ]] =
-        event.payload match
-          case HotStuffGossipArtifact.TimeoutVoteArtifact(timeoutVote) =>
-            scopeForWindow(
-              topic,
-              timeoutVote.subject.window.chainId,
-              timeoutVote.subject.window,
-            ).asRight[CanonicalRejection.ArtifactContractRejected]
-          case _ =>
-            CanonicalRejection
-              .ArtifactContractRejected(
-                reason = "unexpectedTopicPayload",
-                detail = Some(topic.value),
-              )
-              .asLeft[Option[ExactKnownSetScope]]
+    contractFor(policy, TimeoutVoteContractSpec)
 
   /** Creates a gossip topic contract for new-view artifacts. */
   def newViewContract(
       policy: HotStuffTopicPolicy,
   ): GossipTopicContract[HotStuffGossipArtifact] =
-    new GossipTopicContract[HotStuffGossipArtifact]:
-      override val topic: GossipTopic = GossipTopic.consensusNewView
-      override val exactKnownSetLimit: Option[Int] = Some:
-        policy.exactKnownSetLimit
-      override val requestByIdLimit: Option[Int] = Some(policy.requestByIdLimit)
-      override val deliveryPriority: Int         = policy.deliveryPriority
-
-      override def producerQoS(
-          default: GossipProducerQoS,
-      ): GossipProducerQoS =
-        policy.producerQoS
-
-      override def validateArtifact(
-          event: GossipEvent[HotStuffGossipArtifact],
-      ): Either[CanonicalRejection.ArtifactContractRejected, Unit] =
-        event.payload match
-          case HotStuffGossipArtifact.NewViewArtifact(newView) =>
-            val expectedId = StableArtifactId.unsafeFromBytes:
-              newView.newViewId.toUInt256.bytes
-            Either.cond(
-              event.topic === topic &&
-                event.chainId === newView.window.chainId &&
-                event.id === expectedId,
-              (),
-              CanonicalRejection.ArtifactContractRejected(
-                reason = "invalidConsensusNewViewEvent",
-                detail = Some(newView.newViewId.toHexLower),
-              ),
-            )
-          case _ =>
-            CanonicalRejection
-              .ArtifactContractRejected(
-                reason = "unexpectedTopicPayload",
-                detail = Some(topic.value),
-              )
-              .asLeft[Unit]
-
-      override def exactKnownScopeOf(
-          event: GossipEvent[HotStuffGossipArtifact],
-      ): Either[CanonicalRejection.ArtifactContractRejected, Option[
-        ExactKnownSetScope,
-      ]] =
-        event.payload match
-          case HotStuffGossipArtifact.NewViewArtifact(newView) =>
-            scopeForWindow(topic, newView.window.chainId, newView.window)
-              .asRight[CanonicalRejection.ArtifactContractRejected]
-          case _ =>
-            CanonicalRejection
-              .ArtifactContractRejected(
-                reason = "unexpectedTopicPayload",
-                detail = Some(topic.value),
-              )
-              .asLeft[Option[ExactKnownSetScope]]
+    contractFor(policy, NewViewContractSpec)
 
   /** Creates a complete gossip topic contract registry for all HotStuff artifact types. */
   @SuppressWarnings(Array("org.wartremover.warts.DefaultArguments"))
