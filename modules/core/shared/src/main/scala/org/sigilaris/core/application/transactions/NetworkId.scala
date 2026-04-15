@@ -15,6 +15,9 @@ import org.sigilaris.core.datatype.{BigNat, OpaqueValueCompanion}
   */
 opaque type NetworkId = BigNat
 
+/** Companion for [[NetworkId]] providing constructors and an extension method
+  * for unwrapping.
+  */
 object NetworkId extends OpaqueValueCompanion[NetworkId, BigNat]:
   /** Construct a `NetworkId` from a validated `BigNat`. */
   inline def apply(value: BigNat): NetworkId = value

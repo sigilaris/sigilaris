@@ -16,13 +16,13 @@ import datatype.UInt256
   * @param r
   *   signature component r, 32-byte [[datatype.UInt256]]
   * @param s
-  *   signature component s, 32-byte [[datatype.UInt256]], normalized to Low-S form (s ≤
-  *   n/2)
+  *   signature component s, 32-byte [[datatype.UInt256]], normalized to Low-S
+  *   form (s ≤ n/2)
   *
   * @example
   *   ```scala
-  *   val keyPair = CryptoOps.generate()
-  *   val hash = CryptoOps.keccak256("message".getBytes)
+  *   val keyPair   = CryptoOps.generate()
+  *   val hash      = CryptoOps.keccak256("message".getBytes)
   *   val signature = CryptoOps.sign(keyPair, hash).toOption.get
   *
   *   // Recover public key from signature
@@ -32,10 +32,14 @@ import datatype.UInt256
   * @note
   *   Signatures are normalized to Low-S form (s ≤ n/2) to prevent malleability
   *
-  * @see [[Sign]] for signature creation
-  * @see [[Recover]] for public key recovery
-  * @see [[CryptoOps.sign]] for signing
-  * @see [[CryptoOps.recover]] for recovery
+  * @see
+  *   [[Sign]] for signature creation
+  * @see
+  *   [[Recover]] for public key recovery
+  * @see
+  *   [[CryptoOps.sign]] for signing
+  * @see
+  *   [[CryptoOps.recover]] for recovery
   */
 final case class Signature(
     v: Int,
@@ -44,5 +48,3 @@ final case class Signature(
 ):
   override lazy val toString: String =
     ss"Signature(${v.toString}, ${r.toHexLower}, ${s.toHexLower})"
-
-

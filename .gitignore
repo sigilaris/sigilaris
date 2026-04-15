@@ -3,6 +3,8 @@ node_modules
 
 # generated unidoc preview
 docs/api/
+target/
+/data/
 
 # agents
 AGENTS-*.md

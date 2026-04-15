@@ -25,7 +25,10 @@ final case class TxEnvelope(
     networkId: NetworkId,
     createdAt: Instant,
     memo: Option[Utf8],
-) derives ByteEncoder, ByteDecoder
+) derives ByteEncoder,
+      ByteDecoder
 
+/** Companion for [[TxEnvelope]] providing typeclass instances. */
 object TxEnvelope:
+  /** Equality instance based on universal equals. */
   given Eq[TxEnvelope] = Eq.fromUniversalEquals

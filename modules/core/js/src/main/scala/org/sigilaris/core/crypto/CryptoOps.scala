@@ -6,7 +6,7 @@ import scala.scalajs.js.JSConverters.*
 import scala.scalajs.js.typedarray.Uint8Array
 
 import cats.syntax.either.*
- 
+
 import scodec.bits.ByteVector
 
 import datatype.UInt256
@@ -32,8 +32,8 @@ import util.SafeStringInterp.*
   *
   *   // Hash and sign
   *   val message = "hello".getBytes
-  *   val hash = CryptoOps.keccak256(message)
-  *   val sig = CryptoOps.sign(keyPair, hash).toOption.get
+  *   val hash    = CryptoOps.keccak256(message)
+  *   val sig     = CryptoOps.sign(keyPair, hash).toOption.get
   *
   *   // Recover public key
   *   val recovered = CryptoOps.recover(sig, hash)
@@ -44,8 +44,10 @@ import util.SafeStringInterp.*
   *   This is the Scala.js-specific implementation. Cross-platform code should
   *   use [[CryptoOpsLike]] interface.
   *
-  * @see [[CryptoOpsLike]] for the cross-platform interface
-  * @see [[facade]] for JavaScript library facades
+  * @see
+  *   [[CryptoOpsLike]] for the cross-platform interface
+  * @see
+  *   [[facade]] for JavaScript library facades
   */
 object CryptoOps extends CryptoOpsLike:
   @SuppressWarnings(Array("org.wartremover.warts.Throw"))
@@ -66,7 +68,8 @@ object CryptoOps extends CryptoOpsLike:
 
   @SuppressWarnings(Array("org.wartremover.warts.Throw"))
   def fromPrivate(privateKey: BigInt): KeyPair =
-    val priv32 = UInt256.fromBigIntUnsigned(privateKey)
+    val priv32 = UInt256
+      .fromBigIntUnsigned(privateKey)
       .getOrElse:
         throw new Exception(ss"Invalid private key: ${privateKey.toString(16)}")
       .bytes
@@ -79,8 +82,10 @@ object CryptoOps extends CryptoOpsLike:
     def asScala: KeyPair =
       val privHex = jsKeyPair.getPrivate().toStringBase(16)
       val pBigInt = BigInt(privHex, 16)
-      val p: UInt256 = UInt256.fromBigIntUnsigned(pBigInt).getOrElse:
-        throw new Exception(ss"Wrong private key: ${privHex}")
+      val p: UInt256 = UInt256
+        .fromBigIntUnsigned(pBigInt)
+        .getOrElse:
+          throw new Exception(ss"Wrong private key: ${privHex}")
 
       KeyPair(p, jsKeyPair.getPublic().asScala)
 
@@ -101,15 +106,28 @@ object CryptoOps extends CryptoOpsLike:
       "s" -> jsSig.s.toStringBase(16),
     )
     val pub0: PublicKey = ec
-      .recoverPubKey(transactionHash.toUint8Array, sigObj, 0, scala.scalajs.js.undefined)
+      .recoverPubKey(
+        transactionHash.toUint8Array,
+        sigObj,
+        0,
+        scala.scalajs.js.undefined,
+      )
       .asScala
     val pub1: PublicKey = ec
-      .recoverPubKey(transactionHash.toUint8Array, sigObj, 1, scala.scalajs.js.undefined)
+      .recoverPubKey(
+        transactionHash.toUint8Array,
+        sigObj,
+        1,
+        scala.scalajs.js.undefined,
+      )
       .asScala
     val recoveryParamEither: Either[failure.SigilarisFailure, Int] =
-      if pub0.toBigInt.equals(keyPair.publicKey.toBigInt) then 0.asRight[failure.SigilarisFailure]
-      else if pub1.toBigInt.equals(keyPair.publicKey.toBigInt) then 1.asRight[failure.SigilarisFailure]
-      else failure.DecodeFailure("Unable to determine recoveryParam").asLeft[Int]
+      if pub0.toBigInt.equals(keyPair.publicKey.toBigInt) then
+        0.asRight[failure.SigilarisFailure]
+      else if pub1.toBigInt.equals(keyPair.publicKey.toBigInt) then
+        1.asRight[failure.SigilarisFailure]
+      else
+        failure.DecodeFailure("Unable to determine recoveryParam").asLeft[Int]
     for
       recoveryParam <- recoveryParamEither
       v = 27 + recoveryParam
@@ -133,6 +151,11 @@ object CryptoOps extends CryptoOpsLike:
     )
 
     val pub: PublicKey = ec
-      .recoverPubKey(hashArray.toUint8Array, jsSig, signature.v - 27, js.undefined)
+      .recoverPubKey(
+        hashArray.toUint8Array,
+        jsSig,
+        signature.v - 27,
+        js.undefined,
+      )
       .asScala
     pub.asRight[failure.SigilarisFailure]

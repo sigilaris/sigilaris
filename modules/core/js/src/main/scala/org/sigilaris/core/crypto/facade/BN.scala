@@ -9,5 +9,3 @@ import scala.scalajs.js.annotation.*
 trait BN extends js.Object:
   @JSName("toString")
   def toStringBase(radix: Int): String = js.native
-
-

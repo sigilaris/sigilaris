@@ -8,5 +8,3 @@ import scala.scalajs.js
 trait BasePoint extends js.Object:
   def getX(): BN = js.native
   def getY(): BN = js.native
-
-

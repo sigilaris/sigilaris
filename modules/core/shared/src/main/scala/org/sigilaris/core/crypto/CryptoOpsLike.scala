@@ -8,8 +8,9 @@ package crypto
   * Platform-specific implementations exist for JS (via elliptic.js) and JVM
   * (via BouncyCastle).
   *
-  * @see [[org.sigilaris.core.crypto.CryptoOps]] for platform-specific
-  *      implementations
+  * @see
+  *   [[org.sigilaris.core.crypto.CryptoOps]] for platform-specific
+  *   implementations
   */
 trait CryptoOpsLike:
   /** Computes Keccak-256 hash of input bytes.
@@ -38,13 +39,17 @@ trait CryptoOpsLike:
 
   /** Derives a key pair from an existing private key.
     *
+    * The caller is expected to supply a value in the valid range `[1, n-1]`
+    * where `n` is the curve order. The implementation reduces `privateKey mod n`
+    * before scalar multiplication and only validates that the value fits into a
+    * `UInt256`; it does **not** reject out-of-range inputs explicitly.
+    *
     * @param privateKey
-    *   private key as BigInt, must be in range [1, n-1] where n is curve order
+    *   private key as BigInt; should be in range `[1, n-1]` (prevalidated)
     * @return
     *   [[KeyPair]] with the given private key and derived public key
-    *
-    * @note
-    *   Validates that privateKey is within valid range; throws on invalid input
+    * @throws Exception
+    *   if `privateKey` cannot be represented as a `UInt256`
     */
   def fromPrivate(privateKey: BigInt): KeyPair
 
@@ -62,7 +67,10 @@ trait CryptoOpsLike:
     *   - Normalizes signatures to Low-S form
     *   - Includes recovery parameter (v = 27 + recId)
     */
-  def sign(keyPair: KeyPair, transactionHash: Array[Byte]): Either[failure.SigilarisFailure, Signature]
+  def sign(
+      keyPair: KeyPair,
+      transactionHash: Array[Byte],
+  ): Either[failure.SigilarisFailure, Signature]
 
   /** Recovers public key from signature and message hash.
     *
@@ -77,6 +85,7 @@ trait CryptoOpsLike:
     *   - Accepts both High-S and Low-S signatures
     *   - Recovery parameter (v) must be 27, 28, 29, or 30
     */
-  def recover(signature: Signature, hashArray: Array[Byte]): Either[failure.SigilarisFailure, PublicKey]
-
-
+  def recover(
+      signature: Signature,
+      hashArray: Array[Byte],
+  ): Either[failure.SigilarisFailure, PublicKey]

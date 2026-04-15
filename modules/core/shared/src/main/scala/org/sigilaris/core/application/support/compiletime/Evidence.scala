@@ -1,6 +1,11 @@
 package org.sigilaris.core.application.support.compiletime
 
-import org.sigilaris.core.application.state.{Entry, EntryTuple, StateTable, Tables}
+import org.sigilaris.core.application.state.{
+  Entry,
+  EntryTuple,
+  StateTable,
+  Tables,
+}
 
 /** Evidence that all entries in Needs are present in Schema.
   *
@@ -30,6 +35,7 @@ import org.sigilaris.core.application.state.{Entry, EntryTuple, StateTable, Tabl
 )
 trait Requires[Needs <: Tuple, Schema <: Tuple]
 
+/** Companion for [[Requires]], providing base and inductive derivation instances. */
 object Requires:
   /** EmptyTuple requires nothing from any schema. */
   given emptyRequires[Schema <: Tuple]: Requires[EmptyTuple, Schema] =
@@ -53,6 +59,7 @@ object Requires:
   */
 trait Contains[E, T <: Tuple]
 
+/** Companion for [[Contains]], providing head and tail derivation instances. */
 object Contains:
   /** The element is at the head of the tuple. */
   given head[E, Tail <: Tuple]: Contains[E, E *: Tail] =
@@ -87,6 +94,7 @@ object Contains:
 )
 trait UniqueNames[Schema <: Tuple]
 
+/** Companion for [[UniqueNames]], providing derivation instances for empty, single, and cons cases. */
 object UniqueNames:
   /** EmptyTuple trivially has unique names. */
   given emptyUnique: UniqueNames[EmptyTuple] =
@@ -131,6 +139,7 @@ object UniqueNames:
 )
 trait NameNotInSchema[Name <: String, Schema <: Tuple]
 
+/** Companion for [[NameNotInSchema]], providing derivation instances. */
 object NameNotInSchema:
   /** EmptyTuple does not contain any name. */
   given empty[Name <: String]: NameNotInSchema[Name, EmptyTuple] =
@@ -200,6 +209,7 @@ type DifferentNames[Name1 <: String, Name2 <: String] =
 )
 trait PrefixFreePath[Path <: Tuple, Schema <: Tuple]
 
+/** Companion for [[PrefixFreePath]], providing derivation instances. */
 object PrefixFreePath:
   /** EmptyTuple trivially has no prefix collisions. */
   given emptyPrefixFree[Path <: Tuple]: PrefixFreePath[Path, EmptyTuple] =
@@ -300,6 +310,7 @@ trait Lookup[S <: Tuple, Name0 <: String, K0, V0]:
       tables: Tables[F, S],
   ): StateTable[F] { type Name = Name0; type K = K0; type V = V0 }
 
+/** Companion for [[Lookup]], providing head and tail derivation instances. */
 object Lookup:
   /** Base case: the named table is at the head of the schema. */
   given head[Name0 <: String, K0, V0, Tail <: Tuple]

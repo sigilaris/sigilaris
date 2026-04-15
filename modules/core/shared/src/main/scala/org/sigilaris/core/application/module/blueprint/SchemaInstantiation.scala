@@ -30,6 +30,7 @@ trait SchemaMapper[F[_], Path <: Tuple, Schema <: Tuple]:
     */
   def instantiate(schema: Schema): Tables[F, Schema]
 
+/** Companion for [[SchemaMapper]], providing derivation instances for empty and cons schemas. */
 object SchemaMapper:
   /** Base case: empty schema produces no tables. */
   given empty[F[_], Path <: Tuple]: SchemaMapper[F, Path, EmptyTuple] with

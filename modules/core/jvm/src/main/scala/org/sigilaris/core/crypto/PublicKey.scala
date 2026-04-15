@@ -4,6 +4,7 @@ package crypto
 import java.math.BigInteger
 import java.util.concurrent.atomic.AtomicReference
 
+import cats.Eq
 import cats.syntax.either.*
 import org.bouncycastle.math.ec.ECPoint
 import scodec.bits.ByteVector
@@ -25,12 +26,14 @@ import util.SafeStringInterp.*
   * [[org.sigilaris.core.crypto.internal.CryptoParams.CachePolicy]].
   *
   * @note
-  *   Equality and hashCode are based solely on the 64-byte x||y
-  *   representation, ensuring consistency across both internal forms.
+  *   Equality and hashCode are based solely on the 64-byte x||y representation,
+  *   ensuring consistency across both internal forms.
   *
-  * @see [[PublicKeyLike]] for the cross-platform interface
-  * @see [[org.sigilaris.core.crypto.internal.CryptoParams.CachePolicy]] for
-  *      caching behavior
+  * @see
+  *   [[PublicKeyLike]] for the cross-platform interface
+  * @see
+  *   [[org.sigilaris.core.crypto.internal.CryptoParams.CachePolicy]] for
+  *   caching behavior
   */
 sealed trait PublicKey extends PublicKeyLike:
   /** Returns the 64-byte uncompressed representation (x||y). */
@@ -58,6 +61,15 @@ sealed trait PublicKey extends PublicKeyLike:
   override final def hashCode(): Int = toBytes.hashCode
 
 object PublicKey:
+  /** Public key representation storing explicit x and y coordinates.
+    *
+    * Lazily computes and caches the BouncyCastle EC point when needed.
+    *
+    * @param x
+    *   x-coordinate as 32-byte [[datatype.UInt256]]
+    * @param y
+    *   y-coordinate as 32-byte [[datatype.UInt256]]
+    */
   final case class XY(x: UInt256, y: UInt256) extends PublicKey:
     private val cachedXY64Ref: AtomicReference[Option[Array[Byte]]] =
       new AtomicReference[Option[Array[Byte]]](None)
@@ -81,7 +93,8 @@ object PublicKey:
             System.arraycopy(xb, 0, out, 0, 32)
             System.arraycopy(yb, 0, out, 32, 32)
             out
-          if internal.CryptoParams.CachePolicy.enabled then cachedXY64Ref.set(Some(combined))
+          if internal.CryptoParams.CachePolicy.enabled then
+            cachedXY64Ref.set(Some(combined))
           combined
 
     override private[crypto] def asECPoint(): ECPoint =
@@ -98,12 +111,22 @@ object PublicKey:
                 System.arraycopy(xy, 0, enc, 1, 64)
                 enc
               })
-              if internal.CryptoParams.CachePolicy.enabled then cachedPointRef.set(Some(point))
+              if internal.CryptoParams.CachePolicy.enabled then
+                cachedPointRef.set(Some(point))
               point
-          val normalized = if decoded.isNormalized then decoded else decoded.normalize()
-          if internal.CryptoParams.CachePolicy.enabled then cachedPointNormRef.set(Some(normalized))
+          val normalized =
+            if decoded.isNormalized then decoded else decoded.normalize()
+          if internal.CryptoParams.CachePolicy.enabled then
+            cachedPointNormRef.set(Some(normalized))
           normalized
 
+  /** Public key representation wrapping a BouncyCastle EC point.
+    *
+    * Lazily computes and caches x/y coordinates and byte array when needed.
+    *
+    * @param p
+    *   BouncyCastle elliptic curve point
+    */
   final case class Point(p: ECPoint) extends PublicKey:
     private val cachedXY64Ref: AtomicReference[Option[Array[Byte]]] =
       new AtomicReference[Option[Array[Byte]]](None)
@@ -119,7 +142,8 @@ object PublicKey:
         case Some(np) => np
         case None =>
           val np = if p.isNormalized then p else p.normalize()
-          if internal.CryptoParams.CachePolicy.enabled then cachedNormRef.set(Some(np))
+          if internal.CryptoParams.CachePolicy.enabled then
+            cachedNormRef.set(Some(np))
           np
 
     @SuppressWarnings(Array("org.wartremover.warts.Throw"))
@@ -132,7 +156,8 @@ object PublicKey:
             UInt256.fromBigIntegerUnsigned(np.getAffineXCoord.toBigInteger) match
               case Right(u) => u
               case Left(e)  => throw new IllegalArgumentException(e.msg)
-          if internal.CryptoParams.CachePolicy.enabled then cachedXRef.set(Some(v))
+          if internal.CryptoParams.CachePolicy.enabled then
+            cachedXRef.set(Some(v))
           v
 
     @SuppressWarnings(Array("org.wartremover.warts.Throw"))
@@ -145,7 +170,8 @@ object PublicKey:
             UInt256.fromBigIntegerUnsigned(np.getAffineYCoord.toBigInteger) match
               case Right(u) => u
               case Left(e)  => throw new IllegalArgumentException(e.msg)
-          if internal.CryptoParams.CachePolicy.enabled then cachedYRef.set(Some(v))
+          if internal.CryptoParams.CachePolicy.enabled then
+            cachedYRef.set(Some(v))
           v
 
     private def xy64Array(): Array[Byte] =
@@ -157,7 +183,8 @@ object PublicKey:
           val out = new Array[Byte](64)
           System.arraycopy(xb, 0, out, 0, 32)
           System.arraycopy(yb, 0, out, 32, 32)
-          if internal.CryptoParams.CachePolicy.enabled then cachedXY64Ref.set(Some(out))
+          if internal.CryptoParams.CachePolicy.enabled then
+            cachedXY64Ref.set(Some(out))
           out
 
     override def toBytes: ByteVector =
@@ -172,10 +199,14 @@ object PublicKey:
     *   Right([[PublicKey]]) on success, Left(failure) if array length is not 64
     *   or coordinates are invalid
     */
-  def fromByteArray(array: Array[Byte]): Either[failure.UInt256Failure, PublicKey] =
+  def fromByteArray(
+      array: Array[Byte],
+  ): Either[failure.UInt256Failure, PublicKey] =
     if array.length != 64 then
       val len: String = array.length.toString
-      failure.UInt256Overflow(ss"Public key array size must be 64, got: ${len}").asLeft[PublicKey]
+      failure
+        .UInt256Overflow(ss"Public key array size must be 64, got: ${len}")
+        .asLeft[PublicKey]
     else
       val (xArr, yArr) = array splitAt 32
       for
@@ -207,12 +238,19 @@ object PublicKey:
     */
   def fromECPoint(p: ECPoint): PublicKey = Point(p)
 
+  /** [[codec.byte.ByteEncoder]] instance that serializes a public key to 64 bytes (x||y). */
   inline given pubkeyByteEncoder: ByteEncoder[PublicKey] with
     def encode(pubkey: PublicKey): ByteVector = pubkey.toBytes
 
+  /** [[codec.byte.ByteDecoder]] instance that deserializes a public key from 64 bytes (x||y). */
   given pubkeyByteDecoder: ByteDecoder[PublicKey] =
     ByteDecoder.fromFixedSizeBytes(64)(identity).emap { bytes =>
       fromByteArray(bytes.toArray).left.map(e => DecodeFailure(e.msg))
     }
 
+  /** Default [[Hash]] instance for public keys, using Keccak-256 over the 64-byte representation. */
   inline given Hash[PublicKey] = Hash.build
+
+  /** [[cats.Eq]] instance comparing public keys by their (x, y) coordinates. */
+  given Eq[PublicKey] =
+    Eq.by(publicKey => (publicKey.x, publicKey.y))

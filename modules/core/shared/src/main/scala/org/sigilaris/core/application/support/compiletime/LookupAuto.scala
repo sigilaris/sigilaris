@@ -9,6 +9,14 @@ import scala.quoted.*
   * descriptive compile-time error when the evidence cannot be derived.
   */
 object LookupAuto:
+  /** Derives a Lookup instance, reporting a descriptive compile-time error on failure.
+    *
+    * @tparam Schema the schema tuple
+    * @tparam Name the table name to look up
+    * @tparam K the expected key type
+    * @tparam V the expected value type
+    * @return a Lookup instance
+    */
   @SuppressWarnings(Array("org.wartremover.warts.Any"))
   transparent inline def derive[Schema <: Tuple, Name <: String, K, V]
       : Lookup[Schema, Name, K, V] =

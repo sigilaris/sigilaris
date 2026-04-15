@@ -31,14 +31,19 @@ import org.sigilaris.core.crypto.Signature
   */
 final case class ModuleId[Path <: Tuple] private (path: Path)
 
+/** Companion object for [[ModuleId]] providing construction and pattern
+  * matching.
+  */
 object ModuleId:
   /** Evidence that a tuple consists only of `String` elements. */
   sealed trait StringTuple[Path <: Tuple]
+  /** Companion providing given instances for [[StringTuple]]. */
   object StringTuple:
     given StringTuple[EmptyTuple] with {}
     given [H <: String, T <: Tuple](using StringTuple[T]): StringTuple[H *: T]
     with {}
 
+  /** Existential type alias for any `ModuleId` regardless of path. */
   type Any = ModuleId[? <: Tuple]
 
   /** Construct a `ModuleId` ensuring the tuple elements are all `String`s at
@@ -110,6 +115,9 @@ trait ModuleRoutedTx extends Tx:
 /** Compile-time marker that a reducer stack handles the given transaction. */
 trait ReducerCoverage[T <: Tx]
 
+/** Companion providing compile-time verification that all transactions in a
+  * tuple have reducer coverage.
+  */
 object TxRegistryCoverage:
   @SuppressWarnings(Array("org.wartremover.warts.Recursion"))
   transparent inline def ensureAll[Txs <: Tuple]: Unit =
@@ -141,6 +149,7 @@ final class TxRegistry[Txs <: Tuple]:
   ): TxRegistry[Txs ++ T2] =
     new TxRegistry[Txs ++ T2]
 
+/** Companion providing factory methods for [[TxRegistry]]. */
 object TxRegistry:
   /** Create an empty transaction registry. */
   def empty: TxRegistry[EmptyTuple] = new TxRegistry[EmptyTuple]
@@ -155,8 +164,8 @@ object TxRegistry:
 /** Account signature containing both the signing account and the signature.
   *
   * This binds a cryptographic signature to the account that produced it,
-  * enabling verification that the signature was created by a key controlled
-  * by the specified account.
+  * enabling verification that the signature was created by a key controlled by
+  * the specified account.
   *
   * @param account
   *   the account that signed the transaction
@@ -182,8 +191,8 @@ final case class AccountSignature(
   * carry a valid signature. This is enforced at compile time - attempting to
   * submit an unsigned transaction to a blueprint will result in a type error.
   *
-  * The covariant type parameter (+A <: Tx) allows Signed[CreateNamedAccount]
-  * to be used where Signed[Tx & ModuleRoutedTx] is expected, enabling flexible
+  * The covariant type parameter (+A <: Tx) allows Signed[CreateNamedAccount] to
+  * be used where Signed[Tx & ModuleRoutedTx] is expected, enabling flexible
   * composition while maintaining type safety.
   *
   * @tparam A

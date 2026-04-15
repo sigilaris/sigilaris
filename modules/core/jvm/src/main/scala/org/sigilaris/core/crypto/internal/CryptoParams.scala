@@ -25,7 +25,8 @@ object CryptoParams:
   val x9: X9IntegerConverter = new X9IntegerConverter()
 
   /** Fixed-point multiplier for efficient scalar multiplication. */
-  val fixedPointMultiplier: FixedPointCombMultiplier = new FixedPointCombMultiplier()
+  val fixedPointMultiplier: FixedPointCombMultiplier =
+    new FixedPointCombMultiplier()
 
   /** secp256k1 curve parameters from BouncyCastle. */
   val curveParams: X9ECParameters = CustomNamedCurves.getByName("secp256k1")
@@ -144,6 +145,4 @@ object CryptoParams:
         case Some(v) =>
           v.toLowerCase(Locale.ROOT) match
             case "false" => false
-            case _        => true
-
-
+            case _       => true

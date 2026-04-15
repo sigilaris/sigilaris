@@ -25,9 +25,11 @@ private[compiletime] object EvidencePretty:
       if tpe =:= TypeRepr.of[EmptyTuple] then "EmptyTuple"
       else
         tpe match
-          case AppliedType(tuple, List(head, tail)) if tuple =:= TypeRepr.of[*:] =>
+          case AppliedType(tuple, List(head, tail))
+              if tuple =:= TypeRepr.of[*:] =>
             val headStr = head match
-              case AppliedType(entry, args) if entry =:= TypeRepr.of[Entry[?, ?, ?]] =>
+              case AppliedType(entry, args)
+                  if entry =:= TypeRepr.of[Entry[?, ?, ?]] =>
                 val nameRepr  = args(0)
                 val keyRepr   = args(1)
                 val valueRepr = args(2)
@@ -39,7 +41,8 @@ private[compiletime] object EvidencePretty:
                 s"Entry[\"${nameStr}\", ${keyStr}, ${valueStr}]"
               case other => other.show
             val tailStr: String = loop(tail)
-            if tailStr.equals("EmptyTuple") then headStr else s"${headStr} *: ${tailStr}"
+            if tailStr.equals("EmptyTuple") then headStr
+            else s"${headStr} *: ${tailStr}"
           case other => other.show
 
     loop(TypeRepr.of[S].dealias)

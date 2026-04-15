@@ -10,8 +10,8 @@ import util.SafeStringInterp.*
   * and recovering public keys from signatures.
   *
   * @param privateKey
-  *   32-byte private key as [[datatype.UInt256]], must be in range [1, n-1] where n is
-  *   the secp256k1 curve order
+  *   32-byte private key as [[datatype.UInt256]], must be in range [1, n-1]
+  *   where n is the secp256k1 curve order
   * @param publicKey
   *   corresponding 64-byte uncompressed public key (x||y coordinates)
   *
@@ -22,14 +22,14 @@ import util.SafeStringInterp.*
   *
   *   // Derive from existing private key
   *   val privateKey = UInt256.fromHex("0123...").toOption.get
-  *   val keyPair2 = CryptoOps.fromPrivate(privateKey.toBigInt)
+  *   val keyPair2   = CryptoOps.fromPrivate(privateKey.toBigInt)
   *   ```
   *
-  * @see [[CryptoOps.generate]] for key pair generation
-  * @see [[CryptoOps.fromPrivate]] for deriving from private key
+  * @see
+  *   [[CryptoOps.generate]] for key pair generation
+  * @see
+  *   [[CryptoOps.fromPrivate]] for deriving from private key
   */
 final case class KeyPair(privateKey: UInt256, publicKey: PublicKey):
   override lazy val toString: String =
     ss"KeyPair(${privateKey.toHexLower}, ${publicKey.toString})"
-
-
