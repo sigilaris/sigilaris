@@ -1,71 +1,90 @@
 # Sigilaris
 
-A purely functional library for building application-specific private blockchains in Scala.
+Sigilaris is a Scala toolkit for building deterministic blockchain applications
+and running a static-baseline HotStuff node stack. The public repository
+currently ships three layers:
 
-## Overview
+- `sigilaris-core`
+- `sigilaris-node-common`
+- `sigilaris-node-jvm`
 
-Sigilaris provides type-safe, deterministic building blocks for constructing custom blockchain applications. Built on the cats-effect ecosystem, it offers cross-platform support for both JVM and JavaScript, enabling you to create tailored blockchain solutions with compile-time guarantees.
+## Module Stack
 
-## Features
+- `sigilaris-core` provides deterministic codecs, cryptography, Merkle-state
+  primitives, and the application/assembly model for composing stateful
+  blockchain features.
+- `sigilaris-node-common` adds the cross-platform gossip/session/bootstrap
+  contract layer plus transaction anti-entropy runtime logic.
+- `sigilaris-node-jvm` adds the JVM runtime bundle: lifecycle seams, config and
+  bootstrap assembly, HotStuff integration, Armeria transport adapters, and
+  SwayDB-backed storage helpers.
 
-- **Application-Specific Design**: Build custom private blockchains tailored to your exact requirements
-- **Deterministic Encoding**: Guaranteed consistent byte representation for hashing and signatures
-- **Purely Functional**: Built on cats-effect for composable and referential transparent operations
-- **Cross-Platform**: Supports both JVM and Scala.js
-- **Type-Safe**: Leverages Scala's type system for compile-time safety
-- **Library-Agnostic**: Flexible JSON codec works with any backend (Circe, Play JSON, etc.)
+## Current Baseline
 
-## Getting Started
-
-Add Sigilaris to your `build.sbt`:
-
-```scala
-libraryDependencies += "org.sigilaris" %%% "sigilaris-core" % "@VERSION@"
-```
+- Static peer topology is the current deployment baseline.
+- The shipped transport enforces per-peer shared-secret HMAC proofs and
+  session-bound bootstrap capability tokens.
+- The HotStuff bootstrap baseline covers finalized-anchor suggestion discovery,
+  static trust-root verification, snapshot sync, anchor-pinned forward catch-up,
+  and low-priority historical backfill.
+- Pacemaker timeout-vote, timeout-certificate, and new-view progression are
+  part of the current JVM baseline.
+- A repo-local reference smoke harness exercises static multi-node launch with
+  `sbt "testOnly org.sigilaris.node.jvm.runtime.consensus.hotstuff.HotStuffLaunchSmokeSuite"`.
 
 ## Documentation
 
-### Core Modules
+### English
 
-#### Data Types
-Type-safe opaque types for blockchain primitives with built-in codec support.
-- [한국어 문서](ko/datatype/README.md) | [English Documentation](en/datatype/README.md)
-- Includes: BigNat (arbitrary-precision naturals), UInt256 (256-bit unsigned), Utf8 (length-prefixed strings)
-- Zero-cost abstractions with compile-time safety and automatic validation
+- Core fundamentals:
+  [Data Types](en/datatype/README.md),
+  [Byte Codec](en/byte-codec/README.md),
+  [JSON Codec](en/json-codec/README.md),
+  [Crypto](en/crypto/README.md),
+  [Merkle Trie](en/merkle/README.md)
+- Application architecture:
+  [Assembly DSL](en/assembly/README.md),
+  [Application Module](en/application/README.md)
+- Node runtime:
+  [Node Common](en/node-common/README.md),
+  [Node JVM](en/node-jvm/README.md)
+- Other notes:
+  [Performance](en/performance/crypto-ops.md)
 
-#### Byte Codec
-Deterministic byte encoding/decoding for custom blockchain implementations.
-- [한국어 문서](ko/byte-codec/README.md) | [English Documentation](en/byte-codec/README.md)
-- Essential for: Transaction signing, block hashing, state commitment, consensus mechanisms
-- Guarantees identical byte representation across all nodes
+### 한국어
 
-#### JSON Codec
-Library-agnostic JSON encoding/decoding for blockchain APIs and configuration.
-- [한국어 문서](ko/json-codec/README.md) | [English Documentation](en/json-codec/README.md)
-- Use cases: RPC API serialization, node configuration, off-chain data interchange
-- Flexible backend support for seamless integration
+- 코어 문서:
+  [데이터 타입](ko/datatype/README.md),
+  [바이트 코덱](ko/byte-codec/README.md),
+  [JSON 코덱](ko/json-codec/README.md),
+  [암호화](ko/crypto/README.md),
+  [머클 트라이](ko/merkle/README.md)
+- 애플리케이션 아키텍처:
+  [Assembly DSL](ko/assembly/README.md),
+  [애플리케이션 모듈](ko/application/README.md)
+- 노드 런타임:
+  [Node Common](ko/node-common/README.md),
+  [Node JVM](ko/node-jvm/README.md)
+- 기타:
+  [성능 노트](ko/performance/crypto-ops.md)
 
-#### Crypto
-High-performance cryptographic primitives for blockchain applications.
-- [한국어 문서](ko/crypto/README.md) | [English Documentation](en/crypto/README.md)
-- Features: secp256k1 ECDSA, Keccak-256 hashing, signature recovery, Low-S normalization
-- Cross-platform: Unified API for JVM (BouncyCastle) and JS (elliptic.js)
+### API Reference
 
-### API Documentation
-- [Latest Release API](https://javadoc.io/doc/org.sigilaris/sigilaris-core_3/latest/index.html)
-- [Development API](https://sigilaris.github.io/sigilaris/api/index.html)
+- [Generated API Reference](https://sigilaris.github.io/sigilaris/api/index.html)
 
-### Coming Soon
-- **Consensus Algorithms**: Pluggable consensus for private blockchain networks
-- **P2P Networking**: Node discovery and communication protocols
-- **State Management**: Persistent storage abstractions for blockchain state
+## Current Limitations
 
-## License
+- Validator set rotation, dynamic peer discovery, automatic failover, and
+  productized launcher/orchestrator packaging are not part of the current
+  public baseline.
+- Restart, fencing, and DR sequencing remain operator-managed.
+- The current launch and consensus story assumes a static, same-DC style
+  environment rather than an internet-scale deployment model.
 
-Sigilaris is dual-licensed to support both open-source and commercial blockchain projects:
-- [AGPL-3.0](https://www.gnu.org/licenses/agpl-3.0.en.html) for open source and public blockchain projects
-- Commercial license available for private/enterprise blockchain deployments - contact [contact@sigilaris.org](mailto:contact@sigilaris.org)
+## Build
 
-## Links
+The published narrative site and generated API are built together with:
 
-- [GitHub Repository](https://github.com/sigilaris/sigilaris)
+```bash
+sbt ";unidoc;tlSite"
+```
