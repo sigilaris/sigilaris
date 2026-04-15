@@ -466,13 +466,14 @@ object HotStuffBootstrapConfig:
             "deliveryPriority",
             default.deliveryPriority,
           )
-        yield HotStuffTopicPolicy(
-          exactKnownSetLimit = exactKnownSetLimit,
-          requestByIdLimit = requestByIdLimit,
-          maxBatchItems = maxBatchItems,
-          flushInterval = Duration.ofMillis(flushIntervalMs),
-          deliveryPriority = deliveryPriority,
-        )
+          policy <- HotStuffTopicPolicy(
+            exactKnownSetLimit = exactKnownSetLimit,
+            requestByIdLimit = requestByIdLimit,
+            maxBatchItems = maxBatchItems,
+            flushInterval = Duration.ofMillis(flushIntervalMs),
+            deliveryPriority = deliveryPriority,
+          )
+        yield policy
 
   private def requiredString(
       config: Config,

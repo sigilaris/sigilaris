@@ -951,7 +951,7 @@ final class HotStuffBootstrapArmeriaAdapterSuite extends CatsEffectSuite:
     val baseHeight = anchorHeight - 1L
     val bootstrapSubject = QuorumCertificateSubject(
       window =
-        HotStuffWindow(chainId, baseHeight, baseHeight, validatorSet.hash),
+        HotStuffWindow.unsafe(chainId, baseHeight, baseHeight, validatorSet.hash),
       proposalId = ProposalId(hex(seed + "01")),
       blockId = BlockId(hex(seed + "02")),
     )
@@ -975,7 +975,7 @@ final class HotStuffBootstrapArmeriaAdapterSuite extends CatsEffectSuite:
       Proposal
         .sign(
           UnsignedProposal(
-            window = HotStuffWindow(
+            window = HotStuffWindow.unsafe(
               chainId,
               anchorHeight,
               anchorHeight,
@@ -1046,7 +1046,7 @@ final class HotStuffBootstrapArmeriaAdapterSuite extends CatsEffectSuite:
       seed: String,
   ): Proposal =
     val bootstrapSubject = QuorumCertificateSubject(
-      window = HotStuffWindow(chainId, 0L, 0L, validatorSet.hash),
+      window = HotStuffWindow.unsafe(chainId, 0L, 0L, validatorSet.hash),
       proposalId = ProposalId(hex(seed + "01")),
       blockId = BlockId(hex(seed + "02")),
     )
@@ -1069,7 +1069,7 @@ final class HotStuffBootstrapArmeriaAdapterSuite extends CatsEffectSuite:
     Proposal
       .sign(
         UnsignedProposal(
-          window = HotStuffWindow(chainId, 0L, 0L, validatorSet.hash),
+          window = HotStuffWindow.unsafe(chainId, 0L, 0L, validatorSet.hash),
           proposer = validatorSet.members.head.id,
           targetBlockId = BlockHeader.computeId(genesisBlock),
           block = genesisBlock,
@@ -1098,7 +1098,7 @@ final class HotStuffBootstrapArmeriaAdapterSuite extends CatsEffectSuite:
     Proposal
       .sign(
         UnsignedProposal(
-          window = HotStuffWindow(chainId, height, height, validatorSet.hash),
+          window = HotStuffWindow.unsafe(chainId, height, height, validatorSet.hash),
           proposer = validatorSet.members(signerIndex).id,
           targetBlockId = BlockHeader.computeId(blockHeader),
           block = blockHeader,

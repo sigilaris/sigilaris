@@ -102,7 +102,7 @@ final class HotStuffGossipLoopbackSuite extends CatsEffectSuite:
             rootHex = "81",
           ),
           txSet = ProposalTxSet.empty,
-          window = HotStuffWindow(chainId, 2L, 1L, validatorSet.hash),
+          window = HotStuffWindow.unsafe(chainId, 2L, 1L, validatorSet.hash),
           justify = justify,
           ts = baseInstant,
         )
@@ -243,13 +243,13 @@ final class HotStuffGossipLoopbackSuite extends CatsEffectSuite:
             rootHex = "82",
           ),
           txSet = ProposalTxSet.empty,
-          window = HotStuffWindow(chainId, 2L, 1L, validatorSet.hash),
+          window = HotStuffWindow.unsafe(chainId, 2L, 1L, validatorSet.hash),
           justify = justify,
           ts = baseInstant,
         )
         .flatMap(unwrapPolicy)
       proposal           = proposalPayload(proposalEvent)
-      timeoutWindow      = HotStuffWindow(chainId, 2L, 1L, validatorSet.hash)
+      timeoutWindow      = HotStuffWindow.unsafe(chainId, 2L, 1L, validatorSet.hash)
       timeoutCertificate = timeoutCertificateFor(timeoutWindow, justify)
       _ <- a.consensus
         .emitVote(
@@ -268,7 +268,7 @@ final class HotStuffGossipLoopbackSuite extends CatsEffectSuite:
           rootHex = "83",
         ),
         txSet = ProposalTxSet.empty,
-        window = HotStuffWindow(chainId, 3L, 2L, validatorSet.hash),
+        window = HotStuffWindow.unsafe(chainId, 3L, 2L, validatorSet.hash),
         justify = justify,
         ts = baseInstant.plusMillis(10),
       )
@@ -400,7 +400,7 @@ final class HotStuffGossipLoopbackSuite extends CatsEffectSuite:
       opened <- openOutbound(a, b)
       sessionId      = opened.proposal.sessionId
       highestKnownQc = bootstrapQc()
-      timeoutWindow  = HotStuffWindow(chainId, 2L, 1L, validatorSet.hash)
+      timeoutWindow  = HotStuffWindow.unsafe(chainId, 2L, 1L, validatorSet.hash)
       timeoutVote1Event <- a.consensus
         .emitTimeoutVote(
           voter = validatorSet.members(0).id,
@@ -564,9 +564,9 @@ final class HotStuffGossipLoopbackSuite extends CatsEffectSuite:
       ),
     )
 
-    val proposalWindow  = HotStuffWindow(chainId, 2L, 2L, validatorSet.hash)
-    val stalledWindow   = HotStuffWindow(chainId, 3L, 3L, validatorSet.hash)
-    val recoveredWindow = HotStuffWindow(chainId, 3L, 4L, validatorSet.hash)
+    val proposalWindow  = HotStuffWindow.unsafe(chainId, 2L, 2L, validatorSet.hash)
+    val stalledWindow   = HotStuffWindow.unsafe(chainId, 3L, 3L, validatorSet.hash)
+    val recoveredWindow = HotStuffWindow.unsafe(chainId, 3L, 4L, validatorSet.hash)
     val localLeaderKey =
       HotStuffPacemakerKey(chainId, validatorSet.members(0).id)
 
@@ -728,7 +728,7 @@ final class HotStuffGossipLoopbackSuite extends CatsEffectSuite:
           (0L to 2L).forall: delta =>
             automaticValidators.contains(
               HotStuffPacemaker.deterministicLeader(
-                HotStuffWindow(
+                HotStuffWindow.unsafe(
                   chainId,
                   height + delta,
                   height + delta,
@@ -741,7 +741,7 @@ final class HotStuffGossipLoopbackSuite extends CatsEffectSuite:
           throw new IllegalStateException("expected local leader run"),
         )
     val seedWindow =
-      HotStuffWindow(chainId, seedHeight, seedHeight, validatorSet.hash)
+      HotStuffWindow.unsafe(chainId, seedHeight, seedHeight, validatorSet.hash)
     val seedLeader =
       HotStuffPacemaker.deterministicLeader(seedWindow, validatorSet)
 
@@ -914,7 +914,7 @@ final class HotStuffGossipLoopbackSuite extends CatsEffectSuite:
             rootHex = "89",
           ),
           txSet = ProposalTxSet.empty,
-          window = HotStuffWindow(chainId, 2L, 1L, validatorSet.hash),
+          window = HotStuffWindow.unsafe(chainId, 2L, 1L, validatorSet.hash),
           justify = justify,
           ts = baseInstant,
         )
@@ -1025,7 +1025,7 @@ final class HotStuffGossipLoopbackSuite extends CatsEffectSuite:
             rootHex = "8a",
           ),
           txSet = ProposalTxSet.empty,
-          window = HotStuffWindow(chainId, 2L, 1L, validatorSet.hash),
+          window = HotStuffWindow.unsafe(chainId, 2L, 1L, validatorSet.hash),
           justify = justify,
           ts = baseInstant,
         )
@@ -1112,7 +1112,7 @@ final class HotStuffGossipLoopbackSuite extends CatsEffectSuite:
             rootHex = "8b",
           ),
           txSet = ProposalTxSet.empty,
-          window = HotStuffWindow(chainId, 2L, 1L, validatorSet.hash),
+          window = HotStuffWindow.unsafe(chainId, 2L, 1L, validatorSet.hash),
           justify = justify,
           ts = baseInstant,
         )
@@ -1218,7 +1218,7 @@ final class HotStuffGossipLoopbackSuite extends CatsEffectSuite:
             rootHex = "88",
           ),
           txSet = ProposalTxSet.empty,
-          window = HotStuffWindow(chainId, 2L, 1L, validatorSet.hash),
+          window = HotStuffWindow.unsafe(chainId, 2L, 1L, validatorSet.hash),
           justify = justify,
           ts = baseInstant,
         )
@@ -1320,7 +1320,7 @@ final class HotStuffGossipLoopbackSuite extends CatsEffectSuite:
               rootHex = "84",
             ),
             txSet = ProposalTxSet.empty,
-            window = HotStuffWindow(chainId, 2L, 1L, validatorSet.hash),
+            window = HotStuffWindow.unsafe(chainId, 2L, 1L, validatorSet.hash),
             justify = justify,
             ts = baseInstant,
           ),
@@ -1335,7 +1335,7 @@ final class HotStuffGossipLoopbackSuite extends CatsEffectSuite:
               rootHex = "85",
             ),
             txSet = ProposalTxSet.empty,
-            window = HotStuffWindow(chainId, 2L, 1L, validatorSet.hash),
+            window = HotStuffWindow.unsafe(chainId, 2L, 1L, validatorSet.hash),
             justify = justify,
             ts = baseInstant.plusMillis(1),
           ),
@@ -1400,7 +1400,7 @@ final class HotStuffGossipLoopbackSuite extends CatsEffectSuite:
             rootHex = "86",
           ),
           txSet = ProposalTxSet.empty,
-          window = HotStuffWindow(chainId, 2L, 1L, validatorSet.hash),
+          window = HotStuffWindow.unsafe(chainId, 2L, 1L, validatorSet.hash),
           justify = justify,
           ts = baseInstant,
         )
@@ -1506,7 +1506,7 @@ final class HotStuffGossipLoopbackSuite extends CatsEffectSuite:
             rootHex = "8c",
           ),
           txSet = ProposalTxSet.empty,
-          window = HotStuffWindow(chainId, 2L, 1L, validatorSet.hash),
+          window = HotStuffWindow.unsafe(chainId, 2L, 1L, validatorSet.hash),
           justify = justify,
           ts = baseInstant,
         )
@@ -1722,7 +1722,7 @@ final class HotStuffGossipLoopbackSuite extends CatsEffectSuite:
             rootHex = "8d",
           ),
           txSet = ProposalTxSet.empty,
-          window = HotStuffWindow(chainId, 2L, 1L, validatorSet.hash),
+          window = HotStuffWindow.unsafe(chainId, 2L, 1L, validatorSet.hash),
           justify = justify,
           ts = baseInstant,
         )
@@ -1998,7 +1998,7 @@ final class HotStuffGossipLoopbackSuite extends CatsEffectSuite:
         Proposal
           .sign(
             UnsignedProposal(
-              window = HotStuffWindow(chainId, 2L, 1L, validatorSet.hash),
+              window = HotStuffWindow.unsafe(chainId, 2L, 1L, validatorSet.hash),
               proposer = validatorSet.members.head.id,
               targetBlockId = BlockHeader.computeId(
                 block(
@@ -2079,7 +2079,7 @@ final class HotStuffGossipLoopbackSuite extends CatsEffectSuite:
     yield OpenedSession(proposal, accepted.ack)
 
   private def bootstrapQc(): QuorumCertificate =
-    val window = HotStuffWindow(chainId, 0L, 0L, validatorSet.hash)
+    val window = HotStuffWindow.unsafe(chainId, 0L, 0L, validatorSet.hash)
     val subject = QuorumCertificateSubject(
       window = window,
       proposalId = ProposalId(hex("70")),

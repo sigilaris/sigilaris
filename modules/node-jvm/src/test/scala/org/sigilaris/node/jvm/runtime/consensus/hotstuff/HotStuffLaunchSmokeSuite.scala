@@ -195,9 +195,9 @@ final class HotStuffLaunchSmokeSuite extends CatsEffectSuite:
         at = tsAt(20L),
       )
       val stalledWindow =
-        HotStuffWindow(chainId, 3L, 3L, validatorSet.hash)
+        HotStuffWindow.unsafe(chainId, 3L, 3L, validatorSet.hash)
       val recoveredWindow =
-        HotStuffWindow(chainId, 3L, 4L, validatorSet.hash)
+        HotStuffWindow.unsafe(chainId, 3L, 4L, validatorSet.hash)
       val holders = initialHolders
 
       validatorNodesResource(root, holders, validatorNodeSpecs.take(3)).use:
@@ -323,21 +323,21 @@ final class HotStuffLaunchSmokeSuite extends CatsEffectSuite:
             val expectedAutomaticHeights = Set(0L, 1L, 2L, 3L, 4L, 5L)
             assertEquals(
               HotStuffPacemaker.deterministicLeader(
-                HotStuffWindow(chainId, 1L, 1L, validatorSet.hash),
+                HotStuffWindow.unsafe(chainId, 1L, 1L, validatorSet.hash),
                 validatorSet,
               ),
               validatorSet.members(1).id,
             )
             assertEquals(
               HotStuffPacemaker.deterministicLeader(
-                HotStuffWindow(chainId, 2L, 2L, validatorSet.hash),
+                HotStuffWindow.unsafe(chainId, 2L, 2L, validatorSet.hash),
                 validatorSet,
               ),
               validatorSet.members(2).id,
             )
             assertEquals(
               HotStuffPacemaker.deterministicLeader(
-                HotStuffWindow(chainId, 3L, 3L, validatorSet.hash),
+                HotStuffWindow.unsafe(chainId, 3L, 3L, validatorSet.hash),
                 validatorSet,
               ),
               validatorSet.members(3).id,
@@ -540,7 +540,7 @@ final class HotStuffLaunchSmokeSuite extends CatsEffectSuite:
                         height3Proposal <- IO.fromOption(
                           proposalAtWindow(
                             primarySnapshot,
-                            HotStuffWindow(chainId, 3L, 3L, validatorSet.hash),
+                            HotStuffWindow.unsafe(chainId, 3L, 3L, validatorSet.hash),
                           ),
                         )(
                           new IllegalStateException(
@@ -1433,7 +1433,7 @@ final class HotStuffLaunchSmokeSuite extends CatsEffectSuite:
     requireEither(
       Proposal.sign(
         UnsignedProposal(
-          window = HotStuffWindow(chainId, 0L, 0L, validatorSet.hash),
+          window = HotStuffWindow.unsafe(chainId, 0L, 0L, validatorSet.hash),
           proposer = validatorSet.members(0).id,
           targetBlockId = BlockHeader.computeId(genesisBlock),
           block = genesisBlock,
@@ -1449,7 +1449,7 @@ final class HotStuffLaunchSmokeSuite extends CatsEffectSuite:
       seed: String,
   ): QuorumCertificate =
     val subject = QuorumCertificateSubject(
-      window = HotStuffWindow(chainId, 0L, 0L, validatorSet.hash),
+      window = HotStuffWindow.unsafe(chainId, 0L, 0L, validatorSet.hash),
       proposalId = ProposalId(hex(seed + "01")),
       blockId = BlockId(hex(seed + "02")),
     )
@@ -1523,7 +1523,7 @@ final class HotStuffLaunchSmokeSuite extends CatsEffectSuite:
       at: Instant,
   ): Proposal =
     val proposer = validatorSet.members(proposerIndex).id
-    val window   = HotStuffWindow(chainId, height, view, validatorSet.hash)
+    val window   = HotStuffWindow.unsafe(chainId, height, view, validatorSet.hash)
     val txIds    = txSeeds.map(stableTxId)
     require(
       HotStuffPacemaker.deterministicLeader(window, validatorSet) === proposer,

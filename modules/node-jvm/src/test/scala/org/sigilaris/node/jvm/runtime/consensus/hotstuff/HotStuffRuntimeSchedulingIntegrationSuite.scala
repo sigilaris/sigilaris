@@ -103,7 +103,7 @@ final class HotStuffRuntimeSchedulingIntegrationSuite extends CatsEffectSuite:
         stateRoot = StateRoot(hex("81")),
         timestamp =
           BlockTimestamp.unsafeFromEpochMillis(startedAt.toEpochMilli),
-        window = HotStuffWindow(chainId, 2L, 1L, validatorSet.hash),
+        window = HotStuffWindow.unsafe(chainId, 2L, 1L, validatorSet.hash),
         justify = bootstrapQc(),
         ts = startedAt,
         blockStore = blockStore,
@@ -162,7 +162,7 @@ final class HotStuffRuntimeSchedulingIntegrationSuite extends CatsEffectSuite:
           proposer = validatorSet.members.head.id,
           block = view.header,
           txSet = ProposalTxSet.fromTxs(view.body.records.toVector.map(_.tx)),
-          window = HotStuffWindow(chainId, 2L, 1L, validatorSet.hash),
+          window = HotStuffWindow.unsafe(chainId, 2L, 1L, validatorSet.hash),
           justify = bootstrapQc(),
           ts = startedAt,
         )
@@ -208,7 +208,7 @@ final class HotStuffRuntimeSchedulingIntegrationSuite extends CatsEffectSuite:
           proposer = validatorSet.members.head.id,
           block = view.header,
           txSet = ProposalTxSet.fromTxs(view.body.records.toVector.map(_.tx)),
-          window = HotStuffWindow(chainId, 2L, 1L, validatorSet.hash),
+          window = HotStuffWindow.unsafe(chainId, 2L, 1L, validatorSet.hash),
           justify = bootstrapQc(),
           ts = startedAt,
         )
@@ -300,7 +300,7 @@ final class HotStuffRuntimeSchedulingIntegrationSuite extends CatsEffectSuite:
     )
 
   private def bootstrapQc(): QuorumCertificate =
-    val window = HotStuffWindow(chainId, 0L, 0L, validatorSet.hash)
+    val window = HotStuffWindow.unsafe(chainId, 0L, 0L, validatorSet.hash)
     val subject = QuorumCertificateSubject(
       window = window,
       proposalId = ProposalId(hex("70")),

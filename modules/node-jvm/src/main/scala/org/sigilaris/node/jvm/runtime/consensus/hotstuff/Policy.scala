@@ -160,12 +160,21 @@ object HotStuffHeight:
       BigNat.bignatOrdering.gteq(height.toBigNat, other.toBigNat)
     def next: HotStuffHeight = apply:
       BigNat.add(height.toBigNat, BigNat.One)
-    def +(delta: Long): HotStuffHeight =
-      if delta < 0L then
-        throw new IllegalArgumentException("height delta must be non-negative")
-      else
-        apply:
-          BigNat.add(height.toBigNat, BigNat.unsafeFromLong(delta))
+    def +(delta: Long): Either[String, HotStuffHeight] =
+      Either
+        .cond(
+          delta >= 0L,
+          (),
+          "height delta must be non-negative",
+        )
+        .map: _ =>
+          apply:
+            BigNat.add(height.toBigNat, BigNat.unsafeFromLong(delta))
+
+    def unsafeAdd(delta: Long): HotStuffHeight =
+      height.+(delta) match
+        case Right(updated) => updated
+        case Left(error)    => throw new IllegalArgumentException(error)
 
   given ByteEncoder[HotStuffHeight] = ByteEncoder[BigNat].contramap(_.toBigNat)
   given Eq[HotStuffHeight]          = Eq.by(_.toBigNat)
@@ -212,12 +221,21 @@ object HotStuffView:
       BigNat.bignatOrdering.gteq(view.toBigNat, other.toBigNat)
     def next: HotStuffView = apply:
       BigNat.add(view.toBigNat, BigNat.One)
-    def +(delta: Long): HotStuffView =
-      if delta < 0L then
-        throw new IllegalArgumentException("view delta must be non-negative")
-      else
-        apply:
-          BigNat.add(view.toBigNat, BigNat.unsafeFromLong(delta))
+    def +(delta: Long): Either[String, HotStuffView] =
+      Either
+        .cond(
+          delta >= 0L,
+          (),
+          "view delta must be non-negative",
+        )
+        .map: _ =>
+          apply:
+            BigNat.add(view.toBigNat, BigNat.unsafeFromLong(delta))
+
+    def unsafeAdd(delta: Long): HotStuffView =
+      view.+(delta) match
+        case Right(updated) => updated
+        case Left(error)    => throw new IllegalArgumentException(error)
 
   given ByteEncoder[HotStuffView] = ByteEncoder[BigNat].contramap(_.toBigNat)
   given Eq[HotStuffView]          = Eq.by(_.toBigNat)
@@ -239,21 +257,40 @@ final case class HotStuffWindow(
 )
 
 /** Companion for `HotStuffWindow`. */
+@SuppressWarnings(Array("org.wartremover.warts.Throw"))
 object HotStuffWindow:
   given Eq[HotStuffWindow] = Eq.fromUniversalEquals
 
-  def apply(
+  def fromLongs(
+      chainId: ChainId,
+      height: Long,
+      view: Long,
+      validatorSetHash: ValidatorSetHash,
+  ): Either[String, HotStuffWindow] =
+    for
+      validatedHeight <- HotStuffHeight.fromLong(height)
+      validatedView   <- HotStuffView.fromLong(view)
+    yield HotStuffWindow(
+      chainId = chainId,
+      height = validatedHeight,
+      view = validatedView,
+      validatorSetHash = validatorSetHash,
+    )
+
+  def unsafe(
       chainId: ChainId,
       height: Long,
       view: Long,
       validatorSetHash: ValidatorSetHash,
   ): HotStuffWindow =
-    new HotStuffWindow(
+    fromLongs(
       chainId = chainId,
-      height = HotStuffHeight.unsafeFromLong(height),
-      view = HotStuffView.unsafeFromLong(view),
+      height = height,
+      view = view,
       validatorSetHash = validatorSetHash,
-    )
+    ) match
+      case Right(window) => window
+      case Left(error)   => throw new IllegalArgumentException(error)
 
 /** Key for detecting equivocation (double-voting) by a validator in a specific window. */
 final case class EquivocationKey(
@@ -264,19 +301,38 @@ final case class EquivocationKey(
 )
 
 /** Companion for `EquivocationKey`. */
+@SuppressWarnings(Array("org.wartremover.warts.Throw"))
 object EquivocationKey:
-  def apply(
+  def fromLongs(
+      chainId: ChainId,
+      validatorId: ValidatorId,
+      height: Long,
+      view: Long,
+  ): Either[String, EquivocationKey] =
+    for
+      validatedHeight <- HotStuffHeight.fromLong(height)
+      validatedView   <- HotStuffView.fromLong(view)
+    yield EquivocationKey(
+      chainId = chainId,
+      validatorId = validatorId,
+      height = validatedHeight,
+      view = validatedView,
+    )
+
+  def unsafe(
       chainId: ChainId,
       validatorId: ValidatorId,
       height: Long,
       view: Long,
   ): EquivocationKey =
-    new EquivocationKey(
+    fromLongs(
       chainId = chainId,
       validatorId = validatorId,
-      height = HotStuffHeight.unsafeFromLong(height),
-      view = HotStuffView.unsafeFromLong(view),
-    )
+      height = height,
+      view = view,
+    ) match
+      case Right(key)   => key
+      case Left(error)  => throw new IllegalArgumentException(error)
 
 /** The role of the local node in the consensus network. */
 enum LocalNodeRole:
@@ -313,46 +369,100 @@ final case class ValidatorKeyHolder(
 )
 
 /** Policy limits for gossip request batching in the HotStuff protocol. */
-final case class HotStuffRequestPolicy(
+final case class HotStuffRequestPolicy private (
     maxProposalRequestIds: Int,
     maxVoteRequestIds: Int,
     maxRetryAttemptsPerWindow: Int,
-):
-  require(maxProposalRequestIds > 0, "maxProposalRequestIds must be positive")
-  require(maxVoteRequestIds > 0, "maxVoteRequestIds must be positive")
-  require(
-    maxRetryAttemptsPerWindow >= 0,
-    "maxRetryAttemptsPerWindow must be non-negative",
-  )
+)
 
 /** Companion for `HotStuffRequestPolicy`. */
+@SuppressWarnings(Array("org.wartremover.warts.Throw"))
 object HotStuffRequestPolicy:
+  def apply(
+      maxProposalRequestIds: Int,
+      maxVoteRequestIds: Int,
+      maxRetryAttemptsPerWindow: Int,
+  ): Either[String, HotStuffRequestPolicy] =
+    Either
+      .cond(
+        maxProposalRequestIds > 0,
+        (),
+        "maxProposalRequestIds must be positive",
+      )
+      .flatMap: _ =>
+        Either.cond(
+          maxVoteRequestIds > 0,
+          (),
+          "maxVoteRequestIds must be positive",
+        )
+      .flatMap: _ =>
+        Either.cond(
+          maxRetryAttemptsPerWindow >= 0,
+          new HotStuffRequestPolicy(
+            maxProposalRequestIds = maxProposalRequestIds,
+            maxVoteRequestIds = maxVoteRequestIds,
+            maxRetryAttemptsPerWindow = maxRetryAttemptsPerWindow,
+          ),
+          "maxRetryAttemptsPerWindow must be non-negative",
+        )
+
+  def unsafe(
+      maxProposalRequestIds: Int,
+      maxVoteRequestIds: Int,
+      maxRetryAttemptsPerWindow: Int,
+  ): HotStuffRequestPolicy =
+    apply(
+      maxProposalRequestIds = maxProposalRequestIds,
+      maxVoteRequestIds = maxVoteRequestIds,
+      maxRetryAttemptsPerWindow = maxRetryAttemptsPerWindow,
+    ) match
+      case Right(policy) => policy
+      case Left(error)   => throw new IllegalArgumentException(error)
+
   /** The default request policy. */
   val default: HotStuffRequestPolicy =
-    HotStuffRequestPolicy(
+    unsafe(
       maxProposalRequestIds = 128,
       maxVoteRequestIds = 512,
       maxRetryAttemptsPerWindow = 2,
     )
 
 /** Deployment target parameters for block production timing. */
-final case class HotStuffDeploymentTarget(
+final case class HotStuffDeploymentTarget private (
     blockProductionInterval: Duration,
-):
-  require(
-    !blockProductionInterval.isNegative,
-    "blockProductionInterval must be non-negative",
-  )
-  require(
-    !blockProductionInterval.isZero,
-    "blockProductionInterval must be positive",
-  )
+)
 
 /** Companion for `HotStuffDeploymentTarget`. */
+@SuppressWarnings(Array("org.wartremover.warts.Throw"))
 object HotStuffDeploymentTarget:
+  def apply(
+      blockProductionInterval: Duration,
+  ): Either[String, HotStuffDeploymentTarget] =
+    Either
+      .cond(
+        !blockProductionInterval.isNegative,
+        (),
+        "blockProductionInterval must be non-negative",
+      )
+      .flatMap: _ =>
+        Either.cond(
+          !blockProductionInterval.isZero,
+          new HotStuffDeploymentTarget(
+            blockProductionInterval = blockProductionInterval,
+          ),
+          "blockProductionInterval must be positive",
+        )
+
+  def unsafe(
+      blockProductionInterval: Duration,
+  ): HotStuffDeploymentTarget =
+    apply(blockProductionInterval = blockProductionInterval) match
+      case Right(target) => target
+      case Left(error)   => throw new IllegalArgumentException(error)
+
   /** The default deployment target (100ms block production interval). */
   val default: HotStuffDeploymentTarget =
-    HotStuffDeploymentTarget(blockProductionInterval = Duration.ofMillis(100))
+    unsafe(blockProductionInterval = Duration.ofMillis(100))
 
 /** Controls whether validated artifacts are relayed to the gossip source for re-broadcast. */
 final case class HotStuffRelayPolicy(
@@ -396,10 +506,24 @@ object HotStuffPolicy:
   /** Computes the BFT quorum size (n - f where f = (n-1)/3) for the given validator count. */
   def quorumSize(
       activeValidatorCount: Int,
+  ): Either[String, Int] =
+    Either.cond(
+      activeValidatorCount > 0,
+      {
+        val toleratedFaults = (activeValidatorCount - 1) / 3
+        activeValidatorCount - toleratedFaults
+      },
+      "activeValidatorCount must be positive",
+    )
+
+  @SuppressWarnings(Array("org.wartremover.warts.Throw"))
+  private[hotstuff] def validatedQuorumSize(
+      activeValidatorCount: Int,
   ): Int =
-    require(activeValidatorCount > 0, "activeValidatorCount must be positive")
-    val toleratedFaults = (activeValidatorCount - 1) / 3
-    activeValidatorCount - toleratedFaults
+    quorumSize(activeValidatorCount) match
+      case Right(quorum) => quorum
+      case Left(error)   => throw new IllegalArgumentException(error)
+
 
   /** Validates that no validator has multiple active key holders on different peers. */
   def ensureDistinctActiveKeyHolders(

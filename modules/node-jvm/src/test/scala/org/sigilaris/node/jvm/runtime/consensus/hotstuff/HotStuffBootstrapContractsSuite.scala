@@ -51,9 +51,9 @@ final class HotStuffBootstrapContractsSuite extends CatsEffectSuite:
 
     for
       matching <- lookup.validatorSetFor:
-        HotStuffWindow(chainId, 1L, 1L, validatorSet.hash)
+        HotStuffWindow.unsafe(chainId, 1L, 1L, validatorSet.hash)
       missing <- lookup.validatorSetFor:
-        HotStuffWindow(chainId, 1L, 1L, otherValidatorSet.hash)
+        HotStuffWindow.unsafe(chainId, 1L, 1L, otherValidatorSet.hash)
     yield
       assertEquals(matching.map(_.hash), Right(validatorSet.hash))
       assertEquals(missing.left.map(_.reason), Left("validatorSetUnavailable"))
@@ -64,7 +64,7 @@ final class HotStuffBootstrapContractsSuite extends CatsEffectSuite:
     val checkpointRoot =
       BootstrapTrustRoot
         .trustedCheckpoint(
-          HotStuffWindow(chainId, 10L, 3L, otherValidatorSet.hash),
+          HotStuffWindow.unsafe(chainId, 10L, 3L, otherValidatorSet.hash),
           otherValidatorSet,
         )
         .toOption
@@ -77,9 +77,9 @@ final class HotStuffBootstrapContractsSuite extends CatsEffectSuite:
 
     for
       checkpointSet <- lookup.validatorSetFor:
-        HotStuffWindow(chainId, 10L, 3L, otherValidatorSet.hash)
+        HotStuffWindow.unsafe(chainId, 10L, 3L, otherValidatorSet.hash)
       currentSet <- lookup.validatorSetFor:
-        HotStuffWindow(chainId, 11L, 4L, validatorSet.hash)
+        HotStuffWindow.unsafe(chainId, 11L, 4L, validatorSet.hash)
     yield
       assertEquals(checkpointSet.map(_.hash), Right(otherValidatorSet.hash))
       assertEquals(currentSet.map(_.hash), Right(validatorSet.hash))
@@ -89,7 +89,7 @@ final class HotStuffBootstrapContractsSuite extends CatsEffectSuite:
   ):
     val mismatched =
       BootstrapTrustRoot.trustedCheckpoint(
-        HotStuffWindow(chainId, 7L, 2L, validatorSet.hash),
+        HotStuffWindow.unsafe(chainId, 7L, 2L, validatorSet.hash),
         otherValidatorSet,
       )
 

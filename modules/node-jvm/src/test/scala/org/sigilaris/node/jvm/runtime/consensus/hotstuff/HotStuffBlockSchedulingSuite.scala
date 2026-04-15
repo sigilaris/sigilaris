@@ -348,7 +348,7 @@ final class HotStuffBlockSchedulingSuite extends FunSuite:
       txSet: Option[ProposalTxSet] = None,
   ): Proposal =
     val parentBlock      = parentHeader()
-    val parentWindow     = HotStuffWindow(chainId, 0L, 0L, validatorSet.hash)
+    val parentWindow     = HotStuffWindow.unsafe(chainId, 0L, 0L, validatorSet.hash)
     val parentProposalId = ProposalId(hex("10"))
     val subject = QuorumCertificateSubject(
       window = parentWindow,
@@ -371,7 +371,7 @@ final class HotStuffBlockSchedulingSuite extends FunSuite:
     Proposal
       .sign(
         UnsignedProposal(
-          window = HotStuffWindow(chainId, 1L, 1L, validatorSet.hash),
+          window = HotStuffWindow.unsafe(chainId, 1L, 1L, validatorSet.hash),
           proposer = validatorSet.members.head.id,
           targetBlockId = BlockHeader.computeId(block),
           block = block,

@@ -131,7 +131,7 @@ final class ValidatorSet private (
 
   /** Returns the minimum number of votes needed for a quorum (2f+1 for 3f+1 validators). */
   def quorumSize: Int =
-    HotStuffPolicy.quorumSize(membersById.size)
+    HotStuffPolicy.validatedQuorumSize(membersById.size)
 
 /** Companion for `ValidatorSet`. */
 @SuppressWarnings(Array("org.wartremover.warts.Throw"))

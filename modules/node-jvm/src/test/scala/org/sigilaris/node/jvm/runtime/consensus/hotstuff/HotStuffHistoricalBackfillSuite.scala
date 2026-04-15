@@ -608,7 +608,7 @@ final class HotStuffHistoricalBackfillSuite extends CatsEffectSuite:
   ): FinalizedAnchorSuggestion =
     val baseHeight = anchorHeight - 1L
     val bootstrapSubject = QuorumCertificateSubject(
-      window = HotStuffWindow(
+      window = HotStuffWindow.unsafe(
         chainId,
         baseHeight,
         baseHeight,
@@ -642,7 +642,7 @@ final class HotStuffHistoricalBackfillSuite extends CatsEffectSuite:
       Proposal
         .sign(
           UnsignedProposal(
-            window = HotStuffWindow(
+            window = HotStuffWindow.unsafe(
               chainId,
               anchorHeight,
               anchorHeight,
@@ -686,7 +686,7 @@ final class HotStuffHistoricalBackfillSuite extends CatsEffectSuite:
       keys: Vector[org.sigilaris.core.crypto.KeyPair] = validatorKeys,
   ): Proposal =
     val bootstrapSubject = QuorumCertificateSubject(
-      window = HotStuffWindow(chainId, 0L, 0L, activeValidatorSet.hash),
+      window = HotStuffWindow.unsafe(chainId, 0L, 0L, activeValidatorSet.hash),
       proposalId = ProposalId(hex(seed + "01")),
       blockId = BlockId(hex(seed + "02")),
     )
@@ -714,7 +714,7 @@ final class HotStuffHistoricalBackfillSuite extends CatsEffectSuite:
     Proposal
       .sign(
         UnsignedProposal(
-          window = HotStuffWindow(chainId, 0L, 0L, activeValidatorSet.hash),
+          window = HotStuffWindow.unsafe(chainId, 0L, 0L, activeValidatorSet.hash),
           proposer = activeValidatorSet.members(0).id,
           targetBlockId = BlockHeader.computeId(genesisBlock),
           block = genesisBlock,
@@ -746,7 +746,7 @@ final class HotStuffHistoricalBackfillSuite extends CatsEffectSuite:
       .sign(
         UnsignedProposal(
           window =
-            HotStuffWindow(chainId, height, height, activeValidatorSet.hash),
+            HotStuffWindow.unsafe(chainId, height, height, activeValidatorSet.hash),
           proposer = activeValidatorSet.members((height.toInt % 3).min(2)).id,
           targetBlockId = BlockHeader.computeId(blockHeader),
           block = blockHeader,

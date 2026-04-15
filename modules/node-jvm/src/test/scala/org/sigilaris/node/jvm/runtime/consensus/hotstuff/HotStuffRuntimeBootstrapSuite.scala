@@ -811,7 +811,7 @@ final class HotStuffRuntimeBootstrapSuite extends CatsEffectSuite:
       Proposal
         .sign(
           UnsignedProposal(
-            window = HotStuffWindow(chainId, 1L, 1L, validatorSet.hash),
+            window = HotStuffWindow.unsafe(chainId, 1L, 1L, validatorSet.hash),
             proposer = validatorIds(0),
             targetBlockId = BlockHeader.computeId(header),
             block = header,
@@ -1369,14 +1369,14 @@ final class HotStuffRuntimeBootstrapSuite extends CatsEffectSuite:
       )
       rootLookup <- bootstrap.consensus.bootstrapServices.validatorSetLookup
         .validatorSetFor:
-          HotStuffWindow(chainId, 9L, 4L, historicalValidatorSet.hash)
+          HotStuffWindow.unsafe(chainId, 9L, 4L, historicalValidatorSet.hash)
       historicalLookup <-
         bootstrap.consensus.bootstrapServices.validatorSetLookup
           .validatorSetFor:
-            HotStuffWindow(chainId, 6L, 2L, inventoryValidatorSet.hash)
+            HotStuffWindow.unsafe(chainId, 6L, 2L, inventoryValidatorSet.hash)
       currentLookup <- bootstrap.consensus.bootstrapServices.validatorSetLookup
         .validatorSetFor:
-          HotStuffWindow(chainId, 12L, 5L, validatorSet.hash)
+          HotStuffWindow.unsafe(chainId, 12L, 5L, validatorSet.hash)
     yield
       assert(
         bootstrap.consensus.bootstrapTrustRoot
@@ -1639,20 +1639,20 @@ final class HotStuffRuntimeBootstrapSuite extends CatsEffectSuite:
             BlockTimestamp.unsafeFromEpochMillis(startedAt.toEpochMilli),
         ),
         txSet = ProposalTxSet.empty,
-        window = HotStuffWindow(chainId, 2L, 1L, validatorSet.hash),
+        window = HotStuffWindow.unsafe(chainId, 2L, 1L, validatorSet.hash),
         justify = bootstrapQc(),
         ts = startedAt.plusSeconds(1L),
       )
       timeoutVoteAttempt <- bootstrap.consensus.signTimeoutVote(
         voter = validatorIds.head,
-        window = HotStuffWindow(chainId, 2L, 1L, validatorSet.hash),
+        window = HotStuffWindow.unsafe(chainId, 2L, 1L, validatorSet.hash),
         highestKnownQc = bootstrapQc(),
       )
       newViewAttempt <- bootstrap.consensus.signNewView(
         sender = validatorIds.head,
         highestKnownQc = bootstrapQc(),
         timeoutCertificate = timeoutCertificateFor(
-          window = HotStuffWindow(chainId, 2L, 1L, validatorSet.hash),
+          window = HotStuffWindow.unsafe(chainId, 2L, 1L, validatorSet.hash),
           highestKnownQc = bootstrapQc(),
         ),
       )
@@ -1804,7 +1804,7 @@ final class HotStuffRuntimeBootstrapSuite extends CatsEffectSuite:
       )
       timeoutVoteAttempt <- bootstrap.consensus.signTimeoutVote(
         voter = validatorIds.head,
-        window = HotStuffWindow(chainId, 2L, 1L, validatorSet.hash),
+        window = HotStuffWindow.unsafe(chainId, 2L, 1L, validatorSet.hash),
         highestKnownQc = bootstrapQc(),
       )
       timeoutVote <- IO.fromEither(
@@ -1816,7 +1816,7 @@ final class HotStuffRuntimeBootstrapSuite extends CatsEffectSuite:
         sender = validatorIds.head,
         highestKnownQc = bootstrapQc(),
         timeoutCertificate = timeoutCertificateFor(
-          window = HotStuffWindow(chainId, 2L, 1L, validatorSet.hash),
+          window = HotStuffWindow.unsafe(chainId, 2L, 1L, validatorSet.hash),
           highestKnownQc = bootstrapQc(),
         ),
       )
@@ -1976,14 +1976,14 @@ final class HotStuffRuntimeBootstrapSuite extends CatsEffectSuite:
       )
       timeoutVoteAttempt <- bootstrap.consensus.signTimeoutVote(
         voter = validatorIds(1),
-        window = HotStuffWindow(chainId, 2L, 1L, validatorSet.hash),
+        window = HotStuffWindow.unsafe(chainId, 2L, 1L, validatorSet.hash),
         highestKnownQc = bootstrapQc(),
       )
       newViewAttempt <- bootstrap.consensus.signNewView(
         sender = validatorIds(1),
         highestKnownQc = bootstrapQc(),
         timeoutCertificate = timeoutCertificateFor(
-          window = HotStuffWindow(chainId, 2L, 1L, validatorSet.hash),
+          window = HotStuffWindow.unsafe(chainId, 2L, 1L, validatorSet.hash),
           highestKnownQc = bootstrapQc(),
         ),
       )
@@ -2243,7 +2243,7 @@ final class HotStuffRuntimeBootstrapSuite extends CatsEffectSuite:
     )
 
   private def bootstrapQc(): QuorumCertificate =
-    val window = HotStuffWindow(chainId, 0L, 0L, validatorSet.hash)
+    val window = HotStuffWindow.unsafe(chainId, 0L, 0L, validatorSet.hash)
     val subject = QuorumCertificateSubject(
       window = window,
       proposalId = ProposalId(hex("70")),
@@ -2286,7 +2286,7 @@ final class HotStuffRuntimeBootstrapSuite extends CatsEffectSuite:
       Proposal
         .sign(
           UnsignedProposal(
-            window = HotStuffWindow(chainId, 1L, 1L, validatorSet.hash),
+            window = HotStuffWindow.unsafe(chainId, 1L, 1L, validatorSet.hash),
             proposer = validatorIds(0),
             targetBlockId = BlockHeader.computeId(anchorBlock),
             block = anchorBlock,
@@ -2308,7 +2308,7 @@ final class HotStuffRuntimeBootstrapSuite extends CatsEffectSuite:
       Proposal
         .sign(
           UnsignedProposal(
-            window = HotStuffWindow(chainId, 2L, 2L, validatorSet.hash),
+            window = HotStuffWindow.unsafe(chainId, 2L, 2L, validatorSet.hash),
             proposer = validatorIds(1),
             targetBlockId = BlockHeader.computeId(childBlock),
             block = childBlock,
@@ -2330,7 +2330,7 @@ final class HotStuffRuntimeBootstrapSuite extends CatsEffectSuite:
       Proposal
         .sign(
           UnsignedProposal(
-            window = HotStuffWindow(chainId, 3L, 3L, validatorSet.hash),
+            window = HotStuffWindow.unsafe(chainId, 3L, 3L, validatorSet.hash),
             proposer = validatorIds(2),
             targetBlockId = BlockHeader.computeId(grandchildBlock),
             block = grandchildBlock,
@@ -2354,7 +2354,7 @@ final class HotStuffRuntimeBootstrapSuite extends CatsEffectSuite:
     Proposal
       .sign(
         UnsignedProposal(
-          window = HotStuffWindow(chainId, height, 1L, validatorSet.hash),
+          window = HotStuffWindow.unsafe(chainId, height, 1L, validatorSet.hash),
           proposer = validatorIds.head,
           targetBlockId = BlockId(hex(rootHex)),
           block = BlockHeader(
@@ -2796,7 +2796,7 @@ final class HotStuffRuntimeBootstrapSuite extends CatsEffectSuite:
     Proposal
       .sign(
         UnsignedProposal(
-          window = HotStuffWindow(chainId, height, height, validatorSet.hash),
+          window = HotStuffWindow.unsafe(chainId, height, height, validatorSet.hash),
           proposer = validatorIds(proposerIndex),
           targetBlockId = BlockHeader.computeId(header),
           block = header,
@@ -2866,7 +2866,7 @@ final class HotStuffRuntimeBootstrapSuite extends CatsEffectSuite:
     Proposal
       .sign(
         UnsignedProposal(
-          window = HotStuffWindow(chainId, height, height, validatorSet.hash),
+          window = HotStuffWindow.unsafe(chainId, height, height, validatorSet.hash),
           proposer = validatorIds(proposerIndex),
           targetBlockId = BlockHeader.computeId(header),
           block = header,
@@ -2886,7 +2886,7 @@ final class HotStuffRuntimeBootstrapSuite extends CatsEffectSuite:
       stateRoot: StateRoot,
   ): Proposal =
     val window =
-      HotStuffWindow(chainId, height, height, validatorSet.hash)
+      HotStuffWindow.unsafe(chainId, height, height, validatorSet.hash)
     val proposer = validatorIds(proposerIndex)
     val header =
       BlockHeader(

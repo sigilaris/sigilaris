@@ -61,13 +61,13 @@ final class HotStuffPolicySuite extends FunSuite:
     "window, quorum rule, request policy, and equivocation key lock the phase-0 baseline",
   ):
     val validatorSetHash = ValidatorSetHash(UInt256.fromHex("01").toOption.get)
-    val window = HotStuffWindow(
+    val window = HotStuffWindow.unsafe(
       chainId = ChainId.unsafe("chain-main"),
       height = 7L,
       view = 11L,
       validatorSetHash = validatorSetHash,
     )
-    val equivocationKey = EquivocationKey(
+    val equivocationKey = EquivocationKey.unsafe(
       chainId = ChainId.unsafe("chain-main"),
       validatorId = ValidatorId.unsafe("validator-a"),
       height = 7L,
@@ -79,13 +79,13 @@ final class HotStuffPolicySuite extends FunSuite:
     assertEquals(window.validatorSetHash, validatorSetHash)
     assertEquals(equivocationKey.height, height(7L))
     assertEquals(equivocationKey.view, view(11L))
-    assertEquals(HotStuffPolicy.quorumSize(1), 1)
-    assertEquals(HotStuffPolicy.quorumSize(2), 2)
-    assertEquals(HotStuffPolicy.quorumSize(3), 3)
-    assertEquals(HotStuffPolicy.quorumSize(4), 3)
-    assertEquals(HotStuffPolicy.quorumSize(5), 4)
-    assertEquals(HotStuffPolicy.quorumSize(6), 5)
-    assertEquals(HotStuffPolicy.quorumSize(7), 5)
+    assertEquals(HotStuffPolicy.quorumSize(1), Right(1))
+    assertEquals(HotStuffPolicy.quorumSize(2), Right(2))
+    assertEquals(HotStuffPolicy.quorumSize(3), Right(3))
+    assertEquals(HotStuffPolicy.quorumSize(4), Right(3))
+    assertEquals(HotStuffPolicy.quorumSize(5), Right(4))
+    assertEquals(HotStuffPolicy.quorumSize(6), Right(5))
+    assertEquals(HotStuffPolicy.quorumSize(7), Right(5))
     assertEquals(HotStuffPolicy.requestPolicy.maxProposalRequestIds, 128)
     assertEquals(HotStuffPolicy.requestPolicy.maxVoteRequestIds, 512)
     assertEquals(HotStuffPolicy.requestPolicy.maxRetryAttemptsPerWindow, 2)
@@ -170,84 +170,178 @@ final class HotStuffPolicySuite extends FunSuite:
     "window and equivocation key allow genesis height zero but reject negative progress values",
   ):
     val genesisWindow =
-      HotStuffWindow(
+      HotStuffWindow.fromLongs(
         chainId = ChainId.unsafe("chain-main"),
         height = 0L,
         view = 0L,
         validatorSetHash = ValidatorSetHash(UInt256.fromHex("01").toOption.get),
       )
-    assertEquals(genesisWindow.height, height(0L))
+    assertEquals(genesisWindow.map(_.height), Right(height(0L)))
+    assertEquals(height(7L) + 2L, Right(height(9L)))
+    assertEquals(view(11L) + 5L, Right(view(16L)))
 
-    val _ = intercept[IllegalArgumentException]:
-      HotStuffWindow(
+    assertEquals(
+      HotStuffWindow.fromLongs(
         chainId = ChainId.unsafe("chain-main"),
         height = -1L,
         view = 0L,
         validatorSetHash = ValidatorSetHash(UInt256.fromHex("01").toOption.get),
-      )
+      ),
+      Left("Should be positive or zero"),
+    )
 
-    val ignored = intercept[IllegalArgumentException]:
-      EquivocationKey(
+    assertEquals(
+      EquivocationKey.fromLongs(
         chainId = ChainId.unsafe("chain-main"),
         validatorId = ValidatorId.unsafe("validator-a"),
         height = 1L,
         view = -1L,
-      )
-    assert(ignored.getMessage.nonEmpty)
+      ),
+      Left("Should be positive or zero"),
+    )
 
-    val negativeView = intercept[IllegalArgumentException]:
-      HotStuffWindow(
+    assertEquals(
+      HotStuffWindow.fromLongs(
         chainId = ChainId.unsafe("chain-main"),
         height = 1L,
         view = -1L,
         validatorSetHash = ValidatorSetHash(UInt256.fromHex("01").toOption.get),
-      )
-    assert(negativeView.getMessage.nonEmpty)
+      ),
+      Left("Should be positive or zero"),
+    )
 
-    val quorumFailure = intercept[IllegalArgumentException]:
-      HotStuffPolicy.quorumSize(0)
-    assert(quorumFailure.getMessage.nonEmpty)
-
-    val negativeQuorumFailure = intercept[IllegalArgumentException]:
-      HotStuffPolicy.quorumSize(-1)
-    assert(negativeQuorumFailure.getMessage.nonEmpty)
+    assertEquals(height(7L) + -1L, Left("height delta must be non-negative"))
+    assertEquals(view(11L) + -1L, Left("view delta must be non-negative"))
+    assertEquals(
+      HotStuffPolicy.quorumSize(0),
+      Left("activeValidatorCount must be positive"),
+    )
+    assertEquals(
+      HotStuffPolicy.quorumSize(-1),
+      Left("activeValidatorCount must be positive"),
+    )
 
   test("request policy and deployment target reject invalid boundaries"):
-    val zeroProposalLimit = intercept[IllegalArgumentException]:
+    val zeroProposalLimit =
       HotStuffRequestPolicy(
         maxProposalRequestIds = 0,
         maxVoteRequestIds = 1,
         maxRetryAttemptsPerWindow = 0,
       )
-    assert(zeroProposalLimit.getMessage.nonEmpty)
+    assertEquals(
+      zeroProposalLimit,
+      Left("maxProposalRequestIds must be positive"),
+    )
 
-    val zeroVoteLimit = intercept[IllegalArgumentException]:
+    val zeroVoteLimit =
       HotStuffRequestPolicy(
         maxProposalRequestIds = 1,
         maxVoteRequestIds = 0,
         maxRetryAttemptsPerWindow = 0,
       )
-    assert(zeroVoteLimit.getMessage.nonEmpty)
+    assertEquals(zeroVoteLimit, Left("maxVoteRequestIds must be positive"))
 
-    val negativeRetries = intercept[IllegalArgumentException]:
+    val negativeRetries =
       HotStuffRequestPolicy(
         maxProposalRequestIds = 1,
         maxVoteRequestIds = 1,
         maxRetryAttemptsPerWindow = -1,
       )
-    assert(negativeRetries.getMessage.nonEmpty)
+    assertEquals(
+      negativeRetries,
+      Left("maxRetryAttemptsPerWindow must be non-negative"),
+    )
 
-    val zeroInterval = intercept[IllegalArgumentException]:
+    val zeroInterval =
       HotStuffDeploymentTarget(blockProductionInterval =
         java.time.Duration.ZERO,
       )
-    assert(zeroInterval.getMessage.nonEmpty)
+    assertEquals(zeroInterval, Left("blockProductionInterval must be positive"))
 
-    val negativeInterval = intercept[IllegalArgumentException]:
+  test("topic policy rejects invalid batching boundaries"):
+    assertEquals(
+      HotStuffTopicPolicy(
+        exactKnownSetLimit = 0,
+        requestByIdLimit = 1,
+        maxBatchItems = 1,
+        flushInterval = java.time.Duration.ZERO,
+        deliveryPriority = 1,
+      ),
+      Left("exactKnownSetLimit must be positive"),
+    )
+    assertEquals(
+      HotStuffTopicPolicy(
+        exactKnownSetLimit = 1,
+        requestByIdLimit = 0,
+        maxBatchItems = 1,
+        flushInterval = java.time.Duration.ZERO,
+        deliveryPriority = 1,
+      ),
+      Left("requestByIdLimit must be positive"),
+    )
+    assertEquals(
+      HotStuffTopicPolicy(
+        exactKnownSetLimit = 1,
+        requestByIdLimit = 1,
+        maxBatchItems = 0,
+        flushInterval = java.time.Duration.ZERO,
+        deliveryPriority = 1,
+      ),
+      Left("maxBatchItems must be positive"),
+    )
+    assertEquals(
+      HotStuffTopicPolicy(
+        exactKnownSetLimit = 2,
+        requestByIdLimit = 3,
+        maxBatchItems = 4,
+        flushInterval = java.time.Duration.ZERO,
+        deliveryPriority = 5,
+      ).map(_.requestByIdLimit),
+      Right(3),
+    )
+
+    val negativeInterval =
       HotStuffDeploymentTarget(blockProductionInterval =
         java.time.Duration.ofMillis(-1),
       )
-    assert(negativeInterval.getMessage.nonEmpty)
+    assertEquals(
+      negativeInterval,
+      Left("blockProductionInterval must be non-negative"),
+    )
+
+  test("unsafe policy helpers throw on invalid boundaries"):
+    val requestError =
+      intercept[IllegalArgumentException]:
+        HotStuffRequestPolicy.unsafe(
+          maxProposalRequestIds = 0,
+          maxVoteRequestIds = 1,
+          maxRetryAttemptsPerWindow = 0,
+        )
+    assertEquals(
+      requestError.getMessage,
+      "maxProposalRequestIds must be positive",
+    )
+
+    val deploymentError =
+      intercept[IllegalArgumentException]:
+        HotStuffDeploymentTarget.unsafe(
+          blockProductionInterval = java.time.Duration.ZERO,
+        )
+    assertEquals(
+      deploymentError.getMessage,
+      "blockProductionInterval must be positive",
+    )
+
+    val topicError =
+      intercept[IllegalArgumentException]:
+        HotStuffTopicPolicy.unsafe(
+          exactKnownSetLimit = 1,
+          requestByIdLimit = 0,
+          maxBatchItems = 1,
+          flushInterval = java.time.Duration.ZERO,
+          deliveryPriority = 1,
+        )
+    assertEquals(topicError.getMessage, "requestByIdLimit must be positive")
 
   private def height(
       value: Long,

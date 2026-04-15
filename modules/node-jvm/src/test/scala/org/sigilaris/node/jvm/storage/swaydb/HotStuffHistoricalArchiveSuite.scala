@@ -394,7 +394,7 @@ final class HotStuffHistoricalArchiveSuite extends CatsEffectSuite:
   private def bootstrapQc(): QuorumCertificate =
     val subject =
       QuorumCertificateSubject(
-        window = HotStuffWindow(chainId, 0L, 0L, validatorSet.hash),
+        window = HotStuffWindow.unsafe(chainId, 0L, 0L, validatorSet.hash),
         proposalId = ProposalId(hex("01")),
         blockId = BlockId(hex("02")),
       )
@@ -424,7 +424,7 @@ final class HotStuffHistoricalArchiveSuite extends CatsEffectSuite:
     Proposal
       .sign(
         UnsignedProposal(
-          window = HotStuffWindow(chainId, height, view, validatorSet.hash),
+          window = HotStuffWindow.unsafe(chainId, height, view, validatorSet.hash),
           proposer = validatorSet.members(0).id,
           targetBlockId = BlockId(hex(seed + "f0")),
           block = block(

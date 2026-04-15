@@ -231,7 +231,7 @@ final class HotStuffSnapshotSyncSuite extends CatsEffectSuite:
           metadataStore = metadataStore,
           nodeStore = localNodeStore,
           fetchService = fetchService,
-          fetchPolicy = SnapshotFetchPolicy(maxPeerRounds = 2),
+          fetchPolicy = SnapshotFetchPolicy.unsafe(maxPeerRounds = 2),
           currentInstant = IO.pure(startedAt.plusSeconds(1L)),
         )
       result <- coordinator.sync(
@@ -248,6 +248,26 @@ final class HotStuffSnapshotSyncSuite extends CatsEffectSuite:
       )
       assertEquals(metadata.map(_.status), Some(SnapshotStatus.Complete))
       assert(attempts >= 2)
+
+  test("snapshot fetch policy rejects non-positive peer-round limits"):
+    assertEquals(
+      SnapshotFetchPolicy(maxPeerRounds = 0),
+      Left("maxPeerRounds must be positive"),
+    )
+    assertEquals(
+      SnapshotFetchPolicy(maxPeerRounds = -1),
+      Left("maxPeerRounds must be positive"),
+    )
+    assertEquals(
+      SnapshotFetchPolicy(maxPeerRounds = 2).map(_.maxPeerRounds),
+      Right(2),
+    )
+
+  test("snapshot fetch policy unsafe helper throws on invalid limits"):
+    val error =
+      intercept[IllegalArgumentException]:
+        SnapshotFetchPolicy.unsafe(maxPeerRounds = 0)
+    assertEquals(error.getMessage, "maxPeerRounds must be positive")
 
   test("snapshot coordinator does not promote incomplete closures to complete"):
     val graph = snapshotGraph("30")
@@ -348,6 +368,92 @@ final class HotStuffSnapshotSyncSuite extends CatsEffectSuite:
       assertEquals(result.map(_.fetchedNodeCount), Right(0L))
       assertEquals(calls, 0)
       assertEquals(metadata.map(_.status), Some(SnapshotStatus.Complete))
+
+  test("snapshot coordinator preserves typed node-store decode failures"):
+    val graph = snapshotGraph("44")
+
+    for
+      metadataStore <- SnapshotMetadataStore.inMemory[IO]
+      nodeStore = SnapshotNodeStore.fromKeyValueStore[IO](
+        new KeyValueStore[IO, MerkleTrieNode.MerkleHash, MerkleTrieNode]:
+          override def get(
+              key: MerkleTrieNode.MerkleHash,
+          ): EitherT[IO, DecodeFailure, Option[MerkleTrieNode]] =
+            EitherT.leftT(DecodeFailure("corruptSnapshotNode"))
+
+          override def put(
+              key: MerkleTrieNode.MerkleHash,
+              value: MerkleTrieNode,
+          ): IO[Unit] =
+            IO.unit
+
+          override def remove(
+              key: MerkleTrieNode.MerkleHash,
+          ): IO[Unit] =
+            IO.unit,
+      )
+      coordinator =
+        SnapshotCoordinator.createWithNow[IO](
+          chainId,
+          metadataStore,
+          nodeStore,
+          multiplexedFetchService(),
+          IO.pure(startedAt.plusSeconds(1L)),
+        )
+      result <- coordinator.sync(
+        graph.anchorSuggestion,
+        Vector(peer1),
+        startedAt,
+      )
+    yield
+      assertEquals(result.left.map(_.reason), Left("snapshotNodeReadFailed"))
+      assertEquals(
+        result.left.flatMap(_.detail.toLeft("missing detail")),
+        Left("corruptSnapshotNode"),
+      )
+
+  test("snapshot coordinator preserves typed metadata-store write failures"):
+    val graph = snapshotGraph("45")
+
+    for
+      metadataStore <- SnapshotMetadataStore.fromKeyValueStore[IO](
+        new KeyValueStore[IO, ChainId, Vector[SnapshotMetadata]]:
+          override def get(
+              key: ChainId,
+          ): EitherT[IO, DecodeFailure, Option[Vector[SnapshotMetadata]]] =
+            EitherT.rightT(None)
+
+          override def put(
+              key: ChainId,
+              value: Vector[SnapshotMetadata],
+          ): IO[Unit] =
+            IO.raiseError(new RuntimeException("metadataDiskFull"))
+
+          override def remove(
+              key: ChainId,
+          ): IO[Unit] =
+            IO.unit,
+      )
+      localNodeStore <- SnapshotNodeStore.inMemory[IO]
+      coordinator =
+        SnapshotCoordinator.createWithNow[IO](
+          chainId,
+          metadataStore,
+          localNodeStore,
+          multiplexedFetchService(),
+          IO.pure(startedAt.plusSeconds(1L)),
+        )
+      result <- coordinator.sync(
+        graph.anchorSuggestion,
+        Vector(peer1),
+        startedAt,
+      )
+    yield
+      assertEquals(result.left.map(_.reason), Left("snapshotMetadataWriteFailed"))
+      assertEquals(
+        result.left.flatMap(_.detail.toLeft("missing detail")),
+        Left("metadataDiskFull"),
+      )
 
   test(
     "snapshot metadata store keeps anchor-specific history instead of overwriting prior sync state",
@@ -541,7 +647,7 @@ final class HotStuffSnapshotSyncSuite extends CatsEffectSuite:
       stateRoot: StateRoot,
   ): FinalizedAnchorSuggestion =
     val bootstrapSubject = QuorumCertificateSubject(
-      window = HotStuffWindow(chainId, 0L, 0L, validatorSet.hash),
+      window = HotStuffWindow.unsafe(chainId, 0L, 0L, validatorSet.hash),
       proposalId = ProposalId(hex(seed + "01")),
       blockId = BlockId(hex(seed + "02")),
     )
@@ -565,7 +671,7 @@ final class HotStuffSnapshotSyncSuite extends CatsEffectSuite:
       Proposal
         .sign(
           UnsignedProposal(
-            window = HotStuffWindow(chainId, 1L, 1L, validatorSet.hash),
+            window = HotStuffWindow.unsafe(chainId, 1L, 1L, validatorSet.hash),
             proposer = validatorSet.members(0).id,
             targetBlockId = BlockHeader.computeId(anchorBlock),
             block = anchorBlock,
@@ -580,7 +686,7 @@ final class HotStuffSnapshotSyncSuite extends CatsEffectSuite:
       Proposal
         .sign(
           UnsignedProposal(
-            window = HotStuffWindow(chainId, 2L, 2L, validatorSet.hash),
+            window = HotStuffWindow.unsafe(chainId, 2L, 2L, validatorSet.hash),
             proposer = validatorSet.members(1).id,
             targetBlockId = BlockHeader.computeId(
               block(Some(anchor.targetBlockId), 2L, stateRoot, seed + "20"),
@@ -598,7 +704,7 @@ final class HotStuffSnapshotSyncSuite extends CatsEffectSuite:
       Proposal
         .sign(
           UnsignedProposal(
-            window = HotStuffWindow(chainId, 3L, 3L, validatorSet.hash),
+            window = HotStuffWindow.unsafe(chainId, 3L, 3L, validatorSet.hash),
             proposer = validatorSet.members(2).id,
             targetBlockId = BlockHeader.computeId(
               block(Some(child.targetBlockId), 3L, stateRoot, seed + "30"),

@@ -426,7 +426,7 @@ final class HotStuffBootstrapLifecycleSuite extends CatsEffectSuite:
       stateRoot: StateRoot,
   ): FinalizedAnchorSuggestion =
     val bootstrapSubject = QuorumCertificateSubject(
-      window = HotStuffWindow(chainId, 0L, 0L, validatorSet.hash),
+      window = HotStuffWindow.unsafe(chainId, 0L, 0L, validatorSet.hash),
       proposalId = ProposalId(hex(seed + "01")),
       blockId = BlockId(hex(seed + "02")),
     )
@@ -450,7 +450,7 @@ final class HotStuffBootstrapLifecycleSuite extends CatsEffectSuite:
       Proposal
         .sign(
           UnsignedProposal(
-            window = HotStuffWindow(chainId, 1L, 1L, validatorSet.hash),
+            window = HotStuffWindow.unsafe(chainId, 1L, 1L, validatorSet.hash),
             proposer = validatorSet.members(0).id,
             targetBlockId = BlockHeader.computeId(anchorBlock),
             block = anchorBlock,
@@ -465,7 +465,7 @@ final class HotStuffBootstrapLifecycleSuite extends CatsEffectSuite:
       Proposal
         .sign(
           UnsignedProposal(
-            window = HotStuffWindow(chainId, 2L, 2L, validatorSet.hash),
+            window = HotStuffWindow.unsafe(chainId, 2L, 2L, validatorSet.hash),
             proposer = validatorSet.members(1).id,
             targetBlockId = BlockHeader.computeId(
               block(Some(anchor.targetBlockId), 2L, stateRoot, seed + "20"),
@@ -483,7 +483,7 @@ final class HotStuffBootstrapLifecycleSuite extends CatsEffectSuite:
       Proposal
         .sign(
           UnsignedProposal(
-            window = HotStuffWindow(chainId, 3L, 3L, validatorSet.hash),
+            window = HotStuffWindow.unsafe(chainId, 3L, 3L, validatorSet.hash),
             proposer = validatorSet.members(2).id,
             targetBlockId = BlockHeader.computeId(
               block(Some(child.targetBlockId), 3L, stateRoot, seed + "30"),

@@ -221,7 +221,7 @@ final class HotStuffProposalTxSyncSuite extends CatsEffectSuite:
       txSet: ProposalTxSet,
   ): Proposal =
     val parentBlock      = block(parent = None, height = 0L, rootHex = "01")
-    val parentWindow     = HotStuffWindow(chainId, 0L, 0L, validatorSet.hash)
+    val parentWindow     = HotStuffWindow.unsafe(chainId, 0L, 0L, validatorSet.hash)
     val parentProposalId = ProposalId(hex("10"))
     val subject = QuorumCertificateSubject(
       window = parentWindow,
@@ -245,7 +245,7 @@ final class HotStuffProposalTxSyncSuite extends CatsEffectSuite:
     Proposal
       .sign(
         UnsignedProposal(
-          window = HotStuffWindow(chainId, 1L, 1L, validatorSet.hash),
+          window = HotStuffWindow.unsafe(chainId, 1L, 1L, validatorSet.hash),
           proposer = validatorSet.members.head.id,
           targetBlockId = BlockHeader.computeId(proposalBlock),
           block = proposalBlock,

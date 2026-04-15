@@ -210,7 +210,7 @@ final class HotStuffFinalizationSuite extends CatsEffectSuite:
     val checkpointRoot =
       BootstrapTrustRoot
         .trustedCheckpoint(
-          HotStuffWindow(chainId, 1L, 1L, validatorSet.hash),
+          HotStuffWindow.unsafe(chainId, 1L, 1L, validatorSet.hash),
           validatorSet,
         )
         .toOption
@@ -241,7 +241,7 @@ final class HotStuffFinalizationSuite extends CatsEffectSuite:
     val checkpointRoot =
       BootstrapTrustRoot
         .trustedCheckpoint(
-          HotStuffWindow(chainId, 1L, 1L, otherValidatorSet.hash),
+          HotStuffWindow.unsafe(chainId, 1L, 1L, otherValidatorSet.hash),
           otherValidatorSet,
         )
         .toOption
@@ -548,7 +548,7 @@ final class HotStuffFinalizationSuite extends CatsEffectSuite:
     val justifyHeight = anchorHeightStart - 1L
     val bootstrapSubject = QuorumCertificateSubject(
       window =
-        HotStuffWindow(chain, justifyHeight, justifyHeight, validatorSet.hash),
+        HotStuffWindow.unsafe(chain, justifyHeight, justifyHeight, validatorSet.hash),
       proposalId = ProposalId(hex(seed + "01")),
       blockId = BlockId(hex(seed + "02")),
     )
@@ -571,7 +571,7 @@ final class HotStuffFinalizationSuite extends CatsEffectSuite:
       Proposal
         .sign(
           UnsignedProposal(
-            window = HotStuffWindow(
+            window = HotStuffWindow.unsafe(
               chain,
               anchorHeightStart,
               anchorHeightStart,
@@ -598,7 +598,7 @@ final class HotStuffFinalizationSuite extends CatsEffectSuite:
       Proposal
         .sign(
           UnsignedProposal(
-            window = HotStuffWindow(
+            window = HotStuffWindow.unsafe(
               chain,
               anchorHeightStart + 1L,
               anchorHeightStart + 1L,
@@ -625,7 +625,7 @@ final class HotStuffFinalizationSuite extends CatsEffectSuite:
       Proposal
         .sign(
           UnsignedProposal(
-            window = HotStuffWindow(
+            window = HotStuffWindow.unsafe(
               chain,
               anchorHeightStart + 2L,
               anchorHeightStart + 2L,
@@ -714,7 +714,7 @@ final class HotStuffFinalizationSuite extends CatsEffectSuite:
   ): FinalizedAnchorSuggestion =
     val justifyHeight = anchorHeightStart - 1L
     val bootstrapSubject = QuorumCertificateSubject(
-      window = HotStuffWindow(
+      window = HotStuffWindow.unsafe(
         chain,
         justifyHeight,
         justifyHeight,
@@ -747,7 +747,7 @@ final class HotStuffFinalizationSuite extends CatsEffectSuite:
       Proposal
         .sign(
           UnsignedProposal(
-            window = HotStuffWindow(
+            window = HotStuffWindow.unsafe(
               chain,
               anchorHeightStart,
               anchorHeightStart,
@@ -774,7 +774,7 @@ final class HotStuffFinalizationSuite extends CatsEffectSuite:
       Proposal
         .sign(
           UnsignedProposal(
-            window = HotStuffWindow(
+            window = HotStuffWindow.unsafe(
               chain,
               anchorHeightStart + 1L,
               anchorHeightStart + 1L,
@@ -802,7 +802,7 @@ final class HotStuffFinalizationSuite extends CatsEffectSuite:
       Proposal
         .sign(
           UnsignedProposal(
-            window = HotStuffWindow(
+            window = HotStuffWindow.unsafe(
               chain,
               anchorHeightStart + 2L,
               anchorHeightStart + 2L,

@@ -585,7 +585,7 @@ final class HotStuffBootstrapCoordinatorSuite extends CatsEffectSuite:
   ): FinalizedAnchorSuggestion =
     val baseHeight = anchorHeight - 1L
     val bootstrapSubject = QuorumCertificateSubject(
-      window = HotStuffWindow(
+      window = HotStuffWindow.unsafe(
         chainId,
         baseHeight,
         baseHeight,
@@ -619,7 +619,7 @@ final class HotStuffBootstrapCoordinatorSuite extends CatsEffectSuite:
       Proposal
         .sign(
           UnsignedProposal(
-            window = HotStuffWindow(
+            window = HotStuffWindow.unsafe(
               chainId,
               anchorHeight,
               anchorHeight,
@@ -697,7 +697,7 @@ final class HotStuffBootstrapCoordinatorSuite extends CatsEffectSuite:
       .sign(
         UnsignedProposal(
           window =
-            HotStuffWindow(chainId, height, height, activeValidatorSet.hash),
+            HotStuffWindow.unsafe(chainId, height, height, activeValidatorSet.hash),
           proposer = activeValidatorSet.members((height.toInt % 3).min(2)).id,
           targetBlockId = BlockHeader.computeId(blockHeader),
           block = blockHeader,
@@ -808,7 +808,7 @@ final class HotStuffBootstrapCoordinatorSuite extends CatsEffectSuite:
       .sign(
         UnsignedProposal(
           window =
-            HotStuffWindow(chainId, height, height, activeValidatorSet.hash),
+            HotStuffWindow.unsafe(chainId, height, height, activeValidatorSet.hash),
           proposer = activeValidatorSet.members((height.toInt % 3).min(2)).id,
           targetBlockId = BlockHeader.computeId(blockHeader),
           block = blockHeader,

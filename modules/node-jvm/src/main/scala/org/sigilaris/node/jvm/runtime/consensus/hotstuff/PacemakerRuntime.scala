@@ -14,28 +14,83 @@ import org.sigilaris.core.util.SafeStringInterp.*
   * @param maxJitterSlots the maximum number of jitter slots
   * @param elevatedTimeoutAlertThreshold consecutive timeouts before alerting
   */
-final case class HotStuffPacemakerPolicy(
+final case class HotStuffPacemakerPolicy private (
     baseTimeout: Duration,
     maxBackoffExponent: Int,
     jitterStep: Duration,
     maxJitterSlots: Int,
     elevatedTimeoutAlertThreshold: Int,
-):
-  require(!baseTimeout.isNegative, "baseTimeout must be non-negative")
-  require(!baseTimeout.isZero, "baseTimeout must be positive")
-  require(maxBackoffExponent >= 0, "maxBackoffExponent must be non-negative")
-  require(!jitterStep.isNegative, "jitterStep must be non-negative")
-  require(maxJitterSlots >= 0, "maxJitterSlots must be non-negative")
-  require(
-    elevatedTimeoutAlertThreshold > 0,
-    "elevatedTimeoutAlertThreshold must be positive",
-  )
+)
 
 /** Companion for `HotStuffPacemakerPolicy`. */
+@SuppressWarnings(Array("org.wartremover.warts.Throw"))
 object HotStuffPacemakerPolicy:
+  def apply(
+      baseTimeout: Duration,
+      maxBackoffExponent: Int,
+      jitterStep: Duration,
+      maxJitterSlots: Int,
+      elevatedTimeoutAlertThreshold: Int,
+  ): Either[String, HotStuffPacemakerPolicy] =
+    Either
+      .cond(!baseTimeout.isNegative, (), "baseTimeout must be non-negative")
+      .flatMap(_ =>
+        Either.cond(!baseTimeout.isZero, (), "baseTimeout must be positive"),
+      )
+      .flatMap(_ =>
+        Either.cond(
+          maxBackoffExponent >= 0,
+          (),
+          "maxBackoffExponent must be non-negative",
+        ),
+      )
+      .flatMap(_ =>
+        Either.cond(
+          !jitterStep.isNegative,
+          (),
+          "jitterStep must be non-negative",
+        ),
+      )
+      .flatMap(_ =>
+        Either.cond(
+          maxJitterSlots >= 0,
+          (),
+          "maxJitterSlots must be non-negative",
+        ),
+      )
+      .flatMap: _ =>
+        Either.cond(
+          elevatedTimeoutAlertThreshold > 0,
+          new HotStuffPacemakerPolicy(
+            baseTimeout = baseTimeout,
+            maxBackoffExponent = maxBackoffExponent,
+            jitterStep = jitterStep,
+            maxJitterSlots = maxJitterSlots,
+            elevatedTimeoutAlertThreshold = elevatedTimeoutAlertThreshold,
+          ),
+          "elevatedTimeoutAlertThreshold must be positive",
+        )
+
+  def unsafe(
+      baseTimeout: Duration,
+      maxBackoffExponent: Int,
+      jitterStep: Duration,
+      maxJitterSlots: Int,
+      elevatedTimeoutAlertThreshold: Int,
+  ): HotStuffPacemakerPolicy =
+    apply(
+      baseTimeout = baseTimeout,
+      maxBackoffExponent = maxBackoffExponent,
+      jitterStep = jitterStep,
+      maxJitterSlots = maxJitterSlots,
+      elevatedTimeoutAlertThreshold = elevatedTimeoutAlertThreshold,
+    ) match
+      case Right(policy) => policy
+      case Left(error)   => throw new IllegalArgumentException(error)
+
   /** The default pacemaker policy. */
   val default: HotStuffPacemakerPolicy =
-    HotStuffPacemakerPolicy(
+    unsafe(
       baseTimeout = HotStuffPolicy.deploymentTarget.blockProductionInterval,
       maxBackoffExponent = 3,
       jitterStep = Duration.ofMillis(10),

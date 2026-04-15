@@ -127,7 +127,7 @@ final class HotStuffRuntimeServiceSuite extends CatsEffectSuite:
           rootHex = "91",
         ),
         txSet = ProposalTxSet.empty,
-        window = HotStuffWindow(chainId, 2L, 1L, validatorSet.hash),
+        window = HotStuffWindow.unsafe(chainId, 2L, 1L, validatorSet.hash),
         justify = bootstrapQc(),
         ts = startedAt,
       )
@@ -143,7 +143,7 @@ final class HotStuffRuntimeServiceSuite extends CatsEffectSuite:
         None,
       )
       lookup <- runtime.bootstrapServices.validatorSetLookup
-        .validatorSetFor(HotStuffWindow(chainId, 2L, 1L, validatorSet.hash))
+        .validatorSetFor(HotStuffWindow.unsafe(chainId, 2L, 1L, validatorSet.hash))
       diagnostics <- runtime.bootstrapServices.diagnostics.current
     yield
       assertEquals(runtime.bootstrapInput, input)
@@ -385,7 +385,7 @@ final class HotStuffRuntimeServiceSuite extends CatsEffectSuite:
             )
 
   private def bootstrapQc(): QuorumCertificate =
-    val window = HotStuffWindow(chainId, 0L, 0L, validatorSet.hash)
+    val window = HotStuffWindow.unsafe(chainId, 0L, 0L, validatorSet.hash)
     val subject = QuorumCertificateSubject(
       window = window,
       proposalId = ProposalId(hex("70")),

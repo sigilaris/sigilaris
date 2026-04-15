@@ -1,6 +1,6 @@
 package org.sigilaris.node.jvm.runtime.consensus.hotstuff
 
-import java.time.Instant
+import java.time.{Duration, Instant}
 
 import munit.FunSuite
 
@@ -30,7 +30,7 @@ final class HotStuffPacemakerRuntimeSuite extends FunSuite:
         localValidator = validatorSet.members(1).id,
         validatorSet = validatorSet,
       )
-    val activeWindow = HotStuffWindow(chainId, 2L, 1L, validatorSet.hash)
+    val activeWindow = HotStuffWindow.unsafe(chainId, 2L, 1L, validatorSet.hash)
     val initial = runtime.start(
       activeWindow = activeWindow,
       highestKnownQc = bootstrapQc(),
@@ -102,7 +102,7 @@ final class HotStuffPacemakerRuntimeSuite extends FunSuite:
         localValidator = validatorSet.members.head.id,
         validatorSet = validatorSet,
       )
-    val activeWindow = HotStuffWindow(chainId, 1L, 0L, validatorSet.hash)
+    val activeWindow = HotStuffWindow.unsafe(chainId, 1L, 0L, validatorSet.hash)
     val initial = runtime.start(
       activeWindow = activeWindow,
       highestKnownQc = bootstrapQc(),
@@ -160,7 +160,7 @@ final class HotStuffPacemakerRuntimeSuite extends FunSuite:
         localValidator = validatorSet.members.head.id,
         validatorSet = validatorSet,
       )
-    val activeWindow   = HotStuffWindow(chainId, 1L, 1L, validatorSet.hash)
+    val activeWindow   = HotStuffWindow.unsafe(chainId, 1L, 1L, validatorSet.hash)
     val highestKnownQc = bootstrapQc()
     val alternateHighestKnownQc = alternateQc()
     val initial =
@@ -219,7 +219,7 @@ final class HotStuffPacemakerRuntimeSuite extends FunSuite:
         localValidator = validatorSet.members.head.id,
         validatorSet = validatorSet,
       )
-    val activeWindow = HotStuffWindow(chainId, 1L, 1L, validatorSet.hash)
+    val activeWindow = HotStuffWindow.unsafe(chainId, 1L, 1L, validatorSet.hash)
     val initial =
       runtime.start(activeWindow, bootstrapQc(), startedAt, None)
     val validNewView = newViewFor(activeWindow, bootstrapQc(), senderIndex = 0)
@@ -258,16 +258,78 @@ final class HotStuffPacemakerRuntimeSuite extends FunSuite:
     )
     assertEquals(wrongWindow.left.map(_.reason), Left("wrongPacemakerWindow"))
 
+  test("pacemaker policy rejects invalid timing boundaries"):
+    assertEquals(
+      HotStuffPacemakerPolicy(
+        baseTimeout = Duration.ofMillis(-1L),
+        maxBackoffExponent = 0,
+        jitterStep = Duration.ZERO,
+        maxJitterSlots = 0,
+        elevatedTimeoutAlertThreshold = 1,
+      ),
+      Left("baseTimeout must be non-negative"),
+    )
+    assertEquals(
+      HotStuffPacemakerPolicy(
+        baseTimeout = Duration.ZERO,
+        maxBackoffExponent = 0,
+        jitterStep = Duration.ZERO,
+        maxJitterSlots = 0,
+        elevatedTimeoutAlertThreshold = 1,
+      ),
+      Left("baseTimeout must be positive"),
+    )
+    assertEquals(
+      HotStuffPacemakerPolicy(
+        baseTimeout = Duration.ofMillis(100L),
+        maxBackoffExponent = -1,
+        jitterStep = Duration.ZERO,
+        maxJitterSlots = 0,
+        elevatedTimeoutAlertThreshold = 1,
+      ),
+      Left("maxBackoffExponent must be non-negative"),
+    )
+    assertEquals(
+      HotStuffPacemakerPolicy(
+        baseTimeout = Duration.ofMillis(100L),
+        maxBackoffExponent = 0,
+        jitterStep = Duration.ofMillis(-1L),
+        maxJitterSlots = 0,
+        elevatedTimeoutAlertThreshold = 1,
+      ),
+      Left("jitterStep must be non-negative"),
+    )
+    assertEquals(
+      HotStuffPacemakerPolicy(
+        baseTimeout = Duration.ofMillis(100L),
+        maxBackoffExponent = 0,
+        jitterStep = Duration.ZERO,
+        maxJitterSlots = -1,
+        elevatedTimeoutAlertThreshold = 1,
+      ),
+      Left("maxJitterSlots must be non-negative"),
+    )
+    assertEquals(
+      HotStuffPacemakerPolicy(
+        baseTimeout = Duration.ofMillis(100L),
+        maxBackoffExponent = 0,
+        jitterStep = Duration.ZERO,
+        maxJitterSlots = 0,
+        elevatedTimeoutAlertThreshold = 0,
+      ),
+      Left("elevatedTimeoutAlertThreshold must be positive"),
+    )
+
   private def bootstrapQc(): QuorumCertificate =
     quorumCertificateFor(
-      window = HotStuffWindow(chainId, 0L, 0L, validatorSet.hash),
+      window = HotStuffWindow.unsafe(chainId, 0L, 0L, validatorSet.hash),
       proposalIdHex = "70",
       blockIdHex = "71",
     )
 
   private def alternateQc(): QuorumCertificate =
     quorumCertificateFor(
-      window = HotStuffWindow(chainId, 0L, 0L, validatorSet.hash),
+      window = HotStuffWindow.unsafe(chainId, 0L, 0L, validatorSet.hash),
       proposalIdHex = "72",
       blockIdHex = "73",
     )
