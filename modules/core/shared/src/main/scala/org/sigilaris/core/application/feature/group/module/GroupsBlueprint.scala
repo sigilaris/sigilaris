@@ -75,12 +75,17 @@ object GroupsSchema:
 class GroupsReducer[F[_]: Monad] extends StateReducer0[F, GroupsSchema.GroupsSchema, GroupsReducer.GroupsNeeds]:
   import GroupsSchema.*
 
-  private val UnsupportedTransactionCode = FailureCode("groups.unsupported_transaction")
-  private val GroupNotFoundCode          = FailureCode("groups.group_not_found")
-  private val GroupAlreadyExistsCode     = FailureCode("groups.group_already_exists")
-  private val GroupNonceMismatchCode     = FailureCode("groups.group_nonce_mismatch")
-  private val GroupNotEmptyCode          = FailureCode("groups.group_not_empty")
-  private val AccountsEmptyCode          = FailureCode("groups.accounts_empty")
+  private val UnsupportedTransactionCode =
+    FailureCode.unsafe("groups.unsupported_transaction")
+  private val GroupNotFoundCode =
+    FailureCode.unsafe("groups.group_not_found")
+  private val GroupAlreadyExistsCode =
+    FailureCode.unsafe("groups.group_already_exists")
+  private val GroupNonceMismatchCode =
+    FailureCode.unsafe("groups.group_nonce_mismatch")
+  private val GroupNotEmptyCode =
+    FailureCode.unsafe("groups.group_not_empty")
+  private val AccountsEmptyCode = FailureCode.unsafe("groups.accounts_empty")
 
   private inline def resultOf[A](value: A): GroupsResult[A] = GroupsResult(value)
   private inline def eventOf[A](value: A): GroupsEvent[A] = GroupsEvent(value)

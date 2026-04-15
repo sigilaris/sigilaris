@@ -1,11 +1,14 @@
 package org.sigilaris.node.jvm.runtime.gossip
 
-import scala.jdk.CollectionConverters.*
-
 import com.typesafe.config.Config
 
-import org.sigilaris.core.util.SafeStringInterp.*
 import org.sigilaris.node.gossip.StaticPeerTopology
+import org.sigilaris.node.jvm.runtime.config.TypesafeConfigParsing
+import org.sigilaris.node.jvm.runtime.config.TypesafeConfigParsing.{
+  ConfigAliases,
+  ConfigField,
+  ConfigReader,
+}
 
 @SuppressWarnings(Array("org.wartremover.warts.DefaultArguments"))
 /** Loads a `StaticPeerTopology` from Typesafe Config. */
@@ -27,13 +30,7 @@ object StaticPeerTopologyConfig:
       config: Config,
       path: String = DefaultPath,
   ): Either[String, StaticPeerTopology] =
-    Either
-      .cond(
-        config.hasPath(path),
-        config.getConfig(path),
-        ss"missing config path: ${path}",
-      )
-      .flatMap(loadSection)
+    TypesafeConfigParsing.requiredSection(config, path).flatMap(loadSection)
 
   /** Loads a peer topology from a pre-resolved config section.
     *
@@ -45,46 +42,48 @@ object StaticPeerTopologyConfig:
   def loadSection(
       section: Config,
   ): Either[String, StaticPeerTopology] =
+    parseSection(section).flatMap: input =>
+      StaticPeerTopology.parse(
+        localNodeIdentity = input.localNodeIdentity,
+        knownPeers = input.knownPeers,
+        directNeighbors = input.directNeighbors,
+      )
+
+  /** Parses the raw config input model from the root config. */
+  def parse(
+      config: Config,
+      path: String = DefaultPath,
+  ): Either[String, StaticPeerTopologyConfigInput] =
+    TypesafeConfigParsing.requiredSection(config, path).flatMap(parseSection)
+
+  /** Parses the raw config input model from a pre-resolved section. */
+  def parseSection(
+      section: Config,
+  ): Either[String, StaticPeerTopologyConfigInput] =
     for
-      localNodeIdentity <- requiredString(
-        section,
-        "local-node-identity",
-        "localNodeIdentity",
-      )
-      knownPeers <- requiredStringList(section, "known-peers", "knownPeers")
-      directNeighbors <- requiredStringList(
-        section,
-        "direct-neighbors",
-        "directNeighbors",
-      )
-      topology <- StaticPeerTopology.parse(
-        localNodeIdentity = localNodeIdentity,
-        knownPeers = knownPeers,
-        directNeighbors = directNeighbors,
-      )
-    yield topology
+      localNodeIdentity <- LocalNodeIdentity.required(section)
+      knownPeers <- KnownPeers.required(section)
+      directNeighbors <- DirectNeighbors.required(section)
+    yield StaticPeerTopologyConfigInput(
+      localNodeIdentity = localNodeIdentity,
+      knownPeers = knownPeers,
+      directNeighbors = directNeighbors,
+    )
 
-  private def requiredString(
-      config: Config,
-      primary: String,
-      alternate: String,
-  ): Either[String, String] =
-    findPath(config, primary, alternate)
-      .toRight(ss"missing required config key: ${primary}")
-      .map(config.getString)
+  private val LocalNodeIdentity =
+    ConfigField(
+      aliases = ConfigAliases("local-node-identity", "localNodeIdentity"),
+      reader = ConfigReader.string,
+    )
 
-  private def requiredStringList(
-      config: Config,
-      primary: String,
-      alternate: String,
-  ): Either[String, List[String]] =
-    findPath(config, primary, alternate)
-      .toRight(ss"missing required config key: ${primary}")
-      .map(path => config.getStringList(path).asScala.toList)
+  private val KnownPeers =
+    ConfigField(
+      aliases = ConfigAliases("known-peers", "knownPeers"),
+      reader = ConfigReader.stringList,
+    )
 
-  private def findPath(
-      config: Config,
-      primary: String,
-      alternate: String,
-  ): Option[String] =
-    List(primary, alternate).find(config.hasPath)
+  private val DirectNeighbors =
+    ConfigField(
+      aliases = ConfigAliases("direct-neighbors", "directNeighbors"),
+      reader = ConfigReader.stringList,
+    )

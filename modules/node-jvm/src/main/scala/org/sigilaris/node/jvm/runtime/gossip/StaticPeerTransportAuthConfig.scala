@@ -1,13 +1,14 @@
 package org.sigilaris.node.jvm.runtime.gossip
 
-import cats.syntax.all.*
-
-import scala.jdk.CollectionConverters.*
-
 import com.typesafe.config.Config
 
-import org.sigilaris.core.util.SafeStringInterp.*
 import org.sigilaris.node.gossip.{StaticPeerTopology, StaticPeerTransportAuth}
+import org.sigilaris.node.jvm.runtime.config.TypesafeConfigParsing
+import org.sigilaris.node.jvm.runtime.config.TypesafeConfigParsing.{
+  ConfigAliases,
+  ConfigField,
+  ConfigReader,
+}
 
 @SuppressWarnings(Array("org.wartremover.warts.DefaultArguments"))
 /** Loads a `StaticPeerTransportAuth` from Typesafe Config. */
@@ -32,12 +33,7 @@ object StaticPeerTransportAuthConfig:
       topology: StaticPeerTopology,
       path: String = DefaultPath,
   ): Either[String, StaticPeerTransportAuth] =
-    Either
-      .cond(
-        config.hasPath(path),
-        config.getConfig(path),
-        ss"missing config path: ${path}",
-      )
+    TypesafeConfigParsing.requiredSection(config, path)
       .flatMap(loadSection(_, topology))
 
   /** Loads transport auth from a pre-resolved config section.
@@ -53,40 +49,33 @@ object StaticPeerTransportAuthConfig:
       section: Config,
       topology: StaticPeerTopology,
   ): Either[String, StaticPeerTransportAuth] =
+    parseSection(section).flatMap: input =>
+      StaticPeerTransportAuth.configure(topology, input.peerSecrets)
+
+  /** Parses the raw transport-auth input model from the root config. */
+  def parse(
+      config: Config,
+      path: String = DefaultPath,
+  ): Either[String, StaticPeerTransportAuthConfigInput] =
+    TypesafeConfigParsing.requiredSection(config, path).flatMap(parseSection)
+
+  /** Parses the raw transport-auth input model from a pre-resolved section. */
+  def parseSection(
+      section: Config,
+  ): Either[String, StaticPeerTransportAuthConfigInput] =
     for
-      authSection <- requiredConfig(section, "transport-auth", "transportAuth")
-      secretSection <- requiredConfig(
-        authSection,
-        "peer-secrets",
-        "peerSecrets",
-      )
-      peerSecrets <- secretSection
-        .root()
-        .keySet()
-        .asScala
-        .toList
-        .sorted
-        .traverse: peer =>
-          Either
-            .catchNonFatal(secretSection.getString(peer))
-            .leftMap(_.getMessage)
-            .map(peer -> _)
-        .map(_.toMap)
-      transportAuth <- StaticPeerTransportAuth.configure(topology, peerSecrets)
-    yield transportAuth
+      authSection <- TransportAuth.required(section)
+      peerSecrets <- PeerSecrets.required(authSection)
+    yield StaticPeerTransportAuthConfigInput(peerSecrets = peerSecrets)
 
-  private def requiredConfig(
-      config: Config,
-      primary: String,
-      alternate: String,
-  ): Either[String, Config] =
-    findPath(config, primary, alternate)
-      .toRight(ss"missing required config key: ${primary}")
-      .map(config.getConfig)
+  private val TransportAuth =
+    ConfigField(
+      aliases = ConfigAliases("transport-auth", "transportAuth"),
+      reader = ConfigReader.configSection,
+    )
 
-  private def findPath(
-      config: Config,
-      primary: String,
-      alternate: String,
-  ): Option[String] =
-    List(primary, alternate).find(config.hasPath)
+  private val PeerSecrets =
+    ConfigField(
+      aliases = ConfigAliases("peer-secrets", "peerSecrets"),
+      reader = ConfigReader.stringMap,
+    )

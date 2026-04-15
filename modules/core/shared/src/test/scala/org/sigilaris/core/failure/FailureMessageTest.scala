@@ -6,7 +6,7 @@ import munit.FunSuite
 class FailureMessageTest extends FunSuite:
 
   test("ErrorKey keeps failure code while rendering client message keys"):
-    val code = FailureCode("accounts.account_not_found")
+    val code = FailureCode.unsafe("accounts.account_not_found")
     val key = ClientFailureMessage.errorKey(
       ClientFailureMessage.Kind.NotFound,
       domain = "accounts",
@@ -81,7 +81,7 @@ class FailureMessageTest extends FunSuite:
     assertEquals(message, "conflict.unknown.invalid_error_key: duplicate")
 
   test("ConflictMessage keeps failure code while rendering conflict keys"):
-    val code = FailureCode("groups.group_already_exists")
+    val code = FailureCode.unsafe("groups.group_already_exists")
     val key = ConflictMessage.errorKey(
       domain = "groups",
       reason = "group_already_exists",
@@ -107,7 +107,11 @@ class FailureMessageTest extends FunSuite:
     assertEquals(failure.code, FailureCode.Decode)
 
   test("FailureCode rejects non-machine-readable values"):
-    interceptMessage[IllegalArgumentException](
-      "requirement failed: Invalid FailureCode: bad code",
-    ):
-      FailureCode("bad code")
+    assertEquals(
+      FailureCode("bad code"),
+      Left("Invalid FailureCode: bad code"),
+    )
+
+  test("FailureCode.unsafe preserves the throwing path for invalid constants"):
+    interceptMessage[IllegalArgumentException]("Invalid FailureCode: bad code"):
+      FailureCode.unsafe("bad code")

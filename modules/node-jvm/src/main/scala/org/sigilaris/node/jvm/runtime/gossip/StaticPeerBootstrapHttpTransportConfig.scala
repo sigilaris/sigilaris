@@ -2,14 +2,18 @@ package org.sigilaris.node.jvm.runtime.gossip
 
 import java.time.Duration
 
-import scala.jdk.CollectionConverters.*
-
 import cats.syntax.all.*
 
 import com.typesafe.config.Config
 
 import org.sigilaris.core.util.SafeStringInterp.*
 import org.sigilaris.node.gossip.{PeerIdentity, StaticPeerTopology}
+import org.sigilaris.node.jvm.runtime.config.TypesafeConfigParsing
+import org.sigilaris.node.jvm.runtime.config.TypesafeConfigParsing.{
+  ConfigAliases,
+  ConfigField,
+  ConfigReader,
+}
 
 /** Configuration for HTTP-based bootstrap transport to static peers.
   *
@@ -57,7 +61,9 @@ object StaticPeerBootstrapHttpTransportConfig:
       topology: StaticPeerTopology,
       path: String = DefaultPath,
   ): Either[String, Option[StaticPeerBootstrapHttpTransportConfig]] =
-    if config.hasPath(path) then loadSection(config.getConfig(path), topology)
+    if config.hasPath(path) then
+      TypesafeConfigParsing.requiredSection(config, path)
+        .flatMap(loadSection(_, topology))
     else none[StaticPeerBootstrapHttpTransportConfig].asRight[String]
 
   /** Loads bootstrap config from a pre-resolved config section.
@@ -73,44 +79,60 @@ object StaticPeerBootstrapHttpTransportConfig:
       section: Config,
       topology: StaticPeerTopology,
   ): Either[String, Option[StaticPeerBootstrapHttpTransportConfig]] =
-    optionalConfig(section, "bootstrap", "bootstrap")
-      .flatMap:
-        case None =>
-          none[StaticPeerBootstrapHttpTransportConfig].asRight[String]
-        case Some(bootstrapSection) =>
-          for
-            peerBaseUris <- requiredStringMap(
-              bootstrapSection,
-              "peer-base-uris",
-              "peerBaseUris",
-            ).flatMap(parsePeerBaseUris(_, topology))
-            requestTimeout <- optionalDurationMillis(
-              bootstrapSection,
-              "request-timeout-ms",
-              "requestTimeoutMs",
-              default = DefaultRequestTimeout,
-            )
-            maxConcurrentRequests <- optionalInt(
-              bootstrapSection,
-              "max-concurrent-requests",
-              "maxConcurrentRequests",
-              default = DefaultMaxConcurrentRequests,
-            )
-            _ <- Either.cond(
-              maxConcurrentRequests > 0,
-              (),
-              "maxConcurrentRequests must be positive",
-            )
-            _ <- Either.cond(
-              requestTimeout.compareTo(Duration.ZERO) > 0,
-              (),
-              "requestTimeoutMs must be positive",
-            )
-          yield StaticPeerBootstrapHttpTransportConfig(
+    parseSection(section).flatMap:
+      case None =>
+        none[StaticPeerBootstrapHttpTransportConfig].asRight[String]
+      case Some(input) =>
+        parsePeerBaseUris(input.peerBaseUris, topology).map: peerBaseUris =>
+          StaticPeerBootstrapHttpTransportConfig(
             peerBaseUris = peerBaseUris,
-            requestTimeout = requestTimeout,
-            maxConcurrentRequests = maxConcurrentRequests,
-          ).some
+            requestTimeout = input.requestTimeout,
+            maxConcurrentRequests = input.maxConcurrentRequests,
+          )
+            .some
+
+  /** Parses the raw bootstrap transport input model from the root config. */
+  def parse(
+      config: Config,
+      path: String = DefaultPath,
+  ): Either[String, Option[StaticPeerBootstrapHttpTransportConfigInput]] =
+    if config.hasPath(path) then
+      TypesafeConfigParsing.requiredSection(config, path).flatMap(parseSection)
+    else none[StaticPeerBootstrapHttpTransportConfigInput].asRight[String]
+
+  /** Parses the raw bootstrap transport input model from a pre-resolved section. */
+  def parseSection(
+      section: Config,
+  ): Either[String, Option[StaticPeerBootstrapHttpTransportConfigInput]] =
+    Bootstrap.optional(section).flatMap:
+      case None =>
+        none[StaticPeerBootstrapHttpTransportConfigInput].asRight[String]
+      case Some(bootstrapSection) =>
+        for
+          peerBaseUris <- PeerBaseUris.required(bootstrapSection)
+          requestTimeout <- RequestTimeout.optionalOrDefault(
+            bootstrapSection,
+            DefaultRequestTimeout,
+          )
+          maxConcurrentRequests <- MaxConcurrentRequests.optionalOrDefault(
+            bootstrapSection,
+            DefaultMaxConcurrentRequests,
+          )
+          _ <- Either.cond(
+            maxConcurrentRequests > 0,
+            (),
+            "maxConcurrentRequests must be positive",
+          )
+          _ <- Either.cond(
+            requestTimeout.compareTo(Duration.ZERO) > 0,
+            (),
+            "requestTimeoutMs must be positive",
+          )
+        yield StaticPeerBootstrapHttpTransportConfigInput(
+          peerBaseUris = peerBaseUris,
+          requestTimeout = requestTimeout,
+          maxConcurrentRequests = maxConcurrentRequests,
+        ).some
 
   private def parsePeerBaseUris(
       raw: Map[String, String],
@@ -129,71 +151,29 @@ object StaticPeerBootstrapHttpTransportConfig:
             )
       .map(_.toMap)
 
-  private def requiredStringMap(
-      config: Config,
-      primary: String,
-      alternate: String,
-  ): Either[String, Map[String, String]] =
-    findPath(config, primary, alternate)
-      .toRight(ss"missing required config key: ${primary}")
-      .flatMap: path =>
-        Either
-          .catchNonFatal(config.getConfig(path))
-          .leftMap(_.getMessage)
-          .map: section =>
-            section
-              .root()
-              .entrySet()
-              .asScala
-              .toVector
-              .map(entry => entry.getKey -> section.getString(entry.getKey))
-              .toMap
+  private val Bootstrap =
+    ConfigField(
+      aliases = ConfigAliases("bootstrap"),
+      reader = ConfigReader.configSection,
+    )
 
-  private def optionalConfig(
-      config: Config,
-      primary: String,
-      alternate: String,
-  ): Either[String, Option[Config]] =
-    findPath(config, primary, alternate) match
-      case None =>
-        none[Config].asRight[String]
-      case Some(path) =>
-        Either
-          .catchNonFatal(config.getConfig(path))
-          .leftMap(_.getMessage)
-          .map(_.some)
+  private val PeerBaseUris =
+    ConfigField(
+      aliases = ConfigAliases("peer-base-uris", "peerBaseUris"),
+      reader = ConfigReader.stringMap,
+    )
 
-  private def optionalInt(
-      config: Config,
-      primary: String,
-      alternate: String,
-      default: Int,
-  ): Either[String, Int] =
-    findPath(config, primary, alternate) match
-      case None =>
-        default.asRight[String]
-      case Some(path) =>
-        Either
-          .catchNonFatal(config.getInt(path))
-          .leftMap(_.getMessage)
+  private val RequestTimeout =
+    ConfigField(
+      aliases = ConfigAliases("request-timeout-ms", "requestTimeoutMs"),
+      reader = ConfigReader.durationMillis,
+    )
 
-  private def optionalDurationMillis(
-      config: Config,
-      primary: String,
-      alternate: String,
-      default: Duration,
-  ): Either[String, Duration] =
-    findPath(config, primary, alternate) match
-      case None =>
-        default.asRight[String]
-      case Some(path) =>
-        Either
-          .catchNonFatal(Duration.ofMillis(config.getLong(path)))
-          .leftMap(_.getMessage)
-
-  private def findPath(
-      config: Config,
-      primary: String,
-      alternate: String,
-  ): Option[String] =
-    List(primary, alternate).find(config.hasPath)
+  private val MaxConcurrentRequests =
+    ConfigField(
+      aliases = ConfigAliases(
+        "max-concurrent-requests",
+        "maxConcurrentRequests",
+      ),
+      reader = ConfigReader.int,
+    )

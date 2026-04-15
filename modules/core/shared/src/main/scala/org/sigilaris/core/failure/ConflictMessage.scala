@@ -16,7 +16,7 @@ object ConflictMessage:
     "^conflict\\.[a-z0-9_]+\\.[a-z0-9_]+$".r
 
   /** Default failure code for generic conflict errors. */
-  val DefaultCode: FailureCode = FailureCode("conflict.generic")
+  val DefaultCode: FailureCode = FailureCode.unsafe("conflict.generic")
 
   /** Formats a conflict failure message with the default failure code.
     *

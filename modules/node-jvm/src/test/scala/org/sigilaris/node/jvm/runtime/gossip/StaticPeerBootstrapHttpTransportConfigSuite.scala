@@ -83,6 +83,35 @@ final class StaticPeerBootstrapHttpTransportConfigSuite extends FunSuite:
       Right(None),
     )
 
+  test("parse exposes a raw bootstrap input model with defaults applied"):
+    val config = ConfigFactory.parseString(
+      """
+        |sigilaris.node.gossip.peers {
+        |  bootstrap {
+        |    peerBaseUris {
+        |      "node-b" = "http://127.0.0.1:7001"
+        |    }
+        |  }
+        |}
+        |""".stripMargin,
+    )
+
+    assertEquals(
+      StaticPeerBootstrapHttpTransportConfig.parse(config),
+      Right(
+        Some(
+          StaticPeerBootstrapHttpTransportConfigInput(
+            peerBaseUris =
+              Map(PeerIdentity.unsafe("node-b").value -> "http://127.0.0.1:7001"),
+            requestTimeout =
+              StaticPeerBootstrapHttpTransportConfig.DefaultRequestTimeout,
+            maxConcurrentRequests =
+              StaticPeerBootstrapHttpTransportConfig.DefaultMaxConcurrentRequests,
+          ),
+        ),
+      ),
+    )
+
   test("load rejects bootstrap peer base URIs for unknown peers"):
     val config = ConfigFactory.parseString(
       """

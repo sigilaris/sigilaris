@@ -5,12 +5,9 @@ import java.time.Instant
 import cats.Eq
 import scodec.bits.ByteVector
 
-import io.github.iltotore.iron.*
-import io.github.iltotore.iron.constraint.collection.FixedLength
-
 import org.sigilaris.core.codec.byte.{ByteDecoder, ByteEncoder, DecodeResult}
 import org.sigilaris.core.codec.byte.ByteEncoder.ops.*
-import org.sigilaris.core.datatype.{BigNat, Utf8}
+import org.sigilaris.core.datatype.{BigNat, FixedSizeByteValueCompanion, Utf8}
 import org.sigilaris.core.failure.DecodeFailure
 
 /** Account identifier - can be either Named or Unnamed.
@@ -67,62 +64,20 @@ object Account:
   *
   * Derived from public key using Ethereum's method:
   * Keccak256(publicKey)[12..32] (last 20 bytes of hash)
-  *
-  * Uses Iron constraint to guarantee 20-byte length at type level. Note:
-  * FixedLength[20] uses Int, but works correctly with ByteVector.size (Long)
-  * due to Scala's automatic Int-to-Long widening in the constraint check.
   */
-opaque type KeyId20 = ByteVector :| FixedLength[20]
+opaque type KeyId20 = ByteVector
 
 /** Companion for [[KeyId20]], providing construction, codec instances, and equality. */
-object KeyId20:
-  // Import the LengthByteVector constraint from util.iron
-  import org.sigilaris.core.util.iron.given
+object KeyId20 extends FixedSizeByteValueCompanion[KeyId20]:
+  override protected val size: Int    = 20
+  override protected val label: String = "KeyId20"
 
-  /** Creates a KeyId20 from a ByteVector, validating it's exactly 20 bytes.
-    *
-    * @param bytes
-    *   must be exactly 20 bytes
-    * @return
-    *   Right(KeyId20) if valid, Left(error) if not
-    */
-  def apply(bytes: ByteVector): Either[String, KeyId20] =
-    bytes.refineEither[FixedLength[20]]
+  override protected def wrap(bytes: ByteVector): KeyId20 = bytes
 
-  /** Unsafe version that assumes bytes is exactly 20 bytes (for internal use).
-    *
-    * @throws IllegalArgumentException
-    *   if bytes is not 20 bytes
-    */
-  def unsafeApply(bytes: ByteVector): KeyId20 =
-    bytes.refineUnsafe[FixedLength[20]]
+  override protected def unwrap(value: KeyId20): ByteVector = value
 
-  extension (k: KeyId20)
-    /** Access the underlying raw bytes.
-      *
-      * @return the 20-byte vector
-      */
-    def bytes: ByteVector = k
-
-  given keyId20Eq: Eq[KeyId20] = Eq.fromUniversalEquals
-
-  // ByteEncoder: encode the underlying ByteVector directly (no size prefix)
-  given keyId20ByteEncoder: ByteEncoder[KeyId20] = (k: KeyId20) => k.bytes
-
-  // ByteDecoder: read exactly 20 bytes and validate
-  @SuppressWarnings(
-    Array("org.wartremover.warts.Any", "org.wartremover.warts.Nothing"),
-  )
-  given keyId20ByteDecoder: ByteDecoder[KeyId20] = bytes =>
-    if bytes.size >= 20 then
-      val (keyBytes, remainder) = bytes.splitAt(20)
-      apply(keyBytes) match
-        case Right(keyId) => Right(DecodeResult(keyId, remainder))
-        case Left(err)    => Left(DecodeFailure(err))
-    else
-      Left:
-        DecodeFailure:
-          s"Insufficient bytes for KeyId20: expected 20, got ${bytes.size}"
+  /** Unsafe version that assumes bytes is exactly 20 bytes (for internal use). */
+  def unsafeApply(bytes: ByteVector): KeyId20 = unsafe(bytes)
 
 /** Account information stored on-chain.
   *

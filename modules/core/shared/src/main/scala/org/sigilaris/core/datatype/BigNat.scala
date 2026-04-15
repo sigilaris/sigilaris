@@ -5,7 +5,7 @@ import cats.Eq
 import cats.syntax.either.*
 
 import io.github.iltotore.iron.*
-import io.github.iltotore.iron.constraint.numeric.Positive0
+import io.github.iltotore.iron.constraint.numeric.{Positive, Positive0}
 
 import codec.byte.{ByteDecoder, ByteEncoder}
 import codec.json.{JsonDecoder, JsonEncoder}
@@ -60,6 +60,13 @@ import failure.DecodeFailure
   *   [[org.sigilaris.core.codec.json.JsonEncoder]] for JSON encoding details
   */
 opaque type BigNat = BigInt :| Positive0
+
+/** Strictly positive arbitrary-precision integer.
+  *
+  * This helper is used where zero would reintroduce partial arithmetic, such
+  * as integer division.
+  */
+opaque type NonZeroBigNat = BigInt :| Positive
 
 /** Companion object providing constructors, arithmetic, and typeclass instances for [[BigNat]]. */
 object BigNat:
@@ -159,6 +166,18 @@ object BigNat:
     */
   def multiply(x: BigNat, y: BigNat): BigNat = (x * y).refineUnsafe[Positive0]
 
+  /** Divides by a validated non-zero divisor using integer division.
+    *
+    * @param x
+    *   dividend
+    * @param y
+    *   non-zero divisor
+    * @return
+    *   x / y (always valid BigNat)
+    */
+  def divideBy(x: BigNat, y: NonZeroBigNat): BigNat =
+    (x.toBigInt / NonZeroBigNat.toBigInt(y)).refineUnsafe[Positive0]
+
   /** Divides two natural numbers using integer division.
     *
     * @param x
@@ -166,15 +185,14 @@ object BigNat:
     * @param y
     *   divisor
     * @return
-    *   x / y (always valid BigNat)
+    *   `Right(x / y)` if the divisor is positive, `Left(error message)` if the
+    *   divisor is zero
     *
     * @note
     *   Integer division of non-negative numbers is always non-negative.
-    * @note
-    *   Division by zero will throw ArithmeticException (inherited from BigInt
-    *   behavior).
     */
-  def divide(x: BigNat, y: BigNat): BigNat = (x / y).refineUnsafe[Positive0]
+  def divide(x: BigNat, y: BigNat): Either[String, BigNat] =
+    NonZeroBigNat.fromBigNat(y).map(divideBy(x, _))
 
   /** Attempts to subtract y from x.
     *
@@ -287,3 +305,47 @@ object BigNat:
       codec.byte.ByteCodec[BigNat],
       bignatOrdering,
     )
+
+/** Companion object for [[NonZeroBigNat]]. */
+object NonZeroBigNat:
+  /** Safely constructs a strictly positive natural number from a BigInt. */
+  def fromBigInt(n: BigInt): Either[String, NonZeroBigNat] =
+    n.refineEither[Positive]
+
+  /** Safely constructs a strictly positive natural number from a BigNat. */
+  def fromBigNat(n: BigNat): Either[String, NonZeroBigNat] =
+    fromBigInt(BigNat.toBigInt(n))
+
+  /** Unsafely constructs a strictly positive natural number. */
+  @SuppressWarnings(Array("org.wartremover.warts.Throw"))
+  def unsafeFromBigInt(n: BigInt): NonZeroBigNat =
+    fromBigInt(n) match
+      case Right(value) => value
+      case Left(err)    => throw new IllegalArgumentException(err)
+
+  /** Unsafely upgrades a BigNat to NonZeroBigNat. */
+  @SuppressWarnings(Array("org.wartremover.warts.Throw"))
+  def unsafeFromBigNat(n: BigNat): NonZeroBigNat =
+    unsafeFromBigInt(BigNat.toBigInt(n))
+
+  extension (value: NonZeroBigNat)
+    def toBigInt: BigInt = value
+
+    def toBigNat: BigNat = BigNat.unsafeFromBigInt(value)
+
+  given nonZeroBigNatEq: Eq[NonZeroBigNat] = Eq.fromUniversalEquals
+
+  given nonZeroBigNatJsonDecoder: JsonDecoder[NonZeroBigNat] =
+    BigNat.bignatJsonDecoder.emap(value => fromBigNat(value).leftMap(DecodeFailure(_)))
+
+  given nonZeroBigNatJsonEncoder: JsonEncoder[NonZeroBigNat] =
+    BigNat.bignatJsonEncoder.contramap(_.toBigNat)
+
+  given nonZeroBigNatByteDecoder: ByteDecoder[NonZeroBigNat] =
+    BigNat.bignatByteDecoder.emap(value => fromBigNat(value).leftMap(DecodeFailure(_)))
+
+  given nonZeroBigNatByteEncoder: ByteEncoder[NonZeroBigNat] =
+    BigNat.bignatByteEncoder.contramap(_.toBigNat)
+
+  given nonZeroBigNatOrdering: Ordering[NonZeroBigNat] =
+    Ordering.by(toBigInt)

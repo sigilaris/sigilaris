@@ -1,36 +1,23 @@
 package org.sigilaris.core
 package datatype
 
-import codec.byte.ByteDecoder.ops.*
-import codec.byte.ByteEncoder.ops.*
-import codec.json.JsonDecoder
-import codec.json.JsonEncoder.ops.*
+import org.sigilaris.core.codec.CodecLawSupport
+import org.sigilaris.core.testing.HedgehogGenSupport
 
 import hedgehog.munit.HedgehogSuite
 import hedgehog.*
 
 class BigNatTest extends HedgehogSuite:
 
-  private val bignatGen = Gen
-    .bytes(Range.linear(0, 64))
-    .map(BigInt(1, _))
-    .map(BigNat.unsafeFromBigInt)
+  private val bignatGen = HedgehogGenSupport.bigNat
 
   property("roundtrip of bignat byte codec"):
     bignatGen.forAll.map: bignat =>
-      val encoded = bignat.toBytes
-
-      encoded.to[BigNat] match
-        case Right(decoded) => decoded ==== bignat
-        case _              => Result.failure
+      CodecLawSupport.ByteLaws.roundTrip(bignat)
 
   property("roundtrip of bignat json codec"):
     bignatGen.forAll.map: bignat =>
-      val encoded = bignat.toJson
-
-      JsonDecoder[BigNat].decode(encoded) match
-        case Right(decoded) => decoded ==== bignat
-        case _              => Result.failure
+      CodecLawSupport.JsonLaws.roundTrip(bignat)
 
   property("bignat ordering is reflexive"):
     bignatGen.forAll.map: bignat =>
@@ -59,5 +46,29 @@ class BigNatTest extends HedgehogSuite:
         List(
           if xy <= 0 && yz <= 0 then Result.assert(xz <= 0) else Result.success,
           if xy >= 0 && yz >= 0 then Result.assert(xz >= 0) else Result.success,
+        ),
+      )
+
+  property("divide rejects zero divisors instead of throwing"):
+    bignatGen.forAll.map: bignat =>
+      BigNat.divide(bignat, BigNat.Zero).isLeft ==== true
+
+  property("divideBy remains total for non-zero divisors"):
+    for
+      dividend <- bignatGen.forAll
+      divisor <- HedgehogGenSupport.nonZeroBigNat.forAll
+    yield
+      BigNat.divide(dividend, divisor.toBigNat) match
+        case Right(result) =>
+          result ==== BigNat.divideBy(dividend, divisor)
+        case Left(_) =>
+          Result.failure
+
+  property("NonZeroBigNat codec surface round-trips"):
+    HedgehogGenSupport.nonZeroBigNat.forAll.map: value =>
+      Result.all(
+        List(
+          CodecLawSupport.ByteLaws.roundTrip(value),
+          CodecLawSupport.JsonLaws.roundTrip(value),
         ),
       )

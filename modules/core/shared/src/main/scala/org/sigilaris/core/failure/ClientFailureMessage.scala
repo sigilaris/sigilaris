@@ -36,13 +36,15 @@ object ClientFailureMessage:
     "^(invalid_request|forbidden|not_found)\\.[a-z0-9_]+\\.[a-z0-9_]+$".r
 
   /** Failure code for invalid request errors. */
-  val InvalidRequestCode: FailureCode = FailureCode("client.invalid_request")
+  val InvalidRequestCode: FailureCode = FailureCode.unsafe(
+    "client.invalid_request",
+  )
 
   /** Failure code for forbidden errors. */
-  val ForbiddenCode: FailureCode      = FailureCode("client.forbidden")
+  val ForbiddenCode: FailureCode = FailureCode.unsafe("client.forbidden")
 
   /** Failure code for not-found errors. */
-  val NotFoundCode: FailureCode       = FailureCode("client.not_found")
+  val NotFoundCode: FailureCode = FailureCode.unsafe("client.not_found")
 
   /** Formats an invalid-request failure message with the default failure code.
     *

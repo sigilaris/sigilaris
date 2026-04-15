@@ -93,12 +93,13 @@ class AccountsReducer[F[_]: Monad]
     extends StateReducer0[F, AccountsSchema.AccountsSchema, EmptyTuple]:
   import AccountsSchema.*
 
-  private val UnsupportedTransactionCode = FailureCode:
+  private val UnsupportedTransactionCode = FailureCode.unsafe:
     "accounts.unsupported_transaction"
-  private val AccountNotFoundCode = FailureCode("accounts.account_not_found")
-  private val AccountAlreadyExistsCode = FailureCode:
+  private val AccountNotFoundCode =
+    FailureCode.unsafe("accounts.account_not_found")
+  private val AccountAlreadyExistsCode = FailureCode.unsafe:
     "accounts.account_already_exists"
-  private val AccountNonceMismatchCode = FailureCode:
+  private val AccountNonceMismatchCode = FailureCode.unsafe:
     "accounts.account_nonce_mismatch"
 
   private inline def resultOf[A](value: A): AccountsResult[A] = AccountsResult:
