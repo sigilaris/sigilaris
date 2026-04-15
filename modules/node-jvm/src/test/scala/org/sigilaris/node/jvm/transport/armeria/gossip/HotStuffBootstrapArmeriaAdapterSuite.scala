@@ -415,8 +415,8 @@ final class HotStuffBootstrapArmeriaAdapterSuite extends CatsEffectSuite:
             bootstrapTransport = Some(
               HotStuffBootstrapHttpTransport.services[IO](
                 Map(
-                  PeerIdentity.unsafe("node-b") -> serverB.baseUri,
-                  PeerIdentity.unsafe("node-c") -> serverC.baseUri,
+                  PeerIdentity.unsafe("node-b") -> URI.create(serverB.baseUri),
+                  PeerIdentity.unsafe("node-c") -> URI.create(serverC.baseUri),
                 ),
                 transportAuth = StaticPeerTransportAuth.testing(topology),
                 proposalCatchUpReadiness =
@@ -553,7 +553,9 @@ final class HotStuffBootstrapArmeriaAdapterSuite extends CatsEffectSuite:
             storageLayout = requesterLayout,
             bootstrapTransport = Some(
               HotStuffBootstrapHttpTransport.services[IO](
-                Map(PeerIdentity.unsafe("node-b") -> remote.baseUri),
+                Map(
+                  PeerIdentity.unsafe("node-b") -> URI.create(remote.baseUri),
+                ),
                 transportAuth = StaticPeerTransportAuth.testing(topology),
               ),
             ),
@@ -588,7 +590,8 @@ final class HotStuffBootstrapArmeriaAdapterSuite extends CatsEffectSuite:
                       HotStuffBootstrapHttpTransport.services[IO](
                         Map(
                           PeerIdentity
-                            .unsafe("node-a") -> requesterServer.baseUri,
+                            .unsafe("node-a") ->
+                            URI.create(requesterServer.baseUri),
                         ),
                         transportAuth = requesterServer.transportAuth,
                       )
@@ -629,7 +632,8 @@ final class HotStuffBootstrapArmeriaAdapterSuite extends CatsEffectSuite:
 
     for result <- HotStuffBootstrapHttpTransport
         .services[IO](
-          peerBaseUris = Map(session.peer -> "http://bootstrap.test"),
+          peerBaseUris =
+            Map(session.peer -> java.net.URI.create("http://bootstrap.test")),
           transportAuth = transportAuthFor(
             localNodeId = session.authenticatedPeer.value,
             knownPeers = List(session.peer.value),
@@ -670,6 +674,43 @@ final class HotStuffBootstrapArmeriaAdapterSuite extends CatsEffectSuite:
         ),
       )
 
+  test("bootstrap http transport preserves configured base URI path prefixes"):
+    val httpClient = RecordingHttpClient()
+    httpClient.respondImmediately(
+      200,
+      FinalizedSuggestionResponseWire(None).asJson.noSpaces,
+    )
+    val session =
+      BootstrapSessionBinding(
+        peer = PeerIdentity.unsafe("node-b"),
+        sessionId = DirectionalSessionId
+          .parse("abababab-abab-4bab-8bab-abababababab")
+          .toOption
+          .get,
+        authenticatedPeer = PeerIdentity.unsafe("node-a"),
+      )
+
+    for result <- HotStuffBootstrapHttpTransport
+        .services[IO](
+          peerBaseUris =
+            Map(session.peer -> URI.create("http://bootstrap.test/prefix/")),
+          transportAuth = transportAuthFor(
+            localNodeId = session.authenticatedPeer.value,
+            knownPeers = List(session.peer.value),
+          ),
+          httpClient = httpClient,
+        )
+        .finalizedAnchorSuggestions
+        .bestFinalized(session, chainId)
+    yield
+      assertEquals(result, Right(None))
+      assertEquals(
+        httpClient.recordedUris.map(_.toString),
+        Vector(
+          s"http://bootstrap.test/prefix/gossip/bootstrap/finalized/${session.sessionId.value}/${chainId.value}",
+        ),
+      )
+
   test("bootstrap http transport bounds concurrent outbound requests"):
     val httpClient = RecordingHttpClient()
     val session =
@@ -683,7 +724,8 @@ final class HotStuffBootstrapArmeriaAdapterSuite extends CatsEffectSuite:
       )
     val transport =
       HotStuffBootstrapHttpTransport.services[IO](
-        peerBaseUris = Map(session.peer -> "http://bootstrap.test"),
+        peerBaseUris =
+          Map(session.peer -> java.net.URI.create("http://bootstrap.test")),
         transportAuth = transportAuthFor(
           localNodeId = session.authenticatedPeer.value,
           knownPeers = List(session.peer.value),
@@ -729,7 +771,9 @@ final class HotStuffBootstrapArmeriaAdapterSuite extends CatsEffectSuite:
       server: Harness,
   ): HotStuffBootstrapTransportServices[IO] =
     HotStuffBootstrapHttpTransport.services[IO](
-      Map(PeerIdentity.unsafe(server.localNodeId) -> server.baseUri),
+      Map(
+        PeerIdentity.unsafe(server.localNodeId) -> URI.create(server.baseUri),
+      ),
       transportAuth = server.transportAuth,
     )
 
@@ -1524,6 +1568,9 @@ final class HotStuffBootstrapArmeriaAdapterSuite extends CatsEffectSuite:
       requests.asScala.toVector.map: request =>
         val values = request.headers().allValues(name).asScala.toVector
         values.headOption
+
+    def recordedUris: Vector[URI] =
+      requests.asScala.toVector.map(_.uri())
 
     def startedCount: Int =
       startedRef.get()

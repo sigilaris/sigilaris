@@ -489,25 +489,66 @@ final class GossipModelSuite extends FunSuite:
       StaticPeerTopology.parse("node-a", List("node-b"), List("node-z")).isLeft,
     )
 
+  test("static peer topology validates already-parsed identities directly"):
+    val local = PeerIdentity.unsafe("node-a")
+    val peerB = PeerIdentity.unsafe("node-b")
+    val peerC = PeerIdentity.unsafe("node-c")
+
+    assertEquals(
+      StaticPeerTopology.fromValidated(
+        localNodeIdentity = local,
+        knownPeers = Set(peerB, peerC),
+        directNeighbors = Set(peerB),
+      ),
+      Right(
+        StaticPeerTopology(
+          localNodeIdentity = local,
+          knownPeers = Set(peerB, peerC),
+          directNeighbors = Set(peerB),
+        ),
+      ),
+    )
+    assert(
+      StaticPeerTopology
+        .fromValidated(
+          localNodeIdentity = local,
+          knownPeers = Set(local, peerB),
+          directNeighbors = Set(peerB),
+        )
+        .isLeft,
+    )
+    assert(
+      StaticPeerTopology
+        .fromValidated(
+          localNodeIdentity = local,
+          knownPeers = Set(peerB),
+          directNeighbors = Set(peerC),
+        )
+        .isLeft,
+    )
+
   test(
     "composite cursor treats missing keys as origin replay and validates version prefixes",
   ):
-    val token =
-      CursorToken.issue(ByteVector.encodeUtf8("cursor-a").toOption.get)
+    val payload = ByteVector.encodeUtf8("cursor-a").toOption.get
+    val token   = CursorToken.issue(payload).toOption.get
     val txKey  = ChainTopic(chainId, GossipTopic.tx)
     val cursor = CompositeCursor(Map(txKey -> token))
 
     assertEquals(cursor.tokenFor(txKey), Some(token))
     assert(!cursor.isOriginReplay(txKey))
     assert(CompositeCursor.empty.isOriginReplay(txKey))
+    assertEquals(CursorToken.issue(payload), Right(token))
     assertEquals(token.version, CursorToken.CurrentVersion)
     assert(token.validateVersion().isRight)
     assertEquals(CursorToken.decodeBase64Url(token.toBase64Url), Right(token))
+    assert(CursorToken.issue(ByteVector.empty, version = 256).isLeft)
 
-    val stale = CursorToken.issue(ByteVector.fromByte(0x7f.toByte), version = 2)
+    val stale =
+      CursorToken.unsafeIssue(ByteVector.fromByte(0x7f.toByte), version = 2)
     assert(stale.validateVersion().isLeft)
     intercept[IllegalArgumentException]:
-      CursorToken.issue(ByteVector.empty, version = 256)
+      CursorToken.unsafeIssue(ByteVector.empty, version = 256)
 
   test(
     "control batch structural validation rejects invalid idempotency keys and unknown op kinds",

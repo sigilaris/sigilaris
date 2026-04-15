@@ -513,7 +513,7 @@ final class HotStuffFinalizationSuite extends CatsEffectSuite:
         id = HotStuffGossipArtifact.stableIdOf(
           HotStuffGossipArtifact.ProposalArtifact(proposal),
         ),
-        cursor = CursorToken.issue(ByteVector.fromLong(cursorValue)),
+        cursor = CursorToken.unsafeIssue(ByteVector.fromLong(cursorValue)),
         ts = baseInstant.plusMillis(cursorValue),
         payload = HotStuffGossipArtifact.ProposalArtifact(proposal),
       ),
@@ -533,7 +533,7 @@ final class HotStuffFinalizationSuite extends CatsEffectSuite:
         id = HotStuffGossipArtifact.stableIdOf(
           HotStuffGossipArtifact.VoteArtifact(vote),
         ),
-        cursor = CursorToken.issue(ByteVector.fromLong(cursorValue)),
+        cursor = CursorToken.unsafeIssue(ByteVector.fromLong(cursorValue)),
         ts = baseInstant.plusMillis(cursorValue),
         payload = HotStuffGossipArtifact.VoteArtifact(vote),
       ),

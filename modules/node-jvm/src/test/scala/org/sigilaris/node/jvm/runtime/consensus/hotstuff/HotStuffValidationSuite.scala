@@ -1637,7 +1637,7 @@ final class HotStuffValidationSuite extends FunSuite:
       chainId = chainId,
       topic = topic,
       id = StableArtifactId.unsafeFromHex(idHex),
-      cursor = CursorToken.issue(ByteVector.fromLong(cursorValue)),
+      cursor = CursorToken.unsafeIssue(ByteVector.fromLong(cursorValue)),
       ts = Instant.parse("2026-04-01T00:00:00Z").plusMillis(cursorValue),
       payload = payload,
     )

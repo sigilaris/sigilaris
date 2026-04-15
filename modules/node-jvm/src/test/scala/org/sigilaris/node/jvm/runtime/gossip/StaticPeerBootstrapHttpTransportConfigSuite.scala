@@ -1,5 +1,6 @@
 package org.sigilaris.node.jvm.runtime.gossip
 
+import java.net.URI
 import java.time.Duration
 
 import munit.FunSuite
@@ -39,8 +40,8 @@ final class StaticPeerBootstrapHttpTransportConfigSuite extends FunSuite:
         Some(
           StaticPeerBootstrapHttpTransportConfig(
             peerBaseUris = Map(
-              PeerIdentity.unsafe("node-b") -> "http://127.0.0.1:7001",
-              PeerIdentity.unsafe("node-c") -> "http://127.0.0.1:7002",
+              PeerIdentity.unsafe("node-b") -> URI.create("http://127.0.0.1:7001"),
+              PeerIdentity.unsafe("node-c") -> URI.create("http://127.0.0.1:7002"),
             ),
             requestTimeout = Duration.ofMillis(2500L),
             maxConcurrentRequests = 4,
@@ -68,7 +69,10 @@ final class StaticPeerBootstrapHttpTransportConfigSuite extends FunSuite:
         Some(
           StaticPeerBootstrapHttpTransportConfig(
             peerBaseUris =
-              Map(PeerIdentity.unsafe("node-b") -> "http://127.0.0.1:7001"),
+              Map(
+                PeerIdentity.unsafe("node-b") ->
+                  URI.create("http://127.0.0.1:7001"),
+              ),
             requestTimeout = Duration.ofMillis(3000L),
             maxConcurrentRequests = 2,
           ),
@@ -102,7 +106,10 @@ final class StaticPeerBootstrapHttpTransportConfigSuite extends FunSuite:
         Some(
           StaticPeerBootstrapHttpTransportConfigInput(
             peerBaseUris =
-              Map(PeerIdentity.unsafe("node-b").value -> "http://127.0.0.1:7001"),
+              Map(
+                PeerIdentity.unsafe("node-b") ->
+                  URI.create("http://127.0.0.1:7001"),
+              ),
             requestTimeout =
               StaticPeerBootstrapHttpTransportConfig.DefaultRequestTimeout,
             maxConcurrentRequests =
@@ -130,6 +137,27 @@ final class StaticPeerBootstrapHttpTransportConfigSuite extends FunSuite:
         .load(config, topology)
         .left
         .map(_.contains("unknown peer")),
+      Left(true),
+    )
+
+  test("parse rejects relative bootstrap peer base URIs"):
+    val config = ConfigFactory.parseString(
+      """
+        |sigilaris.node.gossip.peers {
+        |  bootstrap {
+        |    peer-base-uris {
+        |      "node-b" = "/relative/path"
+        |    }
+        |  }
+        |}
+        |""".stripMargin,
+    )
+
+    assertEquals(
+      StaticPeerBootstrapHttpTransportConfig
+        .parse(config)
+        .left
+        .map(_.contains("must be absolute")),
       Left(true),
     )
 

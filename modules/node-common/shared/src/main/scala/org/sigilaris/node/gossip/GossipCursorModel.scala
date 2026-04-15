@@ -191,12 +191,24 @@ object CursorToken:
     * @return
     *   the assembled cursor token
     */
-  def issue(payload: ByteVector, version: Int = CurrentVersion): CursorToken =
-    if version < 0 || version > 0xff then
-      throw new IllegalArgumentException(
-        "cursor token version must fit in one unsigned byte",
-      )
-    ByteVector.fromByte(version.toByte) ++ payload
+  def issue(
+      payload: ByteVector,
+      version: Int = CurrentVersion,
+  ): Either[String, CursorToken] =
+    Either.cond(
+      version >= 0 && version <= 0xff,
+      ByteVector.fromByte(version.toByte) ++ payload,
+      "cursor token version must fit in one unsigned byte",
+    )
+
+  /** Issues a cursor token, throwing on invalid version values. */
+  def unsafeIssue(
+      payload: ByteVector,
+      version: Int = CurrentVersion,
+  ): CursorToken =
+    issue(payload, version) match
+      case Right(token) => token
+      case Left(error)  => throw new IllegalArgumentException(error)
 
   /** Creates a cursor token from raw bytes.
     *

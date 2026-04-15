@@ -2,7 +2,6 @@ package org.sigilaris.node.gossip
 
 import java.nio.charset.StandardCharsets
 
-import cats.syntax.all.*
 import scodec.bits.ByteVector
 
 import org.sigilaris.core.util.SafeStringInterp.*
@@ -82,54 +81,44 @@ final case class StaticPeerTransportAuth(
   */
 object StaticPeerTransportAuth:
 
-  /** Configures transport auth from raw string secrets, validating completeness
+  /** Configures transport auth from typed peer secrets, validating completeness
     * against the topology.
     *
     * @param topology
     *   the peer topology
     * @param peerSecrets
-    *   raw peer identity to secret string mappings
+    *   peer identity to shared secret mappings
     * @return
     *   the transport auth, or an error
     */
   def configure(
       topology: StaticPeerTopology,
-      peerSecrets: Map[String, String],
+      peerSecrets: Map[PeerIdentity, TransportSharedSecret],
   ): Either[String, StaticPeerTransportAuth] =
     val requiredPeers = topology.knownPeers + topology.localNodeIdentity
-    for
-      parsedSecrets <- peerSecrets.toList
-        .foldLeft[Either[String, Map[PeerIdentity, TransportSharedSecret]]](
-          Map.empty[PeerIdentity, TransportSharedSecret].asRight[String],
-        ):
-          case (acc, (peerRaw, secretRaw)) =>
-            for
-              current <- acc
-              peer    <- PeerIdentity.parse(peerRaw)
-              secret  <- TransportSharedSecret.fromUtf8(secretRaw)
-            yield current.updated(peer, secret)
-      missing = requiredPeers
-        .diff(parsedSecrets.keySet)
-        .toVector
-        .sortBy(_.value)
-      _ <- Either.cond(
+    val missing = requiredPeers
+      .diff(peerSecrets.keySet)
+      .toVector
+      .sortBy(_.value)
+    val unknown = peerSecrets.keySet
+      .diff(requiredPeers)
+      .toVector
+      .sortBy(_.value)
+    Either
+      .cond(
         missing.isEmpty,
         (),
         ss"missing transport secret for peers: ${missing.map(_.value).mkString(",")}",
       )
-      unknown = parsedSecrets.keySet
-        .diff(requiredPeers)
-        .toVector
-        .sortBy(_.value)
-      _ <- Either.cond(
-        unknown.isEmpty,
-        (),
-        ss"transport secrets contain unknown peers: ${unknown.map(_.value).mkString(",")}",
-      )
-    yield StaticPeerTransportAuth(
-      localPeer = topology.localNodeIdentity,
-      peerSecrets = parsedSecrets,
-    )
+      .flatMap: _ =>
+        Either.cond(
+          unknown.isEmpty,
+          StaticPeerTransportAuth(
+            localPeer = topology.localNodeIdentity,
+            peerSecrets = peerSecrets,
+          ),
+          ss"transport secrets contain unknown peers: ${unknown.map(_.value).mkString(",")}",
+        )
 
   /** Creates transport auth with deterministic test secrets for all peers.
     *

@@ -155,7 +155,7 @@ final class InMemoryTxArtifactSource[F[_]: Sync, A] private (
         ids.distinct.flatMap(latestById.get)
 
   private def cursorFor(sequence: Long): CursorToken =
-    CursorToken.issue:
+    CursorToken.unsafeIssue:
       ByteVector.view:
         ByteBuffer.allocate(java.lang.Long.BYTES).putLong(sequence).array()
 

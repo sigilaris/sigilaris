@@ -50,7 +50,7 @@ object HotStuffBootstrapHttpTransport:
     */
   @SuppressWarnings(Array("org.wartremover.warts.DefaultArguments"))
   def services[F[_]: Async](
-      peerBaseUris: Map[PeerIdentity, String],
+      peerBaseUris: Map[PeerIdentity, URI],
       transportAuth: StaticPeerTransportAuth,
       httpClient: HttpClient = HttpClient
         .newBuilder()
@@ -220,7 +220,7 @@ object HotStuffBootstrapHttpTransport:
       transportAuth: StaticPeerTransportAuth,
       requestTimeout: Duration,
       requestGate: java.util.concurrent.Semaphore,
-      peerBaseUris: Map[PeerIdentity, String],
+      peerBaseUris: Map[PeerIdentity, URI],
   ): F[Either[CanonicalRejection, Vector[Proposal]]] =
     executeRequest(
       session = session,
@@ -259,7 +259,7 @@ object HotStuffBootstrapHttpTransport:
       transportAuth: StaticPeerTransportAuth,
       requestTimeout: Duration,
       requestGate: java.util.concurrent.Semaphore,
-      peerBaseUris: Map[PeerIdentity, String],
+      peerBaseUris: Map[PeerIdentity, URI],
   ): F[Either[CanonicalRejection, String]] =
     peerBaseUris.get(session.peer) match
       case None =>
@@ -317,7 +317,7 @@ object HotStuffBootstrapHttpTransport:
                     Async[F].delay:
                       val builder =
                         HttpRequest
-                          .newBuilder(URI.create(baseUri + path))
+                          .newBuilder(resolveEndpointUri(baseUri, path))
                           .timeout(requestTimeout)
                           .header("content-type", "application/json")
                           .header(
@@ -372,3 +372,11 @@ object HotStuffBootstrapHttpTransport:
                         .merge
                         .asLeft[String],
               )(_ => Async[F].delay(requestGate.release()).void)
+
+  // Preserve any configured base-path prefix instead of letting URI.resolve
+  // treat absolute request paths as origin-root replacements.
+  private def resolveEndpointUri(
+      baseUri: URI,
+      path: String,
+  ): URI =
+    URI.create(baseUri.toString.stripSuffix("/") + path)

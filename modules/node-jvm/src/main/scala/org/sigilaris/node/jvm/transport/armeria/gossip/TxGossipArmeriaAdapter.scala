@@ -696,22 +696,13 @@ object TxGossipArmeriaAdapter:
   ): BinaryEventEnvelope =
     BinaryEventEnvelope.Rejection(
       sessionId = sessionId,
-      rejection = toRejectionWire(rejection),
+      rejection = RejectionWire.fromCanonical(rejection),
     )
 
   private def renderRejection(
       rejection: CanonicalRejection,
   ): String =
-    toRejectionWire(rejection).asJson.noSpaces
-
-  private def toRejectionWire(
-      rejection: CanonicalRejection,
-  ): RejectionWire =
-    RejectionWire(
-      rejectionClass = rejection.rejectionClass,
-      reason = rejection.reason,
-      detail = rejection.detail,
-    )
+    RejectionWire.fromCanonical(rejection).asJson.noSpaces
 
   private def controlRejected(
       reason: String,

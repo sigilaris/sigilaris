@@ -21,9 +21,10 @@ final class StaticPeerTopologyConfigSuite extends FunSuite:
       StaticPeerTopologyConfig.parse(config),
       Right(
         StaticPeerTopologyConfigInput(
-          localNodeIdentity = "node-a",
-          knownPeers = List("node-b", "node-c"),
-          directNeighbors = List("node-b"),
+          localNodeIdentity = PeerIdentity.unsafe("node-a"),
+          knownPeers =
+            List(PeerIdentity.unsafe("node-b"), PeerIdentity.unsafe("node-c")),
+          directNeighbors = List(PeerIdentity.unsafe("node-b")),
         ),
       ),
     )

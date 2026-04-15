@@ -579,7 +579,7 @@ final class InMemoryHotStuffArtifactSource[F[_]: Sync] private (
   private def cursorFor(
       sequence: Long,
   ): CursorToken =
-    CursorToken.issue:
+    CursorToken.unsafeIssue:
       ByteVector.view:
         ByteBuffer.allocate(java.lang.Long.BYTES).putLong(sequence).array()
 

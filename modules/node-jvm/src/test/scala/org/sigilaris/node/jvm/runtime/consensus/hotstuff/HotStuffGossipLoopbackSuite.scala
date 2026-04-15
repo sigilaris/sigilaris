@@ -2583,7 +2583,9 @@ final class HotStuffGossipLoopbackSuite extends CatsEffectSuite:
             topic = topic,
             id = id,
             cursor =
-              CursorToken.issue(ByteVector.fromLong(events.size.toLong + 1L)),
+              CursorToken.unsafeIssue(
+                ByteVector.fromLong(events.size.toLong + 1L),
+              ),
             ts = ts,
             payload = payload,
           )

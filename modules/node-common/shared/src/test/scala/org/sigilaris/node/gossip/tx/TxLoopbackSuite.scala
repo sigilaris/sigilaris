@@ -80,7 +80,8 @@ final class TxLoopbackSuite extends CatsEffectSuite:
       b      <- Harness.create("node-b", "node-a", baseInstant)
       opened <- openOutbound(a, b)
       sessionId     = opened.proposal.sessionId
-      invalidCursor = CursorToken.issue(ByteVector.fromLong(1L), version = 2)
+      invalidCursor =
+        CursorToken.unsafeIssue(ByteVector.fromLong(1L), version = 2)
       batch = controlBatch(
         "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
         Vector(
@@ -545,7 +546,7 @@ final class TxLoopbackSuite extends CatsEffectSuite:
               chainId = chainId,
               topic = GossipTopic.unsafe("audit"),
               id = StableArtifactId.unsafeFromHex("01"),
-              cursor = CursorToken.issue(ByteVector.fromLong(1L)),
+              cursor = CursorToken.unsafeIssue(ByteVector.fromLong(1L)),
               ts = baseInstant,
               payload = TestTx("bad"),
             ),

@@ -1,5 +1,6 @@
 package org.sigilaris.node.jvm.runtime.gossip
 
+import java.net.URI
 import java.time.Duration
 
 import cats.syntax.all.*
@@ -25,7 +26,7 @@ import org.sigilaris.node.jvm.runtime.config.TypesafeConfigParsing.{
   *   maximum number of concurrent outbound requests
   */
 final case class StaticPeerBootstrapHttpTransportConfig(
-    peerBaseUris: Map[PeerIdentity, String],
+    peerBaseUris: Map[PeerIdentity, URI],
     requestTimeout: Duration,
     maxConcurrentRequests: Int,
 )
@@ -83,13 +84,19 @@ object StaticPeerBootstrapHttpTransportConfig:
       case None =>
         none[StaticPeerBootstrapHttpTransportConfig].asRight[String]
       case Some(input) =>
-        parsePeerBaseUris(input.peerBaseUris, topology).map: peerBaseUris =>
+        val unknownPeers = input.peerBaseUris.keySet
+          .diff(topology.knownPeers)
+          .toVector
+          .sortBy(_.value)
+        Either.cond(
+          unknownPeers.isEmpty,
           StaticPeerBootstrapHttpTransportConfig(
-            peerBaseUris = peerBaseUris,
+            peerBaseUris = input.peerBaseUris,
             requestTimeout = input.requestTimeout,
             maxConcurrentRequests = input.maxConcurrentRequests,
-          )
-            .some
+          ).some,
+          ss"bootstrap peer base URI configured for unknown peer: ${unknownPeers.map(_.value).mkString(",")}",
+        )
 
   /** Parses the raw bootstrap transport input model from the root config. */
   def parse(
@@ -109,7 +116,8 @@ object StaticPeerBootstrapHttpTransportConfig:
         none[StaticPeerBootstrapHttpTransportConfigInput].asRight[String]
       case Some(bootstrapSection) =>
         for
-          peerBaseUris <- PeerBaseUris.required(bootstrapSection)
+          peerBaseUrisRaw <- PeerBaseUris.required(bootstrapSection)
+          peerBaseUris <- parsePeerBaseUris(peerBaseUrisRaw)
           requestTimeout <- RequestTimeout.optionalOrDefault(
             bootstrapSection,
             DefaultRequestTimeout,
@@ -133,23 +141,6 @@ object StaticPeerBootstrapHttpTransportConfig:
           requestTimeout = requestTimeout,
           maxConcurrentRequests = maxConcurrentRequests,
         ).some
-
-  private def parsePeerBaseUris(
-      raw: Map[String, String],
-      topology: StaticPeerTopology,
-  ): Either[String, Map[PeerIdentity, String]] =
-    raw.toVector
-      .sortBy(_._1)
-      .traverse: (peerRaw, uri) =>
-        PeerIdentity
-          .parse(peerRaw)
-          .flatMap: peer =>
-            Either.cond(
-              topology.knownPeers.contains(peer),
-              peer -> uri,
-              ss"bootstrap peer base URI configured for unknown peer: ${peer.value}",
-            )
-      .map(_.toMap)
 
   private val Bootstrap =
     ConfigField(
@@ -177,3 +168,22 @@ object StaticPeerBootstrapHttpTransportConfig:
       ),
       reader = ConfigReader.int,
     )
+
+  private def parsePeerBaseUris(
+      raw: Map[String, String],
+  ): Either[String, Map[PeerIdentity, URI]] =
+    raw.toVector
+      .sortBy(_._1)
+      .traverse: (peerRaw, uriRaw) =>
+        for
+          peer <- PeerIdentity.parse(peerRaw)
+          uri <- Either
+            .catchNonFatal(URI.create(uriRaw))
+            .leftMap(_.getMessage)
+          _ <- Either.cond(
+            uri.isAbsolute && Option(uri.getScheme).exists(_.nonEmpty),
+            (),
+            ss"bootstrap peer base URI must be absolute: ${uriRaw}",
+          )
+        yield peer -> uri
+      .map(_.toMap)

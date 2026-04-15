@@ -3,6 +3,8 @@ package org.sigilaris.node.jvm.transport.armeria.gossip
 import io.circe.{Decoder, Encoder}
 import io.circe.generic.semiauto.*
 
+import org.sigilaris.node.gossip.CanonicalRejection
+
 /** Wire format for a chain-topic subscription pair.
   *
   * @param chainId
@@ -238,6 +240,45 @@ final case class RejectionWire(
 object RejectionWire:
   given Decoder[RejectionWire] = deriveDecoder
   given Encoder[RejectionWire] = deriveEncoder
+
+  def fromCanonical(
+      rejection: CanonicalRejection,
+  ): RejectionWire =
+    RejectionWire(
+      rejectionClass = rejection.rejectionClass,
+      reason = rejection.reason,
+      detail = rejection.detail,
+    )
+
+  def toCanonical(
+      wire: RejectionWire,
+  ): CanonicalRejection =
+    wire.rejectionClass match
+      case "handshakeRejected" =>
+        CanonicalRejection.HandshakeRejected(
+          reason = wire.reason,
+          detail = wire.detail,
+        )
+      case "controlBatchRejected" =>
+        CanonicalRejection.ControlBatchRejected(
+          reason = wire.reason,
+          detail = wire.detail,
+        )
+      case "artifactContractRejected" =>
+        CanonicalRejection.ArtifactContractRejected(
+          reason = wire.reason,
+          detail = wire.detail,
+        )
+      case "staleCursor" =>
+        CanonicalRejection.StaleCursor(
+          reason = wire.reason,
+          detail = wire.detail,
+        )
+      case _ =>
+        CanonicalRejection.BackfillUnavailable(
+          reason = wire.reason,
+          detail = wire.detail,
+        )
 
 /** Wire format for a control channel response.
   *

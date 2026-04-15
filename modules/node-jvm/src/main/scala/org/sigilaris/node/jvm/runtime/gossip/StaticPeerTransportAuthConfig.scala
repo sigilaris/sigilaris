@@ -1,8 +1,14 @@
 package org.sigilaris.node.jvm.runtime.gossip
 
+import cats.syntax.all.*
 import com.typesafe.config.Config
 
-import org.sigilaris.node.gossip.{StaticPeerTopology, StaticPeerTransportAuth}
+import org.sigilaris.node.gossip.{
+  PeerIdentity,
+  StaticPeerTopology,
+  StaticPeerTransportAuth,
+  TransportSharedSecret,
+}
 import org.sigilaris.node.jvm.runtime.config.TypesafeConfigParsing
 import org.sigilaris.node.jvm.runtime.config.TypesafeConfigParsing.{
   ConfigAliases,
@@ -65,8 +71,13 @@ object StaticPeerTransportAuthConfig:
   ): Either[String, StaticPeerTransportAuthConfigInput] =
     for
       authSection <- TransportAuth.required(section)
-      peerSecrets <- PeerSecrets.required(authSection)
-    yield StaticPeerTransportAuthConfigInput(peerSecrets = peerSecrets)
+      peerSecretsRaw <- PeerSecrets.required(authSection)
+      peerSecrets <- peerSecretsRaw.toList.traverse: (peerRaw, secretRaw) =>
+        for
+          peer <- PeerIdentity.parse(peerRaw)
+          secret <- TransportSharedSecret.fromUtf8(secretRaw)
+        yield peer -> secret
+    yield StaticPeerTransportAuthConfigInput(peerSecrets = peerSecrets.toMap)
 
   private val TransportAuth =
     ConfigField(

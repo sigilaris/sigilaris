@@ -1,8 +1,9 @@
 package org.sigilaris.node.jvm.runtime.gossip
 
+import cats.syntax.all.*
 import com.typesafe.config.Config
 
-import org.sigilaris.node.gossip.StaticPeerTopology
+import org.sigilaris.node.gossip.{PeerIdentity, StaticPeerTopology}
 import org.sigilaris.node.jvm.runtime.config.TypesafeConfigParsing
 import org.sigilaris.node.jvm.runtime.config.TypesafeConfigParsing.{
   ConfigAliases,
@@ -43,10 +44,10 @@ object StaticPeerTopologyConfig:
       section: Config,
   ): Either[String, StaticPeerTopology] =
     parseSection(section).flatMap: input =>
-      StaticPeerTopology.parse(
+      StaticPeerTopology.fromValidated(
         localNodeIdentity = input.localNodeIdentity,
-        knownPeers = input.knownPeers,
-        directNeighbors = input.directNeighbors,
+        knownPeers = input.knownPeers.toSet,
+        directNeighbors = input.directNeighbors.toSet,
       )
 
   /** Parses the raw config input model from the root config. */
@@ -61,9 +62,12 @@ object StaticPeerTopologyConfig:
       section: Config,
   ): Either[String, StaticPeerTopologyConfigInput] =
     for
-      localNodeIdentity <- LocalNodeIdentity.required(section)
-      knownPeers <- KnownPeers.required(section)
-      directNeighbors <- DirectNeighbors.required(section)
+      localNodeIdentityRaw <- LocalNodeIdentity.required(section)
+      localNodeIdentity <- PeerIdentity.parse(localNodeIdentityRaw)
+      knownPeersRaw <- KnownPeers.required(section)
+      knownPeers <- knownPeersRaw.traverse(PeerIdentity.parse)
+      directNeighborsRaw <- DirectNeighbors.required(section)
+      directNeighbors <- directNeighborsRaw.traverse(PeerIdentity.parse)
     yield StaticPeerTopologyConfigInput(
       localNodeIdentity = localNodeIdentity,
       knownPeers = knownPeers,

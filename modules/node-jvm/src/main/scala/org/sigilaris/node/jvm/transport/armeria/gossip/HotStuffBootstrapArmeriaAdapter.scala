@@ -17,8 +17,6 @@ import sttp.tapir.server.ServerEndpoint
 import org.sigilaris.core.codec.byte.{ByteDecoder, ByteEncoder}
 import org.sigilaris.core.codec.byte.ByteDecoder.ops.*
 import org.sigilaris.core.codec.byte.ByteEncoder.ops.*
-import org.sigilaris.core.datatype.{BigNat, UInt256}
-import org.sigilaris.core.util.SafeStringInterp.*
 import org.sigilaris.node.jvm.runtime.block.{BlockHeight, BlockId, StateRoot}
 import org.sigilaris.node.jvm.runtime.consensus.hotstuff.*
 import org.sigilaris.node.jvm.runtime.consensus.hotstuff.given
@@ -417,82 +415,23 @@ object HotStuffBootstrapArmeriaAdapter:
     CanonicalRejection,
     (StateRoot, Vector[org.sigilaris.core.merkle.MerkleTrieNode.MerkleHash]),
   ] =
-    for
-      stateRoot <- StateRoot
-        .fromHex(request.stateRoot)
-        .leftMap(bootstrapRejected("invalidStateRoot", _))
-      _ <- Either.cond(
-        request.hashes.sizeIs <= HotStuffBootstrapTransportLimits.MaxSnapshotNodeHashes,
-        (),
-        bootstrapRejected(
-          "bootstrapRequestTooLarge",
-          ss"max=${HotStuffBootstrapTransportLimits.MaxSnapshotNodeHashes.toString} actual=${request.hashes.size.toString}",
-        ),
-      )
-      hashes <- request.hashes.traverse: hash =>
-        UInt256
-          .fromHex(hash)
-          .leftMap(error =>
-            bootstrapRejected("invalidSnapshotNodeHash", error.toString),
-          )
-          .map(
-            org.sigilaris.core.crypto.Hash
-              .Value[org.sigilaris.core.merkle.MerkleTrieNode](_),
-          )
-    yield stateRoot -> hashes
+    SnapshotNodeFetchRequestWire
+      .parse(request)
+      .map(parsed => parsed.stateRoot -> parsed.hashes)
 
   private def parseProposalReplayRequest(
       request: ProposalPageRequestWire,
   ): Either[CanonicalRejection, (BlockId, BlockHeight, Int)] =
-    parseProposalPageRequest(
-      request = request,
-      blockIdReason = "invalidAnchorBlockId",
-      heightReason = "invalidReplayHeight",
-    )
+    ProposalPageRequestWire
+      .parseReplay(request)
+      .map(parsed => (parsed.blockId, parsed.height, parsed.limit))
 
   private def parseHistoricalBackfillRequest(
       request: ProposalPageRequestWire,
   ): Either[CanonicalRejection, (BlockId, BlockHeight, Int)] =
-    parseProposalPageRequest(
-      request = request,
-      blockIdReason = "invalidBeforeBlockId",
-      heightReason = "invalidBeforeHeight",
-    )
-
-  private def parseProposalPageRequest(
-      request: ProposalPageRequestWire,
-      blockIdReason: String,
-      heightReason: String,
-  ): Either[CanonicalRejection, (BlockId, BlockHeight, Int)] =
-    for
-      blockId <- BlockId
-        .fromHex(request.blockId)
-        .leftMap(bootstrapRejected(blockIdReason, _))
-      height <- parseBlockHeight(request.height, heightReason)
-      _ <- Either.cond(
-        request.limit >= 0 &&
-          request.limit <= HotStuffBootstrapTransportLimits.MaxProposalPageLimit,
-        (),
-        bootstrapRejected(
-          "bootstrapRequestTooLarge",
-          ss"max=${HotStuffBootstrapTransportLimits.MaxProposalPageLimit.toString} actual=${request.limit.toString}",
-        ),
-      )
-    yield (blockId, height, request.limit)
-
-  private def parseBlockHeight(
-      value: String,
-      reason: String,
-  ): Either[CanonicalRejection, BlockHeight] =
-    Either
-      .catchNonFatal(BigInt(value))
-      .leftMap(_ => bootstrapRejected(reason, value))
-      .flatMap(bigInt =>
-        BigNat
-          .fromBigInt(bigInt)
-          .leftMap(bootstrapRejected(reason, _))
-          .map(BlockHeight(_)),
-      )
+    ProposalPageRequestWire
+      .parseHistoricalBackfill(request)
+      .map(parsed => (parsed.blockId, parsed.height, parsed.limit))
 
   private def encodeValue[A: ByteEncoder](
       value: A,
@@ -502,44 +441,14 @@ object HotStuffBootstrapArmeriaAdapter:
   private[gossip] def renderRejection(
       rejection: CanonicalRejection,
   ): String =
-    RejectionWire(
-      rejectionClass = rejection.rejectionClass,
-      reason = rejection.reason,
-      detail = rejection.detail,
-    ).asJson.noSpaces
+    RejectionWire.fromCanonical(rejection).asJson.noSpaces
 
   private[gossip] def decodeRejection(
       raw: String,
   ): Either[String, CanonicalRejection] =
     decode[RejectionWire](raw)
       .leftMap(_.getMessage)
-      .map: wire =>
-        wire.rejectionClass match
-          case "handshakeRejected" =>
-            CanonicalRejection.HandshakeRejected(
-              reason = wire.reason,
-              detail = wire.detail,
-            )
-          case "controlBatchRejected" =>
-            CanonicalRejection.ControlBatchRejected(
-              reason = wire.reason,
-              detail = wire.detail,
-            )
-          case "artifactContractRejected" =>
-            CanonicalRejection.ArtifactContractRejected(
-              reason = wire.reason,
-              detail = wire.detail,
-            )
-          case "staleCursor" =>
-            CanonicalRejection.StaleCursor(
-              reason = wire.reason,
-              detail = wire.detail,
-            )
-          case _ =>
-            CanonicalRejection.BackfillUnavailable(
-              reason = wire.reason,
-              detail = wire.detail,
-            )
+      .map(RejectionWire.toCanonical)
 
   private[gossip] def decodeValue[A: ByteDecoder](
       encoded: String,

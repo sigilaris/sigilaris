@@ -32,8 +32,8 @@ final class GossipProducerSessionSuite extends FunSuite:
         maxControlRetryInterval = Duration.ofSeconds(30),
       ),
     )
-    val cursor1         = CursorToken.issue(ByteVector.fromLong(1L))
-    val cursor2         = CursorToken.issue(ByteVector.fromLong(2L))
+    val cursor1         = CursorToken.unsafeIssue(ByteVector.fromLong(1L))
+    val cursor2         = CursorToken.unsafeIssue(ByteVector.fromLong(2L))
     val replayRequested = session.withReplay(chainTopic, Some(cursor1))
     val advanced =
       replayRequested

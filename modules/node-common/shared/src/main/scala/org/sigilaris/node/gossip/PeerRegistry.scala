@@ -40,6 +40,29 @@ final case class StaticPeerTopology(
 /** Companion for `StaticPeerTopology` providing parsing from raw strings. */
 object StaticPeerTopology:
 
+  /** Builds a topology from already-validated peer identities. */
+  def fromValidated(
+      localNodeIdentity: PeerIdentity,
+      knownPeers: Set[PeerIdentity],
+      directNeighbors: Set[PeerIdentity],
+  ): Either[String, StaticPeerTopology] =
+    for
+      _ <- Either.cond(
+        directNeighbors.subsetOf(knownPeers),
+        (),
+        "direct neighbors must be a subset of known peers",
+      )
+      _ <- Either.cond(
+        !knownPeers.contains(localNodeIdentity),
+        (),
+        "known peers must not contain the local node identity",
+      )
+    yield StaticPeerTopology(
+      localNodeIdentity = localNodeIdentity,
+      knownPeers = knownPeers,
+      directNeighbors = directNeighbors,
+    )
+
   /** Parses a static peer topology from raw string values, validating that
     * direct neighbors are a subset of known peers and the local node is not in
     * known peers.
@@ -77,18 +100,9 @@ object StaticPeerTopology:
               values <- acc
               parsed <- PeerIdentity.parse(value)
             yield values + parsed
-      _ <- Either.cond(
-        parsedDirect.subsetOf(parsedKnown),
-        (),
-        "direct neighbors must be a subset of known peers",
+      topology <- fromValidated(
+        localNodeIdentity = local,
+        knownPeers = parsedKnown,
+        directNeighbors = parsedDirect,
       )
-      _ <- Either.cond(
-        !parsedKnown.contains(local),
-        (),
-        "known peers must not contain the local node identity",
-      )
-    yield StaticPeerTopology(
-      localNodeIdentity = local,
-      knownPeers = parsedKnown,
-      directNeighbors = parsedDirect,
-    )
+    yield topology

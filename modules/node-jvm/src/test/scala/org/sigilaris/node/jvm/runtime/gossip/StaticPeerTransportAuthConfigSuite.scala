@@ -3,7 +3,11 @@ package org.sigilaris.node.jvm.runtime.gossip
 import munit.FunSuite
 
 import com.typesafe.config.ConfigFactory
-import org.sigilaris.node.gossip.{PeerIdentity, StaticPeerTopology}
+import org.sigilaris.node.gossip.{
+  PeerIdentity,
+  StaticPeerTopology,
+  TransportSharedSecret,
+}
 
 final class StaticPeerTransportAuthConfigSuite extends FunSuite:
   private val topology =
@@ -32,8 +36,10 @@ final class StaticPeerTransportAuthConfigSuite extends FunSuite:
       Right(
         StaticPeerTransportAuthConfigInput(
           peerSecrets = Map(
-            "node-a" -> "local-secret",
-            "node-b" -> "neighbor-secret",
+            PeerIdentity.unsafe("node-a") ->
+              TransportSharedSecret.fromUtf8("local-secret").toOption.get,
+            PeerIdentity.unsafe("node-b") ->
+              TransportSharedSecret.fromUtf8("neighbor-secret").toOption.get,
           ),
         ),
       ),

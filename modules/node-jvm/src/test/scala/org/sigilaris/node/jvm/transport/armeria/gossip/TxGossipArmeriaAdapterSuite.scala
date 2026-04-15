@@ -434,7 +434,7 @@ final class TxGossipArmeriaAdapterSuite extends CatsEffectSuite:
   test(
     "binary event stream codec round-trips event, keepAlive, and rejection envelopes",
   ):
-    val cursor = CursorToken.issue(ByteVector.fromValidHex("01020304"))
+    val cursor = CursorToken.unsafeIssue(ByteVector.fromValidHex("01020304"))
     val encodedEither = BinaryEventStreamCodec.encode(
       Vector(
         EventEnvelopeWire(
@@ -547,7 +547,7 @@ final class TxGossipArmeriaAdapterSuite extends CatsEffectSuite:
                   topic = GossipTopic.tx.value,
                   id = "deadbeef",
                   cursor = CursorToken
-                    .issue(ByteVector.fromValidHex("0909"))
+                    .unsafeIssue(ByteVector.fromValidHex("0909"))
                     .toBase64Url,
                   ts = baseInstant.toEpochMilli,
                   payload = TestTx("a"),

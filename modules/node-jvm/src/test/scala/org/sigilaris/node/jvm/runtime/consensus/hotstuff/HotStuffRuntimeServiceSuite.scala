@@ -475,7 +475,7 @@ final class HotStuffRuntimeServiceSuite extends CatsEffectSuite:
             chainId = chainId,
             topic = HotStuffGossipArtifact.topicOf(artifact),
             id = HotStuffGossipArtifact.stableIdOf(artifact),
-            cursor = CursorToken.issue(ByteVector.fromLong(sequence)),
+            cursor = CursorToken.unsafeIssue(ByteVector.fromLong(sequence)),
             ts = ts,
             payload = artifact,
           )
