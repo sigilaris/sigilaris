@@ -105,6 +105,41 @@ class FailureMessageTest extends FunSuite:
     val failure = DecodeFailure("broken")
     assertEquals(failure.msg, "broken")
     assertEquals(failure.code, FailureCode.Decode)
+    assertEquals(failure.kind, SigilarisFailure.Kind.Decode)
+
+  test("FailureMessageEnvelope parses detail-only and empty-message branches"):
+    assertEquals(
+      FailureMessageEnvelope.parse(
+        "not_found.accounts.account_not_found | id=alice",
+      ),
+      FailureMessageEnvelope(
+        errorKey = "not_found.accounts.account_not_found",
+        message = None,
+        detail = Some("id=alice"),
+      ),
+    )
+
+  test("FailureMessageEnvelope keeps legacy detail payload after the first separator"):
+    assertEquals(
+      FailureMessageEnvelope.parse(
+        "conflict.groups.group_already_exists: duplicate | detail | extra",
+      ),
+      FailureMessageEnvelope(
+        errorKey = "conflict.groups.group_already_exists",
+        message = Some("duplicate"),
+        detail = Some("detail | extra"),
+      ),
+    )
+
+  test("FailureMessageEnvelope parses key-only envelopes"):
+    assertEquals(
+      FailureMessageEnvelope.parse("not_found.accounts.account_not_found"),
+      FailureMessageEnvelope(
+        errorKey = "not_found.accounts.account_not_found",
+        message = None,
+        detail = None,
+      ),
+    )
 
   test("FailureCode rejects non-machine-readable values"):
     assertEquals(

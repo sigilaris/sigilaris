@@ -1,5 +1,10 @@
 package org.sigilaris.core.application.scheduling
 
+import org.sigilaris.core.failure.{
+  FailureDiagnosticFamily,
+  StructuredFailureDiagnostic,
+}
+
 /** Lightweight derivation failure surface for the initial rollout.
   *
   * Later phases can widen `detail` if structured diagnostics become necessary.
@@ -7,7 +12,9 @@ package org.sigilaris.core.application.scheduling
 final case class FootprintDerivationFailure(
     reason: String,
     detail: Option[String],
-)
+) extends StructuredFailureDiagnostic:
+  override val diagnosticFamily: FailureDiagnosticFamily =
+    FailureDiagnosticFamily.FootprintDerivation
 
 /** Companion for [[FootprintDerivationFailure]]. */
 object FootprintDerivationFailure:

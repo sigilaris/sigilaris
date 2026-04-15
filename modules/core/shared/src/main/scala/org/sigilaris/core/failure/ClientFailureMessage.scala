@@ -89,7 +89,7 @@ object ClientFailureMessage:
       detail: Option[String],
       code: FailureCode,
   ): String =
-    encode(Kind.InvalidRequest, domain, reason, message, detail, code)
+    envelope(Kind.InvalidRequest, domain, reason, message, detail, code).render
 
   /** Formats a forbidden failure message with the default failure code.
     *
@@ -134,7 +134,7 @@ object ClientFailureMessage:
       detail: Option[String],
       code: FailureCode,
   ): String =
-    encode(Kind.Forbidden, domain, reason, message, detail, code)
+    envelope(Kind.Forbidden, domain, reason, message, detail, code).render
 
   /** Formats a not-found failure message with the default failure code.
     *
@@ -179,7 +179,7 @@ object ClientFailureMessage:
       detail: Option[String],
       code: FailureCode,
   ): String =
-    encode(Kind.NotFound, domain, reason, message, detail, code)
+    envelope(Kind.NotFound, domain, reason, message, detail, code).render
 
   /** Builds an [[ErrorKey]] for a client failure, validating the key format.
     *
@@ -207,16 +207,17 @@ object ClientFailureMessage:
       keyPattern = KeyPattern,
     )
 
-  private def encode(
+  /** Builds the structured envelope for a client failure message. */
+  private[failure] def envelope(
       kind: Kind,
       domain: String,
       reason: String,
       message: String,
       detail: Option[String],
       code: FailureCode,
-  ): String =
-    FailureMessageFormat.encode(
-      errorKey = errorKey(kind, domain, reason, code),
-      message = message,
+  ): FailureMessageEnvelope =
+    FailureMessageEnvelope.normalized(
+      errorKey = errorKey(kind, domain, reason, code).rendered,
+      message = Some(message),
       detail = detail,
     )

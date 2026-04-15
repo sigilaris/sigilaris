@@ -22,6 +22,10 @@ import org.sigilaris.core.crypto.{
 }
 import org.sigilaris.core.crypto.Hash.ops.*
 import org.sigilaris.core.datatype.{UInt256, Utf8}
+import org.sigilaris.core.failure.{
+  FailureDiagnosticFamily,
+  StructuredFailureDiagnostic,
+}
 import org.sigilaris.node.jvm.runtime.block.BlockHeader
 import org.sigilaris.node.gossip.{ChainId, StableArtifactId}
 
@@ -44,7 +48,9 @@ given [A: ByteEncoder]: ByteEncoder[Vector[A]] =
 final case class HotStuffValidationFailure(
     reason: String,
     detail: Option[String],
-)
+) extends StructuredFailureDiagnostic:
+  override val diagnosticFamily: FailureDiagnosticFamily =
+    FailureDiagnosticFamily.HotStuffValidation
 
 /** Companion for `HotStuffValidationFailure`. */
 object HotStuffValidationFailure:

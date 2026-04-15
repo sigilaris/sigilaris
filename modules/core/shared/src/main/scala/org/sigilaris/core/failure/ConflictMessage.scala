@@ -61,11 +61,7 @@ object ConflictMessage:
       detail: Option[String],
       code: FailureCode,
   ): String =
-    FailureMessageFormat.encode(
-      errorKey = errorKey(domain, reason, code),
-      message = message,
-      detail = detail,
-    )
+    envelope(domain, reason, message, detail, code).render
 
   /** Builds an [[ErrorKey]] for a conflict failure, validating the key format.
     *
@@ -88,4 +84,18 @@ object ConflictMessage:
       fallback = Prefix + "unknown.invalid_error_key",
       code = code,
       keyPattern = KeyPattern,
+    )
+
+  /** Builds the structured envelope for a conflict failure message. */
+  private[failure] def envelope(
+      domain: String,
+      reason: String,
+      message: String,
+      detail: Option[String],
+      code: FailureCode,
+  ): FailureMessageEnvelope =
+    FailureMessageEnvelope.normalized(
+      errorKey = errorKey(domain, reason, code).rendered,
+      message = Some(message),
+      detail = detail,
     )

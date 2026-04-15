@@ -8,6 +8,10 @@ import cats.syntax.all.*
 import org.sigilaris.core.codec.byte.ByteEncoder
 import org.sigilaris.core.datatype.{BigNat, UInt256}
 import org.sigilaris.core.datatype.Utf8
+import org.sigilaris.core.failure.{
+  FailureDiagnosticFamily,
+  StructuredFailureDiagnostic,
+}
 import org.sigilaris.core.util.SafeStringInterp.*
 import org.sigilaris.node.gossip.{
   ChainId,
@@ -369,7 +373,9 @@ object HotStuffRelayPolicy:
 final case class HotStuffPolicyViolation(
     reason: String,
     detail: Option[String],
-)
+) extends StructuredFailureDiagnostic:
+  override val diagnosticFamily: FailureDiagnosticFamily =
+    FailureDiagnosticFamily.HotStuffPolicyViolation
 
 /** Companion for `HotStuffPolicyViolation`. */
 object HotStuffPolicyViolation:

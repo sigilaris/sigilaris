@@ -1,9 +1,13 @@
 package org.sigilaris.node.gossip
 
+import org.sigilaris.core.failure.{
+  FailureDiagnosticFamily,
+  StructuredFailureDiagnostic,
+}
 import org.sigilaris.core.util.SafeStringInterp.*
 
 /** Base trait for all canonical rejection types in the gossip protocol. */
-sealed trait CanonicalRejection:
+sealed trait CanonicalRejection extends StructuredFailureDiagnostic:
 
   /** @return the classification of this rejection */
   def rejectionClass: String
@@ -30,6 +34,8 @@ object CanonicalRejection:
       reason: String,
       detail: Option[String] = None,
   ) extends CanonicalRejection:
+    override val diagnosticFamily: FailureDiagnosticFamily =
+      FailureDiagnosticFamily.GossipHandshakeRejected
     override val rejectionClass: String = "handshakeRejected"
 
   /** Rejection when a cursor token is no longer valid.
@@ -43,6 +49,8 @@ object CanonicalRejection:
       reason: String,
       detail: Option[String] = None,
   ) extends CanonicalRejection:
+    override val diagnosticFamily: FailureDiagnosticFamily =
+      FailureDiagnosticFamily.GossipStaleCursor
     override val rejectionClass: String = "staleCursor"
 
   /** Rejection when a control batch cannot be processed.
@@ -56,6 +64,8 @@ object CanonicalRejection:
       reason: String,
       detail: Option[String] = None,
   ) extends CanonicalRejection:
+    override val diagnosticFamily: FailureDiagnosticFamily =
+      FailureDiagnosticFamily.GossipControlBatchRejected
     override val rejectionClass: String = "controlBatchRejected"
 
   /** Rejection when an artifact fails contract validation.
@@ -69,6 +79,8 @@ object CanonicalRejection:
       reason: String,
       detail: Option[String] = None,
   ) extends CanonicalRejection:
+    override val diagnosticFamily: FailureDiagnosticFamily =
+      FailureDiagnosticFamily.GossipArtifactContractRejected
     override val rejectionClass: String = "artifactContractRejected"
 
   /** Rejection when backfill data is not available.
@@ -82,6 +94,8 @@ object CanonicalRejection:
       reason: String,
       detail: Option[String] = None,
   ) extends CanonicalRejection:
+    override val diagnosticFamily: FailureDiagnosticFamily =
+      FailureDiagnosticFamily.GossipBackfillUnavailable
     override val rejectionClass: String = "backfillUnavailable"
 
 /** Validation utilities for gossip protocol field values. */

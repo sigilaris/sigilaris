@@ -9,6 +9,10 @@ import cats.syntax.all.*
 
 import org.sigilaris.core.crypto.Hash
 import org.sigilaris.core.crypto.Hash.ops.*
+import org.sigilaris.core.failure.{
+  FailureDiagnosticFamily,
+  StructuredFailureDiagnostic,
+}
 import org.sigilaris.core.merkle.MerkleTrieNode
 import org.sigilaris.node.jvm.runtime.block.BlockHeight
 import org.sigilaris.node.jvm.storage.KeyValueStore
@@ -254,7 +258,9 @@ object SnapshotNodeStore:
 final case class SnapshotSyncFailure(
     reason: String,
     detail: Option[String],
-)
+) extends StructuredFailureDiagnostic:
+  override val diagnosticFamily: FailureDiagnosticFamily =
+    FailureDiagnosticFamily.SnapshotSync
 
 /** The result of a successful snapshot synchronization. */
 final case class SnapshotSyncResult(
