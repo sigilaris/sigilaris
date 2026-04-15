@@ -215,10 +215,15 @@ Phase 3 Complete; Companion Plans And ADR Drafted
 
 | wave / batch family | owner doc | role |
 | --- | --- | --- |
-| `Wave 2` / `W2-B1` ~ `W2-B6` | `docs/plans/0012-node-runtime-hotspot-split-and-boundary-cleanup-plan.md` | split-only implementation owner |
+| `Wave 2` / `W2-B1` ~ `W2-B6` | `docs/plans/0012-node-runtime-hotspot-split-and-boundary-cleanup-plan.md` | split-only implementation owner, landed on `2026-04-15` |
 | `Wave 5` / `W5-B1` ~ `W5-B4` | `docs/plans/0013-hotstuff-runtime-hardening-and-gossip-bridge-cleanup-plan.md` | hardening + consensus property gate owner |
 | `Wave 6` / `W6-B3` | `docs/plans/0014-tx-execution-and-receipt-surface-cleanup-plan.md` | execution/receipt tranche implementation owner |
 | `Wave 6` / `W6-B3` semantic lock | `docs/adr/0026-tx-execution-witness-and-receipt-projection-boundary.md` | witness vs continuation vs receipt projection decision owner |
+
+- `Wave 2` landed handoff surface는 `0012`의 split shape를 canonical source로 본다.
+  - shared gossip model typing follow-up: `GossipIdentifiers.scala`, `GossipCursorModel.scala`, `GossipSessionProtocol.scala`
+  - shared tx runtime typing follow-up: `TxGossipRuntimeSupport.scala`
+  - transport/config typing follow-up: `TxGossipWire.scala`, `BinaryEventStreamCodec.scala`, `HotStuffBootstrapWire.scala`, `HotStuffBootstrapConfig.scala`
 
 ### Batch Breakdown
 

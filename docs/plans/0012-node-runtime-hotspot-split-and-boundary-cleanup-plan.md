@@ -1,7 +1,7 @@
 # 0012 - Node Runtime Hotspot Split And Boundary Cleanup Plan
 
 ## Status
-Draft
+Completed
 
 ## Created
 2026-04-15
@@ -50,6 +50,39 @@ Draft
 - `GossipTransportAuth.scala` split은 pure crypto core vs HTTP parsing surface를 분리하는 것이지, transport credential semantics를 다시 정의하는 작업이 아니다.
 - `HotStuffRuntimeBootstrap.scala` split은 parsed config / assembly plan / resource wiring seam을 만드는 것이지, bootstrap readiness 정책을 바꾸는 작업이 아니다.
 - exit gate는 property test 추가가 아니라 regression parity다. split 뒤에도 existing suite와 public/shared contract는 같은 의미를 유지해야 한다.
+
+## Landed Split Shape And Handoff
+- `Model.scala`는 rejection, identifier, cursor/artifact, session/control protocol file family로 분리됐다.
+  - `GossipRejections.scala`
+  - `GossipIdentifiers.scala`
+  - `GossipCursorModel.scala`
+  - `GossipSessionProtocol.scala`
+- `TxGossipRuntime.scala`는 runtime support/shared ops/control ops/polling ops seam으로 분리됐다.
+  - `TxGossipRuntimeSupport.scala`
+  - `TxGossipRuntimeSharedOps.scala`
+  - `TxGossipRuntimeControlOps.scala`
+  - `TxGossipRuntimePollingOps.scala`
+- `TxGossipArmeriaAdapter.scala`는 transport wire, binary codec, adapter surface seam으로 분리됐다.
+  - `TxGossipWire.scala`
+  - `BinaryEventStreamCodec.scala`
+  - `TxGossipArmeriaAdapter.scala`
+- `GossipTransportAuth.scala`는 pure crypto core vs HTTP parsing/rejection mapping seam으로 분리됐다.
+  - `GossipTransportAuthCore.scala`
+  - `GossipTransportAuth.scala`
+- `HotStuffBootstrapArmeriaAdapter.scala`는 inbound adapter vs outbound HTTP bootstrap transport seam으로 분리됐다.
+  - `HotStuffBootstrapWire.scala`
+  - `HotStuffBootstrapHttpTransport.scala`
+  - `HotStuffBootstrapArmeriaAdapter.scala`
+- `HotStuffRuntimeBootstrap.scala`는 parsed config vs runtime/resource wiring seam으로 분리됐다.
+  - `HotStuffBootstrapConfig.scala`
+  - `HotStuffRuntimeBootstrap.scala`
+- regression parity는 아래 existing suite로 확인했다.
+  - `nodeCommonJVM/testOnly org.sigilaris.node.gossip.tx.TxControlInterpreterSuite org.sigilaris.node.gossip.tx.TxLoopbackSuite`
+  - `nodeJvm/testOnly org.sigilaris.node.jvm.transport.armeria.gossip.TxGossipArmeriaAdapterSuite org.sigilaris.node.jvm.transport.armeria.gossip.HotStuffBootstrapArmeriaAdapterSuite`
+  - `nodeJvm/testOnly org.sigilaris.node.jvm.runtime.consensus.hotstuff.HotStuffRuntimeBootstrapSuite`
+- 다음 tranche handoff는 아래 seam을 기준으로 진행한다.
+  - `Wave 3`: `GossipIdentifiers.scala`, `GossipCursorModel.scala`, `GossipSessionProtocol.scala`, `TxGossipRuntimeSupport.scala`
+  - `Wave 4`: `TxGossipWire.scala`, `BinaryEventStreamCodec.scala`, `HotStuffBootstrapWire.scala`, `HotStuffBootstrapConfig.scala`
 
 ## Change Areas
 
@@ -140,25 +173,25 @@ Draft
 ## Checklist
 
 ### Phase 0: Ownership And Split Contract Lock
-- [ ] `W2-B1` ~ `W2-B6` batch별 owner surface와 non-goal semantic surface를 문서화한다.
-- [ ] hotspot file별 split seam과 target file family를 적는다.
+- [x] `W2-B1` ~ `W2-B6` batch별 owner surface와 non-goal semantic surface를 문서화한다.
+- [x] hotspot file별 split seam과 target file family를 적는다.
 
 ### Phase 1: `node-common` Hotspot Split
-- [ ] `Model.scala` concept split landed
-- [ ] `TxGossipRuntime.scala` interpreter/integration split landed
-- [ ] node-common regression suite green
+- [x] `Model.scala` concept split landed
+- [x] `TxGossipRuntime.scala` interpreter/integration split landed
+- [x] node-common regression suite green
 
 ### Phase 2: `node-jvm` Transport / Bootstrap Split
-- [ ] `TxGossipArmeriaAdapter.scala` split landed
-- [ ] `GossipTransportAuth.scala` split landed
-- [ ] `HotStuffBootstrapArmeriaAdapter.scala` split landed
-- [ ] `HotStuffRuntimeBootstrap.scala` split landed
-- [ ] impacted node-jvm transport/bootstrap suite green
+- [x] `TxGossipArmeriaAdapter.scala` split landed
+- [x] `GossipTransportAuth.scala` split landed
+- [x] `HotStuffBootstrapArmeriaAdapter.scala` split landed
+- [x] `HotStuffRuntimeBootstrap.scala` split landed
+- [x] impacted node-jvm transport/bootstrap suite green
 
 ### Phase 3: Regression Parity And Handoff
-- [ ] split-only tranche regression parity 확인
-- [ ] `0011`와 handoff 문서를 실제 landed seam 기준으로 갱신한다.
-- [ ] 다음 tranche(`Wave 3` / `Wave 4`)로 넘길 owner surface를 정리한다.
+- [x] split-only tranche regression parity 확인
+- [x] `0011`와 handoff 문서를 실제 landed seam 기준으로 갱신한다.
+- [x] 다음 tranche(`Wave 3` / `Wave 4`)로 넘길 owner surface를 정리한다.
 
 ## Follow-Ups
 - `Wave 3` shared contract typing rollout companion plan
