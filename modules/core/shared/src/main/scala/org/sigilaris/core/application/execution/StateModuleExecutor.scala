@@ -92,9 +92,9 @@ object StateModuleExecutor:
       writesReq: Requires[signedTx.value.Writes, Owns ++ Needs],
   ): Eff[F][(StoreState, (signedTx.value.Result, List[signedTx.value.Event]))] =
     runExecutionWithModule(initial, signedTx, module).map: execution =>
-      (execution.observedState, (execution.result, execution.events))
+      execution.compatibilityTuple
 
-  /** Executes using an implicit module in scope. */
+  /** Legacy tuple wrapper over [[runWithModule]] using an implicit module. */
   def run[F[
       _,
   ], Path <: Tuple, Owns <: Tuple, Needs <: Tuple, Txs <: Tuple, T <: Tx](
@@ -108,7 +108,7 @@ object StateModuleExecutor:
   ): Eff[F][(StoreState, (signedTx.value.Result, List[signedTx.value.Event]))] =
     runWithModule(initial, signedTx, module)
 
-  /** Executes a routed transaction against a composed module. */
+  /** Legacy tuple wrapper for routed execution against a composed module. */
   def runRoutedWithModule[F[
       _,
   ], Path <: Tuple, Owns <: Tuple, Needs <: Tuple, Txs <: Tuple, T <: Tx & ModuleRoutedTx](
@@ -121,7 +121,7 @@ object StateModuleExecutor:
       writesReq: Requires[signedTx.value.Writes, Owns ++ Needs],
   ): Eff[F][(StoreState, (signedTx.value.Result, List[signedTx.value.Event]))] =
     runExecutionRoutedWithModule(initial, signedTx, module).map: execution =>
-      (execution.observedState, (execution.result, execution.events))
+      execution.compatibilityTuple
 
   /** Executes a routed transaction with a fresh access log and returns the
     * per-transaction execution witness.
@@ -144,7 +144,7 @@ object StateModuleExecutor:
         case (nextState, (result, events)) =>
           toExecution(nextState, result, events)
 
-  /** Executes a routed transaction using an implicit module in scope. */
+  /** Legacy tuple wrapper over [[runRoutedWithModule]] using an implicit module. */
   def runRouted[F[
       _,
   ], Path <: Tuple, Owns <: Tuple, Needs <: Tuple, Txs <: Tuple, T <: Tx & ModuleRoutedTx](
@@ -248,7 +248,7 @@ object StateModuleExecutor:
   ): Eff[F][TxExecution[signedTx.value.Result, signedTx.value.Event]] =
     runExecutionFromEmptyWithModule(signedTx, module)
 
-  /** Convenience to obtain the plain `F` result. */
+  /** Convenience to obtain the plain `F` result for the legacy tuple wrapper. */
   def runValueWithModule[F[
       _,
   ], Path <: Tuple, Owns <: Tuple, Needs <: Tuple, Txs <: Tuple, T <: Tx](

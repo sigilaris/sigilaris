@@ -1,7 +1,7 @@
 # ADR-0026: TxExecution Witness And Receipt Projection Boundary
 
 ## Status
-Draft
+Accepted
 
 ## Context
 - ADR-0009는 application execution을 deterministic state transition과 witnessable effect/result surface 위에 올려 두었지만, single-transaction execution witness와 public batch receipt가 정확히 어떤 관계를 가져야 하는지는 별도 문서로 잠기지 않았다.
@@ -51,6 +51,7 @@ Draft
 ## Consequences
 - execution witness와 continuation state의 ownership이 분리된다.
 - batch receipt가 internal witness object 전체를 끌고 다니지 않아도 되는 방향이 열린다.
+- landed implementation에서는 public batch receipt projection으로 `TxExecutionReceiptProjection`을 사용하고, `actualFootprint` / `result` / `events`만 저장한다.
 - `StateModuleExecutor` API는 execution-first canonical path를 중심으로 정리할 수 있다.
 - old compatibility surface는 즉시 제거할 필요 없이 legacy wrapper로 축소할 수 있다.
 - 대신 receipt projection의 최소 required surface와 consumer inventory를 implementation에서 먼저 정리해야 한다.

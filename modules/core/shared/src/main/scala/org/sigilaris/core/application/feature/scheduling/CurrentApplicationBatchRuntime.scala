@@ -5,6 +5,7 @@ import cats.syntax.all.*
 
 import org.sigilaris.core.application.execution.{
   StateModuleExecutor,
+  TxExecutionReceiptProjection,
   TxExecution,
 }
 import org.sigilaris.core.application.feature.accounts.module.AccountsBP
@@ -141,14 +142,14 @@ final case class CurrentApplicationBatchDiagnostics(
     classifications: Vector[ClassifiedItem[CurrentApplicationSignedTx]],
 )
 
-/** A single executed transaction with its execution trace.
+/** A single executed transaction projected onto the public receipt surface.
   *
   * @param tx the original signed transaction
-  * @param execution the execution result containing state changes and actual footprint
+  * @param execution explicit execution projection for receipt/public consumers
   */
 final case class CurrentApplicationExecutedTx(
     tx: CurrentApplicationSignedTx,
-    execution: TxExecution[?, ?],
+    execution: TxExecutionReceiptProjection[?, ?],
 )
 
 /** Receipt produced after a batch is fully executed.
@@ -348,7 +349,7 @@ final class CurrentApplicationBatchRuntime private (
             executions = execution.items.map: item =>
               CurrentApplicationExecutedTx(
                 tx = item.planned.item,
-                execution = item.execution,
+                execution = item.execution.receiptProjection,
               ),
           )
         val nextState =
@@ -393,7 +394,7 @@ final class CurrentApplicationBatchRuntime private (
               execution.nextState ->
                 (executed :+ CurrentApplicationExecutedTx(
                   classifiedItem.item,
-                  execution,
+                  execution.receiptProjection,
                 ))
         case (left @ Left(_), _) =>
           left

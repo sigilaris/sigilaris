@@ -167,6 +167,12 @@ final class StateModuleExecutorSuite extends FunSuite:
     assertEquals(execution.actualAccessLog.writeCount, 2)
     assertEquals(execution.nextState.accessLog, AccessLog.empty)
     assertEquals(execution.observedState.accessLog, execution.actualAccessLog)
+    assertEquals(execution.compatibilityTuple._1, execution.observedState)
+    assertEquals(execution.compatibilityTuple._2._1, execution.result)
+    assertEquals(execution.compatibilityTuple._2._2, execution.events)
+    assertEquals(execution.receiptProjection.actualFootprint, execution.actualFootprint)
+    assertEquals(execution.receiptProjection.result, execution.result)
+    assertEquals(execution.receiptProjection.events, execution.events)
     assert(execution.actualFootprint.isRight)
     assertEquals(
       execution.actualFootprint,
@@ -188,6 +194,28 @@ final class StateModuleExecutorSuite extends FunSuite:
     )
 
     assert(execution.actualFootprint.isLeft)
+
+  test("TxExecution.receiptProjection preserves error-path footprint without witness state"):
+    val invalidAccessLog =
+      AccessLog.empty.recordWrite(
+        ByteVector.fromValidHex("cc"),
+        ByteVector.fromValidHex("dd00"),
+      )
+    val execution = TxExecution(
+      nextTrieState = StoreState.empty.trieState,
+      actualAccessLog = invalidAccessLog,
+      actualFootprint = ConflictFootprint.fromAccessLog(invalidAccessLog),
+      result = Utf8("result"),
+      events = List(Utf8("event")),
+    )
+
+    assert(execution.receiptProjection.actualFootprint.isLeft)
+    assertEquals(
+      execution.receiptProjection.actualFootprint,
+      execution.actualFootprint,
+    )
+    assertEquals(execution.receiptProjection.result, Utf8("result"))
+    assertEquals(execution.receiptProjection.events, List(Utf8("event")))
 
   test("run and runWithModule ignore pre-existing access logs on the delegated back-compat path"):
     val dirtyInitial = StoreState(

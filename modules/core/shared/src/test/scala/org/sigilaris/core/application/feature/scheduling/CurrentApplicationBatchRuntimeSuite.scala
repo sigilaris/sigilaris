@@ -169,6 +169,10 @@ final class CurrentApplicationBatchRuntimeSuite extends FunSuite:
     assertEquals(groupReceipt.diagnostics.mode, CurrentApplicationBatchMode.Schedulable)
     assertEquals(accountReceipt.executions.size, 1)
     assertEquals(groupReceipt.executions.size, 1)
+    assertEquals(accountReceipt.executions.head.execution.actualFootprint.isRight, true)
+    assertEquals(accountReceipt.executions.head.execution.events.size, 1)
+    assertEquals(groupReceipt.executions.head.execution.actualFootprint.isRight, true)
+    assertEquals(groupReceipt.executions.head.execution.events.size, 1)
     assertNotEquals(
       stateAfterGroup.storeState.trieState,
       CurrentApplicationBatchRuntimeState.empty.storeState.trieState,
@@ -192,6 +196,7 @@ final class CurrentApplicationBatchRuntimeSuite extends FunSuite:
 
     assertEquals(receipt.diagnostics.mode, CurrentApplicationBatchMode.Schedulable)
     assertEquals(receipt.executions.size, 2)
+    assertEquals(receipt.executions.forall(_.execution.actualFootprint.isRight), true)
     assertEquals(receipt.diagnostics.duplicatesDropped, Vector.empty)
 
   test("CurrentApplicationBatchRuntime preserves idempotency behavior for schedulable batches"):

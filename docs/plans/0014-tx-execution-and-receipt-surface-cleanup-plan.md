@@ -1,7 +1,7 @@
 # 0014 - TxExecution And Receipt Surface Cleanup Plan
 
 ## Status
-Draft
+Implemented
 
 ## Created
 2026-04-15
@@ -110,23 +110,23 @@ Draft
 ## Checklist
 
 ### Phase 0: Semantic Lock
-- [ ] `TxExecution` / executor / receipt ownership 문서화
-- [ ] consumer inventory와 required projection surface 정리
-- [ ] ADR-0026와 terminology alignment
+- [x] `TxExecution` / executor / receipt ownership 문서화
+- [x] consumer inventory와 required projection surface 정리
+- [x] ADR-0026와 terminology alignment
 
 ### Phase 1: Executor Surface Cleanup
-- [ ] plain/routed duplication 축소
-- [ ] execution-first canonical path 고정
-- [ ] `observedState` continuation 의존 path 제거 또는 축소
+- [x] plain/routed duplication 축소
+- [x] execution-first canonical path 고정
+- [x] `observedState` continuation 의존 path 제거 또는 축소
 
 ### Phase 2: Receipt Projection Rollout
-- [ ] batch receipt projection type landed
-- [ ] runtime state / receipt storage surface 갱신
-- [ ] impacted consumer regression suite green
+- [x] batch receipt projection type landed
+- [x] runtime state / receipt storage surface 갱신
+- [x] impacted consumer regression suite green
 
 ### Phase 3: Verification And Docs
-- [ ] executor/batch runtime regression suite green
-- [ ] ADR / plan / `0011` 링크 정리
+- [x] executor/batch runtime regression suite green
+- [x] ADR / plan / `0011` 링크 정리
 
 ## Follow-Ups
 - `documentedCompatibilityFamilies` closed enum화 tranche

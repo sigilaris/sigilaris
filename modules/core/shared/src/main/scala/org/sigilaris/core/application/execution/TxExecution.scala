@@ -4,6 +4,30 @@ import org.sigilaris.core.application.scheduling.ConflictFootprint
 import org.sigilaris.core.application.state.{AccessLog, StoreState}
 import org.sigilaris.core.merkle.MerkleTrieState
 
+/** Explicit projection of a transaction execution for receipt/public surfaces.
+  *
+  * This intentionally excludes trie state and raw access log witness data.
+  *
+  * @tparam Result
+  *   the transaction result type
+  * @tparam Event
+  *   the transaction event type
+  * @param actualFootprint
+  *   the derived conflict footprint, or an access-log invariant violation
+  * @param result
+  *   the transaction result
+  * @param events
+  *   the emitted events
+  */
+final case class TxExecutionReceiptProjection[+Result, +Event](
+    actualFootprint: Either[
+      ConflictFootprint.AccessLogInvariantViolation,
+      ConflictFootprint,
+    ],
+    result: Result,
+    events: List[Event],
+)
+
 /** Witness of a single transaction execution, capturing the resulting state,
   * access log, conflict footprint, result, and emitted events.
   *
@@ -47,3 +71,15 @@ final case class TxExecution[+Result, +Event](
     */
   lazy val observedState: StoreState =
     StoreState(nextTrieState, actualAccessLog)
+
+  /** Explicit receipt/public projection that drops trie and raw witness state. */
+  lazy val receiptProjection: TxExecutionReceiptProjection[Result, Event] =
+    TxExecutionReceiptProjection(
+      actualFootprint = actualFootprint,
+      result = result,
+      events = events,
+    )
+
+  /** Legacy tuple wrapper retained for backward-compatible executor surfaces. */
+  lazy val compatibilityTuple: (StoreState, (Result, List[Event])) =
+    observedState -> (result, events)
