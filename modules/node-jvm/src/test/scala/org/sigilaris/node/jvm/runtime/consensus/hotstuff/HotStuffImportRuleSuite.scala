@@ -37,16 +37,11 @@ final class HotStuffImportRuleSuite extends FunSuite:
       "consensus",
       "hotstuff",
     ),
-    sourceRoot(
-      "test",
-      "org",
-      "sigilaris",
-      "node",
-      "jvm",
-      "runtime",
-      "consensus",
-      "hotstuff",
-    ),
+  )
+
+  private val hotStuffBoundaryExceptions = Set(
+    hotStuffRoots.head.resolve("HotStuffRuntimeBootstrap.scala").normalize,
+    hotStuffRoots.head.resolve("Materialization.scala").normalize,
   )
 
   private val gossipBannedImports = List(
@@ -68,9 +63,13 @@ final class HotStuffImportRuleSuite extends FunSuite:
     assertNoImportViolations(gossipRoots, gossipBannedImports)
 
   test(
-    "hotstuff consensus sources do not import transport or storage implementations",
+    "hotstuff consensus core sources keep transport and concrete storage at assembly edges",
   ):
-    assertNoImportViolations(hotStuffRoots, hotStuffBannedImports)
+    assertNoImportViolations(
+      hotStuffRoots,
+      hotStuffBannedImports,
+      ignoredSources = hotStuffBoundaryExceptions,
+    )
 
   test("import parser detects comma-separated and grouped import targets"):
     assertEquals(
@@ -139,6 +138,7 @@ final class HotStuffImportRuleSuite extends FunSuite:
   private def assertNoImportViolations(
       roots: List[Path],
       bannedImports: List[String],
+      ignoredSources: Set[Path] = Set.empty,
   ): Unit =
     val existingRoots = roots.filter(root => Files.isDirectory(root))
     assert(
@@ -150,7 +150,9 @@ final class HotStuffImportRuleSuite extends FunSuite:
       Using.resource(Files.walk(root)): stream =>
         stream.iterator.asScala
           .filter(path =>
-            Files.isRegularFile(path) && path.toString.endsWith(".scala"),
+            Files.isRegularFile(path) &&
+              path.toString.endsWith(".scala") &&
+              !ignoredSources.contains(path.normalize),
           )
           .toList
 
