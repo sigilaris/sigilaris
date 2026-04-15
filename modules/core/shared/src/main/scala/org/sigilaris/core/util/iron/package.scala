@@ -21,7 +21,7 @@ class LengthBitVector[C, Impl <: Constraint[Long, C]](using impl: Impl)
   override inline def test(inline value: BitVector): Boolean =
     impl.test(value.size)
   override inline def message: String =
-    ss"Length64: (${impl.message})"
+    ss"BitVector bit-length: (${impl.message})"
 
 @SuppressWarnings(Array("org.wartremover.warts.ImplicitParameter"))
 inline given [C, Impl <: Constraint[Long, C]](using
@@ -42,7 +42,7 @@ class LengthByteVector[C, Impl <: Constraint[Long, C]](using impl: Impl)
   override inline def test(inline value: ByteVector): Boolean =
     impl.test(value.size)
   override inline def message: String =
-    ss"Length64: (${impl.message})"
+    ss"ByteVector byte-length: (${impl.message})"
 
 @SuppressWarnings(Array("org.wartremover.warts.ImplicitParameter"))
 inline given [C, Impl <: Constraint[Long, C]](using

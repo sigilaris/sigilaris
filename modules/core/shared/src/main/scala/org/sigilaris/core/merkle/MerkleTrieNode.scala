@@ -75,8 +75,8 @@ sealed trait MerkleTrieNode:
       case MerkleTrieNode.Leaf(_, value) => MerkleTrieNode.Leaf(prefix, value)
       case MerkleTrieNode.Branch(_, children) =>
         MerkleTrieNode.Branch(prefix, children)
-      case MerkleTrieNode.BranchWithData(_, key, value) =>
-        MerkleTrieNode.BranchWithData(prefix, key, value)
+      case MerkleTrieNode.BranchWithData(_, children, value) =>
+        MerkleTrieNode.BranchWithData(prefix, children, value)
 
   /** Returns a new node with the updated children.
     *
