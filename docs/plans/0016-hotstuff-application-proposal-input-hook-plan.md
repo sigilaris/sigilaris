@@ -182,10 +182,10 @@ The target outcome is:
 
 ### Phase 1 - Provider ADT And Legacy Provider
 
-- [ ] Add the HotStuff-owned proposal input provider interface.
-- [ ] Add a legacy provider that reproduces the current empty proposal behavior.
-- [ ] Add unit coverage for provider result encoding and fallback decisions.
-- [ ] Keep all existing pacemaker tests green before changing runtime wiring.
+- [x] Add the HotStuff-owned proposal input provider interface.
+- [x] Add a legacy provider that reproduces the current empty proposal behavior.
+- [x] Add unit coverage for provider result encoding and fallback decisions.
+- [x] Keep all existing pacemaker tests green before changing runtime wiring.
 
 ### Phase 2 - Pacemaker Proposal Wiring
 
@@ -265,8 +265,8 @@ The target outcome is:
 
 ## Checklist
 
-- [ ] Provider ADTs landed
-- [ ] Legacy empty proposal provider landed
+- [x] Provider ADTs landed
+- [x] Legacy empty proposal provider landed
 - [ ] Pacemaker consumes provider output
 - [ ] Provider-backed non-empty proposal smoke green
 - [ ] Provider failure/rejection diagnostics tested
