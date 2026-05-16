@@ -1082,6 +1082,7 @@ private object InMemoryHotStuffPacemakerDriver:
   def attach[F[_]: Sync](
       runtime: HotStuffNodeRuntime[F],
       automaticConsensus: Boolean,
+      proposalInputConfig: HotStuffProposalInputRuntimeConfig[F],
   )(using
       clock: GossipClock[F],
   ): F[HotStuffNodeRuntime[F]] =
@@ -1106,9 +1107,8 @@ private object InMemoryHotStuffPacemakerDriver:
               stateRef = stateRef,
               observationRef = observationRef,
               automaticConsensus = automaticConsensus,
-              proposalInputProviderOverride = None,
-              proposalInputFallbackPolicy =
-                HotStuffProposalInputFallbackPolicy.AllowLegacyEmpty,
+              proposalInputProviderOverride = proposalInputConfig.provider,
+              proposalInputFallbackPolicy = proposalInputConfig.fallbackPolicy,
             )
           val wrappedSource =
             new HotStuffPacemakerAwareSource[F](

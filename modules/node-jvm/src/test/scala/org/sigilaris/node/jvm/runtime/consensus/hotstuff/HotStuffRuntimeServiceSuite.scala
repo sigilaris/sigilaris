@@ -292,6 +292,93 @@ final class HotStuffRuntimeServiceSuite extends CatsEffectSuite:
         Left("bootstrapLifecycleUnavailable"),
       )
 
+  test("automatic runtime creation rejects require-provider mode without provider"):
+    given GossipClock[IO] = GossipClock.constant[IO](startedAt)
+
+    HotStuffNodeRuntime
+      .create[IO](
+        localPeer = PeerIdentity.unsafe("node-a"),
+        role = LocalNodeRole.Validator,
+        validatorSet = validatorSet,
+        holders = holders,
+        localKeys = Map(
+          validatorSet.members(0).id -> validatorKeys(0),
+          validatorSet.members(1).id -> validatorKeys(1),
+          validatorSet.members(2).id -> validatorKeys(2),
+        ),
+        automaticConsensus = true,
+        proposalInputConfig =
+          HotStuffProposalInputRuntimeConfig.requireProviderInput[IO],
+      )
+      .map: result =>
+        assertEquals(
+          result.left.map(_.reason),
+          Left("proposalInputProviderRequired"),
+        )
+
+  test("automatic runtime creation accepts require-provider mode with provider"):
+    given GossipClock[IO] = GossipClock.constant[IO](startedAt)
+
+    HotStuffNodeRuntime
+      .create[IO](
+        localPeer = PeerIdentity.unsafe("node-a"),
+        role = LocalNodeRole.Validator,
+        validatorSet = validatorSet,
+        holders = holders,
+        localKeys = Map(
+          validatorSet.members(0).id -> validatorKeys(0),
+          validatorSet.members(1).id -> validatorKeys(1),
+          validatorSet.members(2).id -> validatorKeys(2),
+        ),
+        automaticConsensus = true,
+        proposalInputConfig = HotStuffProposalInputRuntimeConfig
+          .requireProvider[IO](emptyProposalProvider),
+      )
+      .map: result =>
+        assert(result.isRight)
+
+  test("assembled bootstrap rejects require-provider mode without provider"):
+    val topology =
+      StaticPeerTopology
+        .parse(
+          localNodeIdentity = "node-a",
+          knownPeers = List("node-b"),
+          directNeighbors = List("node-b"),
+        )
+        .toOption
+        .get
+
+    val config =
+      HotStuffBootstrapConfig(
+        role = LocalNodeRole.Validator,
+        validatorSet = validatorSet,
+        holders = holders,
+        localKeys = Map(
+          validatorSet.members(0).id -> validatorKeys(0),
+          validatorSet.members(1).id -> validatorKeys(1),
+          validatorSet.members(2).id -> validatorKeys(2),
+        ),
+      )
+
+    tempStorageLayoutResource.use: storageLayout =>
+      HotStuffRuntimeBootstrap
+        .fromTopology[IO](
+          topology = topology,
+          transportAuth = StaticPeerTransportAuth.testing(topology),
+          consensusConfig = config,
+          clock = GossipClock.constant[IO](startedAt),
+          storageLayout = storageLayout,
+          proposalInputConfig =
+            HotStuffProposalInputRuntimeConfig.requireProviderInput[IO],
+        )
+        .use: bootstrapEither =>
+          IO:
+            assert(
+              bootstrapEither.left.exists(
+                _.startsWith("proposalInputProviderRequired"),
+              ),
+            )
+
   test(
     "concrete bootstrap surface exposes bootstrap input and runtime services explicitly",
   ):
@@ -433,6 +520,12 @@ final class HotStuffRuntimeServiceSuite extends CatsEffectSuite:
       stateRoot = StateRoot(hex(rootHex)),
       bodyRoot = BodyRoot(hex(rootHex)),
       timestamp = BlockTimestamp.unsafeFromEpochMillis(startedAt.toEpochMilli),
+    )
+
+  private def emptyProposalProvider: HotStuffProposalInputProvider[IO] =
+    LegacyEmptyHotStuffProposalInputProvider.const[IO](
+      stateRoot = StateRoot(hex("90")),
+      bodyRoot = BodyRoot(hex("91")),
     )
 
   private def tempStorageLayoutResource: Resource[IO, StorageLayout] =

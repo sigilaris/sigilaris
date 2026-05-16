@@ -98,6 +98,60 @@ enum HotStuffProposalInputFallbackPolicy:
   case AllowLegacyEmpty
   case RequireProviderInput
 
+/** Runtime wiring for autonomous proposal input. */
+final case class HotStuffProposalInputRuntimeConfig[F[_]](
+    provider: Option[HotStuffProposalInputProvider[F]],
+    fallbackPolicy: HotStuffProposalInputFallbackPolicy,
+)
+
+/** Companion for `HotStuffProposalInputRuntimeConfig`. */
+object HotStuffProposalInputRuntimeConfig:
+  def legacyCompatible[F[_]]: HotStuffProposalInputRuntimeConfig[F] =
+    HotStuffProposalInputRuntimeConfig(
+      provider = None,
+      fallbackPolicy = HotStuffProposalInputFallbackPolicy.AllowLegacyEmpty,
+    )
+
+  def withProviderFallback[F[_]](
+      provider: HotStuffProposalInputProvider[F],
+  ): HotStuffProposalInputRuntimeConfig[F] =
+    HotStuffProposalInputRuntimeConfig(
+      provider = Some(provider),
+      fallbackPolicy = HotStuffProposalInputFallbackPolicy.AllowLegacyEmpty,
+    )
+
+  def requireProvider[F[_]](
+      provider: HotStuffProposalInputProvider[F],
+  ): HotStuffProposalInputRuntimeConfig[F] =
+    HotStuffProposalInputRuntimeConfig(
+      provider = Some(provider),
+      fallbackPolicy = HotStuffProposalInputFallbackPolicy.RequireProviderInput,
+    )
+
+  def requireProviderInput[F[_]]: HotStuffProposalInputRuntimeConfig[F] =
+    HotStuffProposalInputRuntimeConfig(
+      provider = None,
+      fallbackPolicy = HotStuffProposalInputFallbackPolicy.RequireProviderInput,
+    )
+
+  def validateForAutomaticConsensus[F[_]](
+      config: HotStuffProposalInputRuntimeConfig[F],
+  ): Either[HotStuffPolicyViolation, Unit] =
+    config.fallbackPolicy match
+      case HotStuffProposalInputFallbackPolicy.AllowLegacyEmpty =>
+        ().asRight[HotStuffPolicyViolation]
+      case HotStuffProposalInputFallbackPolicy.RequireProviderInput =>
+        config.provider match
+          case Some(_) =>
+            ().asRight[HotStuffPolicyViolation]
+          case None =>
+            HotStuffPolicyViolation(
+              reason = "proposalInputProviderRequired",
+              detail = Some(
+                "automatic consensus requires a proposal input provider when legacy empty fallback is disabled",
+              ),
+            ).asLeft[Unit]
+
 /** A local decision made from a provider result and fallback policy. */
 enum HotStuffProposalInputDecision:
   case UseProviderInput(input: HotStuffProposalInput)

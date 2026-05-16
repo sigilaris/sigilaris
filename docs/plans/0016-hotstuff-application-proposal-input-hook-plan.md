@@ -197,10 +197,10 @@ The target outcome is:
 
 ### Phase 3 - Bootstrap And Embedding API
 
-- [ ] Add optional provider wiring to the runtime bootstrap surface.
-- [ ] Preserve existing behavior for embedders that do not supply a provider.
-- [ ] Add a mode that requires application input and fails visibly if only the legacy empty provider is configured.
-- [ ] Keep the API application-neutral and free of embedder package dependencies.
+- [x] Add optional provider wiring to the runtime bootstrap surface.
+- [x] Preserve existing behavior for embedders that do not supply a provider.
+- [x] Add a mode that requires application input and fails visibly if only the legacy empty provider is configured.
+- [x] Keep the API application-neutral and free of embedder package dependencies.
 
 ### Phase 4 - Verification
 
@@ -270,7 +270,7 @@ The target outcome is:
 - [x] Pacemaker consumes provider output
 - [ ] Provider-backed non-empty proposal smoke green
 - [ ] Provider failure/rejection diagnostics tested
-- [ ] Require-provider mode available for embedders
+- [x] Require-provider mode available for embedders
 - [ ] Runtime docs updated
 - [ ] Typelevel site EN/KO docs updated
 - [ ] `sbt ";unidoc;tlSite"` green after docs update
