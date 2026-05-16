@@ -2,7 +2,7 @@
 
 ## Status
 
-Draft
+Implemented
 
 ## Created
 
@@ -231,9 +231,9 @@ Phase 5 verification evidence:
 
 ### Phase 6 - Embedder Handoff
 
-- [ ] Document the Sigilaris provider contract for embedders.
-- [ ] Provide a small fake embedder adapter example in tests or docs.
-- [ ] Confirm an embedder can move from manual proposal-materialization harnesses to autonomous provider-backed proposal smokes.
+- [x] Document the Sigilaris provider contract for embedders.
+- [x] Provide a small fake embedder adapter example in tests or docs.
+- [x] Confirm an embedder can move from manual proposal-materialization harnesses to autonomous provider-backed proposal smokes.
 
 ## Test Plan
 
@@ -283,7 +283,7 @@ Phase 5 verification evidence:
 - [x] Runtime docs updated
 - [x] Typelevel site EN/KO docs updated
 - [x] `sbt ";unidoc;tlSite"` green after docs update
-- [ ] Embedder handoff documented
+- [x] Embedder handoff documented
 
 ## Follow-Ups
 
