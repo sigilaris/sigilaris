@@ -134,6 +134,18 @@ enum HotStuffPacemakerDiagnostic:
       window: HotStuffWindow,
       consecutiveTimeoutWindows: Int,
   )
+  case ProposalInputResult(
+      window: HotStuffWindow,
+      proposer: ValidatorId,
+      outcome: HotStuffProposalInputDiagnosticOutcome,
+      reason: String,
+      detail: Option[String],
+      fallbackUsed: Boolean,
+  )
+
+/** Proposal input diagnostics intentionally exclude application payload bodies. */
+enum HotStuffProposalInputDiagnosticOutcome:
+  case Supplied, NoWork, Rejected, Failed, Invalid
 
 /** The mutable state of a pacemaker entry, tracking the active window, timeout, and local vote state. */
 final case class HotStuffPacemakerState(

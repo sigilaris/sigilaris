@@ -19,7 +19,7 @@ SwayDB-backed persistence helpers.
 - [Bootstrap And Sync](bootstrap-and-sync.md) covers static trust-root
   verification, snapshot sync, and historical backfill.
 - [HotStuff And Pacemaker](hotstuff-and-pacemaker.md) covers proposal/vote/QC
-  flow plus timeout/new-view progression.
+  flow, provider-backed autonomous proposals, and timeout/new-view progression.
 - [Static Launch](static-launch.md) covers the reference smoke harness, minimal
   config shape, and operator-owned startup/restart notes.
 

@@ -521,6 +521,8 @@ object HotStuffNodeRuntime:
       localKeys: Map[ValidatorId, KeyPair],
       gossipPolicy: HotStuffGossipPolicy = HotStuffGossipPolicy.default,
       automaticConsensus: Boolean = false,
+      proposalInputConfig: HotStuffProposalInputRuntimeConfig[F] =
+        HotStuffProposalInputRuntimeConfig.legacyCompatible[F],
   )(using
       clock: GossipClock[F],
   ): F[Either[HotStuffPolicyViolation, HotStuffNodeRuntime[F]]] =
@@ -533,7 +535,15 @@ object HotStuffNodeRuntime:
         localKeys = localKeys,
         gossipPolicy = gossipPolicy,
       )
-    validateBootstrapInput(bootstrapInput) match
+    val validatedBootstrapInput =
+      validateBootstrapInput(bootstrapInput)
+        .flatMap: validatedInput =>
+          if automaticConsensus then
+            HotStuffProposalInputRuntimeConfig
+              .validateForAutomaticConsensus(proposalInputConfig)
+              .map(_ => validatedInput)
+          else validatedInput.asRight[HotStuffPolicyViolation]
+    validatedBootstrapInput match
       case Left(rejection) =>
         rejection.asLeft[HotStuffNodeRuntime[F]].pure[F]
       case Right(validatedInput) =>
@@ -551,5 +561,6 @@ object HotStuffNodeRuntime:
                 none[HotStuffBootstrapLifecycle[F]],
               ),
               automaticConsensus = automaticConsensus,
+              proposalInputConfig = proposalInputConfig,
             )
             .map(_.asRight[HotStuffPolicyViolation])

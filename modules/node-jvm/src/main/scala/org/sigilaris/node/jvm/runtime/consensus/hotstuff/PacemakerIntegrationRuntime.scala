@@ -115,6 +115,8 @@ private final class InMemoryHotStuffPacemakerDriver[F[_]: Sync](
     stateRef: Ref[F, Map[HotStuffPacemakerKey, HotStuffPacemakerEntrySnapshot]],
     observationRef: Ref[F, ObservedEventQueue],
     automaticConsensus: Boolean,
+    proposalInputProviderOverride: Option[HotStuffProposalInputProvider[F]],
+    proposalInputFallbackPolicy: HotStuffProposalInputFallbackPolicy,
 )(using
     clock: GossipClock[F],
 ):
@@ -389,7 +391,7 @@ private final class InMemoryHotStuffPacemakerDriver[F[_]: Sync](
                 key,
                 HotStuffPacemakerEntrySnapshot(
                   state = Some(step.state),
-                  diagnostics = step.diagnostics,
+                  diagnostics = current.diagnostics ++ step.diagnostics,
                   proposalEligibility = Some(step.proposalEligibility),
                   emittedProposalWindow = emittedProposalWindow,
                 ),
@@ -460,7 +462,8 @@ private final class InMemoryHotStuffPacemakerDriver[F[_]: Sync](
       leader: ValidatorId,
       now: Instant,
   ): F[Unit] =
-    entryFor(HotStuffPacemakerKey(window.chainId, leader)).flatMap:
+    val key = HotStuffPacemakerKey(window.chainId, leader)
+    entryFor(key).flatMap:
       case Some(entry) if entry.emittedProposalWindow.contains(window) =>
         Sync[F].unit
       case Some(entry)
@@ -470,51 +473,246 @@ private final class InMemoryHotStuffPacemakerDriver[F[_]: Sync](
               state.bootstrapHoldReason.isEmpty,
           ) =>
         entry.state.fold(Sync[F].unit): state =>
-          automaticProposalStateRoot(window, leader, state.highestKnownQc)
-            .flatMap: stateRoot =>
-              withLocalSigner(leader): keyPair =>
-                BlockTimestamp.fromInstant(now) match
-                  case Left(_) =>
-                    Sync[F].unit
-                  case Right(timestamp) =>
-                    val block =
-                      BlockHeader(
-                        parent =
-                          if window.height === HotStuffHeight.Genesis then None
-                          else Some(state.highestKnownQc.subject.blockId),
-                        height = BlockHeight(window.height.toBigNat),
-                        stateRoot = stateRoot,
-                        bodyRoot = automaticBodyRoot(
-                          window,
-                          leader,
-                          state.highestKnownQc,
-                        ),
-                        timestamp = timestamp,
-                      )
-                    Proposal
-                      .sign(
-                        UnsignedProposal(
-                          window = window,
-                          proposer = leader,
-                          targetBlockId = BlockHeader.computeId(block),
-                          block = block,
-                          txSet = ProposalTxSet.empty,
-                          justify = state.highestKnownQc,
-                        ),
-                        keyPair,
-                      )
-                      .toOption
-                      .traverse: proposal =>
-                        applyLocalArtifact(
-                          HotStuffGossipArtifact.ProposalArtifact(proposal),
-                          now,
-                        ) *> markProposalEmitted(
-                          HotStuffPacemakerKey(window.chainId, leader),
-                          window,
-                        )
-                      .void
+          proposalInputRequest(window, leader, state, now) match
+            case Left(error) =>
+              recordProposalInputDiagnostic(
+                key,
+                window,
+                leader,
+                HotStuffProposalInputDiagnosticOutcome.Failed,
+                "proposalInputTimestampInvalid",
+                Some(error),
+                fallbackUsed = false,
+              )
+            case Right(request) =>
+              resolveProposalInput(key, request, now)
       case _ =>
         Sync[F].unit
+
+  private def proposalInputRequest(
+      window: HotStuffWindow,
+      leader: ValidatorId,
+      state: HotStuffPacemakerState,
+      now: Instant,
+  ): Either[String, HotStuffProposalInputRequest] =
+    BlockTimestamp.fromInstant(now).map: timestamp =>
+      HotStuffProposalInputRequest(
+        window = window,
+        proposer = leader,
+        parent =
+          if window.height === HotStuffHeight.Genesis then None
+          else Some(state.highestKnownQc.subject.blockId),
+        height = BlockHeight(window.height.toBigNat),
+        justify = state.highestKnownQc,
+        now = now,
+        timestamp = timestamp,
+        bounds = HotStuffProposalInputBounds.unbounded,
+      )
+
+  private def resolveProposalInput(
+      key: HotStuffPacemakerKey,
+      request: HotStuffProposalInputRequest,
+      now: Instant,
+  ): F[Unit] =
+    proposalInputProvider
+      .nextProposalInput(request)
+      .attempt
+      .map:
+        case Right(result) =>
+          result
+        case Left(error) =>
+          HotStuffProposalInputProviderResult.Failed(
+            reason = "proposalInputProviderFailed",
+            detail = throwableDetail(error),
+          )
+      .flatMap: result =>
+        HotStuffProposalInputDecision.fromProviderResult(
+          result,
+          proposalInputFallbackPolicy,
+        ) match
+          case HotStuffProposalInputDecision.UseProviderInput(input) =>
+            useProviderInput(key, request, input, now)
+          case HotStuffProposalInputDecision.UseLegacyEmpty(reason, detail) =>
+            recordProviderResultDiagnostic(
+              key,
+              request,
+              result,
+              fallbackUsed = true,
+            ) *> useLegacyProposalInput(
+              key,
+              request,
+              now,
+              reason,
+              detail,
+            )
+          case HotStuffProposalInputDecision.Suppress(_, _) =>
+            recordProviderResultDiagnostic(
+              key,
+              request,
+              result,
+              fallbackUsed = false,
+            )
+
+  private def useProviderInput(
+      key: HotStuffPacemakerKey,
+      request: HotStuffProposalInputRequest,
+      input: HotStuffProposalInput,
+      now: Instant,
+  ): F[Unit] =
+    HotStuffProposalInputValidator.validate(request, input) match
+      case Left(validation) =>
+        handleInvalidProposalInput(key, request, validation, now)
+      case Right(validated) =>
+        recordProposalInputDiagnostic(
+          key,
+          request.window,
+          request.proposer,
+          HotStuffProposalInputDiagnosticOutcome.Supplied,
+          "supplied",
+          None,
+          fallbackUsed = false,
+        ) *> signAndApplyProposalInput(
+          key,
+          request,
+          validated,
+          now,
+          fallbackUsed = false,
+        )
+
+  private def handleInvalidProposalInput(
+      key: HotStuffPacemakerKey,
+      request: HotStuffProposalInputRequest,
+      validation: HotStuffValidationFailure,
+      now: Instant,
+  ): F[Unit] =
+    proposalInputFallbackPolicy match
+      case HotStuffProposalInputFallbackPolicy.AllowLegacyEmpty =>
+        recordProposalInputDiagnostic(
+          key,
+          request.window,
+          request.proposer,
+          HotStuffProposalInputDiagnosticOutcome.Invalid,
+          validation.reason,
+          validation.detail,
+          fallbackUsed = true,
+        ) *> useLegacyProposalInput(
+          key,
+          request,
+          now,
+          validation.reason,
+          validation.detail,
+        )
+      case HotStuffProposalInputFallbackPolicy.RequireProviderInput =>
+        recordProposalInputDiagnostic(
+          key,
+          request.window,
+          request.proposer,
+          HotStuffProposalInputDiagnosticOutcome.Invalid,
+          validation.reason,
+          validation.detail,
+          fallbackUsed = false,
+        )
+
+  private def useLegacyProposalInput(
+      key: HotStuffPacemakerKey,
+      request: HotStuffProposalInputRequest,
+      now: Instant,
+      reason: String,
+      detail: Option[String],
+  ): F[Unit] =
+    legacyProposalInputProvider
+      .nextProposalInput(request)
+      .attempt
+      .flatMap:
+        case Left(error) =>
+          recordProposalInputDiagnostic(
+            key,
+            request.window,
+            request.proposer,
+            HotStuffProposalInputDiagnosticOutcome.Failed,
+            "legacyProposalInputProviderFailed",
+            throwableDetail(error),
+            fallbackUsed = true,
+          )
+        case Right(HotStuffProposalInputProviderResult.Supplied(input)) =>
+          HotStuffProposalInputValidator.validate(request, input) match
+            case Left(validation) =>
+              recordProposalInputDiagnostic(
+                key,
+                request.window,
+                request.proposer,
+                HotStuffProposalInputDiagnosticOutcome.Invalid,
+                validation.reason,
+                validation.detail,
+                fallbackUsed = true,
+              )
+            case Right(validated) =>
+              recordProposalInputDiagnostic(
+                key,
+                request.window,
+                request.proposer,
+                HotStuffProposalInputDiagnosticOutcome.Supplied,
+                reason,
+                detail,
+                fallbackUsed = true,
+              ) *> signAndApplyProposalInput(
+                key,
+                request,
+                validated,
+                now,
+                fallbackUsed = true,
+              )
+        case Right(other) =>
+          recordProviderResultDiagnostic(
+            key,
+            request,
+            other,
+            fallbackUsed = true,
+          )
+
+  private def signAndApplyProposalInput(
+      key: HotStuffPacemakerKey,
+      request: HotStuffProposalInputRequest,
+      input: HotStuffProposalInput,
+      now: Instant,
+      fallbackUsed: Boolean,
+  ): F[Unit] =
+    withLocalSigner(request.proposer): keyPair =>
+      val block = input.blockHeader
+      Proposal
+        .sign(
+          UnsignedProposal(
+            window = request.window,
+            proposer = request.proposer,
+            targetBlockId = BlockHeader.computeId(block),
+            block = block,
+            txSet = input.txSet,
+            justify = request.justify,
+          ),
+          keyPair,
+        )
+        .toOption
+        .traverse: proposal =>
+          HotStuffValidator.validateProposal(
+            proposal,
+            bootstrapInput.validatorSet,
+          ) match
+            case Left(validation) =>
+              recordProposalInputDiagnostic(
+                key,
+                request.window,
+                request.proposer,
+                HotStuffProposalInputDiagnosticOutcome.Invalid,
+                validation.reason,
+                validation.detail,
+                fallbackUsed = fallbackUsed,
+              )
+            case Right(_) =>
+              applyLocalArtifact(
+                HotStuffGossipArtifact.ProposalArtifact(proposal),
+                now,
+              ) *> markProposalEmitted(key, request.window)
+        .void
 
   private def emitNewView(
       sender: ValidatorId,
@@ -642,6 +840,87 @@ private final class InMemoryHotStuffPacemakerDriver[F[_]: Sync](
       case None =>
         None,
     )
+
+  private def proposalInputProvider: HotStuffProposalInputProvider[F] =
+    proposalInputProviderOverride.getOrElse(legacyProposalInputProvider)
+
+  private def legacyProposalInputProvider: HotStuffProposalInputProvider[F] =
+    new LegacyEmptyHotStuffProposalInputProvider[F](
+      stateRootFor = request =>
+        automaticProposalStateRoot(
+          request.window,
+          request.proposer,
+          request.justify,
+        ),
+      bodyRootFor = request =>
+        automaticBodyRoot(
+          request.window,
+          request.proposer,
+          request.justify,
+        ),
+    )
+
+  private def recordProviderResultDiagnostic(
+      key: HotStuffPacemakerKey,
+      request: HotStuffProposalInputRequest,
+      result: HotStuffProposalInputProviderResult,
+      fallbackUsed: Boolean,
+  ): F[Unit] =
+    recordProposalInputDiagnostic(
+      key,
+      request.window,
+      request.proposer,
+      diagnosticOutcomeFor(result),
+      result.reason,
+      result.detail,
+      fallbackUsed,
+    )
+
+  private def recordProposalInputDiagnostic(
+      key: HotStuffPacemakerKey,
+      window: HotStuffWindow,
+      proposer: ValidatorId,
+      outcome: HotStuffProposalInputDiagnosticOutcome,
+      reason: String,
+      detail: Option[String],
+      fallbackUsed: Boolean,
+  ): F[Unit] =
+    stateRef.update(_.updatedWith(key):
+      case Some(entry) =>
+        Some(
+          entry.copy(
+            diagnostics = entry.diagnostics :+ HotStuffPacemakerDiagnostic
+              .ProposalInputResult(
+                window = window,
+                proposer = proposer,
+                outcome = outcome,
+                reason = reason,
+                detail = detail,
+                fallbackUsed = fallbackUsed,
+              ),
+          ),
+        )
+      case None =>
+        None,
+    )
+
+  private def diagnosticOutcomeFor(
+      result: HotStuffProposalInputProviderResult,
+  ): HotStuffProposalInputDiagnosticOutcome =
+    result match
+      case HotStuffProposalInputProviderResult.Supplied(_) =>
+        HotStuffProposalInputDiagnosticOutcome.Supplied
+      case HotStuffProposalInputProviderResult.NoWork(_, _) =>
+        HotStuffProposalInputDiagnosticOutcome.NoWork
+      case HotStuffProposalInputProviderResult.Rejected(_, _) =>
+        HotStuffProposalInputDiagnosticOutcome.Rejected
+      case HotStuffProposalInputProviderResult.Failed(_, _) =>
+        HotStuffProposalInputDiagnosticOutcome.Failed
+
+  private def throwableDetail(
+      error: Throwable,
+  ): Option[String] =
+    Some(error.getClass.getName)
 
   private def markObservedLeaderProposal(
       proposal: Proposal,
@@ -802,6 +1081,7 @@ private object InMemoryHotStuffPacemakerDriver:
   def attach[F[_]: Sync](
       runtime: HotStuffNodeRuntime[F],
       automaticConsensus: Boolean,
+      proposalInputConfig: HotStuffProposalInputRuntimeConfig[F],
   )(using
       clock: GossipClock[F],
   ): F[HotStuffNodeRuntime[F]] =
@@ -826,6 +1106,8 @@ private object InMemoryHotStuffPacemakerDriver:
               stateRef = stateRef,
               observationRef = observationRef,
               automaticConsensus = automaticConsensus,
+              proposalInputProviderOverride = proposalInputConfig.provider,
+              proposalInputFallbackPolicy = proposalInputConfig.fallbackPolicy,
             )
           val wrappedSource =
             new HotStuffPacemakerAwareSource[F](
