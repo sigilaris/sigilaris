@@ -15,6 +15,8 @@ This page summarizes the current HotStuff runtime that ships in
   are part of the shipped runtime
 - deterministic leader activation, timer/backoff wiring, and timeout/view-change
   advancement are runtime-owned rather than manual test hooks
+- autonomous leader proposals can consume application-neutral input through a
+  provider-backed proposal hook
 
 ## Runtime Boundary
 
@@ -27,6 +29,30 @@ The runtime page is intentionally separate from the transport page:
 
 That split is important because the current repository treats HotStuff logic as
 runtime-owned, while transport remains an adapter layer.
+
+## Application Proposal Input
+
+Autonomous pacemaker proposal emission is no longer limited to synthetic empty
+blocks. Embedders can pass a `HotStuffProposalInputRuntimeConfig` to the
+in-memory runtime helper or the assembled bootstrap entrypoints. The configured
+`HotStuffProposalInputProvider` receives HotStuff context only: window, proposer,
+parent, height, justify QC, local time, and proposal bounds.
+
+The provider returns a `HotStuffProposalInput` containing the proposal tx-set and
+block-header commitments that Sigilaris can sign. Application-specific queues,
+lanes, manifests, and fairness rules stay outside `sigilaris-node-jvm`; embedders
+adapt those concepts to the HotStuff-owned input contract.
+
+Legacy empty proposals remain available through the explicit
+`AllowLegacyEmpty` fallback policy. Production embedders that require
+application input can select `RequireProviderInput`; automatic consensus then
+fails visibly when no provider is configured and suppresses fallback when the
+provider reports no work, rejection, or failure.
+
+Provider no-work, rejection, failure, invalid input, and fallback behavior are
+recorded in pacemaker diagnostics as reason/detail metadata with a
+`fallbackUsed` flag. Diagnostics intentionally do not include application
+payload bodies.
 
 ## Current Limitations
 
@@ -43,6 +69,7 @@ runtime-owned, while transport remains an adapter layer.
 
 ## Related Pages
 
+- [ADR-0022: HotStuff Pacemaker And View-Change Baseline](https://github.com/sigilaris/sigilaris/blob/main/docs/adr/0022-hotstuff-pacemaker-and-view-change-baseline.md)
 - [Bootstrap And Sync](bootstrap-and-sync.md)
 - [Static Launch](static-launch.md)
 - [API Reference](https://sigilaris.github.io/sigilaris/api/index.html)

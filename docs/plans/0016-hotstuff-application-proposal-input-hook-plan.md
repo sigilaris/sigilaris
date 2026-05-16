@@ -213,12 +213,21 @@ The target outcome is:
 
 ### Phase 5 - Typelevel Site Documentation
 
-- [ ] Update the EN/KO HotStuff pacemaker narrative with provider-backed autonomous proposals.
-- [ ] Describe the legacy empty proposal fallback as an explicit compatibility policy.
-- [ ] Document provider failure/rejection behavior at the narrative level without exposing payload bodies.
-- [ ] Link readers to ADR-0022 and generated `/api` for details instead of duplicating method inventory.
-- [ ] Confirm generated `/api` exposes the provider-facing symbols after site verification.
-- [ ] Run the Typelevel site verification command from the Test Plan.
+- [x] Update the EN/KO HotStuff pacemaker narrative with provider-backed autonomous proposals.
+- [x] Describe the legacy empty proposal fallback as an explicit compatibility policy.
+- [x] Document provider failure/rejection behavior at the narrative level without exposing payload bodies.
+- [x] Link readers to ADR-0022 and generated `/api` for details instead of duplicating method inventory.
+- [x] Confirm generated `/api` exposes the provider-facing symbols after site verification.
+- [x] Run the Typelevel site verification command from the Test Plan.
+
+Phase 5 verification evidence:
+
+- `sbt ";unidoc;tlSite"` passed on 2026-05-16 after the EN/KO site edits.
+- The generated API contains `HotStuffProposalInputProvider.html`,
+  `HotStuffProposalInputRuntimeConfig.html`, and
+  `HotStuffProposalInputFallbackPolicy.html`.
+- The ADR-0022 site links target the tracked
+  `docs/adr/0022-hotstuff-pacemaker-and-view-change-baseline.md` source file.
 
 ### Phase 6 - Embedder Handoff
 
@@ -271,9 +280,9 @@ The target outcome is:
 - [x] Provider-backed non-empty proposal smoke green
 - [x] Provider failure/rejection diagnostics tested
 - [x] Require-provider mode available for embedders
-- [ ] Runtime docs updated
-- [ ] Typelevel site EN/KO docs updated
-- [ ] `sbt ";unidoc;tlSite"` green after docs update
+- [x] Runtime docs updated
+- [x] Typelevel site EN/KO docs updated
+- [x] `sbt ";unidoc;tlSite"` green after docs update
 - [ ] Embedder handoff documented
 
 ## Follow-Ups
