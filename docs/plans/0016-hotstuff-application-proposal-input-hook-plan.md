@@ -94,6 +94,37 @@ The target outcome is:
    - The diagnostic should include the window/view, proposer id, reason key, and whether empty fallback was used.
    - Diagnostics must not leak application payload bodies by default.
 
+## Locked Phase 0 Decisions
+
+1. **Provider contract**
+   - Add `HotStuffProposalInputProvider[F]` in the HotStuff runtime package.
+   - The provider is effectful and application-neutral.
+   - Requests include window, proposer, parent block id, height, justify QC, current time, and local proposal bounds.
+   - Responses use a sealed taxonomy: supplied input, no work, rejected, and failed.
+
+2. **Provider output model**
+   - Provider-supplied input returns consensus-owned proposal body metadata:
+     `ProposalTxSet`, `StateRoot`, `BodyRoot`, parent, block height, and timestamp.
+   - Embedders may derive this from application candidates, but Sigilaris does not import application batch, lane, or manifest types.
+   - The existing `emitProposalFromCandidates` helper remains the application-block-body path for typed candidates; the pacemaker hook signs the already application-neutral provider output.
+
+3. **Empty proposal fallback**
+   - Legacy behavior is preserved by an explicit `LegacyEmptyHotStuffProposalInputProvider`.
+   - Fallback is controlled by `HotStuffProposalInputFallbackPolicy`.
+   - Compatibility mode may fall back to the legacy empty proposal on no-work, rejection, provider failure, or invalid supplied input.
+   - Require-provider mode never signs an empty proposal as an implicit fallback.
+
+4. **Safety behavior**
+   - Local leader/key/readiness checks remain before signing.
+   - The `emittedProposalWindow` invariant remains the single-emission guard.
+   - Provider failures, rejections, invalid supplied input, and timestamp/root construction failures do not publish malformed signed proposals.
+   - Locally produced proposals still pass the same in-memory sink validation path before they are observed by the pacemaker.
+
+5. **Diagnostics**
+   - Pacemaker snapshots include provider outcome diagnostics.
+   - Diagnostics record window, proposer, reason, and fallback usage, but never payload bodies.
+   - Rejection/failure/no-work/fallback cases are test-visible through `currentPacemakerSnapshot`.
+
 ## Change Areas
 
 ### Code
@@ -143,11 +174,11 @@ The target outcome is:
 
 ### Phase 0 - Contract Lock
 
-- [ ] Lock the provider shape and result taxonomy from the decisions above.
-- [ ] Lock the provider output model from the decisions above.
-- [ ] Lock the empty-proposal fallback policy from the decisions above.
-- [ ] Lock safety and diagnostics behavior from the decisions above.
-- [ ] Record the final choices in this plan before Phase 1 starts.
+- [x] Lock the provider shape and result taxonomy from the decisions above.
+- [x] Lock the provider output model from the decisions above.
+- [x] Lock the empty-proposal fallback policy from the decisions above.
+- [x] Lock safety and diagnostics behavior from the decisions above.
+- [x] Record the final choices in this plan before Phase 1 starts.
 
 ### Phase 1 - Provider ADT And Legacy Provider
 
