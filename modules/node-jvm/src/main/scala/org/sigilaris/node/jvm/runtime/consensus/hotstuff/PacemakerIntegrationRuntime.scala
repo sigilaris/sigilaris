@@ -391,7 +391,7 @@ private final class InMemoryHotStuffPacemakerDriver[F[_]: Sync](
                 key,
                 HotStuffPacemakerEntrySnapshot(
                   state = Some(step.state),
-                  diagnostics = step.diagnostics,
+                  diagnostics = current.diagnostics ++ step.diagnostics,
                   proposalEligibility = Some(step.proposalEligibility),
                   emittedProposalWindow = emittedProposalWindow,
                 ),

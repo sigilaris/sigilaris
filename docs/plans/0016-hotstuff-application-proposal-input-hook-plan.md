@@ -204,12 +204,12 @@ The target outcome is:
 
 ### Phase 4 - Verification
 
-- [ ] Test autonomous pacemaker emission with a fake provider returning non-empty candidates.
-- [ ] Test provider returns no work and fallback is disabled.
-- [ ] Test provider returns no work and fallback is enabled.
-- [ ] Test provider failure produces diagnostics and no signed proposal.
-- [ ] Test repeated pacemaker ticks do not emit more than one proposal for the same window.
-- [ ] Test a non-empty provider-backed proposal can be validated and materialized through the existing runtime path.
+- [x] Test autonomous pacemaker emission with a fake provider returning non-empty candidates.
+- [x] Test provider returns no work and fallback is disabled.
+- [x] Test provider returns no work and fallback is enabled.
+- [x] Test provider failure produces diagnostics and no signed proposal.
+- [x] Test repeated pacemaker ticks do not emit more than one proposal for the same window.
+- [x] Test a non-empty provider-backed proposal can be validated and materialized through the existing runtime path.
 
 ### Phase 5 - Typelevel Site Documentation
 
@@ -268,8 +268,8 @@ The target outcome is:
 - [x] Provider ADTs landed
 - [x] Legacy empty proposal provider landed
 - [x] Pacemaker consumes provider output
-- [ ] Provider-backed non-empty proposal smoke green
-- [ ] Provider failure/rejection diagnostics tested
+- [x] Provider-backed non-empty proposal smoke green
+- [x] Provider failure/rejection diagnostics tested
 - [x] Require-provider mode available for embedders
 - [ ] Runtime docs updated
 - [ ] Typelevel site EN/KO docs updated
