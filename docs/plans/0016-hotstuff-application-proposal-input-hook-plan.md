@@ -161,6 +161,12 @@ The target outcome is:
 - `modules/node-jvm/src/test/scala/org/sigilaris/node/jvm/runtime/consensus/hotstuff/HotStuffLaunchSmokeSuite.scala`
   - Add a smoke test proving autonomous pacemaker proposal emission can carry application input.
 
+Implementation note: the accepted coverage landed in focused suites instead of
+expanding every originally listed suite:
+`HotStuffProposalInputProviderSuite`,
+`HotStuffProposalInputPacemakerIntegrationSuite`, and
+`HotStuffRuntimeServiceSuite`.
+
 ### Docs
 
 - Update ADR-0022 or the runtime docs with the provider contract once the API lands.

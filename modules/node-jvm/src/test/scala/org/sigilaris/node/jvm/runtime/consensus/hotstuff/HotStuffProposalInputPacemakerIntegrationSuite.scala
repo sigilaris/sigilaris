@@ -142,7 +142,7 @@ final class HotStuffProposalInputPacemakerIntegrationSuite
           case _ => false,
       )
 
-  test("provider failure records diagnostics and does not publish proposal"):
+  test("provider failure records sanitized diagnostics and does not publish proposal"):
     given GossipClock[IO] = GossipClock.constant[IO](startedAt)
 
     for
@@ -163,7 +163,7 @@ final class HotStuffProposalInputPacemakerIntegrationSuite
                 proposer,
                 HotStuffProposalInputDiagnosticOutcome.Failed,
                 "proposalInputProviderFailed",
-                Some("provider unavailable"),
+                Some("java.lang.IllegalStateException"),
                 false,
               ) =>
             proposer === validatorSet.members(1).id
@@ -255,7 +255,7 @@ final class HotStuffProposalInputPacemakerIntegrationSuite
         HotStuffProposalInputProviderResult.NoWork("queueEmpty", None)
 
   private def failingProvider: HotStuffProposalInputProvider[IO] =
-    _ => IO.raiseError(new IllegalStateException("provider unavailable"))
+    _ => IO.raiseError(new IllegalStateException("payload=secret"))
 
   private def proposalInputDiagnostics(
       runtime: HotStuffNodeRuntime[IO],

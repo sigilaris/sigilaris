@@ -183,6 +183,7 @@ object HotStuffRuntimeBootstrap:
     HotStuffNodeRuntime
       .validateBootstrapInput(bootstrapInput)
       .flatMap: validatedInput =>
+        // This assembled bootstrap always attaches the automatic pacemaker.
         HotStuffProposalInputRuntimeConfig
           .validateForAutomaticConsensus(proposalInputConfig)
           .map(_ => validatedInput)

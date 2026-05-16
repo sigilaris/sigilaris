@@ -920,8 +920,7 @@ private final class InMemoryHotStuffPacemakerDriver[F[_]: Sync](
   private def throwableDetail(
       error: Throwable,
   ): Option[String] =
-    Option(error.getMessage).filter(_.nonEmpty).orElse:
-      Some(error.getClass.getName)
+    Some(error.getClass.getName)
 
   private def markObservedLeaderProposal(
       proposal: Proposal,

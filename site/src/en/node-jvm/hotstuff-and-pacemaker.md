@@ -52,7 +52,8 @@ provider reports no work, rejection, or failure.
 Provider no-work, rejection, failure, invalid input, and fallback behavior are
 recorded in pacemaker diagnostics as reason/detail metadata with a
 `fallbackUsed` flag. Diagnostics intentionally do not include application
-payload bodies.
+payload bodies. Unexpected provider exceptions use the exception class name as
+detail, not the exception message.
 
 ## Current Limitations
 

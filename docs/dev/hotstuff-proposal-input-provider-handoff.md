@@ -48,6 +48,9 @@ fall back to an empty proposal.
 
 Pacemaker diagnostics record provider outcome, reason/detail metadata, and
 whether fallback was used. They do not include application payload bodies.
+If a provider throws instead of returning `Failed`, Sigilaris records the
+exception class name as the failure detail and does not expose the exception
+message.
 
 ## Minimal Adapter Shape
 

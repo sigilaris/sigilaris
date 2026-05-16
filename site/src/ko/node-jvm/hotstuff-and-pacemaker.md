@@ -51,6 +51,8 @@ suppress한다.
 Provider no-work, rejection, failure, invalid input, fallback 동작은
 pacemaker diagnostics에 reason/detail metadata와 `fallbackUsed` flag로
 기록된다. Diagnostics는 application payload body를 의도적으로 포함하지 않는다.
+예상 밖의 provider exception은 exception message가 아니라 exception class
+name만 detail로 기록된다.
 
 ## 현재 제한 사항
 
