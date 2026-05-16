@@ -19,4 +19,4 @@ object HedgehogGenSupport:
 
   val nonZeroBigNat: Gen[NonZeroBigNat] =
     byteVector(Range.linear(1, 64))
-      .map(bytes => NonZeroBigNat.unsafeFromBigInt(BigInt(1, bytes.toArray)))
+      .map(bytes => NonZeroBigNat.unsafeFromBigInt(BigInt(1, bytes.toArray) + 1))
