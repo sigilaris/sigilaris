@@ -189,11 +189,11 @@ The target outcome is:
 
 ### Phase 2 - Pacemaker Proposal Wiring
 
-- [ ] Route `InMemoryHotStuffPacemakerDriver.emitLeaderProposal` through the provider.
-- [ ] Reuse `HotStuffNodeRuntime.emitProposalFromCandidates` or a shared helper for non-empty proposal construction.
-- [ ] Preserve `emittedProposalWindow` single-emission behavior.
-- [ ] Ensure provider failure or invalid input does not publish a signed proposal.
-- [ ] Emit structured diagnostics for provider result, rejection, failure, and fallback.
+- [x] Route `InMemoryHotStuffPacemakerDriver.emitLeaderProposal` through the provider.
+- [x] Reuse `HotStuffNodeRuntime.emitProposalFromCandidates` or a shared helper for non-empty proposal construction.
+- [x] Preserve `emittedProposalWindow` single-emission behavior.
+- [x] Ensure provider failure or invalid input does not publish a signed proposal.
+- [x] Emit structured diagnostics for provider result, rejection, failure, and fallback.
 
 ### Phase 3 - Bootstrap And Embedding API
 
@@ -267,7 +267,7 @@ The target outcome is:
 
 - [x] Provider ADTs landed
 - [x] Legacy empty proposal provider landed
-- [ ] Pacemaker consumes provider output
+- [x] Pacemaker consumes provider output
 - [ ] Provider-backed non-empty proposal smoke green
 - [ ] Provider failure/rejection diagnostics tested
 - [ ] Require-provider mode available for embedders
