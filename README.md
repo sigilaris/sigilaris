@@ -118,7 +118,7 @@ High-performance cryptographic primitives for blockchain applications.
 ## Documentation
 
 - **[API Documentation](https://javadoc.io/doc/org.sigilaris/sigilaris-core_3/latest/index.html)** — Comprehensive Scaladoc
-- **[v0.2.0 Release Notes](docs/dev/v0.2.0-release-notes.md)** — Latest published release notes and upgrade notes
+- **[v0.2.1 Release Notes](docs/dev/v0.2.1-release-notes.md)** — Latest published release notes and upgrade notes
 - **[Latest Release](https://github.com/sigilaris/sigilaris/releases/latest)** — Release notes and artifacts
 - **[GitHub Repository](https://github.com/sigilaris/sigilaris)** — Source code and examples
 
@@ -179,6 +179,6 @@ Built with:
 - Scala.js node-common: `org.sigilaris:sigilaris-node-common_sjs1_3:VERSION`
 - JVM node bundle: `org.sigilaris:sigilaris-node-jvm_3:VERSION`
 
-Current downstream adoption work in this repository uses local `0.2.0` artifacts via `publishLocal`.
+Current downstream adoption work in this repository uses local `0.2.1` artifacts via `publishLocal`.
 
 **Scala Version:** 3.7.3

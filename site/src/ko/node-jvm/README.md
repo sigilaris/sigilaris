@@ -18,8 +18,8 @@ integration, Armeria HTTP transport adapter, SwayDB-backed persistence helper를
 
 - [Bootstrap And Sync](bootstrap-and-sync.md)는 static trust-root verification,
   snapshot sync, historical backfill을 다룬다.
-- [HotStuff And Pacemaker](hotstuff-and-pacemaker.md)는 proposal/vote/QC 흐름과
-  timeout/new-view progression을 다룬다.
+- [HotStuff And Pacemaker](hotstuff-and-pacemaker.md)는 proposal/vote/QC 흐름,
+  provider-backed autonomous proposal, timeout/new-view progression을 다룬다.
 - [Static Launch](static-launch.md)는 reference smoke harness, minimal config
   shape, operator-owned startup/restart note를 다룬다.
 
