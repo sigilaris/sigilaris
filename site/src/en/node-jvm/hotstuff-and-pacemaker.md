@@ -17,6 +17,8 @@ This page summarizes the current HotStuff runtime that ships in
   advancement are runtime-owned rather than manual test hooks
 - autonomous leader proposals can consume application-neutral input through a
   provider-backed proposal hook
+- local proposal votes can be gated by an application-neutral validation
+  provider before the validator signs
 
 ## Runtime Boundary
 
@@ -54,6 +56,31 @@ recorded in pacemaker diagnostics as reason/detail metadata with a
 `fallbackUsed` flag. Diagnostics intentionally do not include application
 payload bodies. Unexpected provider exceptions use the exception class name as
 detail, not the exception message.
+
+## Application Proposal Validation
+
+Proposal validation is separate from proposal input. The input provider is used
+only when the local node is the leader and needs proposal body data. The
+validation provider is used when a node is about to sign a local vote for a
+received proposal.
+
+Embedders can pass a `HotStuffProposalValidationRuntimeConfig` to
+`HotStuffNodeRuntime` or the assembled bootstrap entrypoints. The configured
+`HotStuffProposalValidationProvider` receives HotStuff context only: the
+proposal, local voter, validation time, and validator set. It returns
+`Accepted`, `Rejected`, `Unavailable`, or `Failed`.
+
+Rejected, unavailable, failed, or missing-required validation never signs a
+local proposal vote. `legacyCompatible` keeps the previous allow-all behavior.
+Production embedders can select `requireProvider(provider)` or
+`requireValidationProvider`; automatic consensus fails fast if validation is
+required but no provider is configured.
+
+Validation diagnostics are recorded in pacemaker snapshots with window,
+proposal id, block id, local voter, outcome, reason/detail, and whether the
+vote was suppressed. Proposal payload bodies are not included. Structural
+artifact retention stays in the HotStuff sink: a structurally valid proposal can
+remain retained even when local application validation suppresses a vote.
 
 ## Current Limitations
 

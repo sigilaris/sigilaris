@@ -94,6 +94,8 @@ object HotStuffRuntimeBootstrap:
       consensusConfigPath: String = HotStuffBootstrapConfig.DefaultPath,
       proposalInputConfig: HotStuffProposalInputRuntimeConfig[F] =
         HotStuffProposalInputRuntimeConfig.legacyCompatible[F],
+      proposalValidationConfig: HotStuffProposalValidationRuntimeConfig[F] =
+        HotStuffProposalValidationRuntimeConfig.legacyCompatible[F],
   ): Resource[F, Either[String, HotStuffRuntimeBootstrap[F]]] =
     Resource
       .eval:
@@ -153,6 +155,7 @@ object HotStuffRuntimeBootstrap:
                     bootstrapTransport = resolvedBootstrapTransport,
                     storageLayout = storageLayout,
                     proposalInputConfig = proposalInputConfig,
+                    proposalValidationConfig = proposalValidationConfig,
                   )
 
   /** Bootstraps the full HotStuff runtime from an explicit peer topology and consensus config. */
@@ -168,6 +171,8 @@ object HotStuffRuntimeBootstrap:
       storageLayout: StorageLayout = StorageLayout.default,
       proposalInputConfig: HotStuffProposalInputRuntimeConfig[F] =
         HotStuffProposalInputRuntimeConfig.legacyCompatible[F],
+      proposalValidationConfig: HotStuffProposalValidationRuntimeConfig[F] =
+        HotStuffProposalValidationRuntimeConfig.legacyCompatible[F],
   ): Resource[F, Either[String, HotStuffRuntimeBootstrap[F]]] =
     given GossipClock[F] = clock
     val bootstrapInput =
@@ -184,9 +189,12 @@ object HotStuffRuntimeBootstrap:
       .validateBootstrapInput(bootstrapInput)
       .flatMap: validatedInput =>
         // This assembled bootstrap always attaches the automatic pacemaker.
-        HotStuffProposalInputRuntimeConfig
-          .validateForAutomaticConsensus(proposalInputConfig)
-          .map(_ => validatedInput)
+        for
+          _ <- HotStuffProposalInputRuntimeConfig
+            .validateForAutomaticConsensus(proposalInputConfig)
+          _ <- HotStuffProposalValidationRuntimeConfig
+            .validateForAutomaticConsensus(proposalValidationConfig)
+        yield validatedInput
       .leftMap(renderPolicyViolation) match
       case Left(rejection) =>
         Resource.pure(rejection.asLeft[HotStuffRuntimeBootstrap[F]])
@@ -303,6 +311,8 @@ object HotStuffRuntimeBootstrap:
                                         diagnostics = Some(diagnostics),
                                         bootstrapLifecycle =
                                           bootstrapLifecycle.some,
+                                        proposalValidationConfig =
+                                          proposalValidationConfig,
                                       ),
                                     automaticConsensus = true,
                                     proposalInputConfig = proposalInputConfig,

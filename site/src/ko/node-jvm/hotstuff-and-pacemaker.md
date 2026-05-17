@@ -16,6 +16,8 @@
   advancement는 manual test hook이 아니라 runtime-owned baseline이다
 - autonomous leader proposal은 provider-backed proposal hook을 통해
   application-neutral input을 소비할 수 있다
+- local proposal vote는 validator가 서명하기 전에 application-neutral
+  validation provider로 gate할 수 있다
 
 ## Runtime 경계
 
@@ -53,6 +55,31 @@ pacemaker diagnostics에 reason/detail metadata와 `fallbackUsed` flag로
 기록된다. Diagnostics는 application payload body를 의도적으로 포함하지 않는다.
 예상 밖의 provider exception은 exception message가 아니라 exception class
 name만 detail로 기록된다.
+
+## Application Proposal Validation
+
+Proposal validation은 proposal input과 별도 hook이다. Input provider는 local
+node가 leader이고 proposal body data가 필요할 때만 사용된다. Validation
+provider는 node가 received proposal에 대해 local vote를 서명하려는 시점에
+사용된다.
+
+Embedder는 `HotStuffNodeRuntime` 또는 assembled bootstrap entrypoint에
+`HotStuffProposalValidationRuntimeConfig`를 넘길 수 있다. 설정된
+`HotStuffProposalValidationProvider`는 proposal, local voter, validation
+time, validator set 같은 HotStuff context만 받는다. 반환값은 `Accepted`,
+`Rejected`, `Unavailable`, `Failed`다.
+
+Rejected, unavailable, failed, missing-required validation은 local proposal
+vote를 절대 서명하지 않는다. `legacyCompatible`은 기존 allow-all 동작을
+유지한다. Production embedder는 `requireProvider(provider)` 또는
+`requireValidationProvider`를 선택할 수 있고, validation이 required인데
+provider가 없으면 automatic consensus가 fail fast 한다.
+
+Validation diagnostics는 pacemaker snapshot에 window, proposal id, block id,
+local voter, outcome, reason/detail, vote suppressed 여부로 기록된다. Proposal
+payload body는 포함하지 않는다. Structural artifact retention은 HotStuff sink에
+남는다. 즉 structurally valid proposal은 local application validation이 vote를
+suppress해도 retained 상태로 남을 수 있다.
 
 ## 현재 제한 사항
 

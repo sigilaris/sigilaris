@@ -117,6 +117,7 @@ private final class InMemoryHotStuffPacemakerDriver[F[_]: Sync](
     automaticConsensus: Boolean,
     proposalInputProviderOverride: Option[HotStuffProposalInputProvider[F]],
     proposalInputFallbackPolicy: HotStuffProposalInputFallbackPolicy,
+    proposalValidationConfig: HotStuffProposalValidationRuntimeConfig[F],
 )(using
     clock: GossipClock[F],
 ):
@@ -764,7 +765,8 @@ private final class InMemoryHotStuffPacemakerDriver[F[_]: Sync](
       proposal: Proposal,
       now: Instant,
   ): F[Unit] =
-    stateFor(HotStuffPacemakerKey(proposal.window.chainId, voter)).flatMap:
+    val key = HotStuffPacemakerKey(proposal.window.chainId, voter)
+    stateFor(key).flatMap:
       case Some(state)
           if state.activeWindow === proposal.window &&
             !state.localTimeoutVoteRequested &&
@@ -775,24 +777,52 @@ private final class InMemoryHotStuffPacemakerDriver[F[_]: Sync](
             Sync[F].unit
           case false =>
             withLocalSigner(voter): keyPair =>
-              Vote
-                .sign(
-                  UnsignedVote(
-                    window = proposal.window,
-                    voter = voter,
-                    targetProposalId = proposal.proposalId,
-                  ),
-                  keyPair,
-                )
-                .toOption
-                .traverse: vote =>
-                  applyLocalArtifact(
-                    HotStuffGossipArtifact.VoteArtifact(vote),
-                    now,
+              validateProposalForLocalVote(voter, proposal, now).flatMap:
+                case decision if decision.voteSuppressed =>
+                  recordProposalValidationDiagnostic(
+                    key,
+                    proposal,
+                    voter,
+                    decision,
                   )
-                .void
+                case decision =>
+                  Vote
+                    .sign(
+                      UnsignedVote(
+                        window = proposal.window,
+                        voter = voter,
+                        targetProposalId = proposal.proposalId,
+                      ),
+                      keyPair,
+                    ) match
+                    case Left(_) =>
+                      Sync[F].unit
+                    case Right(vote) =>
+                      applyLocalArtifact(
+                        HotStuffGossipArtifact.VoteArtifact(vote),
+                        now,
+                      ) *>
+                        recordProposalValidationDiagnostic(
+                          key,
+                          proposal,
+                          voter,
+                          decision,
+                        )
       case _ =>
         Sync[F].unit
+
+  private def validateProposalForLocalVote(
+      voter: ValidatorId,
+      proposal: Proposal,
+      now: Instant,
+  ): F[HotStuffProposalValidationDecision] =
+    HotStuffProposalValidationDecision.evaluateForLocalVote(
+      config = proposalValidationConfig,
+      proposal = proposal,
+      localVoter = voter,
+      now = now,
+      validatorSet = bootstrapInput.validatorSet,
+    )
 
   private def applyLocalArtifact(
       artifact: HotStuffGossipArtifact,
@@ -897,6 +927,36 @@ private final class InMemoryHotStuffPacemakerDriver[F[_]: Sync](
                 reason = reason,
                 detail = detail,
                 fallbackUsed = fallbackUsed,
+              ),
+          ),
+        )
+      case None =>
+        None,
+    )
+
+  private def recordProposalValidationDiagnostic(
+      key: HotStuffPacemakerKey,
+      proposal: Proposal,
+      voter: ValidatorId,
+      decision: HotStuffProposalValidationDecision,
+  ): F[Unit] =
+    stateRef.update(_.updatedWith(key):
+      case Some(entry) =>
+        Some(
+          entry.copy(
+            diagnostics =
+              HotStuffPacemakerDiagnostic.appendProposalValidationResult(
+                entry.diagnostics,
+                HotStuffPacemakerDiagnostic.ProposalValidationResult(
+                  window = proposal.window,
+                  proposalId = proposal.proposalId,
+                  blockId = proposal.targetBlockId,
+                  voter = voter,
+                  outcome = decision.outcome,
+                  reason = decision.reason,
+                  detail = decision.detail,
+                  voteSuppressed = decision.voteSuppressed,
+                ),
               ),
           ),
         )
@@ -1108,6 +1168,7 @@ private object InMemoryHotStuffPacemakerDriver:
               automaticConsensus = automaticConsensus,
               proposalInputProviderOverride = proposalInputConfig.provider,
               proposalInputFallbackPolicy = proposalInputConfig.fallbackPolicy,
+              proposalValidationConfig = runtime.proposalValidationConfig,
             )
           val wrappedSource =
             new HotStuffPacemakerAwareSource[F](

@@ -5,6 +5,7 @@ import java.time.{Duration, Instant}
 import cats.syntax.all.*
 
 import org.sigilaris.core.util.SafeStringInterp.*
+import org.sigilaris.node.jvm.runtime.block.BlockId
 
 /** Configuration for pacemaker timeout behavior.
   *
@@ -142,6 +143,55 @@ enum HotStuffPacemakerDiagnostic:
       detail: Option[String],
       fallbackUsed: Boolean,
   )
+  case ProposalValidationResult(
+      window: HotStuffWindow,
+      proposalId: ProposalId,
+      blockId: BlockId,
+      voter: ValidatorId,
+      outcome: HotStuffProposalValidationOutcome,
+      reason: String,
+      detail: Option[String],
+      voteSuppressed: Boolean,
+  )
+
+/** Companion for `HotStuffPacemakerDiagnostic`. */
+object HotStuffPacemakerDiagnostic:
+  private[hotstuff] def appendProposalValidationResult(
+      diagnostics: Vector[HotStuffPacemakerDiagnostic],
+      result: HotStuffPacemakerDiagnostic,
+  ): Vector[HotStuffPacemakerDiagnostic] =
+    result match
+      case HotStuffPacemakerDiagnostic.ProposalValidationResult(
+            window,
+            proposalId,
+            _,
+            voter,
+            _,
+            reason,
+            _,
+            _,
+          ) =>
+        val alreadyRecorded =
+          diagnostics.exists:
+            case HotStuffPacemakerDiagnostic.ProposalValidationResult(
+                  existingWindow,
+                  existingProposalId,
+                  _,
+                  existingVoter,
+                  _,
+                  existingReason,
+                  _,
+                  _,
+                ) =>
+              existingWindow === window &&
+                existingProposalId === proposalId &&
+                existingVoter === voter &&
+                existingReason === reason
+            case _ =>
+              false
+        if alreadyRecorded then diagnostics else diagnostics :+ result
+      case _ =>
+        diagnostics :+ result
 
 /** Proposal input diagnostics intentionally exclude application payload bodies. */
 enum HotStuffProposalInputDiagnosticOutcome:

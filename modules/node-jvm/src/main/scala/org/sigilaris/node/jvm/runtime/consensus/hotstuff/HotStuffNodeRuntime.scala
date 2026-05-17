@@ -64,6 +64,8 @@ final case class HotStuffNodeRuntime[F[_]: Sync](
     diagnostics: Option[HotStuffInMemoryRuntimeDiagnostics[F]] = None,
     bootstrapLifecycle: Option[HotStuffBootstrapLifecycle[F]] = None,
     pacemakerSnapshot: Option[F[HotStuffPacemakerRuntimeSnapshot]] = None,
+    proposalValidationConfig: HotStuffProposalValidationRuntimeConfig[F] =
+      HotStuffProposalValidationRuntimeConfig.legacyCompatible[F],
 ):
   def localPeer: PeerIdentity = bootstrapInput.localPeer
 
@@ -344,28 +346,32 @@ final case class HotStuffNodeRuntime[F[_]: Sync](
       ts: Instant,
   ): F[Either[HotStuffPolicyViolation, GossipEvent[HotStuffGossipArtifact]]] =
     withLocalSigner(voter, proposal.window.chainId): keyPair =>
-      Vote.sign(
-        UnsignedVote(
-          window = proposal.window,
-          voter = voter,
-          targetProposalId = proposal.proposalId,
-        ),
-        keyPair,
-      ) match
-        case Left(error) =>
-          HotStuffPolicyViolation(
-            reason = "voteSigningFailed",
-            detail = Some(
-              ss"${error.reason}:${error.detail.getOrElse("")}",
+      validateProposalForLocalVote(voter, proposal, ts).flatMap:
+        case Left(rejection) =>
+          rejection.asLeft[GossipEvent[HotStuffGossipArtifact]].pure[F]
+        case Right(_) =>
+          Vote.sign(
+            UnsignedVote(
+              window = proposal.window,
+              voter = voter,
+              targetProposalId = proposal.proposalId,
             ),
-          ).asLeft[GossipEvent[HotStuffGossipArtifact]].pure[F]
-        case Right(vote) =>
-          services.publisher
-            .append(
-              HotStuffGossipArtifact.VoteArtifact(vote),
-              ts,
-            )
-            .map(_.asRight[HotStuffPolicyViolation])
+            keyPair,
+          ) match
+            case Left(error) =>
+              HotStuffPolicyViolation(
+                reason = "voteSigningFailed",
+                detail = Some(
+                  ss"${error.reason}:${error.detail.getOrElse("")}",
+                ),
+              ).asLeft[GossipEvent[HotStuffGossipArtifact]].pure[F]
+            case Right(vote) =>
+              services.publisher
+                .append(
+                  HotStuffGossipArtifact.VoteArtifact(vote),
+                  ts,
+                )
+                .map(_.asRight[HotStuffPolicyViolation])
 
   def emitVoteForProposalView[
       TxRef: ByteEncoder: Hash,
@@ -443,6 +449,28 @@ final case class HotStuffNodeRuntime[F[_]: Sync](
       case _ =>
         ().asRight[HotStuffPolicyViolation].pure[F]
 
+  private def validateProposalForLocalVote(
+      voter: ValidatorId,
+      proposal: Proposal,
+      now: Instant,
+  ): F[Either[HotStuffPolicyViolation, Unit]] =
+    HotStuffProposalValidationDecision
+      .evaluateForLocalVote(
+        config = proposalValidationConfig,
+        proposal = proposal,
+        localVoter = voter,
+        now = now,
+        validatorSet = validatorSet,
+      )
+      .map:
+        case decision if decision.voteSuppressed =>
+          HotStuffPolicyViolation(
+            reason = decision.reason,
+            detail = decision.detail,
+          ).asLeft[Unit]
+        case _ =>
+          ().asRight[HotStuffPolicyViolation]
+
 /** Companion for `HotStuffNodeRuntime`, providing validation and factory methods. */
 object HotStuffNodeRuntime:
   /** Validates bootstrap input by checking for dual-active key holder violations. */
@@ -458,6 +486,7 @@ object HotStuffNodeRuntime:
       services: HotStuffRuntimeServices[F],
       diagnostics: Option[HotStuffInMemoryRuntimeDiagnostics[F]],
       bootstrapLifecycle: Option[HotStuffBootstrapLifecycle[F]],
+      proposalValidationConfig: HotStuffProposalValidationRuntimeConfig[F],
   ): HotStuffNodeRuntime[F] =
     HotStuffNodeRuntime(
       bootstrapInput = bootstrapInput,
@@ -465,6 +494,7 @@ object HotStuffNodeRuntime:
       diagnostics = diagnostics,
       bootstrapLifecycle = bootstrapLifecycle,
       pacemakerSnapshot = None,
+      proposalValidationConfig = proposalValidationConfig,
     )
 
   @SuppressWarnings(Array("org.wartremover.warts.DefaultArguments"))
@@ -473,9 +503,19 @@ object HotStuffNodeRuntime:
       services: HotStuffRuntimeServices[F],
       diagnostics: Option[HotStuffInMemoryRuntimeDiagnostics[F]] = None,
       bootstrapLifecycle: Option[HotStuffBootstrapLifecycle[F]] = None,
+      proposalValidationConfig: HotStuffProposalValidationRuntimeConfig[F] =
+        HotStuffProposalValidationRuntimeConfig.legacyCompatible[F],
   ): Either[HotStuffPolicyViolation, HotStuffNodeRuntime[F]] =
     validateBootstrapInput(bootstrapInput)
-      .map(fromValidatedServices(_, services, diagnostics, bootstrapLifecycle))
+      .map(
+        fromValidatedServices(
+          _,
+          services,
+          diagnostics,
+          bootstrapLifecycle,
+          proposalValidationConfig,
+        ),
+      )
 
   @SuppressWarnings(Array("org.wartremover.warts.DefaultArguments"))
   // This helper intentionally assembles only the artifact-plane in-memory
@@ -523,6 +563,8 @@ object HotStuffNodeRuntime:
       automaticConsensus: Boolean = false,
       proposalInputConfig: HotStuffProposalInputRuntimeConfig[F] =
         HotStuffProposalInputRuntimeConfig.legacyCompatible[F],
+      proposalValidationConfig: HotStuffProposalValidationRuntimeConfig[F] =
+        HotStuffProposalValidationRuntimeConfig.legacyCompatible[F],
   )(using
       clock: GossipClock[F],
   ): F[Either[HotStuffPolicyViolation, HotStuffNodeRuntime[F]]] =
@@ -539,9 +581,12 @@ object HotStuffNodeRuntime:
       validateBootstrapInput(bootstrapInput)
         .flatMap: validatedInput =>
           if automaticConsensus then
-            HotStuffProposalInputRuntimeConfig
-              .validateForAutomaticConsensus(proposalInputConfig)
-              .map(_ => validatedInput)
+            for
+              _ <- HotStuffProposalInputRuntimeConfig
+                .validateForAutomaticConsensus(proposalInputConfig)
+              _ <- HotStuffProposalValidationRuntimeConfig
+                .validateForAutomaticConsensus(proposalValidationConfig)
+            yield validatedInput
           else validatedInput.asRight[HotStuffPolicyViolation]
     validatedBootstrapInput match
       case Left(rejection) =>
@@ -559,6 +604,7 @@ object HotStuffNodeRuntime:
                 services,
                 Some(diagnostics),
                 none[HotStuffBootstrapLifecycle[F]],
+                proposalValidationConfig,
               ),
               automaticConsensus = automaticConsensus,
               proposalInputConfig = proposalInputConfig,

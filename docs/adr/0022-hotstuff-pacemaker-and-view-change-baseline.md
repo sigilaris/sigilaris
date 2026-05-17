@@ -86,6 +86,13 @@ Proposed
     - validator-set rotation continuity, historical validator-set lookup, weak-subjectivity/bootstrap trust root 는 ADR-0023 이 소유한다.
     - multi-phase HotStuff variant, threshold-signature pacemaker compression, dynamic leader scoring/fairness 는 이 ADR 의 baseline scope 밖에 둔다.
 
+13. **application proposal validation 은 proposal-vote emission gate 이며 artifact retention rule 이 아니다.**
+    - receive-side application validation 은 per-`(proposal, localVoter)` runtime hook 으로 둔다.
+    - local proposal vote 를 signing 하기 전에 runtime 은 application-neutral provider 에게 proposal, local voter, validation time, active validator-set context 를 전달할 수 있어야 한다.
+    - provider 가 rejected / unavailable / failed outcome 을 내거나 runtime 이 required provider absence 를 판정하면 local proposal vote 는 emit 하지 않는다.
+    - structurally valid proposal artifact 는 retained 되며, application validation failure 가 곧바로 malformed consensus artifact rejection 이 되지는 않는다.
+    - `ProposalCatchUpReadiness` 와 bootstrap vote-readiness 는 계속 data sufficiency gate 를 소유하고, application validation 은 embedder policy/data handoff point 를 소유한다.
+
 ## Consequences
 - proposal / vote / QC baseline 위에 timeout-driven liveness contract 가 별도 owner 를 갖게 된다.
 - `100ms` deployment target, transport heartbeat/liveness, pacemaker timeout 이 서로 다른 timer domain 임이 문서상으로 명시된다.
@@ -94,6 +101,7 @@ Proposed
 - deterministic leader rotation baseline 이 문서화되므로, operator policy 나 transport health 를 canonical leader election 과 혼동하지 않게 된다.
 - 대신 exact artifact encoding, topic contract, retry budget, timeout constants, backoff curve 는 후속 spec/plan 이 더 필요하다.
 - validator-set rotation continuity 를 이 ADR 밖으로 남겼으므로, phase 2 전까지는 pacemaker 가 current active validator-set input 에 의존한다.
+- application proposal validation 이 vote-time gate 로 분리돼, temporary application data unavailability 가 structurally valid proposal retention/relay 를 깨뜨리지 않는다.
 
 ## Rejected Alternatives
 1. **transport heartbeat/liveness timeout 을 pacemaker timer 로 그대로 쓴다**
@@ -123,6 +131,7 @@ Proposed
 - static topology peer identity binding, session-bound bootstrap capability authorization, parent-session revoke cascade 는 ADR-0024 가 소유한다.
 - timeout vote exact-known / request-by-id / replay semantics 가 shipped gossip baseline 에 붙는 시점에는 ADR-0016 substrate contract 와 plan `0003` transport/runtime seam 을 다시 정렬한다.
 - multi-phase HotStuff variant, threshold-signature compression, dynamic proposer fairness 가 필요해지면 후속 ADR 이 이 baseline 을 supersede 또는 extend 한다.
+- application-neutral proposal validation provider 상세와 runtime wiring 은 [0017 - HotStuff Application Proposal Validation Hook Plan](../plans/0017-hotstuff-application-proposal-validation-hook-plan.md) 이 소유한다.
 
 ## References
 - [ADR-0016: Multiplexed Gossip Session Sync Substrate](0016-multiplexed-gossip-session-sync.md)

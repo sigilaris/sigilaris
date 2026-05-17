@@ -26,4 +26,4 @@
 - [plans/README.md](plans/README.md)
 - [plans/plan-template.md](plans/plan-template.md)
 - [application-package-index.md](application-package-index.md)
-- [dev/hotstuff-proposal-input-provider-handoff.md](dev/hotstuff-proposal-input-provider-handoff.md)
+- [dev/hotstuff-proposal-input-provider-handoff.md](dev/hotstuff-proposal-input-provider-handoff.md): HotStuff proposal input and proposal validation provider handoff notes
