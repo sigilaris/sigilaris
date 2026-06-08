@@ -82,6 +82,35 @@ vote was suppressed. Proposal payload bodies are not included. Structural
 artifact retention stays in the HotStuff sink: a structurally valid proposal can
 remain retained even when local application validation suppresses a vote.
 
+## Finalization Observability
+
+`HotStuffNodeRuntime.currentFinalizationObservations` exposes, per chain, the
+current best-finalized anchor observation as a `FinalizedAnchorObservation`. The
+accessor is always available and returns an empty map when no in-memory
+diagnostic sink is present.
+
+Each observation carries the finalized anchor identity (`chainId`,
+`proposalId`, `blockId`, `height`), the finalization proof (`childProposalId`,
+`grandchildProposalId`),
+the anchor proposal window validator-set hash (`validatorSetHash`), and two
+local timestamps. `proposalObservedAt` is the local first acceptance time for
+the anchor proposal, and `finalizedObservedAt` is the local first observation
+time for the verified finalized anchor.
+
+These timestamps are local-runtime observation times from the runtime clock.
+They are not the gossip producer `event.ts` timestamp and not a claim about
+when a quorum objectively finalized. Consensus-layer finalization latency can
+be derived as `finalizedObservedAt - proposalObservedAt`.
+
+Consensus finalization observability stays separate from application
+materialization. Materialization timing, retry, and terminal policy remain
+embedder-owned, and v0.2.3 adds no materialization hook.
+
+Safety faults remain separate high-severity diagnostics. A faulted height is
+excluded from the observation map while the fault remains visible through
+existing diagnostics. Pacemaker timing values are liveness policy, not
+finalization SLAs.
+
 ## Current Limitations
 
 - the validator set is still static
@@ -98,6 +127,7 @@ remain retained even when local application validation suppresses a vote.
 ## Related Pages
 
 - [ADR-0022: HotStuff Pacemaker And View-Change Baseline](https://github.com/sigilaris/sigilaris/blob/main/docs/adr/0022-hotstuff-pacemaker-and-view-change-baseline.md)
+- [ADR-0028: HotStuff Finalization Observability And Embedder Failure Semantics](https://github.com/sigilaris/sigilaris/blob/main/docs/adr/0028-hotstuff-finalization-observability-and-embedder-failure-semantics.md)
 - [Bootstrap And Sync](bootstrap-and-sync.md)
 - [Static Launch](static-launch.md)
 - [API Reference](https://sigilaris.github.io/sigilaris/api/index.html)

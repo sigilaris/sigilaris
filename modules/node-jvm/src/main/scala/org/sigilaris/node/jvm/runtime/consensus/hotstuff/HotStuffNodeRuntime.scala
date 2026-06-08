@@ -101,6 +101,12 @@ final case class HotStuffNodeRuntime[F[_]: Sync](
   def currentBootstrapDiagnostics: F[BootstrapDiagnostics] =
     bootstrapLifecycle.fold(services.bootstrap.diagnostics.current)(_.current)
 
+  def currentFinalizationObservations
+      : F[Map[ChainId, FinalizedAnchorObservation]] =
+    inMemorySink.fold(
+      Map.empty[ChainId, FinalizedAnchorObservation].pure[F],
+    )(_.finalizationObservations)
+
   def currentPacemakerSnapshot: F[Option[HotStuffPacemakerRuntimeSnapshot]] =
     pacemakerSnapshot match
       case Some(snapshot) =>

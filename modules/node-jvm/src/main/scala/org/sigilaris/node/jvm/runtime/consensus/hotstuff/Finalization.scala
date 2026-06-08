@@ -1,5 +1,7 @@
 package org.sigilaris.node.jvm.runtime.consensus.hotstuff
 
+import java.time.Instant
+
 import scala.annotation.tailrec
 
 import cats.Monad
@@ -7,7 +9,7 @@ import cats.effect.kernel.Sync
 import cats.syntax.all.*
 
 import org.sigilaris.core.util.SafeStringInterp.*
-import org.sigilaris.node.jvm.runtime.block.BlockHeight
+import org.sigilaris.node.jvm.runtime.block.{BlockHeight, BlockId}
 import org.sigilaris.node.gossip.{CanonicalRejection, ChainId}
 
 /** Represents a failure when verifying a finalized anchor suggestion. */
@@ -63,6 +65,41 @@ object FinalizedAnchorSafetyFault:
           (anchor.blockId.toHexLower, anchor.proposalId.toHexLower),
         )
         .distinctBy(_.blockId.toHexLower),
+    )
+
+/** Records the local first observation timestamps for a finalized anchor. */
+final case class FinalizedAnchorObservation(
+    chainId: ChainId,
+    proposalId: ProposalId,
+    blockId: BlockId,
+    height: BlockHeight,
+    childProposalId: ProposalId,
+    grandchildProposalId: ProposalId,
+    validatorSetHash: ValidatorSetHash,
+    proposalObservedAt: Instant,
+    finalizedObservedAt: Instant,
+)
+
+/** Companion for `FinalizedAnchorObservation`. */
+object FinalizedAnchorObservation:
+  /** Creates an observation from a finalized anchor suggestion and local
+    * observation timestamps.
+    */
+  def fromSuggestion(
+      suggestion: FinalizedAnchorSuggestion,
+      proposalObservedAt: Instant,
+      finalizedObservedAt: Instant,
+  ): FinalizedAnchorObservation =
+    FinalizedAnchorObservation(
+      chainId = suggestion.proposal.window.chainId,
+      proposalId = suggestion.proposal.proposalId,
+      blockId = suggestion.anchorBlockId,
+      height = suggestion.anchorHeight,
+      childProposalId = suggestion.finalizedProof.child.proposalId,
+      grandchildProposalId = suggestion.finalizedProof.grandchild.proposalId,
+      validatorSetHash = suggestion.proposal.window.validatorSetHash,
+      proposalObservedAt = proposalObservedAt,
+      finalizedObservedAt = finalizedObservedAt,
     )
 
 /** A snapshot of finalization tracking state, including the best finalized and any safety faults. */

@@ -81,6 +81,34 @@ payload body는 포함하지 않는다. Structural artifact retention은 HotStuf
 남는다. 즉 structurally valid proposal은 local application validation이 vote를
 suppress해도 retained 상태로 남을 수 있다.
 
+## Finalization Observability
+
+`HotStuffNodeRuntime.currentFinalizationObservations`는 chain별 current
+best-finalized anchor observation을 `FinalizedAnchorObservation`으로 노출한다.
+이 accessor는 항상 사용할 수 있고, in-memory diagnostic sink가 없으면 empty
+map을 반환한다.
+
+각 observation은 finalized anchor identity(`chainId`, `proposalId`, `blockId`,
+`height`),
+finalization proof(`childProposalId`, `grandchildProposalId`), anchor proposal
+window의 validator-set hash(`validatorSetHash`), 두 local timestamp를 담는다.
+`proposalObservedAt`는 anchor proposal을 local에서 처음 accept한 시각이고,
+`finalizedObservedAt`는 verified finalized anchor를 local에서 처음 관찰한
+시각이다.
+
+이 timestamp들은 runtime clock에서 얻은 local-runtime observation time이다.
+Gossip producer의 `event.ts` timestamp가 아니고, quorum이 객관적으로 finalize한
+시각에 대한 주장도 아니다. Consensus-layer finalization latency는
+`finalizedObservedAt - proposalObservedAt`로 도출할 수 있다.
+
+Consensus finalization observability는 application materialization과 분리돼
+있다. Materialization timing, retry, terminal policy는 embedder-owned로 남고,
+v0.2.3은 materialization hook을 추가하지 않는다.
+
+Safety fault는 별도의 high-severity diagnostic으로 남는다. Faulted height는
+observation map에서 제외되지만, fault는 기존 diagnostics를 통해 계속 보인다.
+Pacemaker timing value는 liveness policy이지 finalization SLA가 아니다.
+
 ## 현재 제한 사항
 
 - validator set은 여전히 static이다
@@ -97,6 +125,7 @@ suppress해도 retained 상태로 남을 수 있다.
 ## 관련 페이지
 
 - [ADR-0022: HotStuff Pacemaker And View-Change Baseline](https://github.com/sigilaris/sigilaris/blob/main/docs/adr/0022-hotstuff-pacemaker-and-view-change-baseline.md)
+- [ADR-0028: HotStuff Finalization Observability And Embedder Failure Semantics](https://github.com/sigilaris/sigilaris/blob/main/docs/adr/0028-hotstuff-finalization-observability-and-embedder-failure-semantics.md)
 - [Bootstrap And Sync](bootstrap-and-sync.md)
 - [Static Launch](static-launch.md)
 - [API Reference](https://sigilaris.github.io/sigilaris/api/index.html)
