@@ -22,7 +22,10 @@ import org.sigilaris.node.jvm.runtime.gossip.{
   StaticPeerTopologyConfig,
   StaticPeerTransportAuthConfig,
 }
-import org.sigilaris.node.jvm.runtime.gossip.tx.TxGossipRuntimeBootstrap
+import org.sigilaris.node.jvm.runtime.gossip.tx.{
+  TxGossipBootstrap,
+  TxGossipRuntimeBootstrap,
+}
 import org.sigilaris.node.jvm.storage.swaydb.StorageLayout
 import org.sigilaris.node.jvm.transport.armeria.gossip.HotStuffBootstrapHttpTransport
 /** The assembled runtime bootstrap containing peer topology, authentication, consensus, and gossip runtime. */
@@ -33,6 +36,22 @@ final case class HotStuffRuntimeBootstrap[F[_]](
     transportAuth: StaticPeerTransportAuth,
     consensus: HotStuffNodeRuntime[F],
     runtime: TxGossipRuntime[F, HotStuffGossipArtifact],
+):
+  /** Releases consensus resources. */
+  def close: F[Unit] =
+    consensus.close
+
+/** The assembled HotStuff runtime bootstrap whose peer gossip runtime also
+  * carries embedder-owned application artifacts.
+  */
+final case class HotStuffRuntimeBootstrapWithApplications[F[_], A](
+    topology: StaticPeerTopology,
+    registry: StaticPeerRegistry,
+    authenticator: StaticPeerAuthenticator[F],
+    transportAuth: StaticPeerTransportAuth,
+    consensus: HotStuffNodeRuntime[F],
+    runtime: TxGossipRuntime[F, HotStuffPeerArtifact[A]],
+    applicationTopics: Vector[ApplicationGossipTopic[F, A]],
 ):
   /** Releases consensus resources. */
   def close: F[Unit] =
@@ -158,6 +177,96 @@ object HotStuffRuntimeBootstrap:
                     proposalValidationConfig = proposalValidationConfig,
                   )
 
+  /** Bootstraps HotStuff plus embedder-owned application gossip topics from
+    * Typesafe Config.
+    */
+  @SuppressWarnings(Array("org.wartremover.warts.DefaultArguments"))
+  def fromConfigWithApplicationTopics[F[_]: Async: LiftIO, A](
+      config: Config,
+      clock: GossipClock[F],
+      applicationTopics: Vector[ApplicationGossipTopic[F, A]],
+      runtimePolicy: TxRuntimePolicy = DefaultRuntimePolicy,
+      handshakePolicy: HandshakePolicy = HandshakePolicy.default,
+      bootstrapTransport: Option[HotStuffBootstrapTransportServices[F]] = None,
+      storageLayout: StorageLayout = StorageLayout.default,
+      peerConfigPath: String = StaticPeerTopologyConfig.DefaultPath,
+      consensusConfigPath: String = HotStuffBootstrapConfig.DefaultPath,
+      proposalInputConfig: HotStuffProposalInputRuntimeConfig[F] =
+        HotStuffProposalInputRuntimeConfig.legacyCompatible[F],
+      proposalValidationConfig: HotStuffProposalValidationRuntimeConfig[F] =
+        HotStuffProposalValidationRuntimeConfig.legacyCompatible[F],
+  ): Resource[F, Either[String, HotStuffRuntimeBootstrapWithApplications[F, A]]] =
+    Resource
+      .eval:
+        Async[F].delay:
+          (
+            Either
+              .catchNonFatal:
+                StaticPeerTopologyConfig.load(config, peerConfigPath)
+              .leftMap(_.getMessage)
+              .flatMap(identity),
+            Either
+              .catchNonFatal:
+                HotStuffBootstrapConfig.load(config, consensusConfigPath)
+              .leftMap(_.getMessage)
+              .flatMap(identity),
+          )
+      .flatMap:
+        case (Left(peerError), Left(consensusError)) =>
+          Resource.pure:
+            ss"${peerError}; ${consensusError}"
+              .asLeft[HotStuffRuntimeBootstrapWithApplications[F, A]]
+        case (Left(error), _) =>
+          Resource.pure(
+            error.asLeft[HotStuffRuntimeBootstrapWithApplications[F, A]],
+          )
+        case (_, Left(error)) =>
+          Resource.pure(
+            error.asLeft[HotStuffRuntimeBootstrapWithApplications[F, A]],
+          )
+        case (Right(topology), Right(consensusConfig)) =>
+          StaticPeerTransportAuthConfig.load(
+            config,
+            topology,
+            peerConfigPath,
+          ) match
+            case Left(error) =>
+              Resource.pure(
+                error.asLeft[HotStuffRuntimeBootstrapWithApplications[F, A]],
+              )
+            case Right(transportAuth) =>
+              StaticPeerBootstrapHttpTransportConfig
+                .load(config, topology, peerConfigPath) match
+                case Left(error) =>
+                  Resource.pure(
+                    error
+                      .asLeft[HotStuffRuntimeBootstrapWithApplications[F, A]],
+                  )
+                case Right(httpBootstrapConfig) =>
+                  val resolvedBootstrapTransport =
+                    bootstrapTransport.orElse:
+                      httpBootstrapConfig.map(config =>
+                        HotStuffBootstrapHttpTransport.services[F](
+                          peerBaseUris = config.peerBaseUris,
+                          transportAuth = transportAuth,
+                          requestTimeout = config.requestTimeout,
+                          maxConcurrentRequests = config.maxConcurrentRequests,
+                        ),
+                      )
+                  fromTopologyWithApplicationTopics(
+                    topology = topology,
+                    transportAuth = transportAuth,
+                    consensusConfig = consensusConfig,
+                    clock = clock,
+                    applicationTopics = applicationTopics,
+                    runtimePolicy = runtimePolicy,
+                    handshakePolicy = handshakePolicy,
+                    bootstrapTransport = resolvedBootstrapTransport,
+                    storageLayout = storageLayout,
+                    proposalInputConfig = proposalInputConfig,
+                    proposalValidationConfig = proposalValidationConfig,
+                  )
+
   /** Bootstraps the full HotStuff runtime from an explicit peer topology and consensus config. */
   @SuppressWarnings(Array("org.wartremover.warts.DefaultArguments"))
   def fromTopology[F[_]: Async: LiftIO](
@@ -174,6 +283,119 @@ object HotStuffRuntimeBootstrap:
       proposalValidationConfig: HotStuffProposalValidationRuntimeConfig[F] =
         HotStuffProposalValidationRuntimeConfig.legacyCompatible[F],
   ): Resource[F, Either[String, HotStuffRuntimeBootstrap[F]]] =
+    fromTopologyWithGossipRuntime[
+      F,
+      HotStuffGossipArtifact,
+      HotStuffRuntimeBootstrap[F],
+    ](
+      topology = topology,
+      consensusConfig = consensusConfig,
+      clock = clock,
+      bootstrapTransport = bootstrapTransport,
+      storageLayout = storageLayout,
+      proposalInputConfig = proposalInputConfig,
+      proposalValidationConfig = proposalValidationConfig,
+      buildGossipRuntime = consensus =>
+        TxGossipRuntimeBootstrap.fromTopology[F, HotStuffGossipArtifact](
+          topology = topology,
+          transportAuth = transportAuth,
+          clock = clock,
+          source = consensus.source,
+          sink = consensus.sink,
+          topicContracts = consensus.topicContracts,
+          runtimePolicy = runtimePolicy,
+          handshakePolicy = handshakePolicy,
+        ),
+      assembleBootstrap = (consensus, gossipBootstrap) =>
+        HotStuffRuntimeBootstrap(
+          topology = gossipBootstrap.topology,
+          registry = gossipBootstrap.registry,
+          authenticator = gossipBootstrap.authenticator,
+          transportAuth = gossipBootstrap.transportAuth,
+          consensus = consensus,
+          runtime = gossipBootstrap.runtime,
+        ),
+    )
+
+  /** Bootstraps HotStuff plus embedder-owned application gossip topics from an
+    * explicit peer topology and consensus config.
+    */
+  @SuppressWarnings(Array("org.wartremover.warts.DefaultArguments"))
+  def fromTopologyWithApplicationTopics[F[_]: Async: LiftIO, A](
+      topology: StaticPeerTopology,
+      transportAuth: StaticPeerTransportAuth,
+      consensusConfig: HotStuffBootstrapConfig,
+      clock: GossipClock[F],
+      applicationTopics: Vector[ApplicationGossipTopic[F, A]],
+      runtimePolicy: TxRuntimePolicy = DefaultRuntimePolicy,
+      handshakePolicy: HandshakePolicy = HandshakePolicy.default,
+      bootstrapTransport: Option[HotStuffBootstrapTransportServices[F]] = None,
+      storageLayout: StorageLayout = StorageLayout.default,
+      proposalInputConfig: HotStuffProposalInputRuntimeConfig[F] =
+        HotStuffProposalInputRuntimeConfig.legacyCompatible[F],
+      proposalValidationConfig: HotStuffProposalValidationRuntimeConfig[F] =
+        HotStuffProposalValidationRuntimeConfig.legacyCompatible[F],
+  ): Resource[
+    F,
+    Either[String, HotStuffRuntimeBootstrapWithApplications[F, A]],
+  ] =
+    fromTopologyWithGossipRuntime[
+      F,
+      HotStuffPeerArtifact[A],
+      HotStuffRuntimeBootstrapWithApplications[F, A],
+    ](
+      topology = topology,
+      consensusConfig = consensusConfig,
+      clock = clock,
+      bootstrapTransport = bootstrapTransport,
+      storageLayout = storageLayout,
+      proposalInputConfig = proposalInputConfig,
+      proposalValidationConfig = proposalValidationConfig,
+      buildGossipRuntime = consensus =>
+        TxGossipRuntimeBootstrap.fromTopology[F, HotStuffPeerArtifact[A]](
+          topology = topology,
+          transportAuth = transportAuth,
+          clock = clock,
+          source = HotStuffPeerArtifact.source(
+            consensus.source,
+            consensus.topicContracts,
+            applicationTopics,
+          ),
+          sink = HotStuffPeerArtifact.sink(
+            consensus.sink,
+            consensus.topicContracts,
+            applicationTopics,
+          ),
+          topicContracts = HotStuffPeerArtifact.topicContracts(
+            consensus.topicContracts,
+            applicationTopics,
+          ),
+          runtimePolicy = runtimePolicy,
+          handshakePolicy = handshakePolicy,
+        ),
+      assembleBootstrap = (consensus, gossipBootstrap) =>
+        HotStuffRuntimeBootstrapWithApplications(
+          topology = gossipBootstrap.topology,
+          registry = gossipBootstrap.registry,
+          authenticator = gossipBootstrap.authenticator,
+          transportAuth = gossipBootstrap.transportAuth,
+          consensus = consensus,
+          runtime = gossipBootstrap.runtime,
+          applicationTopics = applicationTopics,
+        ),
+    )
+
+  private def fromTopologyWithGossipRuntime[F[_]: Async: LiftIO, A, B](
+      topology: StaticPeerTopology,
+      consensusConfig: HotStuffBootstrapConfig,
+      clock: GossipClock[F],
+      bootstrapTransport: Option[HotStuffBootstrapTransportServices[F]],
+      storageLayout: StorageLayout,
+      proposalInputConfig: HotStuffProposalInputRuntimeConfig[F],
+      proposalValidationConfig: HotStuffProposalValidationRuntimeConfig[F],
+      buildGossipRuntime: HotStuffNodeRuntime[F] => F[TxGossipBootstrap[F, A]],
+      assembleBootstrap: (HotStuffNodeRuntime[F], TxGossipBootstrap[F, A]) => B,
+  ): Resource[F, Either[String, B]] =
     given GossipClock[F] = clock
     val bootstrapInput =
       HotStuffRuntimeBootstrapInput(
@@ -197,7 +419,7 @@ object HotStuffRuntimeBootstrap:
         yield validatedInput
       .leftMap(renderPolicyViolation) match
       case Left(rejection) =>
-        Resource.pure(rejection.asLeft[HotStuffRuntimeBootstrap[F]])
+        Resource.pure(rejection.asLeft[B])
       case Right(validatedInput) =>
         Resource
           .eval(clock.now)
@@ -207,7 +429,7 @@ object HotStuffRuntimeBootstrap:
               now,
             ) match
               case Left(error) =>
-                Resource.pure(error.asLeft[HotStuffRuntimeBootstrap[F]])
+                Resource.pure(error.asLeft[B])
               case Right(_) =>
                 Resource
                   .eval:
@@ -218,7 +440,7 @@ object HotStuffRuntimeBootstrap:
                     case Left(error) =>
                       Resource.pure(
                         renderThrowable(error)
-                          .asLeft[HotStuffRuntimeBootstrap[F]],
+                          .asLeft[B],
                       )
                     case Right(historicalArchive) =>
                       Resource
@@ -317,24 +539,10 @@ object HotStuffRuntimeBootstrap:
                                     automaticConsensus = true,
                                     proposalInputConfig = proposalInputConfig,
                                   )
-                                gossipBootstrap <- TxGossipRuntimeBootstrap
-                                  .fromTopology[F, HotStuffGossipArtifact](
-                                    topology = topology,
-                                    transportAuth = transportAuth,
-                                    clock = clock,
-                                    source = consensus.source,
-                                    sink = consensus.sink,
-                                    topicContracts = consensus.topicContracts,
-                                    runtimePolicy = runtimePolicy,
-                                    handshakePolicy = handshakePolicy,
-                                  )
-                              yield HotStuffRuntimeBootstrap(
-                                topology = gossipBootstrap.topology,
-                                registry = gossipBootstrap.registry,
-                                authenticator = gossipBootstrap.authenticator,
-                                transportAuth = gossipBootstrap.transportAuth,
-                                consensus = consensus,
-                                runtime = gossipBootstrap.runtime,
+                                gossipBootstrap <- buildGossipRuntime(consensus)
+                              yield assembleBootstrap(
+                                consensus,
+                                gossipBootstrap,
                               ).asRight[String]
 
   private def renderPolicyViolation(

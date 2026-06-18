@@ -234,22 +234,27 @@ private[tx] trait TxGossipRuntimePollingOps[F[_]: Sync, A]
                 producerState
                   .advanceStreamCursor(chainTopic, liveBatch)
                   .clearReplay(chainTopic)
+              val updatedPendingScopeIds =
+                if servedByScope.isEmpty then
+                  sessionState.pendingRequestScopeIds
+                else
+                  servedByScope.foldLeft(
+                    sessionState.pendingRequestScopeIds,
+                  ): (acc, entry) =>
+                    val (scope, servedIds) = entry
+                    acc.updatedWith(scope):
+                      case None => None
+                      case Some(existing) =>
+                        val remaining =
+                          existing.filterNot(servedIds.contains)
+                        remaining.some.filter(_.nonEmpty)
+              val clearedRetryScopes =
+                servedByScope.keySet.filterNot(updatedPendingScopeIds.contains)
               val updatedState = sessionState
                 .withProducerState(updatedProducerState)
                 .copy(
-                  pendingRequestScopeIds =
-                    if servedByScope.isEmpty then
-                      sessionState.pendingRequestScopeIds
-                    else
-                      servedByScope.foldLeft(
-                        sessionState.pendingRequestScopeIds,
-                      ): (acc, entry) =>
-                        val (scope, servedIds) = entry
-                        acc.updatedWith(scope):
-                          case None => None
-                          case Some(existing) =>
-                            val remaining =
-                              existing.filterNot(servedIds.contains)
-                            remaining.some.filter(_.nonEmpty),
+                  pendingRequestScopeIds = updatedPendingScopeIds,
+                  requestScopeRetryCounts =
+                    sessionState.requestScopeRetryCounts -- clearedRetryScopes,
                 )
               updatedState -> emitted

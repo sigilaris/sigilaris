@@ -32,6 +32,12 @@ given ByteDecoder[ProposalId] =
 given ByteDecoder[VoteId] =
   ByteDecoder[UInt256].map(VoteId(_))
 
+given ByteDecoder[TimeoutVoteId] =
+  ByteDecoder[UInt256].map(TimeoutVoteId(_))
+
+given ByteDecoder[NewViewId] =
+  ByteDecoder[UInt256].map(NewViewId(_))
+
 given ByteDecoder[ValidatorSetHash] =
   ByteDecoder[UInt256].map(ValidatorSetHash(_))
 
@@ -82,6 +88,10 @@ given ByteDecoder[Signature] =
 given ByteDecoder[QuorumCertificateSubject] = ByteDecoder.derived
 given ByteDecoder[Vote]                     = ByteDecoder.derived
 given ByteDecoder[QuorumCertificate]        = ByteDecoder.derived
+given ByteDecoder[TimeoutVoteSubject]       = ByteDecoder.derived
+given ByteDecoder[TimeoutVote]              = ByteDecoder.derived
+given ByteDecoder[TimeoutCertificate]       = ByteDecoder.derived
+given ByteDecoder[NewView]                  = ByteDecoder.derived
 given ByteDecoder[ProposalTxSet] =
   val proposalTxIdDecoder =
     ByteDecoder

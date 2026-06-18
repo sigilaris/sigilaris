@@ -63,6 +63,7 @@ libraryDependencies ++= Seq(
 - Reconnect now replays a full re-handshake under the existing peer correlation id for half-open recovery, and new directional sessions start with empty filter/control state instead of carrying prior `setFilter` state.
 - Topic-neutral producer session state, polling, batching/QoS hooks, and tx anti-entropy runtime logic now live in `sigilaris-node-common`, so follow-up runtime modules do not need to rewrite the substrate to reuse it.
 - The shipped JVM baseline now includes HotStuff non-threshold-signature proposal/vote/QC artifact modeling under `org.sigilaris.node.jvm.runtime.consensus.hotstuff`, plus `consensus.proposal` / `consensus.vote` gossip integration with exact known-set windows, bounded `requestById`, same-window retry budget enforcement, QC assembly, audit read-only follow, validated-artifact relay, and consensus-priority QoS.
+- HotStuff embedders can add application-owned peer gossip topics with `ApplicationGossipTopic[F, A]` and `HotStuffRuntimeBootstrap.fromConfigWithApplicationTopics` / `fromTopologyWithApplicationTopics`; these topics share the static peer session, Armeria binary event stream, transport auth, topic contracts, and exact-known-set `requestById` catch-up path with consensus artifacts.
 - Canonical block modeling now lives under `org.sigilaris.node.jvm.runtime.block`, with `BlockHeader` / `BlockBody` / `BlockView`, header-only `BlockId`, deterministic `bodyRoot` verification, and a consensus-neutral `BlockStore` query/storage seam for split header/body lookup.
 - Import-rule tests keep `sigilaris-core` free of `org.sigilaris.node.*`, keep `sigilaris-node-common` free of JVM-specific packages, and keep the HotStuff consensus core free of transport implementations or the current concrete storage packages (`org.sigilaris.node.jvm.storage.memory`, `org.sigilaris.node.jvm.storage.swaydb`) outside the explicit bootstrap/persistence assembly edges.
 - State snapshot transport, remote body fetch, proof-serving, receipt/event sub-root expansion, and persisted block compatibility policy remain explicit follow-up work owned by ADR-0019 and `docs/plans/0005-canonical-block-structure-migration-plan.md`.
@@ -118,7 +119,7 @@ High-performance cryptographic primitives for blockchain applications.
 ## Documentation
 
 - **[API Documentation](https://javadoc.io/doc/org.sigilaris/sigilaris-core_3/latest/index.html)** — Comprehensive Scaladoc
-- **[v0.2.3 Release Notes](docs/dev/v0.2.3-release-notes.md)** — Latest published release notes and upgrade notes
+- **[v0.2.4 Release Notes](docs/dev/v0.2.4-release-notes.md)** — Latest published release notes and upgrade notes
 - **[Latest Release](https://github.com/sigilaris/sigilaris/releases/latest)** — Release notes and artifacts
 - **[GitHub Repository](https://github.com/sigilaris/sigilaris)** — Source code and examples
 
@@ -179,6 +180,6 @@ Built with:
 - Scala.js node-common: `org.sigilaris:sigilaris-node-common_sjs1_3:VERSION`
 - JVM node bundle: `org.sigilaris:sigilaris-node-jvm_3:VERSION`
 
-Current downstream adoption work in this repository uses local `0.2.3` artifacts via `publishLocal`.
+Current downstream adoption work in this repository uses local `0.2.4` artifacts via `publishLocal`.
 
 **Scala Version:** 3.7.3

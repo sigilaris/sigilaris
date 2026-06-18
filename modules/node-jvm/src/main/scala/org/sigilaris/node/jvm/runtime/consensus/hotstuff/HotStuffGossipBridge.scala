@@ -5,8 +5,9 @@ import java.time.Duration
 import cats.syntax.all.*
 import scodec.bits.ByteVector
 
-import org.sigilaris.core.codec.byte.ByteEncoder
+import org.sigilaris.core.codec.byte.{ByteDecoder, ByteEncoder, DecodeResult}
 import org.sigilaris.core.codec.byte.ByteEncoder.ops.*
+import org.sigilaris.core.failure.DecodeFailure
 import org.sigilaris.node.gossip.*
 
 enum HotStuffGossipArtifact:
@@ -76,6 +77,56 @@ object HotStuffGossipArtifact:
   given ByteEncoder[HotStuffGossipArtifact] = artifact =>
     val metadata = metadataOf(artifact)
     ByteVector.fromByte(metadata.tag) ++ metadata.encodedPayload
+
+  given ByteDecoder[HotStuffGossipArtifact] = bytes =>
+    ByteDecoder[Byte]
+      .decode(bytes)
+      .flatMap:
+        case DecodeResult(tag, remainder) =>
+          tag match
+            case 0x01 =>
+              decodeArtifact(
+                label = "proposal",
+                decoder = ByteDecoder[Proposal],
+                remainder = remainder,
+              )(HotStuffGossipArtifact.ProposalArtifact.apply)
+            case 0x02 =>
+              decodeArtifact(
+                label = "vote",
+                decoder = ByteDecoder[Vote],
+                remainder = remainder,
+              )(HotStuffGossipArtifact.VoteArtifact.apply)
+            case 0x03 =>
+              decodeArtifact(
+                label = "timeout vote",
+                decoder = ByteDecoder[TimeoutVote],
+                remainder = remainder,
+              )(HotStuffGossipArtifact.TimeoutVoteArtifact.apply)
+            case 0x04 =>
+              decodeArtifact(
+                label = "new-view",
+                decoder = ByteDecoder[NewView],
+                remainder = remainder,
+              )(HotStuffGossipArtifact.NewViewArtifact.apply)
+            case other =>
+              DecodeFailure(
+                "unknown HotStuff gossip artifact tag: " +
+                  (other.toInt & 0xff).toString,
+              ).asLeft[DecodeResult[HotStuffGossipArtifact]]
+
+  private def decodeArtifact[A](
+      label: String,
+      decoder: ByteDecoder[A],
+      remainder: ByteVector,
+  )(
+      wrap: A => HotStuffGossipArtifact,
+  ): Either[DecodeFailure, DecodeResult[HotStuffGossipArtifact]] =
+    decoder
+      .decode(remainder)
+      .leftMap(error =>
+        DecodeFailure(label + " artifact decode failed: " + error.msg),
+      )
+      .map(result => DecodeResult(wrap(result.value), result.remainder))
 
 /** Per-topic gossip configuration for a HotStuff artifact type.
   *

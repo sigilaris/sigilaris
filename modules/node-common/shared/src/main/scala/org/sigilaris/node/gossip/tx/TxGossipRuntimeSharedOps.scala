@@ -253,9 +253,28 @@ private[tx] trait TxGossipRuntimeSharedOps[F[_]: Sync, A]:
               val remaining = existing.filterNot(servedIds.contains)
               remaining.some.filter(_.nonEmpty)
 
+    val servedRequestScopes =
+      polledFrom.pendingRequestScopeIds.keySet.filter: scope =>
+        val before =
+          polledFrom.pendingRequestScopeIds.getOrElse(
+            scope,
+            Vector.empty[StableArtifactId],
+          )
+        val after =
+          updated.pendingRequestScopeIds.getOrElse(
+            scope,
+            Vector.empty[StableArtifactId],
+          )
+        before.exists(id => !after.contains(id))
+    val clearedRetryScopes =
+      servedRequestScopes.filterNot(mergedPendingScopedRequests.contains)
+    val mergedRequestScopeRetryCounts =
+      current.requestScopeRetryCounts -- clearedRetryScopes
+
     current.copy(
       streamCursor = CompositeCursor(mergedStreamCursor),
       pendingReplay = mergedPendingReplay,
       pendingRequestByIds = mergedPendingRequests,
       pendingRequestScopeIds = mergedPendingScopedRequests,
+      requestScopeRetryCounts = mergedRequestScopeRetryCounts,
     )

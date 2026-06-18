@@ -6,6 +6,7 @@ import org.sigilaris.node.gossip.{
   CanonicalRejection,
   ControlBatch,
   ControlOp,
+  ExactKnownSetScope,
   StableArtifactId,
 }
 import org.sigilaris.node.gossip.tx.TxRuntimePolicy
@@ -51,6 +52,60 @@ object HotStuffProposalTxSync:
              )
            else Vector.empty[ControlOp])
       ControlBatch.create(idempotencyKey, ops).map(_.some)
+
+  /** Builds staged exact-known-set request batches for application topics whose
+    * stable IDs are referenced by a HotStuff proposal tx set.
+    *
+    * The helper emits only bounded `RequestByIdExact` operations. It does not
+    * publish `SetKnownExact` updates for proposal tx IDs.
+    */
+  def controlBatchesForProposalOnExactTopics(
+      proposal: Proposal,
+      knownTxIds: Set[StableArtifactId],
+      idempotencyKeyForBatch: Int => String,
+      scopeForId: StableArtifactId => Either[
+        CanonicalRejection.ControlBatchRejected,
+        ExactKnownSetScope,
+      ],
+      requestByIdLimitForScope: ExactKnownSetScope => Either[
+        CanonicalRejection.ControlBatchRejected,
+        Int,
+      ],
+  ): Either[CanonicalRejection.ControlBatchRejected, Vector[ControlBatch]] =
+    val missing = missingTxIds(proposal, knownTxIds)
+    missing
+      .traverse(id => scopeForId(id).map(_ -> id))
+      .flatMap: scopedIds =>
+        val grouped =
+          scopedIds.foldLeft(
+            Vector.empty[(ExactKnownSetScope, Vector[StableArtifactId])],
+          ):
+            case (acc, (scope, id)) =>
+              val index = acc.indexWhere(_._1 === scope)
+              if index < 0 then acc :+ (scope -> Vector(id))
+              else
+                acc.updated(
+                  index,
+                  scope -> (acc(index)._2 :+ id),
+                )
+        grouped
+          .traverse: (scope, ids) =>
+            requestByIdLimitForScope(scope).flatMap: limit =>
+              Either
+                .cond(
+                  limit > 0,
+                  ids.grouped(limit).toVector.map(chunk =>
+                    ControlOp.RequestByIdExact(scope, chunk),
+                  ),
+                  controlRejected(
+                    "invalidRequestByIdLimit",
+                    "scope=" + scope.topic.value + " limit=" + limit.toString,
+                  ),
+                )
+          .map(_.flatten)
+          .flatMap: ops =>
+            ops.zipWithIndex.traverse: (op, index) =>
+              ControlBatch.create(idempotencyKeyForBatch(index), Vector(op))
 
   private def controlRejected(
       reason: String,
