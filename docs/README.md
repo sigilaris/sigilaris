@@ -28,4 +28,5 @@
 - [application-package-index.md](application-package-index.md)
 - [dev/hotstuff-proposal-input-provider-handoff.md](dev/hotstuff-proposal-input-provider-handoff.md): HotStuff proposal input and proposal validation provider handoff notes
 - [dev/hotstuff-application-gossip-topic-handoff.md](dev/hotstuff-application-gossip-topic-handoff.md): HotStuff application gossip topic registration and catch-up handoff notes
+- [dev/v0.2.5-release-notes.md](dev/v0.2.5-release-notes.md): v0.2.5 Armeria Tapir gossip peer transport release notes
 - [dev/v0.2.4-release-notes.md](dev/v0.2.4-release-notes.md): v0.2.4 HotStuff application gossip topic extension release notes

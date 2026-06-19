@@ -1,7 +1,7 @@
 # 0020 - Armeria Tapir Client Gossip Transport Plan
 
 ## Status
-Release Build Prepared (v0.2.5) - Resolver Publish Pending
+Published (v0.2.5)
 
 ## Created
 2026-06-19
@@ -305,8 +305,8 @@ Release Build Prepared (v0.2.5) - Resolver Publish Pending
 
 ### Phase 5: Release And Downstream Handoff
 - [x] Update `0.2.5` release notes and migration docs.
-- [ ] Publish Sigilaris `0.2.5`.
-- [ ] Start next development snapshot.
+- [x] Publish Sigilaris `0.2.5`.
+- [x] Start next development snapshot.
 - [x] Document downstream dependency bump guidance for `0.2.5`.
 - [ ] Verify downstream compile against the generated peer transport API when an integration branch is available.
 
