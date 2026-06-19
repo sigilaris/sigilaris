@@ -1,7 +1,7 @@
 # 0019 - HotStuff Application Gossip Topic Extension Plan
 
 ## Status
-Release Build Prepared And Tagged (v0.2.4) - Resolver Publish Pending
+Published (v0.2.4) - Next Development Snapshot Started
 
 ## Created
 2026-06-18
@@ -18,7 +18,7 @@ Release Build Prepared And Tagged (v0.2.4) - Resolver Publish Pending
   - keep separate public HTTP fanout paths for application artifacts; or
   - add embedder-specific binary endpoints beside the HotStuff listener.
 - Both work, but they leave session/topic multiplexing underused and make the embedder own transport behavior that Sigilaris already models generically.
-- `build.sbt` is already on `0.2.4-SNAPSHOT`; this plan is the scope gate for publishing `0.2.4` with the application-topic extension.
+- `build.sbt` started this plan on `0.2.4-SNAPSHOT`; the completed extension was published as `0.2.4` and `main` has moved on to `0.2.5-SNAPSHOT`.
 
 ## Goal
 - Add a public extension point that lets HotStuff embedders attach application-owned gossip topics to the same static peer session, Armeria listener, binary event-stream codec, control channel, and transport-auth boundary as HotStuff consensus artifacts.
@@ -410,8 +410,8 @@ If Phase 0 changes ADR-0016's normative session/topic contract or exposes a broa
 - [x] Run `nodeCommonJVM/test`, `nodeCommonJS/test`, and `nodeJvm/test`.
 - [x] Run `unidoc` / `tlSite` if public docs changed.
 - [x] Remove `-SNAPSHOT` for the `0.2.4` release build.
-- [ ] Publish non-SNAPSHOT `0.2.4` to the target resolver.
-- [ ] Bump the next development snapshot after release if required.
+- [x] Publish non-SNAPSHOT `0.2.4` to the target resolver.
+- [x] Bump the next development snapshot after release.
 
 ## Follow-Ups
 - Add a normative ADR if application-topic multiplexing becomes a long-lived public contract beyond the existing ADR-0016 extension model.

@@ -11,7 +11,6 @@ import io.circe.Decoder
 import io.circe.parser.decode
 import io.circe.syntax.*
 import scodec.bits.ByteVector
-import sttp.tapir.*
 import sttp.tapir.server.ServerEndpoint
 
 import org.sigilaris.core.codec.byte.{ByteDecoder, ByteEncoder}
@@ -65,22 +64,7 @@ object HotStuffBootstrapArmeriaAdapter:
       bootstrapServices: HotStuffBootstrapServices[F],
       transportAuth: StaticPeerTransportAuth,
   ): ServerEndpoint[Any, F] =
-    endpoint.post
-      .in(
-        "gossip" / "bootstrap" / "finalized" / path[String]("sessionId") / path[
-          String,
-        ]("chainId"),
-      )
-      .in:
-        header[Option[String]](GossipTransportAuth.AuthenticatedPeerHeaderName)
-      .in:
-        header[Option[String]](GossipTransportAuth.TransportProofHeaderName)
-      .in:
-        header[Option[String]](
-          GossipTransportAuth.BootstrapCapabilityHeaderName,
-        )
-      .errorOut(stringBody)
-      .out(stringBody)
+    HotStuffBootstrapTapirEndpoints.finalizedSuggestion
       .serverLogic:
         (
             sessionIdRaw,
@@ -90,7 +74,10 @@ object HotStuffBootstrapArmeriaAdapter:
             capabilityRaw,
         ) =>
           val requestPath =
-            s"/gossip/bootstrap/finalized/${sessionIdRaw}/${chainIdRaw}"
+            HotStuffBootstrapTapirEndpoints.finalizedPath(
+              sessionIdRaw,
+              chainIdRaw,
+            )
           withAuthorizedBinding(
             sessionRuntime,
             transportAuth,
@@ -118,23 +105,7 @@ object HotStuffBootstrapArmeriaAdapter:
       bootstrapServices: HotStuffBootstrapServices[F],
       transportAuth: StaticPeerTransportAuth,
   ): ServerEndpoint[Any, F] =
-    endpoint.post
-      .in(
-        "gossip" / "bootstrap" / "snapshot" / path[String]("sessionId") / path[
-          String,
-        ]("chainId"),
-      )
-      .in:
-        header[Option[String]](GossipTransportAuth.AuthenticatedPeerHeaderName)
-      .in:
-        header[Option[String]](GossipTransportAuth.TransportProofHeaderName)
-      .in:
-        header[Option[String]](
-          GossipTransportAuth.BootstrapCapabilityHeaderName,
-        )
-      .in(stringBody)
-      .errorOut(stringBody)
-      .out(stringBody)
+    HotStuffBootstrapTapirEndpoints.snapshotFetch
       .serverLogic:
         (
             sessionIdRaw,
@@ -145,7 +116,10 @@ object HotStuffBootstrapArmeriaAdapter:
             raw,
         ) =>
           val requestPath =
-            s"/gossip/bootstrap/snapshot/${sessionIdRaw}/${chainIdRaw}"
+            HotStuffBootstrapTapirEndpoints.snapshotPath(
+              sessionIdRaw,
+              chainIdRaw,
+            )
           withAuthorizedBinding(
             sessionRuntime,
             transportAuth,
@@ -191,23 +165,7 @@ object HotStuffBootstrapArmeriaAdapter:
       bootstrapServices: HotStuffBootstrapServices[F],
       transportAuth: StaticPeerTransportAuth,
   ): ServerEndpoint[Any, F] =
-    endpoint.post
-      .in(
-        "gossip" / "bootstrap" / "replay" / path[String]("sessionId") / path[
-          String,
-        ]("chainId"),
-      )
-      .in:
-        header[Option[String]](GossipTransportAuth.AuthenticatedPeerHeaderName)
-      .in:
-        header[Option[String]](GossipTransportAuth.TransportProofHeaderName)
-      .in:
-        header[Option[String]](
-          GossipTransportAuth.BootstrapCapabilityHeaderName,
-        )
-      .in(stringBody)
-      .errorOut(stringBody)
-      .out(stringBody)
+    HotStuffBootstrapTapirEndpoints.replay
       .serverLogic:
         (
             sessionIdRaw,
@@ -218,7 +176,10 @@ object HotStuffBootstrapArmeriaAdapter:
             raw,
         ) =>
           val requestPath =
-            s"/gossip/bootstrap/replay/${sessionIdRaw}/${chainIdRaw}"
+            HotStuffBootstrapTapirEndpoints.replayPath(
+              sessionIdRaw,
+              chainIdRaw,
+            )
           withAuthorizedBinding(
             sessionRuntime,
             transportAuth,
@@ -249,23 +210,7 @@ object HotStuffBootstrapArmeriaAdapter:
       bootstrapServices: HotStuffBootstrapServices[F],
       transportAuth: StaticPeerTransportAuth,
   ): ServerEndpoint[Any, F] =
-    endpoint.post
-      .in(
-        "gossip" / "bootstrap" / "backfill" / path[String]("sessionId") / path[
-          String,
-        ]("chainId"),
-      )
-      .in:
-        header[Option[String]](GossipTransportAuth.AuthenticatedPeerHeaderName)
-      .in:
-        header[Option[String]](GossipTransportAuth.TransportProofHeaderName)
-      .in:
-        header[Option[String]](
-          GossipTransportAuth.BootstrapCapabilityHeaderName,
-        )
-      .in(stringBody)
-      .errorOut(stringBody)
-      .out(stringBody)
+    HotStuffBootstrapTapirEndpoints.backfill
       .serverLogic:
         (
             sessionIdRaw,
@@ -276,7 +221,10 @@ object HotStuffBootstrapArmeriaAdapter:
             raw,
         ) =>
           val requestPath =
-            s"/gossip/bootstrap/backfill/${sessionIdRaw}/${chainIdRaw}"
+            HotStuffBootstrapTapirEndpoints.backfillPath(
+              sessionIdRaw,
+              chainIdRaw,
+            )
           withAuthorizedBinding(
             sessionRuntime,
             transportAuth,

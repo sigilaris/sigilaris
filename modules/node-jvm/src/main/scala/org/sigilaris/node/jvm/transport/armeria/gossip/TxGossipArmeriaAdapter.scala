@@ -11,7 +11,6 @@ import io.circe.Decoder
 import io.circe.parser.decode
 import io.circe.syntax.*
 import scodec.bits.ByteVector
-import sttp.tapir.*
 import sttp.tapir.server.ServerEndpoint
 
 import org.sigilaris.core.codec.byte.ByteEncoder
@@ -52,21 +51,13 @@ object TxGossipArmeriaAdapter:
       runtime: TxGossipRuntime[F, A],
       transportAuth: StaticPeerTransportAuth,
   ): ServerEndpoint[Any, F] =
-    endpoint.post
-      .in("gossip" / "session" / "open")
-      .in(
-        header[Option[String]](GossipTransportAuth.AuthenticatedPeerHeaderName),
-      )
-      .in(header[Option[String]](GossipTransportAuth.TransportProofHeaderName))
-      .in(stringBody)
-      .errorOut(stringBody)
-      .out(stringBody)
+    TxGossipTapirEndpoints.sessionOpen
       .serverLogic: (authenticatedPeerRaw, transportProofRaw, raw) =>
         authenticateRequest(
           transportAuth = transportAuth,
           authenticatedPeerRaw = authenticatedPeerRaw,
           transportProofRaw = transportProofRaw,
-          requestPath = "/gossip/session/open",
+          requestPath = TxGossipTapirEndpoints.SessionOpenPath,
           requestBody = raw,
         ) match
           case Left(rejection) =>
@@ -99,14 +90,7 @@ object TxGossipArmeriaAdapter:
       runtime: TxGossipRuntime[F, A],
       transportAuth: StaticPeerTransportAuth,
   ): ServerEndpoint[Any, F] =
-    endpoint.post
-      .in("gossip" / "events" / path[String]("sessionId"))
-      .in(
-        header[Option[String]](GossipTransportAuth.AuthenticatedPeerHeaderName),
-      )
-      .in(header[Option[String]](GossipTransportAuth.TransportProofHeaderName))
-      .in(stringBody)
-      .out(byteArrayBody)
+    TxGossipTapirEndpoints.eventStream
       .serverLogicSuccess:
         (sessionIdRaw, authenticatedPeerRaw, transportProofRaw, raw) =>
           handleEventRequest(
@@ -122,15 +106,7 @@ object TxGossipArmeriaAdapter:
       runtime: TxGossipRuntime[F, A],
       transportAuth: StaticPeerTransportAuth,
   ): ServerEndpoint[Any, F] =
-    endpoint.post
-      .in("gossip" / "control" / path[String]("sessionId"))
-      .in(
-        header[Option[String]](GossipTransportAuth.AuthenticatedPeerHeaderName),
-      )
-      .in(header[Option[String]](GossipTransportAuth.TransportProofHeaderName))
-      .in(stringBody)
-      .errorOut(stringBody)
-      .out(stringBody)
+    TxGossipTapirEndpoints.control
       .serverLogic:
         (sessionIdRaw, authenticatedPeerRaw, transportProofRaw, raw) =>
           handleControlRequest(
@@ -146,14 +122,7 @@ object TxGossipArmeriaAdapter:
       runtime: TxGossipRuntime[F, A],
       transportAuth: StaticPeerTransportAuth,
   ): ServerEndpoint[Any, F] =
-    endpoint.post
-      .in("gossip" / "session" / path[String]("sessionId") / "disconnect")
-      .in(
-        header[Option[String]](GossipTransportAuth.AuthenticatedPeerHeaderName),
-      )
-      .in(header[Option[String]](GossipTransportAuth.TransportProofHeaderName))
-      .errorOut(stringBody)
-      .out(stringBody)
+    TxGossipTapirEndpoints.disconnect
       .serverLogic: (sessionIdRaw, authenticatedPeerRaw, transportProofRaw) =>
         DirectionalSessionId.parse(sessionIdRaw) match
           case Left(error) =>
@@ -166,7 +135,7 @@ object TxGossipArmeriaAdapter:
               transportAuth = transportAuth,
               authenticatedPeerRaw = authenticatedPeerRaw,
               transportProofRaw = transportProofRaw,
-              requestPath = s"/gossip/session/${sessionIdRaw}/disconnect",
+              requestPath = TxGossipTapirEndpoints.disconnectPath(sessionIdRaw),
               requestBody = "",
             ) match
               case Left(rejection) =>
@@ -205,7 +174,7 @@ object TxGossipArmeriaAdapter:
           transportAuth = transportAuth,
           authenticatedPeerRaw = authenticatedPeerRaw,
           transportProofRaw = transportProofRaw,
-          requestPath = s"/gossip/events/${sessionIdRaw}",
+          requestPath = TxGossipTapirEndpoints.eventStreamPath(sessionIdRaw),
           requestBody = raw,
         ) match
           case Left(rendered) =>
@@ -308,7 +277,7 @@ object TxGossipArmeriaAdapter:
           transportAuth = transportAuth,
           authenticatedPeerRaw = authenticatedPeerRaw,
           transportProofRaw = transportProofRaw,
-          requestPath = s"/gossip/control/${sessionIdRaw}",
+          requestPath = TxGossipTapirEndpoints.controlPath(sessionIdRaw),
           requestBody = raw,
         ) match
           case Left(rendered) =>

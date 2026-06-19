@@ -28,7 +28,10 @@ import org.sigilaris.node.jvm.runtime.gossip.tx.{
 }
 import org.sigilaris.node.jvm.storage.swaydb.StorageLayout
 import org.sigilaris.node.jvm.transport.armeria.gossip.HotStuffBootstrapHttpTransport
-/** The assembled runtime bootstrap containing peer topology, authentication, consensus, and gossip runtime. */
+
+/** The assembled runtime bootstrap containing peer topology, authentication,
+  * consensus, and gossip runtime.
+  */
 final case class HotStuffRuntimeBootstrap[F[_]](
     topology: StaticPeerTopology,
     registry: StaticPeerRegistry,
@@ -57,7 +60,9 @@ final case class HotStuffRuntimeBootstrapWithApplications[F[_], A](
   def close: F[Unit] =
     consensus.close
 
-/** Companion for `HotStuffRuntimeBootstrap`, providing full bootstrap from config or topology. */
+/** Companion for `HotStuffRuntimeBootstrap`, providing full bootstrap from
+  * config or topology.
+  */
 object HotStuffRuntimeBootstrap:
   /** The default transaction runtime policy for consensus proposals. */
   val DefaultRuntimePolicy: TxRuntimePolicy =
@@ -66,7 +71,9 @@ object HotStuffRuntimeBootstrap:
         Some(HotStuffPolicy.requestPolicy.maxRetryAttemptsPerWindow),
     )
 
-  /** Generates a UUID-formatted idempotency key from a proposal ID for control batch deduplication. */
+  /** Generates a UUID-formatted idempotency key from a proposal ID for control
+    * batch deduplication.
+    */
   def proposalControlIdempotencyKey(
       proposal: Proposal,
   ): String =
@@ -76,7 +83,8 @@ object HotStuffRuntimeBootstrap:
     val buffer = ByteBuffer.wrap(bytes)
     UUID(buffer.getLong(), buffer.getLong()).toString
 
-  /** Creates a proposal catch-up readiness evaluator backed by a block query. */
+  /** Creates a proposal catch-up readiness evaluator backed by a block query.
+    */
   @SuppressWarnings(Array("org.wartremover.warts.DefaultArguments"))
   def proposalCatchUpReadinessFromBlockQuery[
       F[_]: Sync,
@@ -155,27 +163,31 @@ object HotStuffRuntimeBootstrap:
                   Resource.pure(error.asLeft[HotStuffRuntimeBootstrap[F]])
                 case Right(httpBootstrapConfig) =>
                   val resolvedBootstrapTransport =
-                    bootstrapTransport.orElse:
-                      httpBootstrapConfig.map(config =>
-                        HotStuffBootstrapHttpTransport.services[F](
-                          peerBaseUris = config.peerBaseUris,
-                          transportAuth = transportAuth,
-                          requestTimeout = config.requestTimeout,
-                          maxConcurrentRequests = config.maxConcurrentRequests,
-                        ),
-                      )
-                  fromTopology(
-                    topology = topology,
-                    transportAuth = transportAuth,
-                    consensusConfig = consensusConfig,
-                    clock = clock,
-                    runtimePolicy = runtimePolicy,
-                    handshakePolicy = handshakePolicy,
-                    bootstrapTransport = resolvedBootstrapTransport,
-                    storageLayout = storageLayout,
-                    proposalInputConfig = proposalInputConfig,
-                    proposalValidationConfig = proposalValidationConfig,
-                  )
+                    bootstrapTransport match
+                      case Some(transport) =>
+                        Resource.pure(transport.some)
+                      case None =>
+                        httpBootstrapConfig.traverse: config =>
+                          HotStuffBootstrapHttpTransport.servicesResource[F](
+                            peerBaseUris = config.peerBaseUris,
+                            transportAuth = transportAuth,
+                            requestTimeout = config.requestTimeout,
+                            maxConcurrentRequests =
+                              config.maxConcurrentRequests,
+                          )
+                  resolvedBootstrapTransport.flatMap: transport =>
+                    fromTopology(
+                      topology = topology,
+                      transportAuth = transportAuth,
+                      consensusConfig = consensusConfig,
+                      clock = clock,
+                      runtimePolicy = runtimePolicy,
+                      handshakePolicy = handshakePolicy,
+                      bootstrapTransport = transport,
+                      storageLayout = storageLayout,
+                      proposalInputConfig = proposalInputConfig,
+                      proposalValidationConfig = proposalValidationConfig,
+                    )
 
   /** Bootstraps HotStuff plus embedder-owned application gossip topics from
     * Typesafe Config.
@@ -195,7 +207,10 @@ object HotStuffRuntimeBootstrap:
         HotStuffProposalInputRuntimeConfig.legacyCompatible[F],
       proposalValidationConfig: HotStuffProposalValidationRuntimeConfig[F] =
         HotStuffProposalValidationRuntimeConfig.legacyCompatible[F],
-  ): Resource[F, Either[String, HotStuffRuntimeBootstrapWithApplications[F, A]]] =
+  ): Resource[F, Either[
+    String,
+    HotStuffRuntimeBootstrapWithApplications[F, A],
+  ]] =
     Resource
       .eval:
         Async[F].delay:
@@ -244,30 +259,36 @@ object HotStuffRuntimeBootstrap:
                   )
                 case Right(httpBootstrapConfig) =>
                   val resolvedBootstrapTransport =
-                    bootstrapTransport.orElse:
-                      httpBootstrapConfig.map(config =>
-                        HotStuffBootstrapHttpTransport.services[F](
-                          peerBaseUris = config.peerBaseUris,
-                          transportAuth = transportAuth,
-                          requestTimeout = config.requestTimeout,
-                          maxConcurrentRequests = config.maxConcurrentRequests,
-                        ),
-                      )
-                  fromTopologyWithApplicationTopics(
-                    topology = topology,
-                    transportAuth = transportAuth,
-                    consensusConfig = consensusConfig,
-                    clock = clock,
-                    applicationTopics = applicationTopics,
-                    runtimePolicy = runtimePolicy,
-                    handshakePolicy = handshakePolicy,
-                    bootstrapTransport = resolvedBootstrapTransport,
-                    storageLayout = storageLayout,
-                    proposalInputConfig = proposalInputConfig,
-                    proposalValidationConfig = proposalValidationConfig,
-                  )
+                    bootstrapTransport match
+                      case Some(transport) =>
+                        Resource.pure(transport.some)
+                      case None =>
+                        httpBootstrapConfig.traverse: config =>
+                          HotStuffBootstrapHttpTransport.servicesResource[F](
+                            peerBaseUris = config.peerBaseUris,
+                            transportAuth = transportAuth,
+                            requestTimeout = config.requestTimeout,
+                            maxConcurrentRequests =
+                              config.maxConcurrentRequests,
+                          )
+                  resolvedBootstrapTransport.flatMap: transport =>
+                    fromTopologyWithApplicationTopics(
+                      topology = topology,
+                      transportAuth = transportAuth,
+                      consensusConfig = consensusConfig,
+                      clock = clock,
+                      applicationTopics = applicationTopics,
+                      runtimePolicy = runtimePolicy,
+                      handshakePolicy = handshakePolicy,
+                      bootstrapTransport = transport,
+                      storageLayout = storageLayout,
+                      proposalInputConfig = proposalInputConfig,
+                      proposalValidationConfig = proposalValidationConfig,
+                    )
 
-  /** Bootstraps the full HotStuff runtime from an explicit peer topology and consensus config. */
+  /** Bootstraps the full HotStuff runtime from an explicit peer topology and
+    * consensus config.
+    */
   @SuppressWarnings(Array("org.wartremover.warts.DefaultArguments"))
   def fromTopology[F[_]: Async: LiftIO](
       topology: StaticPeerTopology,
@@ -450,8 +471,8 @@ object HotStuffRuntimeBootstrap:
                             .inMemoryServices[F](
                               validatorSet = validatedInput.validatorSet,
                               gossipPolicy = validatedInput.gossipPolicy,
-                              relayPolicy =
-                                HotStuffRelayPolicy.forRole(validatedInput.role),
+                              relayPolicy = HotStuffRelayPolicy
+                                .forRole(validatedInput.role),
                             )
                             .flatMap: (services, diagnostics) =>
                               for

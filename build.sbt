@@ -76,6 +76,8 @@ val Dependencies = new {
   lazy val nodeJvm = Seq(
     libraryDependencies ++= Seq(
       "com.softwaremill.sttp.tapir" %% "tapir-armeria-server-cats" % V.tapir,
+      "com.softwaremill.sttp.tapir" %% "tapir-sttp-client4"        % V.tapir,
+      "com.softwaremill.sttp.client4" %% "armeria-backend-cats"    % V.sttp,
       "com.softwaremill.sttp.tapir" %% "tapir-openapi-docs"        % V.tapir,
       "com.softwaremill.sttp.apispec" %% "openapi-circe-yaml"      % V.openApiCirceYaml,
       "com.typesafe" % "config" % "1.4.3",
@@ -92,7 +94,7 @@ val Dependencies = new {
 }
 Global / onChangedBuildSource := ReloadOnSourceChanges
 ThisBuild / organization      := "org.sigilaris"
-ThisBuild / version           := "0.2.4"
+ThisBuild / version           := "0.2.5"
 ThisBuild / scalaVersion      := V.Scala
 ThisBuild / semanticdbEnabled := true
 
