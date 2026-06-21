@@ -12,7 +12,7 @@ Completed
 ## Background
 - `build.sbt` already sets `ThisBuild / version := "0.2.3-SNAPSHOT"`.
 - v0.2.1 added the HotStuff application proposal input provider, and v0.2.2 added the proposal validation provider.
-- bbgo and other embedders now need two contracts to be explicit before they can safely tune recovery and signing policies:
+- Downstream embedders now need two contracts to be explicit before they can safely tune recovery and signing policies:
   - account-key binding guarantees for `SignatureVerifier`;
   - HotStuff finalization observability and the boundary between consensus finalization and embedder materialization failures.
 - These are long-lived contracts, so ADRs should be locked before implementation details are finalized.
@@ -33,7 +33,7 @@ Completed
 - Release readiness checks for the existing Maven coordinates.
 
 ## Non-Goals
-- bbgo HTTP errorKey or SSE/API contract changes.
+- Embedder HTTP errorKey or SSE/API contract changes.
 - Application-specific materialization retry policy.
 - A public metrics exporter, HTTP endpoint, Prometheus registry, or SSE replay protocol.
 - Pacemaker artifact redesign or validator-set rotation changes.
@@ -103,7 +103,7 @@ _All resolved in Phase 0 — see the "Phase 0 Locked Decisions" subsection below
 ## Implementation Phases
 
 ### Phase 0: Contract Lock
-- Review ADR-0027 and ADR-0028 with the bbgo integration questions in mind.
+- Review ADR-0027 and ADR-0028 with downstream integration questions in mind.
 - Decide whether v0.2.3 needs typed signature failure reasons or documentation/test hardening is enough.
 - Choose the finalization observation exposure shape.
 - Freeze the v0.2.3 public surface list before code changes.
@@ -230,6 +230,7 @@ _All resolved in Phase 0 — see the "Phase 0 Locked Decisions" subsection below
 - [x] Switch version from `0.2.3-SNAPSHOT` to `0.2.3` only for the final release commit.
 
 ## Follow-Ups
-- bbgo should keep its HTTP/SSE/errorKey ADRs separate and reference these sigilaris provider contracts.
+- Embedders should keep HTTP/SSE/errorKey ADRs separate and reference these
+  Sigilaris provider contracts.
 - If a stable metrics backend is needed, create a follow-up plan for finalization metric export after the diagnostic model lands.
 - If embedder materialization hooks become common across downstream applications, write a dedicated materialization handoff ADR.

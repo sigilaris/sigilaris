@@ -29,7 +29,9 @@ object FinalizedAnchorVerificationFailure:
       detail = error.detail,
     )
 
-/** Records a safety fault where conflicting blocks were finalized at the same height. */
+/** Records a safety fault where conflicting blocks were finalized at the same
+  * height.
+  */
 final case class FinalizedAnchorSafetyFault(
     chainId: ChainId,
     height: BlockHeight,
@@ -49,7 +51,9 @@ final case class FinalizedAnchorSafetyFault(
 
 /** Companion for `FinalizedAnchorSafetyFault`. */
 object FinalizedAnchorSafetyFault:
-  /** Creates a safety fault from conflicting finalized suggestions at the same height. */
+  /** Creates a safety fault from conflicting finalized suggestions at the same
+    * height.
+    */
   def fromSuggestions(
       chainId: ChainId,
       height: BlockHeight,
@@ -102,7 +106,26 @@ object FinalizedAnchorObservation:
       finalizedObservedAt = finalizedObservedAt,
     )
 
-/** A snapshot of finalization tracking state, including the best finalized and any safety faults. */
+/** A finalized proposal and its application-neutral tx ids. */
+final case class FinalizedTxProposalObservation(
+    proposalId: ProposalId,
+    blockId: BlockId,
+    height: BlockHeight,
+    txSet: ProposalTxSet,
+)
+
+/** The newly finalized proposal range for a finalization advancement. */
+final case class FinalizedTxRangeObservation(
+    chainId: ChainId,
+    previousFinalized: Option[SnapshotAnchor],
+    newFinalized: SnapshotAnchor,
+    finalizedObservedAt: Instant,
+    proposals: Vector[FinalizedTxProposalObservation],
+)
+
+/** A snapshot of finalization tracking state, including the best finalized and
+  * any safety faults.
+  */
 final case class FinalizationTrackerSnapshot(
     bestFinalized: Option[FinalizedAnchorSuggestion],
     safetyFaults: Vector[FinalizedAnchorSafetyFault],
@@ -117,7 +140,9 @@ object FinalizationTrackerSnapshot:
       safetyFaults = Vector.empty[FinalizedAnchorSafetyFault],
     )
 
-/** Tracks finalization by detecting three-chain commit proofs from observed proposals. */
+/** Tracks finalization by detecting three-chain commit proofs from observed
+  * proposals.
+  */
 object HotStuffFinalizationTracker:
   private val candidateOrdering: Ordering[FinalizedAnchorSuggestion] =
     Ordering.by: suggestion =>
@@ -218,9 +243,13 @@ object HotStuffFinalizationTracker:
     Ordering[BlockHeight].lt(anchor.block.height, child.block.height) &&
       Ordering[BlockHeight].lt(child.block.height, grandchild.block.height)
 
-/** Verifies finalized anchor suggestions against the validator set and selects the highest verified. */
+/** Verifies finalized anchor suggestions against the validator set and selects
+  * the highest verified.
+  */
 object HotStuffFinalizedAnchorVerifier:
-  /** Verifies a finalized anchor suggestion by checking all three proposals and their QCs. */
+  /** Verifies a finalized anchor suggestion by checking all three proposals and
+    * their QCs.
+    */
   def verify[F[_]: Monad](
       suggestion: FinalizedAnchorSuggestion,
       validatorSetLookup: ValidatorSetLookup[F],
@@ -310,7 +339,9 @@ object HotStuffFinalizedAnchorVerifier:
       )
     yield suggestion
 
-  /** Selects the highest verified finalized anchor from multiple suggestions, detecting safety faults. */
+  /** Selects the highest verified finalized anchor from multiple suggestions,
+    * detecting safety faults.
+    */
   def selectHighestVerified[F[_]: Monad](
       suggestions: Iterable[FinalizedAnchorSuggestion],
       validatorSetLookup: ValidatorSetLookup[F],
@@ -588,7 +619,9 @@ private def ancestorChain(
 
   loop(start, Nil).reverse.toVector
 
-/** Factory for constructing bootstrap services backed by in-memory artifact sinks. */
+/** Factory for constructing bootstrap services backed by in-memory artifact
+  * sinks.
+  */
 object HotStuffBootstrapServicesRuntime:
   /** Creates in-memory bootstrap services from a static validator set. */
   def inMemory[F[_]: Sync](
@@ -603,7 +636,9 @@ object HotStuffBootstrapServicesRuntime:
       diagnostics = new InMemoryBootstrapDiagnosticsSource(sink),
     )
 
-  /** Creates bootstrap services from a trust root with historical validator sets. */
+  /** Creates bootstrap services from a trust root with historical validator
+    * sets.
+    */
   def fromTrustRoot[F[_]: Sync](
       trustRoot: BootstrapTrustRoot,
       validatorSetInventory: Vector[ValidatorSet],
@@ -617,7 +652,8 @@ object HotStuffBootstrapServicesRuntime:
       diagnostics = new InMemoryBootstrapDiagnosticsSource(sink),
     )
 
-  /** Creates in-memory bootstrap services with an optional snapshot node store. */
+  /** Creates in-memory bootstrap services with an optional snapshot node store.
+    */
   def inMemoryWithNodeStore[F[_]: Sync](
       validatorSet: ValidatorSet,
       sink: InMemoryHotStuffArtifactSink[F],
@@ -632,7 +668,9 @@ object HotStuffBootstrapServicesRuntime:
       diagnostics = diagnostics,
     )
 
-  /** Creates bootstrap services from a trust root with full configuration options. */
+  /** Creates bootstrap services from a trust root with full configuration
+    * options.
+    */
   def fromTrustRootWithNodeStore[F[_]: Sync](
       trustRoot: BootstrapTrustRoot,
       validatorSetInventory: Vector[ValidatorSet],

@@ -467,17 +467,31 @@ object HotStuffDeploymentTarget:
 /** Controls whether validated artifacts are relayed to the gossip source for re-broadcast. */
 final case class HotStuffRelayPolicy(
     relayValidatedArtifacts: Boolean,
-)
+):
+  def mode: String =
+    if relayValidatedArtifacts then "transitive" else "local-only"
 
 /** Companion for `HotStuffRelayPolicy`. */
 object HotStuffRelayPolicy:
+  /** Production default: every HotStuff role relays validated consensus artifacts. */
+  val default: HotStuffRelayPolicy =
+    HotStuffRelayPolicy(relayValidatedArtifacts = true)
+
+  /** Explicit local-only profile for tests or narrowly scoped harnesses. */
+  val localOnly: HotStuffRelayPolicy =
+    HotStuffRelayPolicy(relayValidatedArtifacts = false)
+
+  /** Alias documenting that non-transitive behavior is intended for tests. */
+  val testLocalOnly: HotStuffRelayPolicy =
+    localOnly
+
   /** Returns the relay policy appropriate for the given node role. */
   def forRole(
       role: LocalNodeRole,
   ): HotStuffRelayPolicy =
-    HotStuffRelayPolicy(
-      relayValidatedArtifacts = role === LocalNodeRole.Audit,
-    )
+    role match
+      case LocalNodeRole.Validator => default
+      case LocalNodeRole.Audit     => default
 
 /** Represents a policy violation during HotStuff consensus operations. */
 final case class HotStuffPolicyViolation(

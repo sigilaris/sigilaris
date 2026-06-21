@@ -27,6 +27,9 @@ currently ships three layers:
 - The HotStuff bootstrap baseline covers finalized-anchor suggestion discovery,
   static trust-root verification, snapshot sync, anchor-pinned forward catch-up,
   and low-priority historical backfill.
+- HotStuff consensus artifacts relay transitively after validation by default;
+  audit reachability can use a live validator path, while offline or lagging
+  peers still rely on bounded retention plus bootstrap/catch-up/backfill.
 - Pacemaker timeout-vote, timeout-certificate, and new-view progression are
   part of the current JVM baseline.
 - A repo-local reference smoke harness exercises static multi-node launch with
@@ -80,6 +83,8 @@ currently ships three layers:
 - Restart, fencing, and DR sequencing remain operator-managed.
 - The current launch and consensus story assumes a static, same-DC style
   environment rather than an internet-scale deployment model.
+- Transitive relay does not make application gossip topics transitive and does
+  not provide unbounded HotStuff artifact history.
 
 ## Build
 

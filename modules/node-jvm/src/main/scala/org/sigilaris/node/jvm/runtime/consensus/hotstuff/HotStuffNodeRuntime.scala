@@ -56,7 +56,9 @@ final case class HotStuffInMemoryRuntimeDiagnostics[F[_]](
     sink: InMemoryHotStuffArtifactSink[F],
 )
 
-/** The assembled HotStuff consensus node runtime, providing artifact emission, bootstrap, and diagnostics. */
+/** The assembled HotStuff consensus node runtime, providing artifact emission,
+  * bootstrap, and diagnostics.
+  */
 @SuppressWarnings(Array("org.wartremover.warts.DefaultArguments"))
 final case class HotStuffNodeRuntime[F[_]: Sync](
     bootstrapInput: HotStuffRuntimeBootstrapInput,
@@ -66,6 +68,8 @@ final case class HotStuffNodeRuntime[F[_]: Sync](
     pacemakerSnapshot: Option[F[HotStuffPacemakerRuntimeSnapshot]] = None,
     proposalValidationConfig: HotStuffProposalValidationRuntimeConfig[F] =
       HotStuffProposalValidationRuntimeConfig.legacyCompatible[F],
+    txUniquenessConfig: HotStuffProposalTxUniquenessRuntimeConfig =
+      HotStuffProposalTxUniquenessRuntimeConfig.enforceUnfinalizedAncestors,
 ):
   def localPeer: PeerIdentity = bootstrapInput.localPeer
 
@@ -106,6 +110,18 @@ final case class HotStuffNodeRuntime[F[_]: Sync](
     inMemorySink.fold(
       Map.empty[ChainId, FinalizedAnchorObservation].pure[F],
     )(_.finalizationObservations)
+
+  def currentFinalizedTxRangeObservations
+      : F[Map[ChainId, FinalizedTxRangeObservation]] =
+    inMemorySink.fold(
+      Map.empty[ChainId, FinalizedTxRangeObservation].pure[F],
+    )(_.finalizedTxRangeObservations)
+
+  def recentFinalizedTxRangeObservations
+      : F[Vector[FinalizedTxRangeObservation]] =
+    inMemorySink.fold(Vector.empty[FinalizedTxRangeObservation].pure[F])(
+      _.recentFinalizedTxRangeObservations,
+    )
 
   def currentPacemakerSnapshot: F[Option[HotStuffPacemakerRuntimeSnapshot]] =
     pacemakerSnapshot match
@@ -460,14 +476,18 @@ final case class HotStuffNodeRuntime[F[_]: Sync](
       proposal: Proposal,
       now: Instant,
   ): F[Either[HotStuffPolicyViolation, Unit]] =
-    HotStuffProposalValidationDecision
-      .evaluateForLocalVote(
-        config = proposalValidationConfig,
-        proposal = proposal,
-        localVoter = voter,
-        now = now,
-        validatorSet = validatorSet,
-      )
+    proposalTxUniquenessDecision(proposal)
+      .flatMap:
+        case Some(decision) =>
+          decision.pure[F]
+        case None =>
+          HotStuffProposalValidationDecision.evaluateForLocalVote(
+            config = proposalValidationConfig,
+            proposal = proposal,
+            localVoter = voter,
+            now = now,
+            validatorSet = validatorSet,
+          )
       .map:
         case decision if decision.voteSuppressed =>
           HotStuffPolicyViolation(
@@ -477,9 +497,50 @@ final case class HotStuffNodeRuntime[F[_]: Sync](
         case _ =>
           ().asRight[HotStuffPolicyViolation]
 
-/** Companion for `HotStuffNodeRuntime`, providing validation and factory methods. */
+  private def proposalTxUniquenessDecision(
+      proposal: Proposal,
+  ): F[Option[HotStuffProposalValidationDecision]] =
+    txUniquenessConfig.policy match
+      case HotStuffProposalTxUniquenessPolicy.UnsafeAllowAncestorTxConflicts =>
+        none[HotStuffProposalValidationDecision].pure[F]
+      case HotStuffProposalTxUniquenessPolicy.EnforceUnfinalizedAncestors =>
+        inMemorySink match
+          case Some(sink) =>
+            sink.snapshot.map: snapshot =>
+              val (_, result) =
+                HotStuffProposalTxUniqueness.checkProposal(
+                  proposal = proposal,
+                  proposals = snapshot.proposals.values,
+                  finalization = snapshot.finalization,
+                  bounds = txUniquenessConfig.bounds,
+                  cache = HotStuffProposalTxUniquenessCache.empty,
+                )
+              HotStuffProposalValidationDecision.fromTxUniquenessResult(result)
+          case None =>
+            HotStuffProposalValidationDecision
+              .fromTxUniquenessResult(
+                HotStuffProposalTxUniquenessResult.Unavailable(
+                  reason = "proposalTxAncestorSnapshotUnavailable",
+                  detail = None,
+                  metadata = HotStuffProposalTxUniquenessMetadata(
+                    chainId = proposal.window.chainId,
+                    parentBlockId = proposal.block.parent,
+                    bestFinalizedBlockId = None,
+                    traversedAncestorCount = 0,
+                    excludedTxIdCount = 0,
+                    fromCache = false,
+                  ),
+                ),
+              )
+              .pure[F]
+
+/** Companion for `HotStuffNodeRuntime`, providing validation and factory
+  * methods.
+  */
 object HotStuffNodeRuntime:
-  /** Validates bootstrap input by checking for dual-active key holder violations. */
+  /** Validates bootstrap input by checking for dual-active key holder
+    * violations.
+    */
   def validateBootstrapInput(
       bootstrapInput: HotStuffRuntimeBootstrapInput,
   ): Either[HotStuffPolicyViolation, HotStuffRuntimeBootstrapInput] =
@@ -493,6 +554,7 @@ object HotStuffNodeRuntime:
       diagnostics: Option[HotStuffInMemoryRuntimeDiagnostics[F]],
       bootstrapLifecycle: Option[HotStuffBootstrapLifecycle[F]],
       proposalValidationConfig: HotStuffProposalValidationRuntimeConfig[F],
+      txUniquenessConfig: HotStuffProposalTxUniquenessRuntimeConfig,
   ): HotStuffNodeRuntime[F] =
     HotStuffNodeRuntime(
       bootstrapInput = bootstrapInput,
@@ -501,6 +563,7 @@ object HotStuffNodeRuntime:
       bootstrapLifecycle = bootstrapLifecycle,
       pacemakerSnapshot = None,
       proposalValidationConfig = proposalValidationConfig,
+      txUniquenessConfig = txUniquenessConfig,
     )
 
   @SuppressWarnings(Array("org.wartremover.warts.DefaultArguments"))
@@ -511,6 +574,8 @@ object HotStuffNodeRuntime:
       bootstrapLifecycle: Option[HotStuffBootstrapLifecycle[F]] = None,
       proposalValidationConfig: HotStuffProposalValidationRuntimeConfig[F] =
         HotStuffProposalValidationRuntimeConfig.legacyCompatible[F],
+      txUniquenessConfig: HotStuffProposalTxUniquenessRuntimeConfig =
+        HotStuffProposalTxUniquenessRuntimeConfig.enforceUnfinalizedAncestors,
   ): Either[HotStuffPolicyViolation, HotStuffNodeRuntime[F]] =
     validateBootstrapInput(bootstrapInput)
       .map(
@@ -520,6 +585,7 @@ object HotStuffNodeRuntime:
           diagnostics,
           bootstrapLifecycle,
           proposalValidationConfig,
+          txUniquenessConfig,
         ),
       )
 
@@ -531,7 +597,7 @@ object HotStuffNodeRuntime:
       validatorSet: ValidatorSet,
       gossipPolicy: HotStuffGossipPolicy = HotStuffGossipPolicy.default,
       relayPolicy: HotStuffRelayPolicy =
-        HotStuffRelayPolicy(relayValidatedArtifacts = false),
+        HotStuffRelayPolicy.default,
   )(using
       clock: GossipClock[F],
   ): F[(HotStuffRuntimeServices[F], HotStuffInMemoryRuntimeDiagnostics[F])] =
@@ -571,6 +637,8 @@ object HotStuffNodeRuntime:
         HotStuffProposalInputRuntimeConfig.legacyCompatible[F],
       proposalValidationConfig: HotStuffProposalValidationRuntimeConfig[F] =
         HotStuffProposalValidationRuntimeConfig.legacyCompatible[F],
+      txUniquenessConfig: HotStuffProposalTxUniquenessRuntimeConfig =
+        HotStuffProposalTxUniquenessRuntimeConfig.enforceUnfinalizedAncestors,
   )(using
       clock: GossipClock[F],
   ): F[Either[HotStuffPolicyViolation, HotStuffNodeRuntime[F]]] =
@@ -592,6 +660,8 @@ object HotStuffNodeRuntime:
                 .validateForAutomaticConsensus(proposalInputConfig)
               _ <- HotStuffProposalValidationRuntimeConfig
                 .validateForAutomaticConsensus(proposalValidationConfig)
+              _ <- HotStuffProposalTxUniquenessRuntimeConfig
+                .validateForAutomaticConsensus(txUniquenessConfig)
             yield validatedInput
           else validatedInput.asRight[HotStuffPolicyViolation]
     validatedBootstrapInput match
@@ -611,8 +681,10 @@ object HotStuffNodeRuntime:
                 Some(diagnostics),
                 none[HotStuffBootstrapLifecycle[F]],
                 proposalValidationConfig,
+                txUniquenessConfig,
               ),
               automaticConsensus = automaticConsensus,
               proposalInputConfig = proposalInputConfig,
+              txUniquenessConfig = txUniquenessConfig,
             )
             .map(_.asRight[HotStuffPolicyViolation])

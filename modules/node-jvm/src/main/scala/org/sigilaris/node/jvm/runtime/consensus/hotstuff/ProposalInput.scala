@@ -26,6 +26,7 @@ object HotStuffProposalInputBounds:
     HotStuffProposalInputBounds(maxTxIds = None)
 
 /** Application-neutral request for the next leader proposal body. */
+@SuppressWarnings(Array("org.wartremover.warts.DefaultArguments"))
 final case class HotStuffProposalInputRequest(
     window: HotStuffWindow,
     proposer: ValidatorId,
@@ -35,9 +36,13 @@ final case class HotStuffProposalInputRequest(
     now: Instant,
     timestamp: BlockTimestamp,
     bounds: HotStuffProposalInputBounds,
+    txExclusion: HotStuffProposalTxExclusion =
+      HotStuffProposalTxExclusion.empty,
 )
 
-/** Application-neutral proposal input that Sigilaris can sign as a HotStuff proposal. */
+/** Application-neutral proposal input that Sigilaris can sign as a HotStuff
+  * proposal.
+  */
 final case class HotStuffProposalInput(
     parent: Option[BlockId],
     height: BlockHeight,
@@ -182,6 +187,11 @@ object HotStuffProposalInputDecision:
 
 /** Validation helpers for provider-supplied proposal input. */
 object HotStuffProposalInputValidator:
+  private[hotstuff] val TxAncestorConflictReason: String =
+    "proposalInputTxAncestorConflict"
+  private[hotstuff] val TxAncestorUnavailableReason: String =
+    "proposalInputTxAncestorUnavailable"
+
   def validate(
       request: HotStuffProposalInputRequest,
       input: HotStuffProposalInput,
@@ -225,6 +235,7 @@ object HotStuffProposalInputValidator:
             reason = "proposalInputTxIdUnsupported",
             detail = Some(txId.toHexLower),
           ).asLeft[Unit]
+      _ <- ensureNoExcludedTxIds(request, input)
       _ <- request.bounds.maxTxIds.traverse: maxTxIds =>
         ensure(
           input.txSet.txIds.sizeCompare(maxTxIds) <= 0,
@@ -244,6 +255,19 @@ object HotStuffProposalInputValidator:
       condition,
       (),
       HotStuffValidationFailure(reason = reason, detail = detail),
+    )
+
+  private def ensureNoExcludedTxIds(
+      request: HotStuffProposalInputRequest,
+      input: HotStuffProposalInput,
+  ): Either[HotStuffValidationFailure, Unit] =
+    val excluded = request.txExclusion.excludedTxIds.txIds.toSet
+    val conflictCount =
+      input.txSet.txIds.count(txId => excluded.contains(txId))
+    ensure(
+      conflictCount === 0,
+      TxAncestorConflictReason,
+      Some(ss"conflictCount=${conflictCount.toString}"),
     )
 
 /** Legacy provider that emits the previous autonomous empty proposal body. */

@@ -10,14 +10,108 @@ import scodec.bits.ByteVector
 import org.sigilaris.core.codec.byte.ByteEncoder
 import org.sigilaris.core.crypto.Hash
 import org.sigilaris.core.util.SafeStringInterp.*
-import org.sigilaris.node.jvm.runtime.block.{BlockId, BlockQuery}
+import org.sigilaris.node.jvm.runtime.block.{BlockHeight, BlockId, BlockQuery}
 import org.sigilaris.node.gossip.*
+
+final case class HotStuffArtifactSourceRetention private (
+    retainedEventsPerTopic: Int,
+)
+
+object HotStuffArtifactSourceRetention:
+  def fromRetainedEventsPerTopic(
+      value: Int,
+  ): Either[String, HotStuffArtifactSourceRetention] =
+    Either.cond(
+      value > 0,
+      new HotStuffArtifactSourceRetention(value),
+      "retainedEventsPerTopic must be positive",
+    )
+
+  @SuppressWarnings(Array("org.wartremover.warts.Throw"))
+  def unsafe(
+      retainedEventsPerTopic: Int,
+  ): HotStuffArtifactSourceRetention =
+    fromRetainedEventsPerTopic(retainedEventsPerTopic) match
+      case Right(retention) => retention
+      case Left(error)      => throw new IllegalArgumentException(error)
+
+  val default: HotStuffArtifactSourceRetention =
+    unsafe(retainedEventsPerTopic = 4096)
+
+final case class InMemoryHotStuffSourceDiagnostics(
+    retainedEventsPerTopic: Int,
+    retainedEventsByTopic: Map[ChainTopic, Int],
+    appendedEventsByTopic: Map[ChainTopic, Long],
+    prunedEventsByTopic: Map[ChainTopic, Long],
+    readByIdMissesByTopic: Map[ChainTopic, Long],
+    invalidCursorRejectionsByTopic: Map[ChainTopic, Long],
+    staleCursorRejectionsByTopic: Map[ChainTopic, Long],
+)
 
 final case class InMemoryHotStuffSourceSnapshot(
     eventsByTopic: Map[ChainTopic, Vector[GossipEvent[HotStuffGossipArtifact]]],
+    diagnostics: InMemoryHotStuffSourceDiagnostics,
 )
 
-/** A snapshot of the in-memory gossip artifact sink state, including all stored artifacts and QCs. */
+final case class InMemoryHotStuffRelayRejectionKey(
+    topic: GossipTopic,
+    reason: String,
+)
+
+final case class InMemoryHotStuffSinkDiagnostics(
+    policyMode: String,
+    relayedValidatedArtifactsByTopic: Map[GossipTopic, Long],
+    duplicateArtifactsSuppressedByTopic: Map[GossipTopic, Long],
+    rejectedArtifactsByTopicAndReason:
+      Map[InMemoryHotStuffRelayRejectionKey, Long],
+):
+  def recordRelay(
+      topic: GossipTopic,
+  ): InMemoryHotStuffSinkDiagnostics =
+    copy(
+      relayedValidatedArtifactsByTopic =
+        increment(relayedValidatedArtifactsByTopic, topic),
+    )
+
+  def recordDuplicate(
+      topic: GossipTopic,
+  ): InMemoryHotStuffSinkDiagnostics =
+    copy(
+      duplicateArtifactsSuppressedByTopic =
+        increment(duplicateArtifactsSuppressedByTopic, topic),
+    )
+
+  def recordRejection(
+      topic: GossipTopic,
+      reason: String,
+  ): InMemoryHotStuffSinkDiagnostics =
+    val key = InMemoryHotStuffRelayRejectionKey(topic, reason)
+    copy(
+      rejectedArtifactsByTopicAndReason =
+        increment(rejectedArtifactsByTopicAndReason, key),
+    )
+
+  private def increment[A](
+      values: Map[A, Long],
+      key: A,
+  ): Map[A, Long] =
+    values.updatedWith(key)(_.map(_ + 1L).orElse(Some(1L)))
+
+object InMemoryHotStuffSinkDiagnostics:
+  def empty(
+      relayPolicy: HotStuffRelayPolicy,
+  ): InMemoryHotStuffSinkDiagnostics =
+    InMemoryHotStuffSinkDiagnostics(
+      policyMode = relayPolicy.mode,
+      relayedValidatedArtifactsByTopic = Map.empty[GossipTopic, Long],
+      duplicateArtifactsSuppressedByTopic = Map.empty[GossipTopic, Long],
+      rejectedArtifactsByTopicAndReason =
+        Map.empty[InMemoryHotStuffRelayRejectionKey, Long],
+    )
+
+/** A snapshot of the in-memory gossip artifact sink state, including all stored
+  * artifacts and QCs.
+  */
 final case class InMemoryHotStuffSinkSnapshot(
     proposals: Map[ProposalId, Proposal],
     votes: Map[VoteId, Vote],
@@ -30,12 +124,33 @@ final case class InMemoryHotStuffSinkSnapshot(
     qcs: Map[ProposalId, QuorumCertificate],
     finalization: Map[ChainId, FinalizationTrackerSnapshot],
     duplicates: Vector[GossipEvent[HotStuffGossipArtifact]],
-)
+    diagnostics: InMemoryHotStuffSinkDiagnostics,
+):
+  def recordRelay(
+      topic: GossipTopic,
+  ): InMemoryHotStuffSinkSnapshot =
+    copy(diagnostics = diagnostics.recordRelay(topic))
+
+  def recordDuplicate(
+      event: GossipEvent[HotStuffGossipArtifact],
+  ): InMemoryHotStuffSinkSnapshot =
+    copy(
+      duplicates = duplicates :+ event,
+      diagnostics = diagnostics.recordDuplicate(event.topic),
+    )
+
+  def recordRejection(
+      event: GossipEvent[HotStuffGossipArtifact],
+      reason: String,
+  ): InMemoryHotStuffSinkSnapshot =
+    copy(diagnostics = diagnostics.recordRejection(event.topic, reason))
 
 /** Companion for `InMemoryHotStuffSinkSnapshot`. */
 object InMemoryHotStuffSinkSnapshot:
-  /** An empty sink snapshot. */
-  val empty: InMemoryHotStuffSinkSnapshot =
+  /** Creates an empty sink snapshot for the supplied relay policy. */
+  def empty(
+      relayPolicy: HotStuffRelayPolicy,
+  ): InMemoryHotStuffSinkSnapshot =
     InMemoryHotStuffSinkSnapshot(
       proposals = Map.empty[ProposalId, Proposal],
       votes = Map.empty[VoteId, Vote],
@@ -49,6 +164,7 @@ object InMemoryHotStuffSinkSnapshot:
       qcs = Map.empty[ProposalId, QuorumCertificate],
       finalization = Map.empty[ChainId, FinalizationTrackerSnapshot],
       duplicates = Vector.empty[GossipEvent[HotStuffGossipArtifact]],
+      diagnostics = InMemoryHotStuffSinkDiagnostics.empty(relayPolicy),
     )
 
 private final case class AnchorKey(
@@ -63,6 +179,8 @@ private final case class ObservationState(
     observedAnchors: Map[AnchorKey, FinalizedAnchorObservation],
     observedAnchorOrder: Vector[AnchorKey],
     currentByChain: Map[ChainId, FinalizedAnchorObservation],
+    currentTxRangeByChain: Map[ChainId, FinalizedTxRangeObservation],
+    txRangeHistory: Vector[FinalizedTxRangeObservation],
 ):
   def recordProposalFirstSeen(
       proposalId: ProposalId,
@@ -85,32 +203,51 @@ private final case class ObservationState(
 
   def recordFinalization(
       finalization: Map[ChainId, FinalizationTrackerSnapshot],
+      proposals: Iterable[Proposal],
       observedAt: Instant,
   ): ObservationState =
+    val proposalsByChainAndBlockId =
+      proposals.iterator
+        .map(proposal =>
+          (proposal.window.chainId, proposal.targetBlockId) -> proposal,
+        )
+        .toMap
     finalization.foldLeft(this):
       case (state, (chainId, snapshot)) =>
         snapshot.bestFinalized match
           case Some(suggestion) =>
+            val previousTxRangeAnchor =
+              state.currentTxRangeByChain.get(chainId).map(_.newFinalized)
             val key = AnchorKey(
               chainId = chainId,
               proposalId = suggestion.proposal.proposalId,
               blockId = suggestion.anchorBlockId,
             )
+            val nextRange =
+              state.txRangeForAdvancement(
+                chainId = chainId,
+                previousAnchor = previousTxRangeAnchor,
+                suggestion = suggestion,
+                proposalsByChainAndBlockId = proposalsByChainAndBlockId,
+                observedAt = observedAt,
+              )
             state.currentByChain.get(chainId) match
               // currentByChain pins the current observation so bounded-history eviction cannot re-stamp a still-current anchor.
               case Some(current)
                   if current.proposalId === key.proposalId &&
                     current.blockId === key.blockId =>
-                state
+                state.recordTxRange(chainId, nextRange)
               case _ =>
                 state.observedAnchors.get(key) match
                   case Some(existing) =>
-                    state.copy(
-                      currentByChain = state.currentByChain.updated(
-                        chainId,
-                        existing,
-                      ),
-                    )
+                    state
+                      .copy(
+                        currentByChain = state.currentByChain.updated(
+                          chainId,
+                          existing,
+                        ),
+                      )
+                      .recordTxRange(chainId, nextRange)
                   case None =>
                     val observation =
                       FinalizedAnchorObservation.fromSuggestion(
@@ -130,14 +267,39 @@ private final case class ObservationState(
                         value = observation,
                         cap = ObservationState.ObservedAnchorCap,
                       )
-                    state.copy(
-                      observedAnchors = boundedObserved,
-                      observedAnchorOrder = boundedOrder,
-                      currentByChain =
-                        state.currentByChain.updated(chainId, observation),
-                    )
+                    state
+                      .copy(
+                        observedAnchors = boundedObserved,
+                        observedAnchorOrder = boundedOrder,
+                        currentByChain =
+                          state.currentByChain.updated(chainId, observation),
+                      )
+                      .recordTxRange(chainId, nextRange)
           case None =>
             state.clearFaultedCurrent(chainId, snapshot)
+
+  private def recordTxRange(
+      chainId: ChainId,
+      range: Option[FinalizedTxRangeObservation],
+  ): ObservationState =
+    range match
+      case None =>
+        this
+      case Some(nextRange)
+          if currentTxRangeByChain
+            .get(chainId)
+            .exists(_.newFinalized.blockId === nextRange.newFinalized.blockId) =>
+        this
+      case Some(nextRange) =>
+        copy(
+          currentTxRangeByChain =
+            currentTxRangeByChain.updated(chainId, nextRange),
+          txRangeHistory = ObservationState.appendBoundedValue(
+            values = txRangeHistory,
+            value = nextRange,
+            cap = ObservationState.TxRangeHistoryCap,
+          ),
+        )
 
   private def clearFaultedCurrent(
       chainId: ChainId,
@@ -152,12 +314,82 @@ private final case class ObservationState(
         case _ =>
           this
 
+  private def txRangeForAdvancement(
+      chainId: ChainId,
+      previousAnchor: Option[SnapshotAnchor],
+      suggestion: FinalizedAnchorSuggestion,
+      proposalsByChainAndBlockId: Map[(ChainId, BlockId), Proposal],
+      observedAt: Instant,
+  ): Option[FinalizedTxRangeObservation] =
+    val nextAnchor = suggestion.snapshotAnchor
+    previousAnchor match
+      case Some(previous)
+          if !Ordering[BlockHeight].lt(previous.height, nextAnchor.height) =>
+        None
+      case _ =>
+        collectNewlyFinalizedProposals(
+          chainId = chainId,
+          current = suggestion.proposal,
+          stopBlockId = previousAnchor.map(_.blockId),
+          proposalsByChainAndBlockId = proposalsByChainAndBlockId,
+          acc = Vector.empty[FinalizedTxProposalObservation],
+        ).map: finalizedProposals =>
+          FinalizedTxRangeObservation(
+            chainId = chainId,
+            previousFinalized = previousAnchor,
+            newFinalized = nextAnchor,
+            finalizedObservedAt = observedAt,
+            proposals = finalizedProposals,
+          )
+
+  @scala.annotation.tailrec
+  private def collectNewlyFinalizedProposals(
+      chainId: ChainId,
+      current: Proposal,
+      stopBlockId: Option[BlockId],
+      proposalsByChainAndBlockId: Map[(ChainId, BlockId), Proposal],
+      acc: Vector[FinalizedTxProposalObservation],
+  ): Option[Vector[FinalizedTxProposalObservation]] =
+    if stopBlockId.exists(_ === current.targetBlockId) then Some(acc)
+    else
+      val nextAcc =
+        FinalizedTxProposalObservation(
+          proposalId = current.proposalId,
+          blockId = current.targetBlockId,
+          height = current.block.height,
+          txSet = current.txSet,
+        ) +: acc
+      current.block.parent match
+        case Some(parentBlockId) if stopBlockId.exists(_ === parentBlockId) =>
+          Some(nextAcc)
+        case Some(parentBlockId) =>
+          proposalsByChainAndBlockId.get(chainId -> parentBlockId) match
+            case Some(parentProposal) =>
+              collectNewlyFinalizedProposals(
+                chainId = chainId,
+                current = parentProposal,
+                stopBlockId = stopBlockId,
+                proposalsByChainAndBlockId = proposalsByChainAndBlockId,
+                acc = nextAcc,
+              )
+            case None if stopBlockId.isEmpty =>
+              // Initial observations may start above the runtime's local
+              // proposal boundary, so expose the contiguous suffix already
+              // available and leave finalized-history replay checks to the
+              // embedder.
+              Some(nextAcc)
+            case None =>
+              None
+        case None =>
+          Some(nextAcc)
+
 private object ObservationState:
   // Bounded internal diagnostic histories from the Phase 0 lock. If a very old
   // anchor is evicted and becomes best again far in the future it may be
   // re-stamped; the practical fallback window is tiny, so that is acceptable.
   private val FirstSeenCap      = 1024
   private val ObservedAnchorCap = 256
+  private val TxRangeHistoryCap = 256
 
   val empty: ObservationState =
     ObservationState(
@@ -166,6 +398,8 @@ private object ObservationState:
       observedAnchors = Map.empty[AnchorKey, FinalizedAnchorObservation],
       observedAnchorOrder = Vector.empty[AnchorKey],
       currentByChain = Map.empty[ChainId, FinalizedAnchorObservation],
+      currentTxRangeByChain = Map.empty[ChainId, FinalizedTxRangeObservation],
+      txRangeHistory = Vector.empty[FinalizedTxRangeObservation],
     )
 
   private def appendBounded[K, V](
@@ -183,32 +417,101 @@ private object ObservationState:
         evictedKey =>
           insertedValues.removed(evictedKey) -> insertedOrder.drop(1)
 
+  private def appendBoundedValue[V](
+      values: Vector[V],
+      value: V,
+      cap: Int,
+  ): Vector[V] =
+    val inserted = values :+ value
+    if inserted.sizeIs <= cap then inserted
+    else inserted.drop(inserted.size - cap)
+
 private final case class SinkState(
     snapshot: InMemoryHotStuffSinkSnapshot,
     observations: ObservationState,
 )
 
 private object SinkState:
-  val empty: SinkState =
+  def empty(
+      relayPolicy: HotStuffRelayPolicy,
+  ): SinkState =
     SinkState(
-      snapshot = InMemoryHotStuffSinkSnapshot.empty,
+      snapshot = InMemoryHotStuffSinkSnapshot.empty(relayPolicy),
       observations = ObservationState.empty,
     )
 
 /** Publishes HotStuff gossip artifacts to the local gossip source. */
 trait HotStuffArtifactPublisher[F[_]]:
-  /** Appends an artifact to the gossip source, returning the created gossip event. */
+  /** Appends an artifact to the gossip source, returning the created gossip
+    * event.
+    */
   def append(
       artifact: HotStuffGossipArtifact,
       ts: Instant,
   ): F[GossipEvent[HotStuffGossipArtifact]]
 
-/** In-memory implementation of a gossip artifact source and publisher for HotStuff artifacts. */
+private final case class SourceTopicState(
+    events: Vector[AvailableGossipEvent[HotStuffGossipArtifact]],
+    nextSequence: Long,
+    appendedCount: Long,
+    prunedCount: Long,
+    readByIdMissCount: Long,
+    invalidCursorRejectionCount: Long,
+    staleCursorRejectionCount: Long,
+):
+  def append(
+      available: AvailableGossipEvent[HotStuffGossipArtifact],
+      retention: HotStuffArtifactSourceRetention,
+  ): SourceTopicState =
+    val inserted   = events :+ available
+    val pruneCount = math.max(0, inserted.size - retention.retainedEventsPerTopic)
+    val retained =
+      if pruneCount === 0 then inserted
+      else inserted.drop(pruneCount)
+    copy(
+      events = retained,
+      nextSequence = nextSequence + 1L,
+      appendedCount = appendedCount + 1L,
+      prunedCount = prunedCount + pruneCount.toLong,
+    )
+
+  def recordReadByIdMisses(
+      missCount: Int,
+  ): SourceTopicState =
+    if missCount <= 0 then this
+    else copy(readByIdMissCount = readByIdMissCount + missCount.toLong)
+
+  def recordInvalidCursorRejection: SourceTopicState =
+    copy(invalidCursorRejectionCount = invalidCursorRejectionCount + 1L)
+
+  def recordStaleCursorRejection: SourceTopicState =
+    copy(staleCursorRejectionCount = staleCursorRejectionCount + 1L)
+
+  def firstRetainedSequence: Long =
+    nextSequence - events.size.toLong
+
+  def latestSequence: Long =
+    nextSequence - 1L
+
+private object SourceTopicState:
+  val empty: SourceTopicState =
+    SourceTopicState(
+      events = Vector.empty[AvailableGossipEvent[HotStuffGossipArtifact]],
+      nextSequence = 1L,
+      appendedCount = 0L,
+      prunedCount = 0L,
+      readByIdMissCount = 0L,
+      invalidCursorRejectionCount = 0L,
+      staleCursorRejectionCount = 0L,
+    )
+
+/** In-memory implementation of a gossip artifact source and publisher for
+  * HotStuff artifacts.
+  */
 final class InMemoryHotStuffArtifactSource[F[_]: Sync] private (
     clock: GossipClock[F],
-    ref: Ref[F, Map[ChainTopic, Vector[
-      AvailableGossipEvent[HotStuffGossipArtifact],
-    ]]],
+    retention: HotStuffArtifactSourceRetention,
+    ref: Ref[F, Map[ChainTopic, SourceTopicState]],
 ) extends GossipArtifactSource[F, HotStuffGossipArtifact]
     with HotStuffArtifactPublisher[F]:
   def append(
@@ -227,22 +530,22 @@ final class InMemoryHotStuffArtifactSource[F[_]: Sync] private (
             newView.window.chainId
         val topic      = HotStuffGossipArtifact.topicOf(artifact)
         val chainTopic = ChainTopic(chainId, topic)
-        val topicEvents = state.getOrElse(
+        val topicState = state.getOrElse(
           chainTopic,
-          Vector.empty[AvailableGossipEvent[HotStuffGossipArtifact]],
+          SourceTopicState.empty,
         )
-        val nextSequence = topicEvents.size.toLong + 1L
         val event = GossipEvent(
           chainId = chainId,
           topic = topic,
           id = HotStuffGossipArtifact.stableIdOf(artifact),
-          cursor = cursorFor(nextSequence),
+          cursor = cursorFor(topicState.nextSequence),
           ts = ts,
           payload = artifact,
         )
         val available =
           AvailableGossipEvent(event = event, availableAt = availableAt)
-        state.updated(chainTopic, topicEvents :+ available) -> event
+        state.updated(chainTopic, topicState.append(available, retention)) ->
+          event
 
   override def readAfter(
       chainId: ChainId,
@@ -251,47 +554,123 @@ final class InMemoryHotStuffArtifactSource[F[_]: Sync] private (
   ): F[Either[CanonicalRejection, Vector[
     AvailableGossipEvent[HotStuffGossipArtifact],
   ]]] =
-    ref.get.map: state =>
+    ref.modify: state =>
       val chainTopic = ChainTopic(chainId, topic)
-      val topicEvents = state.getOrElse(
+      val topicState = state.getOrElse(
         chainTopic,
-        Vector.empty[AvailableGossipEvent[HotStuffGossipArtifact]],
+        SourceTopicState.empty,
       )
-      cursor match
+      val result = cursor match
         case None =>
-          topicEvents.asRight[CanonicalRejection]
+          topicState.events.asRight[CanonicalRejection]
         case Some(token) =>
           decodeSequence(token).flatMap: sequence =>
-            val maxSequence = topicEvents.size.toLong
-            Either.cond(
-              sequence >= 1L && sequence <= maxSequence,
-              topicEvents.drop(sequence.toInt),
-              CanonicalRejection.StaleCursor(
-                reason = "unknownCursor",
-                detail = Some:
-                  ss"sequence=${sequence.toString} max=${maxSequence.toString}",
-              ),
-            )
+            if sequence < 1L then
+              CanonicalRejection
+                .StaleCursor(
+                  reason = "unknownCursor",
+                  detail = Some:
+                    ss"sequence=${sequence.toString} min=1",
+                )
+                .asLeft[Vector[
+                  AvailableGossipEvent[HotStuffGossipArtifact],
+                ]]
+            else if topicState.events.isEmpty then
+              CanonicalRejection
+                .StaleCursor(
+                  reason = "unknownCursor",
+                  detail = Some:
+                    ss"sequence=${sequence.toString} max=${topicState.latestSequence.toString}",
+                )
+                .asLeft[Vector[
+                  AvailableGossipEvent[HotStuffGossipArtifact],
+                ]]
+            else if sequence < topicState.firstRetainedSequence then
+              CanonicalRejection
+                .StaleCursor(
+                  reason = "cursorPruned",
+                  detail = Some:
+                    ss"sequence=${sequence.toString} firstRetained=${topicState.firstRetainedSequence.toString}",
+                )
+                .asLeft[Vector[
+                  AvailableGossipEvent[HotStuffGossipArtifact],
+                ]]
+            else if sequence <= topicState.latestSequence then
+              val offset =
+                (sequence - topicState.firstRetainedSequence + 1L).toInt
+              topicState.events.drop(offset).asRight[CanonicalRejection]
+            else
+              CanonicalRejection
+                .StaleCursor(
+                  reason = "unknownCursor",
+                  detail = Some:
+                    ss"sequence=${sequence.toString} max=${topicState.latestSequence.toString}",
+                )
+                .asLeft[Vector[
+                  AvailableGossipEvent[HotStuffGossipArtifact],
+                ]]
+      val updatedState =
+        result.fold(
+          rejection =>
+            val updatedTopicState =
+              if isInvalidCursorRejection(rejection) then
+                topicState.recordInvalidCursorRejection
+              else topicState.recordStaleCursorRejection
+            state.updated(chainTopic, updatedTopicState),
+          _ => state,
+        )
+      updatedState -> result
 
   override def readByIds(
       chainId: ChainId,
       topic: GossipTopic,
       ids: Vector[StableArtifactId],
   ): F[Vector[AvailableGossipEvent[HotStuffGossipArtifact]]] =
-    ref.get.map: state =>
+    ref.modify: state =>
+      val chainTopic = ChainTopic(chainId, topic)
+      val topicState = state.getOrElse(chainTopic, SourceTopicState.empty)
       val latestById =
-        state
-          .getOrElse(
-            ChainTopic(chainId, topic),
-            Vector.empty[AvailableGossipEvent[HotStuffGossipArtifact]],
-          )
+        topicState.events
           .foldLeft(
             Map.empty[StableArtifactId, AvailableGossipEvent[
               HotStuffGossipArtifact,
             ]],
           ): (acc, available) =>
             acc.updated(available.event.id, available)
-      ids.distinct.flatMap(latestById.get)
+      val distinctIds = ids.distinct
+      val found       = distinctIds.flatMap(latestById.get)
+      val missCount =
+        distinctIds.count(id => !latestById.contains(id))
+      val updatedState =
+        if missCount === 0 then state
+        else
+          state.updated(
+            chainTopic,
+            topicState.recordReadByIdMisses(missCount),
+          )
+      updatedState -> found
+
+  def snapshot: F[InMemoryHotStuffSourceSnapshot] =
+    ref.get.map: state =>
+      InMemoryHotStuffSourceSnapshot(
+        eventsByTopic =
+          state.view.mapValues(_.events.map(_.event)).toMap,
+        diagnostics = InMemoryHotStuffSourceDiagnostics(
+          retainedEventsPerTopic = retention.retainedEventsPerTopic,
+          retainedEventsByTopic =
+            state.view.mapValues(_.events.size).toMap,
+          appendedEventsByTopic =
+            state.view.mapValues(_.appendedCount).toMap,
+          prunedEventsByTopic =
+            state.view.mapValues(_.prunedCount).toMap,
+          readByIdMissesByTopic =
+            state.view.mapValues(_.readByIdMissCount).toMap,
+          invalidCursorRejectionsByTopic =
+            state.view.mapValues(_.invalidCursorRejectionCount).toMap,
+          staleCursorRejectionsByTopic =
+            state.view.mapValues(_.staleCursorRejectionCount).toMap,
+        ),
+      )
 
   private def cursorFor(
       sequence: Long,
@@ -315,19 +694,36 @@ final class InMemoryHotStuffArtifactSource[F[_]: Sync] private (
           ),
         )
 
+  private def isInvalidCursorRejection(
+      rejection: CanonicalRejection,
+  ): Boolean =
+    rejection match
+      case stale: CanonicalRejection.StaleCursor =>
+        stale.reason === "invalidCursorPayload" ||
+          stale.reason === "cursorTokenVersionMismatch"
+      case _ => false
+
 /** Companion for `InMemoryHotStuffArtifactSource`. */
 object InMemoryHotStuffArtifactSource:
   /** Creates a new in-memory gossip artifact source. */
   def create[F[_]: Sync](using
       clock: GossipClock[F],
   ): F[InMemoryHotStuffArtifactSource[F]] =
-    Ref
-      .of[F, Map[ChainTopic, Vector[
-        AvailableGossipEvent[HotStuffGossipArtifact],
-      ]]](Map.empty)
-      .map(new InMemoryHotStuffArtifactSource[F](clock, _))
+    createWithRetention[F](HotStuffArtifactSourceRetention.default)
 
-/** In-memory implementation of a gossip artifact sink for HotStuff artifacts, handling validation, QC assembly, and finalization tracking. */
+  /** Creates a new in-memory gossip artifact source with explicit retention. */
+  def createWithRetention[F[_]: Sync](
+      retention: HotStuffArtifactSourceRetention,
+  )(using
+      clock: GossipClock[F],
+  ): F[InMemoryHotStuffArtifactSource[F]] =
+    Ref
+      .of[F, Map[ChainTopic, SourceTopicState]](Map.empty)
+      .map(new InMemoryHotStuffArtifactSource[F](clock, retention, _))
+
+/** In-memory implementation of a gossip artifact sink for HotStuff artifacts,
+  * handling validation, QC assembly, and finalization tracking.
+  */
 final class InMemoryHotStuffArtifactSink[F[_]: Sync] private (
     clock: GossipClock[F],
     validatorSet: ValidatorSet,
@@ -364,11 +760,15 @@ final class InMemoryHotStuffArtifactSink[F[_]: Sync] private (
   ] =
     HotStuffValidator.validateProposal(proposal, validatorSet) match
       case Left(error) =>
-        artifactRejected(error).asLeft[ArtifactApplyResult].pure[F]
+        val rejection = artifactRejected(error)
+        recordArtifactRejection(event, rejection.reason)
+          .as(rejection.asLeft[ArtifactApplyResult])
       case Right(_) =>
         proposalValidation(proposal).flatMap:
           case Left(error) =>
-            artifactRejected(error).asLeft[ArtifactApplyResult].pure[F]
+            val rejection = artifactRejected(error)
+            recordArtifactRejection(event, rejection.reason)
+              .as(rejection.asLeft[ArtifactApplyResult])
           case Right(_) =>
             clock.now.flatMap: localObservedAt =>
               ref
@@ -376,9 +776,7 @@ final class InMemoryHotStuffArtifactSink[F[_]: Sync] private (
                   val snapshot = state.snapshot
                   if snapshot.proposals.contains(proposal.proposalId) then
                     state.copy(
-                      snapshot = snapshot.copy(
-                        duplicates = snapshot.duplicates :+ event,
-                      ),
+                      snapshot = snapshot.recordDuplicate(event),
                     ) -> (
                       ArtifactApplyResult(
                         applied = false,
@@ -425,6 +823,7 @@ final class InMemoryHotStuffArtifactSink[F[_]: Sync] private (
                         )
                         .recordFinalization(
                           updatedSnapshot.finalization,
+                          updatedSnapshot.proposals.values,
                           localObservedAt,
                         )
                     state.copy(
@@ -449,7 +848,7 @@ final class InMemoryHotStuffArtifactSink[F[_]: Sync] private (
         val snapshot = state.snapshot
         if snapshot.votes.contains(vote.voteId) then
           state.copy(
-            snapshot = snapshot.copy(duplicates = snapshot.duplicates :+ event),
+            snapshot = snapshot.recordDuplicate(event),
           ) -> (
             ArtifactApplyResult(applied = false, duplicate = true) -> Option
               .empty[RelayEnvelope]
@@ -457,12 +856,18 @@ final class InMemoryHotStuffArtifactSink[F[_]: Sync] private (
         else
           HotStuffValidator.validateVote(vote, validatorSet) match
             case Left(error) =>
-              state -> artifactRejected(error)
+              val rejection = artifactRejected(error)
+              state.copy(
+                snapshot = snapshot.recordRejection(event, rejection.reason),
+              ) -> rejection
                 .asLeft[(ArtifactApplyResult, Option[RelayEnvelope])]
             case Right(_) =>
               snapshot.accumulator.record(vote) match
                 case Left(error) =>
-                  state -> artifactRejected(error)
+                  val rejection = artifactRejected(error)
+                  state.copy(
+                    snapshot = snapshot.recordRejection(event, rejection.reason),
+                  ) -> rejection
                     .asLeft[(ArtifactApplyResult, Option[RelayEnvelope])]
                 case Right((updatedAccumulator, _)) =>
                   val updatedVotes =
@@ -517,7 +922,7 @@ final class InMemoryHotStuffArtifactSink[F[_]: Sync] private (
         val snapshot = state.snapshot
         if snapshot.timeoutVotes.contains(timeoutVote.timeoutVoteId) then
           state.copy(
-            snapshot = snapshot.copy(duplicates = snapshot.duplicates :+ event),
+            snapshot = snapshot.recordDuplicate(event),
           ) -> (
             ArtifactApplyResult(applied = false, duplicate = true) -> Option
               .empty[RelayEnvelope]
@@ -525,12 +930,18 @@ final class InMemoryHotStuffArtifactSink[F[_]: Sync] private (
         else
           HotStuffValidator.validateTimeoutVote(timeoutVote, validatorSet) match
             case Left(error) =>
-              state -> artifactRejected(error)
+              val rejection = artifactRejected(error)
+              state.copy(
+                snapshot = snapshot.recordRejection(event, rejection.reason),
+              ) -> rejection
                 .asLeft[(ArtifactApplyResult, Option[RelayEnvelope])]
             case Right(_) =>
               snapshot.timeoutAccumulator.record(timeoutVote) match
                 case Left(error) =>
-                  state -> artifactRejected(error)
+                  val rejection = artifactRejected(error)
+                  state.copy(
+                    snapshot = snapshot.recordRejection(event, rejection.reason),
+                  ) -> rejection
                     .asLeft[(ArtifactApplyResult, Option[RelayEnvelope])]
                 case Right((updatedAccumulator, _)) =>
                   val updatedTimeoutVotes =
@@ -579,7 +990,7 @@ final class InMemoryHotStuffArtifactSink[F[_]: Sync] private (
         val snapshot = state.snapshot
         if snapshot.newViews.contains(newView.newViewId) then
           state.copy(
-            snapshot = snapshot.copy(duplicates = snapshot.duplicates :+ event),
+            snapshot = snapshot.recordDuplicate(event),
           ) -> (
             ArtifactApplyResult(applied = false, duplicate = true) -> Option
               .empty[RelayEnvelope]
@@ -588,16 +999,18 @@ final class InMemoryHotStuffArtifactSink[F[_]: Sync] private (
           val senderWindowKey = (newView.window, newView.sender)
           snapshot.newViewsBySenderWindow.get(senderWindowKey) match
             case Some(existing) if existing.newViewId =!= newView.newViewId =>
-              state -> CanonicalRejection
-                .ArtifactContractRejected(
+              val rejection =
+                CanonicalRejection.ArtifactContractRejected(
                   reason = "conflictingNewView",
                   detail = Some(newView.sender.value),
                 )
+              state.copy(
+                snapshot = snapshot.recordRejection(event, rejection.reason),
+              ) -> rejection
                 .asLeft[(ArtifactApplyResult, Option[RelayEnvelope])]
             case Some(_) =>
               state.copy(
-                snapshot =
-                  snapshot.copy(duplicates = snapshot.duplicates :+ event),
+                snapshot = snapshot.recordDuplicate(event),
               ) -> (
                 ArtifactApplyResult(applied = false, duplicate = true) -> Option
                   .empty[RelayEnvelope]
@@ -605,7 +1018,10 @@ final class InMemoryHotStuffArtifactSink[F[_]: Sync] private (
             case None =>
               HotStuffValidator.validateNewView(newView, validatorSet) match
                 case Left(error) =>
-                  state -> artifactRejected(error)
+                  val rejection = artifactRejected(error)
+                  state.copy(
+                    snapshot = snapshot.recordRejection(event, rejection.reason),
+                  ) -> rejection
                     .asLeft[(ArtifactApplyResult, Option[RelayEnvelope])]
                 case Right(_) =>
                   val relayArtifact =
@@ -644,9 +1060,21 @@ final class InMemoryHotStuffArtifactSink[F[_]: Sync] private (
       case Right((result, maybeRelay)) =>
         maybeRelay
           .traverse_ { case (artifact, ts) =>
-            relayPublisher.append(artifact, ts).void
+            val topic = HotStuffGossipArtifact.topicOf(artifact)
+            relayPublisher.append(artifact, ts) *>
+              ref.update(state =>
+                state.copy(snapshot = state.snapshot.recordRelay(topic)),
+              )
           }
           .as(result.asRight)
+
+  private def recordArtifactRejection(
+      event: GossipEvent[HotStuffGossipArtifact],
+      reason: String,
+  ): F[Unit] =
+    ref.update(state =>
+      state.copy(snapshot = state.snapshot.recordRejection(event, reason)),
+    )
 
   private def artifactRejected(
       error: HotStuffValidationFailure,
@@ -689,6 +1117,14 @@ final class InMemoryHotStuffArtifactSink[F[_]: Sync] private (
       : F[Map[ChainId, FinalizedAnchorObservation]] =
     ref.get.map(_.observations.currentByChain)
 
+  private[hotstuff] def finalizedTxRangeObservations
+      : F[Map[ChainId, FinalizedTxRangeObservation]] =
+    ref.get.map(_.observations.currentTxRangeByChain)
+
+  private[hotstuff] def recentFinalizedTxRangeObservations
+      : F[Vector[FinalizedTxRangeObservation]] =
+    ref.get.map(_.observations.txRangeHistory)
+
 /** Companion for `InMemoryHotStuffArtifactSink`. */
 object InMemoryHotStuffArtifactSink:
   def create[F[_]: Sync](
@@ -698,8 +1134,7 @@ object InMemoryHotStuffArtifactSink:
   )(using
       clock: GossipClock[F],
   ): F[InMemoryHotStuffArtifactSink[F]] =
-    for
-      ref <- Ref.of[F, SinkState](SinkState.empty)
+    for ref <- Ref.of[F, SinkState](SinkState.empty(relayPolicy))
     yield new InMemoryHotStuffArtifactSink[F](
       clock,
       validatorSet,
@@ -720,8 +1155,7 @@ object InMemoryHotStuffArtifactSink:
   )(using
       clock: GossipClock[F],
   ): F[InMemoryHotStuffArtifactSink[F]] =
-    for
-      ref <- Ref.of[F, SinkState](SinkState.empty)
+    for ref <- Ref.of[F, SinkState](SinkState.empty(relayPolicy))
     yield new InMemoryHotStuffArtifactSink[F](
       clock,
       validatorSet,

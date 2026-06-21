@@ -14,7 +14,9 @@ Promoted from `Proposed` to `Accepted` in the v0.2.3 release commit after Phase 
   - which timestamps can be used for finalization latency;
   - which failures are consensus-owned versus embedder materialization failures;
   - what an embedder should expect when application materialization fails after consensus has finalized an anchor.
-- Downstream runtimes such as bbgo need finalization observability to size timeout/retry/sweeper policies, but application transaction submission and application materialization are outside the core HotStuff consensus runtime.
+- Downstream runtimes need finalization observability to size timeout, retry,
+  and sweeper policies, but application transaction submission and application
+  materialization are outside the core HotStuff consensus runtime.
 
 ## Decision
 1. **Consensus finalization and application materialization are separate domains.**

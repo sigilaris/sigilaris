@@ -123,6 +123,8 @@ object HotStuffRuntimeBootstrap:
         HotStuffProposalInputRuntimeConfig.legacyCompatible[F],
       proposalValidationConfig: HotStuffProposalValidationRuntimeConfig[F] =
         HotStuffProposalValidationRuntimeConfig.legacyCompatible[F],
+      txUniquenessConfig: HotStuffProposalTxUniquenessRuntimeConfig =
+        HotStuffProposalTxUniquenessRuntimeConfig.enforceUnfinalizedAncestors,
   ): Resource[F, Either[String, HotStuffRuntimeBootstrap[F]]] =
     Resource
       .eval:
@@ -187,6 +189,7 @@ object HotStuffRuntimeBootstrap:
                       storageLayout = storageLayout,
                       proposalInputConfig = proposalInputConfig,
                       proposalValidationConfig = proposalValidationConfig,
+                      txUniquenessConfig = txUniquenessConfig,
                     )
 
   /** Bootstraps HotStuff plus embedder-owned application gossip topics from
@@ -207,6 +210,8 @@ object HotStuffRuntimeBootstrap:
         HotStuffProposalInputRuntimeConfig.legacyCompatible[F],
       proposalValidationConfig: HotStuffProposalValidationRuntimeConfig[F] =
         HotStuffProposalValidationRuntimeConfig.legacyCompatible[F],
+      txUniquenessConfig: HotStuffProposalTxUniquenessRuntimeConfig =
+        HotStuffProposalTxUniquenessRuntimeConfig.enforceUnfinalizedAncestors,
   ): Resource[F, Either[
     String,
     HotStuffRuntimeBootstrapWithApplications[F, A],
@@ -284,6 +289,7 @@ object HotStuffRuntimeBootstrap:
                       storageLayout = storageLayout,
                       proposalInputConfig = proposalInputConfig,
                       proposalValidationConfig = proposalValidationConfig,
+                      txUniquenessConfig = txUniquenessConfig,
                     )
 
   /** Bootstraps the full HotStuff runtime from an explicit peer topology and
@@ -303,6 +309,8 @@ object HotStuffRuntimeBootstrap:
         HotStuffProposalInputRuntimeConfig.legacyCompatible[F],
       proposalValidationConfig: HotStuffProposalValidationRuntimeConfig[F] =
         HotStuffProposalValidationRuntimeConfig.legacyCompatible[F],
+      txUniquenessConfig: HotStuffProposalTxUniquenessRuntimeConfig =
+        HotStuffProposalTxUniquenessRuntimeConfig.enforceUnfinalizedAncestors,
   ): Resource[F, Either[String, HotStuffRuntimeBootstrap[F]]] =
     fromTopologyWithGossipRuntime[
       F,
@@ -316,6 +324,7 @@ object HotStuffRuntimeBootstrap:
       storageLayout = storageLayout,
       proposalInputConfig = proposalInputConfig,
       proposalValidationConfig = proposalValidationConfig,
+      txUniquenessConfig = txUniquenessConfig,
       buildGossipRuntime = consensus =>
         TxGossipRuntimeBootstrap.fromTopology[F, HotStuffGossipArtifact](
           topology = topology,
@@ -356,6 +365,8 @@ object HotStuffRuntimeBootstrap:
         HotStuffProposalInputRuntimeConfig.legacyCompatible[F],
       proposalValidationConfig: HotStuffProposalValidationRuntimeConfig[F] =
         HotStuffProposalValidationRuntimeConfig.legacyCompatible[F],
+      txUniquenessConfig: HotStuffProposalTxUniquenessRuntimeConfig =
+        HotStuffProposalTxUniquenessRuntimeConfig.enforceUnfinalizedAncestors,
   ): Resource[
     F,
     Either[String, HotStuffRuntimeBootstrapWithApplications[F, A]],
@@ -372,6 +383,7 @@ object HotStuffRuntimeBootstrap:
       storageLayout = storageLayout,
       proposalInputConfig = proposalInputConfig,
       proposalValidationConfig = proposalValidationConfig,
+      txUniquenessConfig = txUniquenessConfig,
       buildGossipRuntime = consensus =>
         TxGossipRuntimeBootstrap.fromTopology[F, HotStuffPeerArtifact[A]](
           topology = topology,
@@ -414,6 +426,7 @@ object HotStuffRuntimeBootstrap:
       storageLayout: StorageLayout,
       proposalInputConfig: HotStuffProposalInputRuntimeConfig[F],
       proposalValidationConfig: HotStuffProposalValidationRuntimeConfig[F],
+      txUniquenessConfig: HotStuffProposalTxUniquenessRuntimeConfig,
       buildGossipRuntime: HotStuffNodeRuntime[F] => F[TxGossipBootstrap[F, A]],
       assembleBootstrap: (HotStuffNodeRuntime[F], TxGossipBootstrap[F, A]) => B,
   ): Resource[F, Either[String, B]] =
@@ -437,6 +450,8 @@ object HotStuffRuntimeBootstrap:
             .validateForAutomaticConsensus(proposalInputConfig)
           _ <- HotStuffProposalValidationRuntimeConfig
             .validateForAutomaticConsensus(proposalValidationConfig)
+          _ <- HotStuffProposalTxUniquenessRuntimeConfig
+            .validateForAutomaticConsensus(txUniquenessConfig)
         yield validatedInput
       .leftMap(renderPolicyViolation) match
       case Left(rejection) =>
@@ -556,9 +571,11 @@ object HotStuffRuntimeBootstrap:
                                           bootstrapLifecycle.some,
                                         proposalValidationConfig =
                                           proposalValidationConfig,
+                                        txUniquenessConfig = txUniquenessConfig,
                                       ),
                                     automaticConsensus = true,
                                     proposalInputConfig = proposalInputConfig,
+                                    txUniquenessConfig = txUniquenessConfig,
                                   )
                                 gossipBootstrap <- buildGossipRuntime(consensus)
                               yield assembleBootstrap(

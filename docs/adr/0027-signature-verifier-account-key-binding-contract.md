@@ -49,7 +49,7 @@ Promoted from `Proposed` to `Accepted` in the v0.2.3 release commit after Phase 
 
 7. **The shared failure type is `CryptoFailure`; external error keys are adapter-owned.**
    - `CryptoFailure.msg` is diagnostic text, not a wire-level ABI.
-   - HTTP status, errorKey, JSON shape, or other external protocol mappings are owned by embedders such as bbgo.
+   - HTTP status, errorKey, JSON shape, or other external protocol mappings are owned by downstream embedders.
    - If a stable machine-readable verifier failure taxonomy becomes necessary, it should be added as a typed failure metadata extension without making existing message text normative.
 
 8. **Account bootstrap transactions remain explicit special cases.**
@@ -84,7 +84,8 @@ Promoted from `Proposed` to `Accepted` in the v0.2.3 release commit after Phase 
 ## Follow-Up
 - Add focused verifier contract tests if any of the above cases are only indirectly covered by account/module integration tests.
 - Consider a typed `SignatureVerificationFailureReason` or `FailureCode` projection if embedders need stable machine-readable failure branches at the core layer.
-- Keep bbgo's HTTP errorKey contract separate from this ADR; bbgo can map all verifier failures to its own `signature_invalid` key family.
+- Embedders should keep their HTTP errorKey contracts separate from this ADR;
+  they can map verifier failures to their own stable error-key families.
 
 ## References
 - [ADR-0010: Blockchain Account Model and Key Management](0010-blockchain-account-model-and-key-management.md)

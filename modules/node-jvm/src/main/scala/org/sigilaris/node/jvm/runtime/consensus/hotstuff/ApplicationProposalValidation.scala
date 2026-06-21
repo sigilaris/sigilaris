@@ -5,7 +5,9 @@ import java.time.Instant
 import cats.effect.kernel.Sync
 import cats.syntax.all.*
 
-/** Application-neutral request for validating a received proposal before a local vote is signed. */
+/** Application-neutral request for validating a received proposal before a
+  * local vote is signed.
+  */
 final case class HotStuffProposalValidationRequest(
     proposal: Proposal,
     localVoter: ValidatorId,
@@ -45,7 +47,8 @@ object HotStuffProposalValidationProviderResult:
         case HotStuffProposalValidationProviderResult.Failed(_, detail) =>
           detail
 
-/** Application-owned proposal validation hook for received proposal vote paths. */
+/** Application-owned proposal validation hook for received proposal vote paths.
+  */
 trait HotStuffProposalValidationProvider[F[_]]:
   def validateProposal(
       request: HotStuffProposalValidationRequest,
@@ -151,11 +154,16 @@ enum HotStuffProposalValidationDecision:
 
   def voteSuppressed: Boolean =
     this match
-      case HotStuffProposalValidationDecision.Accept(_, _) => false
+      case HotStuffProposalValidationDecision.Accept(_, _)      => false
       case HotStuffProposalValidationDecision.Suppress(_, _, _) => true
 
 /** Companion for `HotStuffProposalValidationDecision`. */
 object HotStuffProposalValidationDecision:
+  private[hotstuff] val TxAncestorConflictReason =
+    "proposalVoteTxAncestorConflict"
+  private[hotstuff] val TxAncestorUnavailableReason =
+    "proposalVoteTxAncestorUnavailable"
+
   def fromProviderResult(
       result: HotStuffProposalValidationProviderResult,
   ): HotStuffProposalValidationDecision =
@@ -211,6 +219,29 @@ object HotStuffProposalValidationDecision:
       suppressReason = "proposalValidationProviderFailed",
       suppressDetail = Some(error.getClass.getName),
     )
+
+  def fromTxUniquenessResult(
+      result: HotStuffProposalTxUniquenessResult,
+  ): Option[HotStuffProposalValidationDecision] =
+    result match
+      case HotStuffProposalTxUniquenessResult.Accepted(_) =>
+        None
+      case HotStuffProposalTxUniquenessResult.Conflict(conflicts, _) =>
+        Some(
+          HotStuffProposalValidationDecision.Suppress(
+            HotStuffProposalValidationOutcome.Rejected,
+            TxAncestorConflictReason,
+            Some("conflictCount=" + conflicts.txIds.length.toString),
+          ),
+        )
+      case HotStuffProposalTxUniquenessResult.Unavailable(reason, detail, _) =>
+        Some(
+          HotStuffProposalValidationDecision.Suppress(
+            HotStuffProposalValidationOutcome.Unavailable,
+            TxAncestorUnavailableReason,
+            HotStuffProposalTxUniqueness.diagnosticDetail(reason, detail),
+          ),
+        )
 
   def evaluate[F[_]: Sync](
       config: HotStuffProposalValidationRuntimeConfig[F],
