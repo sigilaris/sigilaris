@@ -1,5 +1,7 @@
 package org.sigilaris.node.jvm.runtime.consensus.hotstuff
 
+import scala.annotation.tailrec
+
 import java.time.Instant
 
 import cats.effect.kernel.Sync
@@ -14,6 +16,7 @@ import org.sigilaris.node.jvm.runtime.block.{
   BodyRoot,
   StateRoot,
 }
+import org.sigilaris.node.gossip.ChainId
 
 /** Local bounds supplied to an application proposal input provider. */
 final case class HotStuffProposalInputBounds(
@@ -24,6 +27,239 @@ final case class HotStuffProposalInputBounds(
 object HotStuffProposalInputBounds:
   val unbounded: HotStuffProposalInputBounds =
     HotStuffProposalInputBounds(maxTxIds = None)
+
+/** Stable reason codes for dependency-aware proposal input providers. */
+object HotStuffProposalInputDependencyReason:
+  val Held: String =
+    "proposalInputDependencyHeld"
+  val AncestorUnavailable: String =
+    "proposalInputDependencyAncestorUnavailable"
+  val BranchConflict: String =
+    "proposalInputDependencyBranchConflict"
+
+/** A certified proposal on the candidate parent branch. */
+final case class HotStuffProposalInputBranchAncestor(
+    chainId: ChainId,
+    proposalId: ProposalId,
+    blockId: BlockId,
+    height: BlockHeight,
+    parentBlockId: Option[BlockId],
+    window: HotStuffWindow,
+    validatorSetHash: ValidatorSetHash,
+    certifiedBy: QuorumCertificateSubject,
+    txSet: ProposalTxSet,
+)
+
+/** Candidate parent-branch context for dependency-aware proposal input. */
+final case class HotStuffProposalInputBranchContext(
+    parentBlockId: Option[BlockId],
+    bestFinalizedBlockId: Option[BlockId],
+    ancestors: Vector[HotStuffProposalInputBranchAncestor],
+    complete: Boolean,
+    unavailableReason: Option[String],
+    unavailableDetail: Option[String],
+):
+  def certifiedAncestor(
+      blockId: BlockId,
+  ): Option[HotStuffProposalInputBranchAncestor] =
+    ancestors.find(_.blockId === blockId)
+
+  def containsCertifiedBlock(
+      blockId: BlockId,
+  ): Boolean =
+    certifiedAncestor(blockId).isDefined
+
+/** Companion for `HotStuffProposalInputBranchContext`. */
+object HotStuffProposalInputBranchContext:
+  val empty: HotStuffProposalInputBranchContext =
+    HotStuffProposalInputBranchContext(
+      parentBlockId = None,
+      bestFinalizedBlockId = None,
+      ancestors = Vector.empty[HotStuffProposalInputBranchAncestor],
+      complete = true,
+      unavailableReason = None,
+      unavailableDetail = None,
+    )
+
+  private final case class ProposalIndex(
+      byProposalId: Map[ProposalId, Proposal],
+      byChainAndBlockId: Map[(ChainId, BlockId), Proposal],
+  )
+
+  private[hotstuff] def fromParent(
+      chainId: ChainId,
+      parentBlockId: Option[BlockId],
+      justify: QuorumCertificate,
+      proposals: Iterable[Proposal],
+      finalization: Map[ChainId, FinalizationTrackerSnapshot],
+      bounds: HotStuffProposalTxUniquenessBounds,
+  ): HotStuffProposalInputBranchContext =
+    val bestFinalizedBlockId =
+      finalization.get(chainId).flatMap(_.bestFinalized.map(_.anchorBlockId))
+    parentBlockId match
+      case None =>
+        complete(
+          parentBlockId,
+          bestFinalizedBlockId,
+          Vector.empty[HotStuffProposalInputBranchAncestor],
+        )
+      case Some(parent) if bestFinalizedBlockId.exists(_ === parent) =>
+        complete(
+          parentBlockId,
+          bestFinalizedBlockId,
+          Vector.empty[HotStuffProposalInputBranchAncestor],
+        )
+      case Some(parent) =>
+        val proposalVector = proposals.iterator.toVector
+        val index = ProposalIndex(
+          byProposalId = proposalVector.iterator
+            .map(p => p.proposalId -> p)
+            .toMap,
+          byChainAndBlockId = proposalVector.iterator
+            .map(p => (p.window.chainId -> p.targetBlockId) -> p)
+            .toMap,
+        )
+        index.byProposalId.get(justify.subject.proposalId) match
+          case Some(proposal)
+              if proposal.window.chainId === chainId &&
+                proposal.targetBlockId === parent =>
+            collectAncestors(
+              chainId = chainId,
+              current = proposal,
+              certifiedBy = justify.subject,
+              parentBlockId = parentBlockId,
+              bestFinalizedBlockId = bestFinalizedBlockId,
+              byChainAndBlockId = index.byChainAndBlockId,
+              bounds = bounds,
+              traversedAncestorCount = 0,
+              ancestors = Vector.empty[HotStuffProposalInputBranchAncestor],
+            )
+          case Some(_) =>
+            incomplete(
+              parentBlockId,
+              bestFinalizedBlockId,
+              Vector.empty[HotStuffProposalInputBranchAncestor],
+              HotStuffProposalInputDependencyReason.BranchConflict,
+              Some(justify.subject.proposalId.toHexLower),
+            )
+          case None =>
+            incomplete(
+              parentBlockId,
+              bestFinalizedBlockId,
+              Vector.empty[HotStuffProposalInputBranchAncestor],
+              HotStuffProposalInputDependencyReason.AncestorUnavailable,
+              Some(justify.subject.proposalId.toHexLower),
+            )
+
+  @tailrec
+  private def collectAncestors(
+      chainId: ChainId,
+      current: Proposal,
+      certifiedBy: QuorumCertificateSubject,
+      parentBlockId: Option[BlockId],
+      bestFinalizedBlockId: Option[BlockId],
+      byChainAndBlockId: Map[(ChainId, BlockId), Proposal],
+      bounds: HotStuffProposalTxUniquenessBounds,
+      traversedAncestorCount: Int,
+      ancestors: Vector[HotStuffProposalInputBranchAncestor],
+  ): HotStuffProposalInputBranchContext =
+    if bestFinalizedBlockId.exists(_ === current.targetBlockId) then
+      complete(parentBlockId, bestFinalizedBlockId, ancestors)
+    else if traversedAncestorCount >= bounds.maxTraversalDepth then
+      incomplete(
+        parentBlockId,
+        bestFinalizedBlockId,
+        ancestors,
+        HotStuffProposalInputDependencyReason.AncestorUnavailable,
+        Some(bounds.maxTraversalDepth.toString),
+      )
+    else if !subjectMatchesProposal(certifiedBy, current) then
+      incomplete(
+        parentBlockId,
+        bestFinalizedBlockId,
+        ancestors,
+        HotStuffProposalInputDependencyReason.BranchConflict,
+        Some(certifiedBy.proposalId.toHexLower),
+      )
+    else
+      val nextAncestors =
+        ancestors :+ HotStuffProposalInputBranchAncestor(
+          chainId = current.window.chainId,
+          proposalId = current.proposalId,
+          blockId = current.targetBlockId,
+          height = current.block.height,
+          parentBlockId = current.block.parent,
+          window = current.window,
+          validatorSetHash = current.window.validatorSetHash,
+          certifiedBy = certifiedBy,
+          txSet = current.txSet,
+        )
+      current.block.parent match
+        case None =>
+          complete(parentBlockId, bestFinalizedBlockId, nextAncestors)
+        case Some(nextBlockId)
+            if bestFinalizedBlockId.exists(_ === nextBlockId) =>
+          complete(parentBlockId, bestFinalizedBlockId, nextAncestors)
+        case Some(nextBlockId) =>
+          byChainAndBlockId.get(chainId -> nextBlockId) match
+            case Some(parentProposal) =>
+              collectAncestors(
+                chainId = chainId,
+                current = parentProposal,
+                certifiedBy = current.justify.subject,
+                parentBlockId = parentBlockId,
+                bestFinalizedBlockId = bestFinalizedBlockId,
+                byChainAndBlockId = byChainAndBlockId,
+                bounds = bounds,
+                traversedAncestorCount = traversedAncestorCount + 1,
+                ancestors = nextAncestors,
+              )
+            case None =>
+              incomplete(
+                parentBlockId,
+                bestFinalizedBlockId,
+                nextAncestors,
+                HotStuffProposalInputDependencyReason.AncestorUnavailable,
+                Some(nextBlockId.toHexLower),
+              )
+
+  private def subjectMatchesProposal(
+      subject: QuorumCertificateSubject,
+      proposal: Proposal,
+  ): Boolean =
+    subject.window === proposal.window &&
+      subject.proposalId === proposal.proposalId &&
+      subject.blockId === proposal.targetBlockId
+
+  private def complete(
+      parentBlockId: Option[BlockId],
+      bestFinalizedBlockId: Option[BlockId],
+      ancestors: Vector[HotStuffProposalInputBranchAncestor],
+  ): HotStuffProposalInputBranchContext =
+    HotStuffProposalInputBranchContext(
+      parentBlockId = parentBlockId,
+      bestFinalizedBlockId = bestFinalizedBlockId,
+      ancestors = ancestors,
+      complete = true,
+      unavailableReason = None,
+      unavailableDetail = None,
+    )
+
+  private def incomplete(
+      parentBlockId: Option[BlockId],
+      bestFinalizedBlockId: Option[BlockId],
+      ancestors: Vector[HotStuffProposalInputBranchAncestor],
+      reason: String,
+      detail: Option[String],
+  ): HotStuffProposalInputBranchContext =
+    HotStuffProposalInputBranchContext(
+      parentBlockId = parentBlockId,
+      bestFinalizedBlockId = bestFinalizedBlockId,
+      ancestors = ancestors,
+      complete = false,
+      unavailableReason = Some(reason),
+      unavailableDetail = detail,
+    )
 
 /** Application-neutral request for the next leader proposal body. */
 @SuppressWarnings(Array("org.wartremover.warts.DefaultArguments"))
@@ -38,6 +274,8 @@ final case class HotStuffProposalInputRequest(
     bounds: HotStuffProposalInputBounds,
     txExclusion: HotStuffProposalTxExclusion =
       HotStuffProposalTxExclusion.empty,
+    branchContext: HotStuffProposalInputBranchContext =
+      HotStuffProposalInputBranchContext.empty,
 )
 
 /** Application-neutral proposal input that Sigilaris can sign as a HotStuff

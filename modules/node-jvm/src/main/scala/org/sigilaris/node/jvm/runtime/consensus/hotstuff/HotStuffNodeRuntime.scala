@@ -66,10 +66,12 @@ final case class HotStuffNodeRuntime[F[_]: Sync](
     diagnostics: Option[HotStuffInMemoryRuntimeDiagnostics[F]] = None,
     bootstrapLifecycle: Option[HotStuffBootstrapLifecycle[F]] = None,
     pacemakerSnapshot: Option[F[HotStuffPacemakerRuntimeSnapshot]] = None,
+    pacemakerWakeUp: Option[F[Unit]] = None,
     proposalValidationConfig: HotStuffProposalValidationRuntimeConfig[F] =
       HotStuffProposalValidationRuntimeConfig.legacyCompatible[F],
     txUniquenessConfig: HotStuffProposalTxUniquenessRuntimeConfig =
       HotStuffProposalTxUniquenessRuntimeConfig.enforceUnfinalizedAncestors,
+    pacemakerPolicy: HotStuffPacemakerPolicy = HotStuffPacemakerPolicy.default,
 ):
   def localPeer: PeerIdentity = bootstrapInput.localPeer
 
@@ -111,6 +113,17 @@ final case class HotStuffNodeRuntime[F[_]: Sync](
       Map.empty[ChainId, FinalizedAnchorObservation].pure[F],
     )(_.finalizationObservations)
 
+  def currentCertifiedBlockObservations
+      : F[Map[ChainId, CertifiedBlockObservation]] =
+    inMemorySink.fold(
+      Map.empty[ChainId, CertifiedBlockObservation].pure[F],
+    )(_.certifiedBlockObservations)
+
+  def recentCertifiedBlockObservations: F[Vector[CertifiedBlockObservation]] =
+    inMemorySink.fold(Vector.empty[CertifiedBlockObservation].pure[F])(
+      _.recentCertifiedBlockObservations,
+    )
+
   def currentFinalizedTxRangeObservations
       : F[Map[ChainId, FinalizedTxRangeObservation]] =
     inMemorySink.fold(
@@ -129,6 +142,15 @@ final case class HotStuffNodeRuntime[F[_]: Sync](
         snapshot.map(_.some)
       case None =>
         none[HotStuffPacemakerRuntimeSnapshot].pure[F]
+
+  def notifyApplicationWorkAvailable: F[Unit] =
+    pacemakerWakeUp.getOrElse(Sync[F].unit)
+
+  /** Descriptive alias for embedders that admit dependent work after consuming
+    * certified-block observations.
+    */
+  def notifyCertifiedBlockObservationAvailable: F[Unit] =
+    notifyApplicationWorkAvailable
 
   def close: F[Unit] =
     bootstrapLifecycle.fold(Sync[F].unit)(_.close)
@@ -481,13 +503,15 @@ final case class HotStuffNodeRuntime[F[_]: Sync](
         case Some(decision) =>
           decision.pure[F]
         case None =>
-          HotStuffProposalValidationDecision.evaluateForLocalVote(
-            config = proposalValidationConfig,
-            proposal = proposal,
-            localVoter = voter,
-            now = now,
-            validatorSet = validatorSet,
-          )
+          proposalValidationBranchContext(proposal).flatMap: branchContext =>
+            HotStuffProposalValidationDecision.evaluateForLocalVote(
+              config = proposalValidationConfig,
+              proposal = proposal,
+              localVoter = voter,
+              now = now,
+              validatorSet = validatorSet,
+              branchContext = branchContext,
+            )
       .map:
         case decision if decision.voteSuppressed =>
           HotStuffPolicyViolation(
@@ -496,6 +520,29 @@ final case class HotStuffNodeRuntime[F[_]: Sync](
           ).asLeft[Unit]
         case _ =>
           ().asRight[HotStuffPolicyViolation]
+
+  private def proposalValidationBranchContext(
+      proposal: Proposal,
+  ): F[HotStuffProposalInputBranchContext] =
+    inMemorySink match
+      case Some(sink) =>
+        sink.snapshot.map: snapshot =>
+          HotStuffProposalValidationBranchContext.fromSnapshot(
+            proposal = proposal,
+            snapshot = snapshot,
+            bounds = txUniquenessConfig.bounds,
+          )
+      case None if proposal.block.parent.isEmpty =>
+        HotStuffProposalValidationBranchContext.empty.pure[F]
+      case None =>
+        HotStuffProposalValidationBranchContext
+          .unavailable(
+            parentBlockId = proposal.block.parent,
+            reason =
+              HotStuffProposalValidationDependencyReason.AncestorUnavailable,
+            detail = Some("proposalValidationSnapshotUnavailable"),
+          )
+          .pure[F]
 
   private def proposalTxUniquenessDecision(
       proposal: Proposal,
@@ -548,6 +595,7 @@ object HotStuffNodeRuntime:
       .ensureDistinctActiveKeyHolders(bootstrapInput.holders)
       .map(_ => bootstrapInput)
 
+  @SuppressWarnings(Array("org.wartremover.warts.DefaultArguments"))
   private[hotstuff] def fromValidatedServices[F[_]: Sync](
       bootstrapInput: HotStuffRuntimeBootstrapInput,
       services: HotStuffRuntimeServices[F],
@@ -555,6 +603,8 @@ object HotStuffNodeRuntime:
       bootstrapLifecycle: Option[HotStuffBootstrapLifecycle[F]],
       proposalValidationConfig: HotStuffProposalValidationRuntimeConfig[F],
       txUniquenessConfig: HotStuffProposalTxUniquenessRuntimeConfig,
+      pacemakerPolicy: HotStuffPacemakerPolicy =
+        HotStuffPacemakerPolicy.default,
   ): HotStuffNodeRuntime[F] =
     HotStuffNodeRuntime(
       bootstrapInput = bootstrapInput,
@@ -562,8 +612,10 @@ object HotStuffNodeRuntime:
       diagnostics = diagnostics,
       bootstrapLifecycle = bootstrapLifecycle,
       pacemakerSnapshot = None,
+      pacemakerWakeUp = None,
       proposalValidationConfig = proposalValidationConfig,
       txUniquenessConfig = txUniquenessConfig,
+      pacemakerPolicy = pacemakerPolicy,
     )
 
   @SuppressWarnings(Array("org.wartremover.warts.DefaultArguments"))
@@ -576,6 +628,8 @@ object HotStuffNodeRuntime:
         HotStuffProposalValidationRuntimeConfig.legacyCompatible[F],
       txUniquenessConfig: HotStuffProposalTxUniquenessRuntimeConfig =
         HotStuffProposalTxUniquenessRuntimeConfig.enforceUnfinalizedAncestors,
+      pacemakerPolicy: HotStuffPacemakerPolicy =
+        HotStuffPacemakerPolicy.default,
   ): Either[HotStuffPolicyViolation, HotStuffNodeRuntime[F]] =
     validateBootstrapInput(bootstrapInput)
       .map(
@@ -586,6 +640,7 @@ object HotStuffNodeRuntime:
           bootstrapLifecycle,
           proposalValidationConfig,
           txUniquenessConfig,
+          pacemakerPolicy,
         ),
       )
 
@@ -596,8 +651,7 @@ object HotStuffNodeRuntime:
   def inMemoryServices[F[_]: Sync](
       validatorSet: ValidatorSet,
       gossipPolicy: HotStuffGossipPolicy = HotStuffGossipPolicy.default,
-      relayPolicy: HotStuffRelayPolicy =
-        HotStuffRelayPolicy.default,
+      relayPolicy: HotStuffRelayPolicy = HotStuffRelayPolicy.default,
   )(using
       clock: GossipClock[F],
   ): F[(HotStuffRuntimeServices[F], HotStuffInMemoryRuntimeDiagnostics[F])] =
@@ -639,6 +693,8 @@ object HotStuffNodeRuntime:
         HotStuffProposalValidationRuntimeConfig.legacyCompatible[F],
       txUniquenessConfig: HotStuffProposalTxUniquenessRuntimeConfig =
         HotStuffProposalTxUniquenessRuntimeConfig.enforceUnfinalizedAncestors,
+      pacemakerPolicy: HotStuffPacemakerPolicy =
+        HotStuffPacemakerPolicy.default,
   )(using
       clock: GossipClock[F],
   ): F[Either[HotStuffPolicyViolation, HotStuffNodeRuntime[F]]] =
@@ -682,6 +738,7 @@ object HotStuffNodeRuntime:
                 none[HotStuffBootstrapLifecycle[F]],
                 proposalValidationConfig,
                 txUniquenessConfig,
+                pacemakerPolicy,
               ),
               automaticConsensus = automaticConsensus,
               proposalInputConfig = proposalInputConfig,

@@ -106,6 +106,40 @@ object FinalizedAnchorObservation:
       finalizedObservedAt = finalizedObservedAt,
     )
 
+/** Records the local first observation timestamps for a certified block. */
+final case class CertifiedBlockObservation(
+    chainId: ChainId,
+    proposalId: ProposalId,
+    blockId: BlockId,
+    height: BlockHeight,
+    window: HotStuffWindow,
+    qcSubject: QuorumCertificateSubject,
+    validatorSetHash: ValidatorSetHash,
+    proposalObservedAt: Instant,
+    certifiedObservedAt: Instant,
+)
+
+/** Companion for `CertifiedBlockObservation`. */
+object CertifiedBlockObservation:
+  /** Creates an observation from a proposal and matching QC subject. */
+  def fromProposal(
+      proposal: Proposal,
+      qcSubject: QuorumCertificateSubject,
+      proposalObservedAt: Instant,
+      certifiedObservedAt: Instant,
+  ): CertifiedBlockObservation =
+    CertifiedBlockObservation(
+      chainId = proposal.window.chainId,
+      proposalId = proposal.proposalId,
+      blockId = proposal.targetBlockId,
+      height = proposal.block.height,
+      window = proposal.window,
+      qcSubject = qcSubject,
+      validatorSetHash = proposal.window.validatorSetHash,
+      proposalObservedAt = proposalObservedAt,
+      certifiedObservedAt = certifiedObservedAt,
+    )
+
 /** A finalized proposal and its application-neutral tx ids. */
 final case class FinalizedTxProposalObservation(
     proposalId: ProposalId,

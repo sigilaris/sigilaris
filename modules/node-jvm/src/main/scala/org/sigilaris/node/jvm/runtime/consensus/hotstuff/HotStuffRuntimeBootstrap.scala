@@ -125,6 +125,8 @@ object HotStuffRuntimeBootstrap:
         HotStuffProposalValidationRuntimeConfig.legacyCompatible[F],
       txUniquenessConfig: HotStuffProposalTxUniquenessRuntimeConfig =
         HotStuffProposalTxUniquenessRuntimeConfig.enforceUnfinalizedAncestors,
+      pacemakerPolicy: HotStuffPacemakerPolicy =
+        HotStuffPacemakerPolicy.default,
   ): Resource[F, Either[String, HotStuffRuntimeBootstrap[F]]] =
     Resource
       .eval:
@@ -190,6 +192,7 @@ object HotStuffRuntimeBootstrap:
                       proposalInputConfig = proposalInputConfig,
                       proposalValidationConfig = proposalValidationConfig,
                       txUniquenessConfig = txUniquenessConfig,
+                      pacemakerPolicy = pacemakerPolicy,
                     )
 
   /** Bootstraps HotStuff plus embedder-owned application gossip topics from
@@ -212,6 +215,8 @@ object HotStuffRuntimeBootstrap:
         HotStuffProposalValidationRuntimeConfig.legacyCompatible[F],
       txUniquenessConfig: HotStuffProposalTxUniquenessRuntimeConfig =
         HotStuffProposalTxUniquenessRuntimeConfig.enforceUnfinalizedAncestors,
+      pacemakerPolicy: HotStuffPacemakerPolicy =
+        HotStuffPacemakerPolicy.default,
   ): Resource[F, Either[
     String,
     HotStuffRuntimeBootstrapWithApplications[F, A],
@@ -290,6 +295,7 @@ object HotStuffRuntimeBootstrap:
                       proposalInputConfig = proposalInputConfig,
                       proposalValidationConfig = proposalValidationConfig,
                       txUniquenessConfig = txUniquenessConfig,
+                      pacemakerPolicy = pacemakerPolicy,
                     )
 
   /** Bootstraps the full HotStuff runtime from an explicit peer topology and
@@ -311,6 +317,8 @@ object HotStuffRuntimeBootstrap:
         HotStuffProposalValidationRuntimeConfig.legacyCompatible[F],
       txUniquenessConfig: HotStuffProposalTxUniquenessRuntimeConfig =
         HotStuffProposalTxUniquenessRuntimeConfig.enforceUnfinalizedAncestors,
+      pacemakerPolicy: HotStuffPacemakerPolicy =
+        HotStuffPacemakerPolicy.default,
   ): Resource[F, Either[String, HotStuffRuntimeBootstrap[F]]] =
     fromTopologyWithGossipRuntime[
       F,
@@ -325,6 +333,7 @@ object HotStuffRuntimeBootstrap:
       proposalInputConfig = proposalInputConfig,
       proposalValidationConfig = proposalValidationConfig,
       txUniquenessConfig = txUniquenessConfig,
+      pacemakerPolicy = pacemakerPolicy,
       buildGossipRuntime = consensus =>
         TxGossipRuntimeBootstrap.fromTopology[F, HotStuffGossipArtifact](
           topology = topology,
@@ -367,6 +376,8 @@ object HotStuffRuntimeBootstrap:
         HotStuffProposalValidationRuntimeConfig.legacyCompatible[F],
       txUniquenessConfig: HotStuffProposalTxUniquenessRuntimeConfig =
         HotStuffProposalTxUniquenessRuntimeConfig.enforceUnfinalizedAncestors,
+      pacemakerPolicy: HotStuffPacemakerPolicy =
+        HotStuffPacemakerPolicy.default,
   ): Resource[
     F,
     Either[String, HotStuffRuntimeBootstrapWithApplications[F, A]],
@@ -384,6 +395,7 @@ object HotStuffRuntimeBootstrap:
       proposalInputConfig = proposalInputConfig,
       proposalValidationConfig = proposalValidationConfig,
       txUniquenessConfig = txUniquenessConfig,
+      pacemakerPolicy = pacemakerPolicy,
       buildGossipRuntime = consensus =>
         TxGossipRuntimeBootstrap.fromTopology[F, HotStuffPeerArtifact[A]](
           topology = topology,
@@ -427,6 +439,7 @@ object HotStuffRuntimeBootstrap:
       proposalInputConfig: HotStuffProposalInputRuntimeConfig[F],
       proposalValidationConfig: HotStuffProposalValidationRuntimeConfig[F],
       txUniquenessConfig: HotStuffProposalTxUniquenessRuntimeConfig,
+      pacemakerPolicy: HotStuffPacemakerPolicy,
       buildGossipRuntime: HotStuffNodeRuntime[F] => F[TxGossipBootstrap[F, A]],
       assembleBootstrap: (HotStuffNodeRuntime[F], TxGossipBootstrap[F, A]) => B,
   ): Resource[F, Either[String, B]] =
@@ -572,6 +585,7 @@ object HotStuffRuntimeBootstrap:
                                         proposalValidationConfig =
                                           proposalValidationConfig,
                                         txUniquenessConfig = txUniquenessConfig,
+                                        pacemakerPolicy = pacemakerPolicy,
                                       ),
                                     automaticConsensus = true,
                                     proposalInputConfig = proposalInputConfig,

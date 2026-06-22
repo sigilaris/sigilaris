@@ -119,8 +119,8 @@ High-performance cryptographic primitives for blockchain applications.
 ## Documentation
 
 - **[API Documentation](https://javadoc.io/doc/org.sigilaris/sigilaris-core_3/latest/index.html)** — Comprehensive Scaladoc
-- **[v0.2.6 Release Notes](docs/dev/v0.2.6-release-notes.md)** — Latest release notes and upgrade notes
-- **[v0.2.5 Release Notes](docs/dev/v0.2.5-release-notes.md)** — Previous release notes and upgrade notes
+- **[v0.2.7 Release Notes](docs/dev/v0.2.7-release-notes.md)** — Latest release notes and upgrade notes
+- **[v0.2.6 Release Notes](docs/dev/v0.2.6-release-notes.md)** — Previous release notes and upgrade notes
 - **[Latest Release](https://github.com/sigilaris/sigilaris/releases/latest)** — Release notes and artifacts
 - **[GitHub Repository](https://github.com/sigilaris/sigilaris)** — Source code and examples
 

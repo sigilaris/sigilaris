@@ -5,15 +5,78 @@ import java.time.Instant
 import cats.effect.kernel.Sync
 import cats.syntax.all.*
 
+import org.sigilaris.node.gossip.ChainId
+import org.sigilaris.node.jvm.runtime.block.BlockId
+
 /** Application-neutral request for validating a received proposal before a
   * local vote is signed.
   */
+@SuppressWarnings(Array("org.wartremover.warts.DefaultArguments"))
 final case class HotStuffProposalValidationRequest(
     proposal: Proposal,
     localVoter: ValidatorId,
     now: Instant,
     validatorSet: ValidatorSet,
+    branchContext: HotStuffProposalInputBranchContext =
+      HotStuffProposalValidationBranchContext.empty,
 )
+
+/** Stable reason codes for dependency-aware proposal validation providers. */
+object HotStuffProposalValidationDependencyReason:
+  val AncestorUnavailable: String =
+    "proposalVoteDependencyAncestorUnavailable"
+  val BranchConflict: String =
+    "proposalVoteDependencyBranchConflict"
+
+/** Parent-branch context helpers for received proposal validation. */
+object HotStuffProposalValidationBranchContext:
+  val empty: HotStuffProposalInputBranchContext =
+    HotStuffProposalInputBranchContext.empty
+
+  private[hotstuff] def fromParent(
+      chainId: ChainId,
+      parentBlockId: Option[BlockId],
+      justify: QuorumCertificate,
+      proposals: Iterable[Proposal],
+      finalization: Map[ChainId, FinalizationTrackerSnapshot],
+      bounds: HotStuffProposalTxUniquenessBounds,
+  ): HotStuffProposalInputBranchContext =
+    HotStuffProposalInputBranchContext.fromParent(
+      chainId = chainId,
+      parentBlockId = parentBlockId,
+      justify = justify,
+      proposals = proposals,
+      finalization = finalization,
+      bounds = bounds,
+    )
+
+  private[hotstuff] def fromSnapshot(
+      proposal: Proposal,
+      snapshot: InMemoryHotStuffSinkSnapshot,
+      bounds: HotStuffProposalTxUniquenessBounds,
+  ): HotStuffProposalInputBranchContext =
+    fromParent(
+      chainId = proposal.window.chainId,
+      parentBlockId = proposal.block.parent,
+      justify = proposal.justify,
+      proposals = snapshot.proposals.values,
+      finalization = snapshot.finalization,
+      bounds = bounds,
+    )
+
+  private[hotstuff] def unavailable(
+      parentBlockId: Option[BlockId],
+      reason: String,
+      detail: Option[String],
+  ): HotStuffProposalInputBranchContext =
+    HotStuffProposalInputBranchContext(
+      parentBlockId = parentBlockId,
+      bestFinalizedBlockId = None,
+      ancestors = Vector.empty[HotStuffProposalInputBranchAncestor],
+      complete = false,
+      unavailableReason = Some(reason),
+      unavailableDetail = detail,
+    )
 
 /** Taxonomy for application proposal validation provider results. */
 enum HotStuffProposalValidationProviderResult:
@@ -158,6 +221,7 @@ enum HotStuffProposalValidationDecision:
       case HotStuffProposalValidationDecision.Suppress(_, _, _) => true
 
 /** Companion for `HotStuffProposalValidationDecision`. */
+@SuppressWarnings(Array("org.wartremover.warts.DefaultArguments"))
 object HotStuffProposalValidationDecision:
   private[hotstuff] val TxAncestorConflictReason =
     "proposalVoteTxAncestorConflict"
@@ -264,6 +328,8 @@ object HotStuffProposalValidationDecision:
       localVoter: ValidatorId,
       now: Instant,
       validatorSet: ValidatorSet,
+      branchContext: HotStuffProposalInputBranchContext =
+        HotStuffProposalValidationBranchContext.empty,
   ): F[HotStuffProposalValidationDecision] =
     evaluate(
       config,
@@ -272,6 +338,7 @@ object HotStuffProposalValidationDecision:
         localVoter = localVoter,
         now = now,
         validatorSet = validatorSet,
+        branchContext = branchContext,
       ),
     )
 

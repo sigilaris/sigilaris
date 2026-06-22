@@ -121,6 +121,7 @@ private final class InMemoryHotStuffPacemakerDriver[F[_]: Sync](
     proposalInputFallbackPolicy: HotStuffProposalInputFallbackPolicy,
     proposalValidationConfig: HotStuffProposalValidationRuntimeConfig[F],
     txUniquenessConfig: HotStuffProposalTxUniquenessRuntimeConfig,
+    pacemakerPolicy: HotStuffPacemakerPolicy,
 )(using
     clock: GossipClock[F],
 ):
@@ -203,6 +204,39 @@ private final class InMemoryHotStuffPacemakerDriver[F[_]: Sync](
           ),
         )
         .flatMap(_.traverse_(driveEntry(_, now)))
+
+  def wakeUp: F[Unit] =
+    drivePending *> retryEligibleLeaderProposals
+
+  private def retryEligibleLeaderProposals: F[Unit] =
+    clock.now.flatMap: now =>
+      stateRef.get.flatMap: entries =>
+        entries.toVector
+          .sortBy { case (key, _) =>
+            (key.chainId.value, key.localValidator.value)
+          }
+          .traverse_ { case (key, entry) =>
+            val alreadyEmittedCurrentWindow =
+              entry.emittedProposalWindow.exists(window =>
+                entry.state.exists(_.activeWindow === window),
+              )
+            if alreadyEmittedCurrentWindow then Sync[F].unit
+            else
+              entry.state match
+                case Some(state)
+                    if state.activeWindow.chainId === key.chainId &&
+                      state.currentLeader === key.localValidator &&
+                      state.bootstrapHoldReason.isEmpty &&
+                      !state.localTimeoutVoteRequested &&
+                      state.localTimeoutVote.isEmpty =>
+                  emitLeaderProposal(
+                    state.activeWindow,
+                    key.localValidator,
+                    now,
+                  )
+                case _ =>
+                  Sync[F].unit
+          }
 
   private def driveEntry(
       key: HotStuffPacemakerKey,
@@ -525,11 +559,13 @@ private final class InMemoryHotStuffPacemakerDriver[F[_]: Sync](
   ): F[Option[HotStuffProposalInputRequest]] =
     txUniquenessConfig.policy match
       case HotStuffProposalTxUniquenessPolicy.UnsafeAllowAncestorTxConflicts =>
-        recordUnsafeTxUniquenessDiagnostic(key, request.window).as(
-          Some(request),
-        )
+        sink.snapshot.flatMap: snapshot =>
+          recordUnsafeTxUniquenessDiagnostic(key, request.window).as:
+            Some(requestWithBranchContext(request, snapshot))
       case HotStuffProposalTxUniquenessPolicy.EnforceUnfinalizedAncestors =>
         sink.snapshot.flatMap: snapshot =>
+          val requestWithBranch =
+            requestWithBranchContext(request, snapshot)
           txUniquenessCacheRef
             .modify: cache =>
               val (updatedCache, result) =
@@ -546,9 +582,9 @@ private final class InMemoryHotStuffPacemakerDriver[F[_]: Sync](
               case HotStuffProposalTxUniquenessResult.Accepted(exclusion) =>
                 recordProposalInputTxExclusionDiagnostic(
                   key,
-                  request,
+                  requestWithBranch,
                   exclusion,
-                ).as(Some(request.copy(txExclusion = exclusion)))
+                ).as(Some(requestWithBranch.copy(txExclusion = exclusion)))
               case HotStuffProposalTxUniquenessResult.Conflict(
                     conflicts,
                     _,
@@ -584,6 +620,21 @@ private final class InMemoryHotStuffPacemakerDriver[F[_]: Sync](
                   HotStuffProposalTxUniqueness.diagnosticDetail(reason, detail),
                   fallbackUsed = false,
                 ).as(None)
+
+  private def requestWithBranchContext(
+      request: HotStuffProposalInputRequest,
+      snapshot: InMemoryHotStuffSinkSnapshot,
+  ): HotStuffProposalInputRequest =
+    request.copy(
+      branchContext = HotStuffProposalInputBranchContext.fromParent(
+        chainId = request.window.chainId,
+        parentBlockId = request.parent,
+        justify = request.justify,
+        proposals = snapshot.proposals.values,
+        finalization = snapshot.finalization,
+        bounds = txUniquenessConfig.bounds,
+      ),
+    )
 
   private def resolveProposalInput(
       key: HotStuffPacemakerKey,
@@ -908,13 +959,28 @@ private final class InMemoryHotStuffPacemakerDriver[F[_]: Sync](
       case Some(decision) =>
         decision.pure[F]
       case None =>
-        HotStuffProposalValidationDecision.evaluateForLocalVote(
-          config = proposalValidationConfig,
-          proposal = proposal,
-          localVoter = voter,
-          now = now,
-          validatorSet = bootstrapInput.validatorSet,
-        )
+        sink.snapshot.flatMap: snapshot =>
+          HotStuffProposalValidationDecision.evaluateForLocalVote(
+            config = proposalValidationConfig,
+            proposal = proposal,
+            localVoter = voter,
+            now = now,
+            validatorSet = bootstrapInput.validatorSet,
+            branchContext = proposalValidationBranchContext(
+              proposal,
+              snapshot,
+            ),
+          )
+
+  private def proposalValidationBranchContext(
+      proposal: Proposal,
+      snapshot: InMemoryHotStuffSinkSnapshot,
+  ): HotStuffProposalInputBranchContext =
+    HotStuffProposalValidationBranchContext.fromSnapshot(
+      proposal = proposal,
+      snapshot = snapshot,
+      bounds = txUniquenessConfig.bounds,
+    )
 
   private def proposalTxUniquenessDecision(
       key: HotStuffPacemakerKey,
@@ -1279,9 +1345,10 @@ private final class InMemoryHotStuffPacemakerDriver[F[_]: Sync](
   private def runtimeFor(
       localValidator: ValidatorId,
   ): HotStuffPacemakerRuntime =
-    HotStuffPacemakerRuntime.default(
-      localValidator,
-      bootstrapInput.validatorSet,
+    HotStuffPacemakerRuntime.withPolicy(
+      localValidator = localValidator,
+      validatorSet = bootstrapInput.validatorSet,
+      policy = pacemakerPolicy,
     )
 
   private def compareWindow(
@@ -1337,6 +1404,7 @@ private object InMemoryHotStuffPacemakerDriver:
               proposalInputFallbackPolicy = proposalInputConfig.fallbackPolicy,
               proposalValidationConfig = runtime.proposalValidationConfig,
               txUniquenessConfig = txUniquenessConfig,
+              pacemakerPolicy = runtime.pacemakerPolicy,
             )
           val wrappedSource =
             new HotStuffPacemakerAwareSource[F](
@@ -1354,6 +1422,7 @@ private object InMemoryHotStuffPacemakerDriver:
               sink = wrappedSink,
             ),
             pacemakerSnapshot = driver.snapshot.some,
+            pacemakerWakeUp = driver.wakeUp.some,
           )
       case _ =>
         runtime.pure[F]

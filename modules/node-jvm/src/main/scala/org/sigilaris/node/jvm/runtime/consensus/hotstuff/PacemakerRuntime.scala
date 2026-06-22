@@ -104,6 +104,16 @@ object HotStuffPacemakerPolicy:
       elevatedTimeoutAlertThreshold = 3,
     )
 
+  /** Non-default warm static-cluster profile for latency experiments. */
+  val lowLatencyWarmStaticCluster: HotStuffPacemakerPolicy =
+    unsafe(
+      baseTimeout = Duration.ofMillis(100),
+      maxBackoffExponent = 2,
+      jitterStep = Duration.ofMillis(5),
+      maxJitterSlots = 2,
+      elevatedTimeoutAlertThreshold = 3,
+    )
+
 /** Commands emitted by the pacemaker runtime to be executed by the integration
   * driver.
   */
@@ -692,4 +702,16 @@ object HotStuffPacemakerRuntime:
       localValidator = localValidator,
       validatorSet = validatorSet,
       policy = HotStuffPacemakerPolicy.default,
+    )
+
+  /** Creates a pacemaker runtime with an explicit policy. */
+  def withPolicy(
+      localValidator: ValidatorId,
+      validatorSet: ValidatorSet,
+      policy: HotStuffPacemakerPolicy,
+  ): HotStuffPacemakerRuntime =
+    HotStuffPacemakerRuntime(
+      localValidator = localValidator,
+      validatorSet = validatorSet,
+      policy = policy,
     )
