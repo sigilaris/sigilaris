@@ -1,7 +1,7 @@
 # 0023 - Certified Ancestor Dependent Transaction Pipelining Plan
 
 ## Status
-Release Build Prepared (v0.2.7) - Resolver Publish Pending
+Published (v0.2.7)
 
 ## Created
 2026-06-22
@@ -138,7 +138,7 @@ The concrete target is:
 - [ADR-0031: Certified Ancestor Dependent Transaction Pipelining](../adr/0031-certified-ancestor-dependent-transaction-pipelining.md)
 - [HotStuff Proposal Provider Handoff](../dev/hotstuff-proposal-input-provider-handoff.md)
 - [HotStuff Low-Latency Profile](../dev/hotstuff-low-latency-profile.md)
-- [Draft v0.2.7 Release Notes](../dev/v0.2.7-release-notes.md)
+- [v0.2.7 Release Notes](../dev/v0.2.7-release-notes.md)
 - [0016 - HotStuff Application Proposal Input Hook Plan](0016-hotstuff-application-proposal-input-hook-plan.md)
 - [0017 - HotStuff Application Proposal Validation Hook Plan](0017-hotstuff-application-proposal-validation-hook-plan.md)
 - [0021 - HotStuff Proposal Tx Uniqueness Policy Plan](0021-hotstuff-proposal-tx-uniqueness-policy-plan.md)

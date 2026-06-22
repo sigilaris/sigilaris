@@ -181,6 +181,6 @@ Built with:
 - Scala.js node-common: `org.sigilaris:sigilaris-node-common_sjs1_3:VERSION`
 - JVM node bundle: `org.sigilaris:sigilaris-node-jvm_3:VERSION`
 
-Downstream projects can resolve the published `0.2.6` artifacts from Maven Central.
+Downstream projects can resolve the published `0.2.7` artifacts from Maven Central.
 
 **Scala Version:** 3.7.3
