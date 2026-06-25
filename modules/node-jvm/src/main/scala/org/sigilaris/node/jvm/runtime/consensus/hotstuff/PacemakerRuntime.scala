@@ -162,6 +162,62 @@ enum HotStuffPacemakerDiagnostic:
       detail: Option[String],
       fallbackUsed: Boolean,
   )
+  case ProposalInputAttemptTiming(
+      window: HotStuffWindow,
+      proposer: ValidatorId,
+      outcome: HotStuffProposalInputDiagnosticOutcome,
+      reason: String,
+      requestedAt: Instant,
+      completedAt: Instant,
+  )
+  case LocalProposalEmitted(
+      window: HotStuffWindow,
+      proposer: ValidatorId,
+      proposalId: ProposalId,
+      blockId: BlockId,
+      emittedAt: Instant,
+  )
+  case LocalVoteEmitted(
+      window: HotStuffWindow,
+      voter: ValidatorId,
+      targetProposalId: ProposalId,
+      emittedAt: Instant,
+  )
+  case FinalityDriveRequested(
+      window: HotStuffWindow,
+      proposer: ValidatorId,
+      anchorProposalId: ProposalId,
+      anchorBlockId: BlockId,
+      descendantDepthAfterProposal: Int,
+      attempt: Int,
+      maxAttemptsPerAnchor: Int,
+      maxDescendantDepth: Int,
+      elapsed: Duration,
+  )
+  case FinalityDriveProviderResult(
+      window: HotStuffWindow,
+      proposer: ValidatorId,
+      anchorProposalId: ProposalId,
+      anchorBlockId: BlockId,
+      outcome: HotStuffProposalInputDiagnosticOutcome,
+      reason: String,
+      detail: Option[String],
+  )
+  case FinalityDriveSuppressed(
+      window: HotStuffWindow,
+      proposer: ValidatorId,
+      anchorProposalId: ProposalId,
+      anchorBlockId: BlockId,
+      reason: String,
+      detail: Option[String],
+  )
+  case FinalityDriveTargetFinalized(
+      window: HotStuffWindow,
+      proposer: ValidatorId,
+      anchorProposalId: ProposalId,
+      anchorBlockId: BlockId,
+      finalizedBlockId: BlockId,
+  )
   case ProposalInputTxExclusion(
       window: HotStuffWindow,
       proposer: ValidatorId,

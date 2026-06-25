@@ -10,6 +10,7 @@ import java.nio.file.{Path, Paths}
   * @param batch       paths for batch-related stores
   * @param state       paths for consensus state stores
   * @param event       paths for event-related stores
+  * @param pipeline    paths for transaction pipeline metadata stores
   */
 final case class StorageLayout(
     root: Path,
@@ -18,6 +19,7 @@ final case class StorageLayout(
     batch: StorageLayout.Batch,
     state: StorageLayout.State,
     event: StorageLayout.Event,
+    pipeline: StorageLayout.Pipeline,
 )
 
 /** Companion providing nested path group types and factory methods for `StorageLayout`. */
@@ -59,6 +61,13 @@ object StorageLayout:
     */
   final case class Event(index: Path)
 
+  /** Directory paths for transaction pipeline metadata storage.
+    *
+    * @param metadata    path to the pipeline metadata store
+    * @param idempotency path to the idempotency-key index store
+    */
+  final case class Pipeline(metadata: Path, idempotency: Path)
+
   /** Constructs a `StorageLayout` by resolving conventional subdirectory names under the given root.
     *
     * @param root the root directory
@@ -70,6 +79,7 @@ object StorageLayout:
     val batchRoot = root.resolve("batch")
     val stateRoot = root.resolve("state")
     val eventRoot = root.resolve("event")
+    val pipelineRoot = root.resolve("tx-pipeline")
 
     StorageLayout(
       root = root,
@@ -87,6 +97,10 @@ object StorageLayout:
         stateRoot.resolve("historical-archive"),
       ),
       event = Event(eventRoot.resolve("index")),
+      pipeline = Pipeline(
+        pipelineRoot.resolve("metadata"),
+        pipelineRoot.resolve("idempotency"),
+      ),
     )
 
   /** The default storage layout, rooted at `data/sway`. */

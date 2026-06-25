@@ -1,8 +1,9 @@
 package org.sigilaris.node.jvm.runtime.consensus.hotstuff
 
-import java.time.Instant
+import java.time.{Duration, Instant}
 
 import cats.effect.kernel.{Ref, Sync}
+import cats.effect.kernel.syntax.all.*
 import cats.syntax.all.*
 import scodec.bits.ByteVector
 
@@ -12,6 +13,7 @@ import org.sigilaris.core.crypto.{CryptoOps, KeyPair}
 import org.sigilaris.core.datatype.{UInt256, Utf8}
 import org.sigilaris.core.util.SafeStringInterp.*
 import org.sigilaris.node.jvm.runtime.block.{
+  BlockId,
   BlockHeader,
   BlockHeight,
   BlockTimestamp,
@@ -32,6 +34,7 @@ final case class HotStuffPacemakerEntrySnapshot(
     diagnostics: Vector[HotStuffPacemakerDiagnostic],
     proposalEligibility: Option[HotStuffPacemakerProposalEligibility],
     emittedProposalWindow: Option[HotStuffWindow],
+    proposalEmissionReservationWindow: Option[HotStuffWindow],
 )
 
 /** A snapshot of all pacemaker entries for diagnostics and testing. */
@@ -60,6 +63,165 @@ private final case class ObservedEventQueue(
     pending: Vector[GossipEvent[HotStuffGossipArtifact]],
 )
 
+private final case class FinalityDriveAnchorKey(
+    chainId: ChainId,
+    proposalId: ProposalId,
+    blockId: BlockId,
+    height: BlockHeight,
+)
+
+private object FinalityDriveFinalization:
+  def finalizedBlockId(
+      anchor: HotStuffFinalityDriveAnchor,
+      finalization: Map[ChainId, FinalizationTrackerSnapshot],
+  ): Option[BlockId] =
+    // The proposal request branch context is canonical for the candidate
+    // parent branch, so any best finalized height at or beyond the anchor
+    // height stops drive for anchors on that branch.
+    finalization
+      .get(anchor.chainId)
+      .flatMap(_.bestFinalized)
+      .filter(finalized =>
+        summon[Ordering[BlockHeight]].gteq(
+          finalized.anchorHeight,
+          anchor.height,
+        ),
+      )
+      .map(_.anchorBlockId)
+
+private final case class FinalityDriveAttemptState(
+    anchor: HotStuffFinalityDriveAnchor,
+    reportingKey: HotStuffPacemakerKey,
+    firstRequestedAt: Instant,
+    attempts: Int,
+)
+
+private final case class FinalityDriveSuppression(
+    anchor: HotStuffFinalityDriveAnchor,
+    reason: String,
+    detail: Option[String],
+)
+
+private enum FinalityDriveRequestDecision:
+  case Requested(hint: HotStuffProposalInputFinalityDrive)
+  case Suppressed(suppression: FinalityDriveSuppression)
+
+private enum FinalityDriveDiagnosticEvent:
+  case Requested(hint: HotStuffProposalInputFinalityDrive)
+  case Suppressed(suppression: FinalityDriveSuppression)
+  case TargetFinalized(
+      reportingKey: HotStuffPacemakerKey,
+      anchor: HotStuffFinalityDriveAnchor,
+      finalizedBlockId: BlockId,
+  )
+
+private final case class FinalityDriveRuntimeState(
+    attemptsByAnchor: Map[FinalityDriveAnchorKey, FinalityDriveAttemptState],
+):
+  def pruned(
+      finalization: Map[ChainId, FinalizationTrackerSnapshot],
+  ): (
+      FinalityDriveRuntimeState,
+      Vector[
+        (HotStuffPacemakerKey, HotStuffFinalityDriveAnchor, BlockId),
+      ],
+  ) =
+    val (finalized, active) =
+      attemptsByAnchor.partition { case (_, state) =>
+        FinalityDriveFinalization
+          .finalizedBlockId(state.anchor, finalization)
+          .isDefined
+      }
+    val finalizedAnchors =
+      finalized.values.toVector.flatMap(state =>
+        FinalityDriveFinalization
+          .finalizedBlockId(state.anchor, finalization)
+          .map(finalizedBlockId =>
+            (state.reportingKey, state.anchor, finalizedBlockId),
+          ),
+      )
+    copy(attemptsByAnchor = active) -> finalizedAnchors
+
+  def requestDrive(
+      policy: HotStuffFinalityDrivePolicy,
+      candidate: HotStuffFinalityDriveCandidate,
+      reportingKey: HotStuffPacemakerKey,
+      now: Instant,
+  ): (FinalityDriveRuntimeState, FinalityDriveRequestDecision) =
+    val key     = FinalityDriveAnchorKey.fromAnchor(candidate.anchor)
+    val current = attemptsByAnchor.get(key)
+    val firstRequestedAt =
+      current.fold(now)(_.firstRequestedAt)
+    val rawElapsed =
+      Duration.between(firstRequestedAt, now)
+    val elapsed =
+      if rawElapsed.isNegative then Duration.ZERO else rawElapsed
+    if current.exists(_.attempts >= policy.maxAttemptsPerAnchor) ||
+      elapsed.compareTo(policy.maxElapsed) >= 0
+    then
+      // Exhausted entries stay recorded until finalization so later retries for
+      // the same anchor continue to suppress drive hints.
+      val suppression =
+        if current.exists(_.attempts >= policy.maxAttemptsPerAnchor) then
+          FinalityDriveSuppression(
+            anchor = candidate.anchor,
+            reason = "finalityDriveAttemptBoundExhausted",
+            detail = Some(
+              ss"attempts=${current.fold(0)(_.attempts).toString};max=${policy.maxAttemptsPerAnchor.toString}",
+            ),
+          )
+        else
+          FinalityDriveSuppression(
+            anchor = candidate.anchor,
+            reason = "finalityDriveElapsedBoundExhausted",
+            detail = Some(
+              ss"elapsedMillis=${elapsed.toMillis.toString};maxElapsedMillis=${policy.maxElapsed.toMillis.toString}",
+            ),
+          )
+      this -> FinalityDriveRequestDecision.Suppressed(suppression)
+    else
+      val attempt = current.fold(1)(_.attempts + 1)
+      copy(
+        attemptsByAnchor = attemptsByAnchor.updated(
+          key,
+          FinalityDriveAttemptState(
+            anchor = candidate.anchor,
+            reportingKey = reportingKey,
+            firstRequestedAt = firstRequestedAt,
+            attempts = attempt,
+          ),
+        ),
+      ) ->
+        FinalityDriveRequestDecision.Requested(
+          HotStuffProposalInputFinalityDrive(
+            anchor = candidate.anchor,
+            descendantDepthAfterProposal =
+              candidate.descendantDepthAfterProposal,
+            maxDescendantDepth = policy.maxDescendantDepth,
+            attempt = attempt,
+            maxAttemptsPerAnchor = policy.maxAttemptsPerAnchor,
+            elapsed = elapsed,
+          ),
+        )
+
+private object FinalityDriveAnchorKey:
+  def fromAnchor(
+      anchor: HotStuffFinalityDriveAnchor,
+  ): FinalityDriveAnchorKey =
+    FinalityDriveAnchorKey(
+      chainId = anchor.chainId,
+      proposalId = anchor.proposalId,
+      blockId = anchor.blockId,
+      height = anchor.height,
+    )
+
+private object FinalityDriveRuntimeState:
+  val empty: FinalityDriveRuntimeState =
+    FinalityDriveRuntimeState(
+      attemptsByAnchor =
+        Map.empty[FinalityDriveAnchorKey, FinalityDriveAttemptState],
+    )
+
 private object HotStuffPacemakerEntrySnapshot:
   val empty: HotStuffPacemakerEntrySnapshot =
     HotStuffPacemakerEntrySnapshot(
@@ -67,6 +229,7 @@ private object HotStuffPacemakerEntrySnapshot:
       diagnostics = Vector.empty[HotStuffPacemakerDiagnostic],
       proposalEligibility = None,
       emittedProposalWindow = None,
+      proposalEmissionReservationWindow = None,
     )
 
 private final class HotStuffPacemakerAwareSource[F[_]: Sync](
@@ -116,12 +279,14 @@ private final class InMemoryHotStuffPacemakerDriver[F[_]: Sync](
     stateRef: Ref[F, Map[HotStuffPacemakerKey, HotStuffPacemakerEntrySnapshot]],
     observationRef: Ref[F, ObservedEventQueue],
     txUniquenessCacheRef: Ref[F, HotStuffProposalTxUniquenessCache],
+    finalityDriveStateRef: Ref[F, FinalityDriveRuntimeState],
     automaticConsensus: Boolean,
     proposalInputProviderOverride: Option[HotStuffProposalInputProvider[F]],
     proposalInputFallbackPolicy: HotStuffProposalInputFallbackPolicy,
     proposalValidationConfig: HotStuffProposalValidationRuntimeConfig[F],
     txUniquenessConfig: HotStuffProposalTxUniquenessRuntimeConfig,
     pacemakerPolicy: HotStuffPacemakerPolicy,
+    finalityDrivePolicy: HotStuffFinalityDrivePolicy,
 )(using
     clock: GossipClock[F],
 ):
@@ -189,7 +354,8 @@ private final class InMemoryHotStuffPacemakerDriver[F[_]: Sync](
                   else Sync[F].unit)
              else Sync[F].unit)
         case HotStuffGossipArtifact.VoteArtifact(vote) =>
-          activateFromQc(vote, now)
+          activateFromQc(vote, now).flatMap: advanced =>
+            if advanced then retryEligibleLeaderProposals else Sync[F].unit
         case HotStuffGossipArtifact.TimeoutVoteArtifact(timeoutVote) =>
           observeTimeoutVote(timeoutVote)
         case HotStuffGossipArtifact.NewViewArtifact(newView) =>
@@ -216,11 +382,11 @@ private final class InMemoryHotStuffPacemakerDriver[F[_]: Sync](
             (key.chainId.value, key.localValidator.value)
           }
           .traverse_ { case (key, entry) =>
-            val alreadyEmittedCurrentWindow =
-              entry.emittedProposalWindow.exists(window =>
-                entry.state.exists(_.activeWindow === window),
+            val alreadyClaimedCurrentWindow =
+              entry.state.exists(state =>
+                proposalEmissionClaimed(entry, state.activeWindow),
               )
-            if alreadyEmittedCurrentWindow then Sync[F].unit
+            if alreadyClaimedCurrentWindow then Sync[F].unit
             else
               entry.state match
                 case Some(state)
@@ -291,11 +457,11 @@ private final class InMemoryHotStuffPacemakerDriver[F[_]: Sync](
   private def activateFromQc(
       vote: Vote,
       now: Instant,
-  ): F[Unit] =
+  ): F[Boolean] =
     sink.snapshot.flatMap: snapshot =>
       snapshot.proposals.get(vote.targetProposalId) match
         case None =>
-          Sync[F].unit
+          Sync[F].pure(false)
         case Some(proposal) =>
           val highestKnownQc =
             snapshot.qcs
@@ -315,14 +481,14 @@ private final class InMemoryHotStuffPacemakerDriver[F[_]: Sync](
                     bootstrapInput.validatorSet,
                   )
                   .toOption
-          highestKnownQc.fold(Sync[F].unit): qc =>
+          highestKnownQc.fold(Sync[F].pure(false)): qc =>
             val nextWindow =
               proposal.window.copy(
                 height = proposal.window.height.next,
                 view = proposal.window.view.next,
               )
             bootstrapHoldReason(nextWindow.chainId).flatMap: holdReason =>
-              localValidators.traverse_ { validatorId =>
+              localValidators.traverse { validatorId =>
                 updateEntry(
                   HotStuffPacemakerKey(nextWindow.chainId, validatorId),
                 ): snapshot =>
@@ -352,7 +518,7 @@ private final class InMemoryHotStuffPacemakerDriver[F[_]: Sync](
                           bootstrapHoldReason = holdReason,
                         ),
                       )
-              }
+              }.map(_.exists(identity))
 
   private def observeTimeoutVote(
       timeoutVote: TimeoutVote,
@@ -409,7 +575,7 @@ private final class InMemoryHotStuffPacemakerDriver[F[_]: Sync](
       key: HotStuffPacemakerKey,
   )(
       stepFor: HotStuffPacemakerEntrySnapshot => Option[HotStuffPacemakerStep],
-  ): F[Unit] =
+  ): F[Boolean] =
     stateRef
       .modify: entries =>
         val existing  = entries.get(key)
@@ -418,13 +584,14 @@ private final class InMemoryHotStuffPacemakerDriver[F[_]: Sync](
         val nextEntries =
           maybeStep match
             case Some(step) =>
-              val emittedProposalWindow =
+              val (emittedProposalWindow, proposalEmissionReservationWindow) =
                 current.state match
                   case Some(state)
                       if state.activeWindow =!= step.state.activeWindow =>
-                    None
+                    None -> None
                   case _ =>
-                    current.emittedProposalWindow
+                    current.emittedProposalWindow ->
+                      current.proposalEmissionReservationWindow
               entries.updated(
                 key,
                 HotStuffPacemakerEntrySnapshot(
@@ -432,12 +599,18 @@ private final class InMemoryHotStuffPacemakerDriver[F[_]: Sync](
                   diagnostics = current.diagnostics ++ step.diagnostics,
                   proposalEligibility = Some(step.proposalEligibility),
                   emittedProposalWindow = emittedProposalWindow,
+                  proposalEmissionReservationWindow =
+                    proposalEmissionReservationWindow,
                 ),
               )
             case None =>
               entries
-        nextEntries -> maybeStep.toList.flatMap(_.commands)
-      .flatMap(commands => executeCommands(commands))
+        nextEntries -> (
+          maybeStep.isDefined,
+          maybeStep.toList.flatMap(_.commands),
+        )
+      .flatMap: (advanced, commands) =>
+        executeCommands(commands).as(advanced)
 
   private def executeCommands(
       commands: Iterable[HotStuffPacemakerCommand],
@@ -501,35 +674,49 @@ private final class InMemoryHotStuffPacemakerDriver[F[_]: Sync](
       now: Instant,
   ): F[Unit] =
     val key = HotStuffPacemakerKey(window.chainId, leader)
-    entryFor(key).flatMap:
-      case Some(entry) if entry.emittedProposalWindow.contains(window) =>
+    reserveProposalEmission(key, window, leader).flatMap:
+      case None =>
         Sync[F].unit
-      case Some(entry)
-          if entry.state.exists(state =>
-            state.activeWindow === window &&
-              state.currentLeader === leader &&
-              state.bootstrapHoldReason.isEmpty,
-          ) =>
-        entry.state.fold(Sync[F].unit): state =>
-          proposalInputRequest(window, leader, state, now) match
-            case Left(error) =>
-              recordProposalInputDiagnostic(
-                key,
-                window,
-                leader,
-                HotStuffProposalInputDiagnosticOutcome.Failed,
-                "proposalInputTimestampInvalid",
-                Some(error),
-                fallbackUsed = false,
-              )
-            case Right(request) =>
-              proposalInputRequestWithTxExclusion(key, request).flatMap:
-                case Some(requestWithExclusion) =>
-                  resolveProposalInput(key, requestWithExclusion, now)
-                case None =>
-                  Sync[F].unit
-      case _ =>
-        Sync[F].unit
+      case Some(state) =>
+        Ref.of[F, Boolean](false).flatMap: emittedRef =>
+          attemptReservedProposalEmission(key, window, leader, state, now)
+            .flatTap(emittedRef.set)
+            .void
+            .guarantee:
+              emittedRef.get.flatMap: emitted =>
+                releaseProposalEmissionReservation(key, window)
+                  .unlessA(emitted)
+
+  private def attemptReservedProposalEmission(
+      key: HotStuffPacemakerKey,
+      window: HotStuffWindow,
+      leader: ValidatorId,
+      state: HotStuffPacemakerState,
+      now: Instant,
+  ): F[Boolean] =
+    proposalInputRequest(window, leader, state, now) match
+      case Left(error) =>
+        recordProposalInputDiagnostic(
+          key,
+          window,
+          leader,
+          HotStuffProposalInputDiagnosticOutcome.Failed,
+          "proposalInputTimestampInvalid",
+          Some(error),
+          fallbackUsed = false,
+        ).as(false)
+      case Right(request) =>
+        proposalInputRequestWithTxExclusion(key, request).flatMap:
+          case Some(requestWithExclusion) =>
+            requestWithFinalityDrive(
+              key,
+              requestWithExclusion,
+              now,
+            ).flatMap(requestWithDrive =>
+              resolveProposalInput(key, requestWithDrive, now),
+            )
+          case None =>
+            Sync[F].pure(false)
 
   private def proposalInputRequest(
       window: HotStuffWindow,
@@ -625,38 +812,130 @@ private final class InMemoryHotStuffPacemakerDriver[F[_]: Sync](
       request: HotStuffProposalInputRequest,
       snapshot: InMemoryHotStuffSinkSnapshot,
   ): HotStuffProposalInputRequest =
-    request.copy(
-      branchContext = HotStuffProposalInputBranchContext.fromParent(
+    val branchContext =
+      HotStuffProposalInputBranchContext.fromParent(
         chainId = request.window.chainId,
         parentBlockId = request.parent,
         justify = request.justify,
         proposals = snapshot.proposals.values,
         finalization = snapshot.finalization,
         bounds = txUniquenessConfig.bounds,
-      ),
+      )
+    request.copy(
+      branchContext = branchContext,
+      finalizationProgress =
+        HotStuffProposalInputFinalizationProgress.fromBranch(
+          branchContext,
+          request.height,
+        ),
     )
+
+  private def requestWithFinalityDrive(
+      key: HotStuffPacemakerKey,
+      request: HotStuffProposalInputRequest,
+      now: Instant,
+  ): F[HotStuffProposalInputRequest] =
+    if !finalityDrivePolicy.enabled then request.pure[F]
+    else
+      sink.snapshot.flatMap: snapshot =>
+        val rawCandidate =
+          HotStuffFinalityDriveCandidate
+            .fromRequest(
+              request,
+              finalityDrivePolicy.maxDescendantDepth,
+            )
+        val candidate =
+          rawCandidate.filter(candidate =>
+            FinalityDriveFinalization
+              .finalizedBlockId(
+                candidate.anchor,
+                snapshot.finalization,
+              )
+              .isEmpty,
+          )
+        // Target-finalized diagnostics come from pruning active drive state.
+        // A candidate already finalized before a drive attempt is simply
+        // ineligible, which keeps repeated wake retries idempotent.
+        finalityDriveStateRef
+          .modify: state =>
+            val (pruned, finalizedAnchors) =
+              state.pruned(snapshot.finalization)
+            val finalizedEvents =
+              finalizedAnchors.distinct.map(
+                (reportingKey, anchor, finalizedBlockId) =>
+                  FinalityDriveDiagnosticEvent.TargetFinalized(
+                    reportingKey,
+                    anchor,
+                    finalizedBlockId,
+                  ),
+              )
+            candidate match
+              case Some(candidate) =>
+                val (updated, decision) =
+                  pruned.requestDrive(
+                    finalityDrivePolicy,
+                    candidate,
+                    key,
+                    now,
+                  )
+                decision match
+                  case FinalityDriveRequestDecision.Requested(hint) =>
+                    updated -> (
+                      request.copy(finalityDrive = Some(hint)),
+                      finalizedEvents :+
+                        FinalityDriveDiagnosticEvent.Requested(hint)
+                    )
+                  case FinalityDriveRequestDecision.Suppressed(
+                        suppression,
+                      ) =>
+                    updated -> (
+                      request,
+                      finalizedEvents :+
+                        FinalityDriveDiagnosticEvent.Suppressed(suppression)
+                    )
+              case None =>
+                pruned -> (request, finalizedEvents)
+          .flatTap: (_, events) =>
+            events.traverse_(event =>
+              recordFinalityDriveDiagnosticEvent(key, request, event),
+            )
+          .map((requestWithDrive, _) => requestWithDrive)
 
   private def resolveProposalInput(
       key: HotStuffPacemakerKey,
       request: HotStuffProposalInputRequest,
       now: Instant,
-  ): F[Unit] =
+  ): F[Boolean] =
     proposalInputProvider
       .nextProposalInput(request)
       .attempt
-      .map:
-        case Right(result) =>
-          result
-        case Left(error) =>
-          HotStuffProposalInputProviderResult.Failed(
-            reason = "proposalInputProviderFailed",
-            detail = throwableDetail(error),
-          )
-      .flatMap: result =>
-        HotStuffProposalInputDecision.fromProviderResult(
+      .flatMap: attempted =>
+        clock.now.map: completedAt =>
+          val result =
+            attempted match
+              case Right(result) =>
+                result
+              case Left(error) =>
+                HotStuffProposalInputProviderResult.Failed(
+                  reason = "proposalInputProviderFailed",
+                  detail = throwableDetail(error),
+                )
+          result -> completedAt
+      .flatMap: (result, completedAt) =>
+        val decision = HotStuffProposalInputDecision.fromProviderResult(
           result,
           proposalInputFallbackPolicy,
-        ) match
+        )
+        recordProposalInputAttemptTimingDiagnostic(
+          key,
+          request,
+          result,
+          completedAt,
+        ) *> recordFinalityDriveProviderResultDiagnostic(
+          key,
+          request,
+          result,
+        ) *> (decision match
           case HotStuffProposalInputDecision.UseProviderInput(input) =>
             useProviderInput(key, request, input, now)
           case HotStuffProposalInputDecision.UseLegacyEmpty(reason, detail) =>
@@ -678,14 +957,15 @@ private final class InMemoryHotStuffPacemakerDriver[F[_]: Sync](
               request,
               result,
               fallbackUsed = false,
-            )
+            ).as(false)
+        )
 
   private def useProviderInput(
       key: HotStuffPacemakerKey,
       request: HotStuffProposalInputRequest,
       input: HotStuffProposalInput,
       now: Instant,
-  ): F[Unit] =
+  ): F[Boolean] =
     HotStuffProposalInputValidator.validate(request, input) match
       case Left(validation) =>
         handleInvalidProposalInput(key, request, validation, now)
@@ -711,7 +991,7 @@ private final class InMemoryHotStuffPacemakerDriver[F[_]: Sync](
       request: HotStuffProposalInputRequest,
       validation: HotStuffValidationFailure,
       now: Instant,
-  ): F[Unit] =
+  ): F[Boolean] =
     if validation.reason === HotStuffProposalInputValidator.TxAncestorConflictReason
     then
       recordProposalInputDiagnostic(
@@ -722,7 +1002,7 @@ private final class InMemoryHotStuffPacemakerDriver[F[_]: Sync](
         validation.reason,
         validation.detail,
         fallbackUsed = false,
-      )
+      ).as(false)
     else
       proposalInputFallbackPolicy match
         case HotStuffProposalInputFallbackPolicy.AllowLegacyEmpty =>
@@ -735,12 +1015,12 @@ private final class InMemoryHotStuffPacemakerDriver[F[_]: Sync](
             validation.detail,
             fallbackUsed = true,
           ) *> useLegacyProposalInput(
-            key,
-            request,
-            now,
-            validation.reason,
-            validation.detail,
-          )
+              key,
+              request,
+              now,
+              validation.reason,
+              validation.detail,
+            )
         case HotStuffProposalInputFallbackPolicy.RequireProviderInput =>
           recordProposalInputDiagnostic(
             key,
@@ -750,7 +1030,7 @@ private final class InMemoryHotStuffPacemakerDriver[F[_]: Sync](
             validation.reason,
             validation.detail,
             fallbackUsed = false,
-          )
+          ).as(false)
 
   private def useLegacyProposalInput(
       key: HotStuffPacemakerKey,
@@ -758,7 +1038,7 @@ private final class InMemoryHotStuffPacemakerDriver[F[_]: Sync](
       now: Instant,
       reason: String,
       detail: Option[String],
-  ): F[Unit] =
+  ): F[Boolean] =
     legacyProposalInputProvider
       .nextProposalInput(request)
       .attempt
@@ -772,7 +1052,7 @@ private final class InMemoryHotStuffPacemakerDriver[F[_]: Sync](
             "legacyProposalInputProviderFailed",
             throwableDetail(error),
             fallbackUsed = true,
-          )
+          ).as(false)
         case Right(HotStuffProposalInputProviderResult.Supplied(input)) =>
           HotStuffProposalInputValidator.validate(request, input) match
             case Left(validation) =>
@@ -784,7 +1064,7 @@ private final class InMemoryHotStuffPacemakerDriver[F[_]: Sync](
                 validation.reason,
                 validation.detail,
                 fallbackUsed = true,
-              )
+              ).as(false)
             case Right(validated) =>
               recordProposalInputDiagnostic(
                 key,
@@ -807,7 +1087,7 @@ private final class InMemoryHotStuffPacemakerDriver[F[_]: Sync](
             request,
             other,
             fallbackUsed = true,
-          )
+          ).as(false)
 
   private def signAndApplyProposalInput(
       key: HotStuffPacemakerKey,
@@ -815,43 +1095,54 @@ private final class InMemoryHotStuffPacemakerDriver[F[_]: Sync](
       input: HotStuffProposalInput,
       now: Instant,
       fallbackUsed: Boolean,
-  ): F[Unit] =
-    withLocalSigner(request.proposer): keyPair =>
-      val block = input.blockHeader
-      Proposal
-        .sign(
-          UnsignedProposal(
-            window = request.window,
-            proposer = request.proposer,
-            targetBlockId = BlockHeader.computeId(block),
-            block = block,
-            txSet = input.txSet,
-            justify = request.justify,
-          ),
-          keyPair,
-        )
-        .toOption
-        .traverse: proposal =>
-          HotStuffValidator.validateProposal(
-            proposal,
-            bootstrapInput.validatorSet,
-          ) match
-            case Left(validation) =>
-              recordProposalInputDiagnostic(
-                key,
-                request.window,
-                request.proposer,
-                HotStuffProposalInputDiagnosticOutcome.Invalid,
-                validation.reason,
-                validation.detail,
-                fallbackUsed = fallbackUsed,
-              )
-            case Right(_) =>
-              applyLocalArtifact(
-                HotStuffGossipArtifact.ProposalArtifact(proposal),
-                now,
-              ) *> markProposalEmitted(key, request.window)
-        .void
+  ): F[Boolean] =
+    resolveSigner(request.proposer) match
+      case Left(_) =>
+        false.pure[F]
+      case Right(keyPair) =>
+        val block = input.blockHeader
+        Proposal
+          .sign(
+            UnsignedProposal(
+              window = request.window,
+              proposer = request.proposer,
+              targetBlockId = BlockHeader.computeId(block),
+              block = block,
+              txSet = input.txSet,
+              justify = request.justify,
+            ),
+            keyPair,
+          )
+          .toOption match
+          case None =>
+            false.pure[F]
+          case Some(proposal) =>
+            HotStuffValidator.validateProposal(
+              proposal,
+              bootstrapInput.validatorSet,
+            ) match
+              case Left(validation) =>
+                recordProposalInputDiagnostic(
+                  key,
+                  request.window,
+                  request.proposer,
+                  HotStuffProposalInputDiagnosticOutcome.Invalid,
+                  validation.reason,
+                  validation.detail,
+                  fallbackUsed = fallbackUsed,
+                ).as(false)
+              case Right(_) =>
+                applyLocalArtifact(
+                  HotStuffGossipArtifact.ProposalArtifact(proposal),
+                  now,
+                ) *> markProposalEmitted(key, request.window) *>
+                  recordLocalProposalEmittedDiagnostic(
+                    key,
+                    request.window,
+                    request.proposer,
+                    proposal,
+                    now,
+                  ).as(true)
 
   private def emitNewView(
       sender: ValidatorId,
@@ -940,6 +1231,12 @@ private final class InMemoryHotStuffPacemakerDriver[F[_]: Sync](
                         HotStuffGossipArtifact.VoteArtifact(vote),
                         now,
                       ) *>
+                        recordLocalVoteEmittedDiagnostic(
+                          key,
+                          proposal,
+                          voter,
+                          now,
+                        ) *>
                         recordProposalValidationDiagnostic(
                           key,
                           proposal,
@@ -1035,10 +1332,48 @@ private final class InMemoryHotStuffPacemakerDriver[F[_]: Sync](
   ): F[Option[HotStuffPacemakerState]] =
     stateRef.get.map(_.get(key).flatMap(_.state))
 
-  private def entryFor(
+  private def proposalEmissionClaimed(
+      entry: HotStuffPacemakerEntrySnapshot,
+      window: HotStuffWindow,
+  ): Boolean =
+    entry.emittedProposalWindow.contains(window) ||
+      entry.proposalEmissionReservationWindow.contains(window)
+
+  private def reserveProposalEmission(
       key: HotStuffPacemakerKey,
-  ): F[Option[HotStuffPacemakerEntrySnapshot]] =
-    stateRef.get.map(_.get(key))
+      window: HotStuffWindow,
+      leader: ValidatorId,
+  ): F[Option[HotStuffPacemakerState]] =
+    stateRef.modify: entries =>
+      entries.get(key) match
+        case Some(entry) if proposalEmissionClaimed(entry, window) =>
+          entries -> None
+        case Some(entry) =>
+          entry.state match
+            case Some(state)
+                if state.activeWindow === window &&
+                  state.currentLeader === leader &&
+                  state.bootstrapHoldReason.isEmpty =>
+              entries.updated(
+                key,
+                entry.copy(proposalEmissionReservationWindow = Some(window)),
+              ) -> Some(state)
+            case _ =>
+              entries -> None
+        case None =>
+          entries -> None
+
+  private def releaseProposalEmissionReservation(
+      key: HotStuffPacemakerKey,
+      window: HotStuffWindow,
+  ): F[Unit] =
+    stateRef.update(_.updatedWith(key):
+      case Some(entry)
+          if entry.proposalEmissionReservationWindow.contains(window) =>
+        Some(entry.copy(proposalEmissionReservationWindow = None))
+      case other =>
+        other,
+    )
 
   private def markProposalEmitted(
       key: HotStuffPacemakerKey,
@@ -1046,7 +1381,12 @@ private final class InMemoryHotStuffPacemakerDriver[F[_]: Sync](
   ): F[Unit] =
     stateRef.update(_.updatedWith(key):
       case Some(entry) =>
-        Some(entry.copy(emittedProposalWindow = Some(window)))
+        Some(
+          entry.copy(
+            emittedProposalWindow = Some(window),
+            proposalEmissionReservationWindow = None,
+          ),
+        )
       case None =>
         None,
     )
@@ -1084,6 +1424,161 @@ private final class InMemoryHotStuffPacemakerDriver[F[_]: Sync](
       result.reason,
       result.detail,
       fallbackUsed,
+    )
+
+  private def recordFinalityDriveDiagnosticEvent(
+      key: HotStuffPacemakerKey,
+      request: HotStuffProposalInputRequest,
+      event: FinalityDriveDiagnosticEvent,
+  ): F[Unit] =
+    event match
+      case FinalityDriveDiagnosticEvent.Requested(hint) =>
+        recordFinalityDriveRequestedDiagnostic(key, request, hint)
+      case FinalityDriveDiagnosticEvent.Suppressed(suppression) =>
+        recordFinalityDriveSuppressedDiagnostic(key, request, suppression)
+      case FinalityDriveDiagnosticEvent.TargetFinalized(
+            reportingKey,
+            anchor,
+            finalizedBlockId,
+          ) =>
+        recordFinalityDriveTargetFinalizedDiagnostic(
+          reportingKey,
+          anchor,
+          finalizedBlockId,
+        )
+
+  private def recordFinalityDriveRequestedDiagnostic(
+      key: HotStuffPacemakerKey,
+      request: HotStuffProposalInputRequest,
+      hint: HotStuffProposalInputFinalityDrive,
+  ): F[Unit] =
+    val anchor = hint.anchor
+    stateRef.update(_.updatedWith(key):
+      case Some(entry) =>
+        Some(
+          entry.copy(
+            diagnostics = entry.diagnostics :+ HotStuffPacemakerDiagnostic
+              .FinalityDriveRequested(
+                window = request.window,
+                proposer = request.proposer,
+                anchorProposalId = anchor.proposalId,
+                anchorBlockId = anchor.blockId,
+                descendantDepthAfterProposal =
+                  hint.descendantDepthAfterProposal,
+                attempt = hint.attempt,
+                maxAttemptsPerAnchor = hint.maxAttemptsPerAnchor,
+                maxDescendantDepth = hint.maxDescendantDepth,
+                elapsed = hint.elapsed,
+              ),
+          ),
+        )
+      case None =>
+        None,
+    )
+
+  private def recordFinalityDriveProviderResultDiagnostic(
+      key: HotStuffPacemakerKey,
+      request: HotStuffProposalInputRequest,
+      result: HotStuffProposalInputProviderResult,
+  ): F[Unit] =
+    request.finalityDrive.fold(Sync[F].unit): drive =>
+      val anchor = drive.anchor
+      stateRef.update(_.updatedWith(key):
+        case Some(entry) =>
+          Some(
+            entry.copy(
+              diagnostics = entry.diagnostics :+ HotStuffPacemakerDiagnostic
+                .FinalityDriveProviderResult(
+                  window = request.window,
+                  proposer = request.proposer,
+                  anchorProposalId = anchor.proposalId,
+                  anchorBlockId = anchor.blockId,
+                  outcome = diagnosticOutcomeFor(result),
+                  reason = result.reason,
+                  detail = result.detail,
+                ),
+            ),
+          )
+        case None =>
+          None,
+      )
+
+  private def recordFinalityDriveSuppressedDiagnostic(
+      key: HotStuffPacemakerKey,
+      request: HotStuffProposalInputRequest,
+      suppression: FinalityDriveSuppression,
+  ): F[Unit] =
+    val anchor = suppression.anchor
+    stateRef.update(_.updatedWith(key):
+      case Some(entry) =>
+        Some(
+          entry.copy(
+            diagnostics = entry.diagnostics :+ HotStuffPacemakerDiagnostic
+              .FinalityDriveSuppressed(
+                window = request.window,
+                proposer = request.proposer,
+                anchorProposalId = anchor.proposalId,
+                anchorBlockId = anchor.blockId,
+                reason = suppression.reason,
+                detail = suppression.detail,
+              ),
+          ),
+        )
+      case None =>
+        None,
+    )
+
+  private def recordFinalityDriveTargetFinalizedDiagnostic(
+      key: HotStuffPacemakerKey,
+      anchor: HotStuffFinalityDriveAnchor,
+      finalizedBlockId: BlockId,
+  ): F[Unit] =
+    val proposer =
+      HotStuffPacemaker.deterministicLeader(
+        anchor.window,
+        bootstrapInput.validatorSet,
+      )
+    stateRef.update(_.updatedWith(key):
+      case Some(entry) =>
+        Some(
+          entry.copy(
+            diagnostics = entry.diagnostics :+ HotStuffPacemakerDiagnostic
+              .FinalityDriveTargetFinalized(
+                window = anchor.window,
+                proposer = proposer,
+                anchorProposalId = anchor.proposalId,
+                anchorBlockId = anchor.blockId,
+                finalizedBlockId = finalizedBlockId,
+              ),
+          ),
+        )
+      case None =>
+        None,
+    )
+
+  private def recordProposalInputAttemptTimingDiagnostic(
+      key: HotStuffPacemakerKey,
+      request: HotStuffProposalInputRequest,
+      result: HotStuffProposalInputProviderResult,
+      completedAt: Instant,
+  ): F[Unit] =
+    stateRef.update(_.updatedWith(key):
+      case Some(entry) =>
+        Some(
+          entry.copy(
+            diagnostics = entry.diagnostics :+ HotStuffPacemakerDiagnostic
+              .ProposalInputAttemptTiming(
+                window = request.window,
+                proposer = request.proposer,
+                outcome = diagnosticOutcomeFor(result),
+                reason = result.reason,
+                requestedAt = request.now,
+                completedAt = completedAt,
+              ),
+          ),
+        )
+      case None =>
+        None,
     )
 
   private def recordProposalInputDiagnostic(
@@ -1133,6 +1628,54 @@ private final class InMemoryHotStuffPacemakerDriver[F[_]: Sync](
                 traversedAncestorCount = metadata.traversedAncestorCount,
                 excludedTxIdCount = metadata.excludedTxIdCount,
                 fromCache = metadata.fromCache,
+              ),
+          ),
+        )
+      case None =>
+        None,
+    )
+
+  private def recordLocalProposalEmittedDiagnostic(
+      key: HotStuffPacemakerKey,
+      window: HotStuffWindow,
+      proposer: ValidatorId,
+      proposal: Proposal,
+      emittedAt: Instant,
+  ): F[Unit] =
+    stateRef.update(_.updatedWith(key):
+      case Some(entry) =>
+        Some(
+          entry.copy(
+            diagnostics = entry.diagnostics :+ HotStuffPacemakerDiagnostic
+              .LocalProposalEmitted(
+                window = window,
+                proposer = proposer,
+                proposalId = proposal.proposalId,
+                blockId = proposal.targetBlockId,
+                emittedAt = emittedAt,
+              ),
+          ),
+        )
+      case None =>
+        None,
+    )
+
+  private def recordLocalVoteEmittedDiagnostic(
+      key: HotStuffPacemakerKey,
+      proposal: Proposal,
+      voter: ValidatorId,
+      emittedAt: Instant,
+  ): F[Unit] =
+    stateRef.update(_.updatedWith(key):
+      case Some(entry) =>
+        Some(
+          entry.copy(
+            diagnostics = entry.diagnostics :+ HotStuffPacemakerDiagnostic
+              .LocalVoteEmitted(
+                window = proposal.window,
+                voter = voter,
+                targetProposalId = proposal.proposalId,
+                emittedAt = emittedAt,
               ),
           ),
         )
@@ -1372,6 +1915,7 @@ private object InMemoryHotStuffPacemakerDriver:
       automaticConsensus: Boolean,
       proposalInputConfig: HotStuffProposalInputRuntimeConfig[F],
       txUniquenessConfig: HotStuffProposalTxUniquenessRuntimeConfig,
+      finalityDrivePolicy: HotStuffFinalityDrivePolicy,
   )(using
       clock: GossipClock[F],
   ): F[HotStuffNodeRuntime[F]] =
@@ -1389,40 +1933,52 @@ private object InMemoryHotStuffPacemakerDriver:
           Ref.of[F, HotStuffProposalTxUniquenessCache](
             HotStuffProposalTxUniquenessCache.empty,
           ),
-        ).mapN: (stateRef, observationRef, txUniquenessCacheRef) =>
-          val driver =
-            new InMemoryHotStuffPacemakerDriver[F](
-              bootstrapInput = runtime.bootstrapInput,
-              publisher = runtime.services.publisher,
-              sink = inMemoryDiagnostics.sink,
-              bootstrapLifecycle = runtime.bootstrapLifecycle,
-              stateRef = stateRef,
-              observationRef = observationRef,
-              txUniquenessCacheRef = txUniquenessCacheRef,
-              automaticConsensus = automaticConsensus,
-              proposalInputProviderOverride = proposalInputConfig.provider,
-              proposalInputFallbackPolicy = proposalInputConfig.fallbackPolicy,
-              proposalValidationConfig = runtime.proposalValidationConfig,
-              txUniquenessConfig = txUniquenessConfig,
-              pacemakerPolicy = runtime.pacemakerPolicy,
+          Ref.of[F, FinalityDriveRuntimeState](
+            FinalityDriveRuntimeState.empty,
+          ),
+        ).mapN:
+          (
+              stateRef,
+              observationRef,
+              txUniquenessCacheRef,
+              finalityDriveStateRef,
+          ) =>
+            val driver =
+              new InMemoryHotStuffPacemakerDriver[F](
+                bootstrapInput = runtime.bootstrapInput,
+                publisher = runtime.services.publisher,
+                sink = inMemoryDiagnostics.sink,
+                bootstrapLifecycle = runtime.bootstrapLifecycle,
+                stateRef = stateRef,
+                observationRef = observationRef,
+                txUniquenessCacheRef = txUniquenessCacheRef,
+                finalityDriveStateRef = finalityDriveStateRef,
+                automaticConsensus = automaticConsensus,
+                proposalInputProviderOverride = proposalInputConfig.provider,
+                proposalInputFallbackPolicy =
+                  proposalInputConfig.fallbackPolicy,
+                proposalValidationConfig = runtime.proposalValidationConfig,
+                txUniquenessConfig = txUniquenessConfig,
+                pacemakerPolicy = runtime.pacemakerPolicy,
+                finalityDrivePolicy = finalityDrivePolicy,
+              )
+            val wrappedSource =
+              new HotStuffPacemakerAwareSource[F](
+                runtime.services.source,
+                driver.drivePending,
+              )
+            val wrappedSink =
+              new HotStuffPacemakerAwareSink[F](
+                runtime.services.sink,
+                driver.observeApplied,
+              )
+            runtime.copy(
+              services = runtime.services.copy(
+                source = wrappedSource,
+                sink = wrappedSink,
+              ),
+              pacemakerSnapshot = driver.snapshot.some,
+              pacemakerWakeUp = driver.wakeUp.some,
             )
-          val wrappedSource =
-            new HotStuffPacemakerAwareSource[F](
-              runtime.services.source,
-              driver.drivePending,
-            )
-          val wrappedSink =
-            new HotStuffPacemakerAwareSink[F](
-              runtime.services.sink,
-              driver.observeApplied,
-            )
-          runtime.copy(
-            services = runtime.services.copy(
-              source = wrappedSource,
-              sink = wrappedSink,
-            ),
-            pacemakerSnapshot = driver.snapshot.some,
-            pacemakerWakeUp = driver.wakeUp.some,
-          )
       case _ =>
         runtime.pure[F]

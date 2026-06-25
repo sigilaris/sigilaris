@@ -72,6 +72,8 @@ final case class HotStuffNodeRuntime[F[_]: Sync](
     txUniquenessConfig: HotStuffProposalTxUniquenessRuntimeConfig =
       HotStuffProposalTxUniquenessRuntimeConfig.enforceUnfinalizedAncestors,
     pacemakerPolicy: HotStuffPacemakerPolicy = HotStuffPacemakerPolicy.default,
+    finalityDrivePolicy: HotStuffFinalityDrivePolicy =
+      HotStuffFinalityDrivePolicy.disabled,
 ):
   def localPeer: PeerIdentity = bootstrapInput.localPeer
 
@@ -605,6 +607,8 @@ object HotStuffNodeRuntime:
       txUniquenessConfig: HotStuffProposalTxUniquenessRuntimeConfig,
       pacemakerPolicy: HotStuffPacemakerPolicy =
         HotStuffPacemakerPolicy.default,
+      finalityDrivePolicy: HotStuffFinalityDrivePolicy =
+        HotStuffFinalityDrivePolicy.disabled,
   ): HotStuffNodeRuntime[F] =
     HotStuffNodeRuntime(
       bootstrapInput = bootstrapInput,
@@ -616,6 +620,7 @@ object HotStuffNodeRuntime:
       proposalValidationConfig = proposalValidationConfig,
       txUniquenessConfig = txUniquenessConfig,
       pacemakerPolicy = pacemakerPolicy,
+      finalityDrivePolicy = finalityDrivePolicy,
     )
 
   @SuppressWarnings(Array("org.wartremover.warts.DefaultArguments"))
@@ -630,6 +635,8 @@ object HotStuffNodeRuntime:
         HotStuffProposalTxUniquenessRuntimeConfig.enforceUnfinalizedAncestors,
       pacemakerPolicy: HotStuffPacemakerPolicy =
         HotStuffPacemakerPolicy.default,
+      finalityDrivePolicy: HotStuffFinalityDrivePolicy =
+        HotStuffFinalityDrivePolicy.disabled,
   ): Either[HotStuffPolicyViolation, HotStuffNodeRuntime[F]] =
     validateBootstrapInput(bootstrapInput)
       .map(
@@ -641,6 +648,7 @@ object HotStuffNodeRuntime:
           proposalValidationConfig,
           txUniquenessConfig,
           pacemakerPolicy,
+          finalityDrivePolicy,
         ),
       )
 
@@ -695,6 +703,8 @@ object HotStuffNodeRuntime:
         HotStuffProposalTxUniquenessRuntimeConfig.enforceUnfinalizedAncestors,
       pacemakerPolicy: HotStuffPacemakerPolicy =
         HotStuffPacemakerPolicy.default,
+      finalityDrivePolicy: HotStuffFinalityDrivePolicy =
+        HotStuffFinalityDrivePolicy.disabled,
   )(using
       clock: GossipClock[F],
   ): F[Either[HotStuffPolicyViolation, HotStuffNodeRuntime[F]]] =
@@ -739,9 +749,11 @@ object HotStuffNodeRuntime:
                 proposalValidationConfig,
                 txUniquenessConfig,
                 pacemakerPolicy,
+                finalityDrivePolicy,
               ),
               automaticConsensus = automaticConsensus,
               proposalInputConfig = proposalInputConfig,
               txUniquenessConfig = txUniquenessConfig,
+              finalityDrivePolicy = finalityDrivePolicy,
             )
             .map(_.asRight[HotStuffPolicyViolation])

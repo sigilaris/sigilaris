@@ -283,12 +283,36 @@ private final case class ObservationState(
                       )
                       .recordTxRange(chainId, nextRange)
                   case None =>
+                    // Keep the public observation total even when first-seen
+                    // diagnostic history was evicted or observed out of order.
+                    // Bucket consumers can reject such timelines via
+                    // `descendantFinalityTiming.locallyMonotonic`.
                     val observation =
                       FinalizedAnchorObservation.fromSuggestion(
                         suggestion = suggestion,
                         proposalObservedAt =
                           state.firstSeenByProposal.getOrElse(
                             suggestion.proposal.proposalId,
+                            observedAt,
+                          ),
+                        certifiedObservedAt =
+                          state.firstSeenByQcSubject.getOrElse(
+                            suggestion.finalizedProof.child.justify.subject,
+                            observedAt,
+                          ),
+                        childProposalObservedAt =
+                          state.firstSeenByProposal.getOrElse(
+                            suggestion.finalizedProof.child.proposalId,
+                            observedAt,
+                          ),
+                        childCertifiedObservedAt =
+                          state.firstSeenByQcSubject.getOrElse(
+                            suggestion.finalizedProof.grandchild.justify.subject,
+                            observedAt,
+                          ),
+                        grandchildProposalObservedAt =
+                          state.firstSeenByProposal.getOrElse(
+                            suggestion.finalizedProof.grandchild.proposalId,
                             observedAt,
                           ),
                         finalizedObservedAt = observedAt,
@@ -378,12 +402,14 @@ private final case class ObservationState(
         proposalId = proposal.proposalId,
         blockId = proposal.targetBlockId,
       )
-    firstSeenByQcSubject.get(subject).fold(this): certifiedObservedAt =>
-      recordCertifiedBlock(
-        proposal = proposal,
-        qcSubject = subject,
-        certifiedObservedAt = certifiedObservedAt,
-      )
+    firstSeenByQcSubject
+      .get(subject)
+      .fold(this): certifiedObservedAt =>
+        recordCertifiedBlock(
+          proposal = proposal,
+          qcSubject = subject,
+          certifiedObservedAt = certifiedObservedAt,
+        )
 
   private def materializeCertifiedSubject(
       subject: QuorumCertificateSubject,

@@ -127,6 +127,8 @@ object HotStuffRuntimeBootstrap:
         HotStuffProposalTxUniquenessRuntimeConfig.enforceUnfinalizedAncestors,
       pacemakerPolicy: HotStuffPacemakerPolicy =
         HotStuffPacemakerPolicy.default,
+      finalityDrivePolicy: HotStuffFinalityDrivePolicy =
+        HotStuffFinalityDrivePolicy.disabled,
   ): Resource[F, Either[String, HotStuffRuntimeBootstrap[F]]] =
     Resource
       .eval:
@@ -193,6 +195,7 @@ object HotStuffRuntimeBootstrap:
                       proposalValidationConfig = proposalValidationConfig,
                       txUniquenessConfig = txUniquenessConfig,
                       pacemakerPolicy = pacemakerPolicy,
+                      finalityDrivePolicy = finalityDrivePolicy,
                     )
 
   /** Bootstraps HotStuff plus embedder-owned application gossip topics from
@@ -217,6 +220,8 @@ object HotStuffRuntimeBootstrap:
         HotStuffProposalTxUniquenessRuntimeConfig.enforceUnfinalizedAncestors,
       pacemakerPolicy: HotStuffPacemakerPolicy =
         HotStuffPacemakerPolicy.default,
+      finalityDrivePolicy: HotStuffFinalityDrivePolicy =
+        HotStuffFinalityDrivePolicy.disabled,
   ): Resource[F, Either[
     String,
     HotStuffRuntimeBootstrapWithApplications[F, A],
@@ -296,6 +301,7 @@ object HotStuffRuntimeBootstrap:
                       proposalValidationConfig = proposalValidationConfig,
                       txUniquenessConfig = txUniquenessConfig,
                       pacemakerPolicy = pacemakerPolicy,
+                      finalityDrivePolicy = finalityDrivePolicy,
                     )
 
   /** Bootstraps the full HotStuff runtime from an explicit peer topology and
@@ -319,6 +325,8 @@ object HotStuffRuntimeBootstrap:
         HotStuffProposalTxUniquenessRuntimeConfig.enforceUnfinalizedAncestors,
       pacemakerPolicy: HotStuffPacemakerPolicy =
         HotStuffPacemakerPolicy.default,
+      finalityDrivePolicy: HotStuffFinalityDrivePolicy =
+        HotStuffFinalityDrivePolicy.disabled,
   ): Resource[F, Either[String, HotStuffRuntimeBootstrap[F]]] =
     fromTopologyWithGossipRuntime[
       F,
@@ -334,6 +342,7 @@ object HotStuffRuntimeBootstrap:
       proposalValidationConfig = proposalValidationConfig,
       txUniquenessConfig = txUniquenessConfig,
       pacemakerPolicy = pacemakerPolicy,
+      finalityDrivePolicy = finalityDrivePolicy,
       buildGossipRuntime = consensus =>
         TxGossipRuntimeBootstrap.fromTopology[F, HotStuffGossipArtifact](
           topology = topology,
@@ -378,6 +387,8 @@ object HotStuffRuntimeBootstrap:
         HotStuffProposalTxUniquenessRuntimeConfig.enforceUnfinalizedAncestors,
       pacemakerPolicy: HotStuffPacemakerPolicy =
         HotStuffPacemakerPolicy.default,
+      finalityDrivePolicy: HotStuffFinalityDrivePolicy =
+        HotStuffFinalityDrivePolicy.disabled,
   ): Resource[
     F,
     Either[String, HotStuffRuntimeBootstrapWithApplications[F, A]],
@@ -396,6 +407,7 @@ object HotStuffRuntimeBootstrap:
       proposalValidationConfig = proposalValidationConfig,
       txUniquenessConfig = txUniquenessConfig,
       pacemakerPolicy = pacemakerPolicy,
+      finalityDrivePolicy = finalityDrivePolicy,
       buildGossipRuntime = consensus =>
         TxGossipRuntimeBootstrap.fromTopology[F, HotStuffPeerArtifact[A]](
           topology = topology,
@@ -440,6 +452,7 @@ object HotStuffRuntimeBootstrap:
       proposalValidationConfig: HotStuffProposalValidationRuntimeConfig[F],
       txUniquenessConfig: HotStuffProposalTxUniquenessRuntimeConfig,
       pacemakerPolicy: HotStuffPacemakerPolicy,
+      finalityDrivePolicy: HotStuffFinalityDrivePolicy,
       buildGossipRuntime: HotStuffNodeRuntime[F] => F[TxGossipBootstrap[F, A]],
       assembleBootstrap: (HotStuffNodeRuntime[F], TxGossipBootstrap[F, A]) => B,
   ): Resource[F, Either[String, B]] =
@@ -586,10 +599,13 @@ object HotStuffRuntimeBootstrap:
                                           proposalValidationConfig,
                                         txUniquenessConfig = txUniquenessConfig,
                                         pacemakerPolicy = pacemakerPolicy,
+                                        finalityDrivePolicy =
+                                          finalityDrivePolicy,
                                       ),
                                     automaticConsensus = true,
                                     proposalInputConfig = proposalInputConfig,
                                     txUniquenessConfig = txUniquenessConfig,
+                                    finalityDrivePolicy = finalityDrivePolicy,
                                   )
                                 gossipBootstrap <- buildGossipRuntime(consensus)
                               yield assembleBootstrap(

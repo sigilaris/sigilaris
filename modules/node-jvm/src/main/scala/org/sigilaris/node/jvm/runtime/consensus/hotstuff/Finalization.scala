@@ -1,6 +1,6 @@
 package org.sigilaris.node.jvm.runtime.consensus.hotstuff
 
-import java.time.Instant
+import java.time.{Duration, Instant}
 
 import scala.annotation.tailrec
 
@@ -81,8 +81,31 @@ final case class FinalizedAnchorObservation(
     grandchildProposalId: ProposalId,
     validatorSetHash: ValidatorSetHash,
     proposalObservedAt: Instant,
+    certifiedObservedAt: Instant,
+    childProposalObservedAt: Instant,
+    childCertifiedObservedAt: Instant,
+    grandchildProposalObservedAt: Instant,
     finalizedObservedAt: Instant,
-)
+):
+  def descendantFinalityTiming: HotStuffDescendantFinalityTimingBreakdown =
+    HotStuffDescendantFinalityTimingBreakdown(
+      certifiedToChildProposal = Duration.between(
+        certifiedObservedAt,
+        childProposalObservedAt,
+      ),
+      childProposalToChildCertified = Duration.between(
+        childProposalObservedAt,
+        childCertifiedObservedAt,
+      ),
+      childCertifiedToGrandchildProposal = Duration.between(
+        childCertifiedObservedAt,
+        grandchildProposalObservedAt,
+      ),
+      grandchildProposalToFinalized = Duration.between(
+        grandchildProposalObservedAt,
+        finalizedObservedAt,
+      ),
+    )
 
 /** Companion for `FinalizedAnchorObservation`. */
 object FinalizedAnchorObservation:
@@ -92,6 +115,10 @@ object FinalizedAnchorObservation:
   def fromSuggestion(
       suggestion: FinalizedAnchorSuggestion,
       proposalObservedAt: Instant,
+      certifiedObservedAt: Instant,
+      childProposalObservedAt: Instant,
+      childCertifiedObservedAt: Instant,
+      grandchildProposalObservedAt: Instant,
       finalizedObservedAt: Instant,
   ): FinalizedAnchorObservation =
     FinalizedAnchorObservation(
@@ -103,8 +130,74 @@ object FinalizedAnchorObservation:
       grandchildProposalId = suggestion.finalizedProof.grandchild.proposalId,
       validatorSetHash = suggestion.proposal.window.validatorSetHash,
       proposalObservedAt = proposalObservedAt,
+      certifiedObservedAt = certifiedObservedAt,
+      childProposalObservedAt = childProposalObservedAt,
+      childCertifiedObservedAt = childCertifiedObservedAt,
+      grandchildProposalObservedAt = grandchildProposalObservedAt,
       finalizedObservedAt = finalizedObservedAt,
     )
+
+/** Local descendant-finality latency segments for a certified tx-bearing
+  * anchor. The segments are intentionally local-observation measurements, not a
+  * cross-node SLA clock.
+  */
+final case class HotStuffDescendantFinalityTimingBreakdown(
+    certifiedToChildProposal: Duration,
+    childProposalToChildCertified: Duration,
+    childCertifiedToGrandchildProposal: Duration,
+    grandchildProposalToFinalized: Duration,
+):
+  def certifiedToFinalized: Duration =
+    segments.foldLeft(Duration.ZERO)(_.plus(_))
+
+  def locallyMonotonic: Boolean =
+    segments.forall(!_.isNegative)
+
+  private def segments: Vector[Duration] =
+    Vector(
+      certifiedToChildProposal,
+      childProposalToChildCertified,
+      childCertifiedToGrandchildProposal,
+      grandchildProposalToFinalized,
+    )
+
+  def classify(
+      providerNoWorkObserved: Boolean,
+  ): HotStuffDescendantFinalityLatencyBucket =
+    if providerNoWorkObserved then
+      HotStuffDescendantFinalityLatencyBucket.ProviderNoWorkQuiescence
+    else
+      val proposalIdle = maxDuration(
+        certifiedToChildProposal,
+        childCertifiedToGrandchildProposal,
+      )
+      val voteOrQc     = childProposalToChildCertified
+      val finalization = grandchildProposalToFinalized
+      val maxObserved =
+        maxDuration(maxDuration(proposalIdle, voteOrQc), finalization)
+      // Ties use a deterministic proposal-idle, vote/QC, finalization order.
+      // Consumers that need strict source ordering should check
+      // `locallyMonotonic` before aggregating buckets.
+      if maxObserved.compareTo(proposalIdle) === 0 then
+        HotStuffDescendantFinalityLatencyBucket.ProposalActivationIdle
+      else if maxObserved.compareTo(voteOrQc) === 0 then
+        HotStuffDescendantFinalityLatencyBucket.VoteOrQcObservation
+      else HotStuffDescendantFinalityLatencyBucket.FinalizationObservation
+
+  private def maxDuration(
+      left: Duration,
+      right: Duration,
+  ): Duration =
+    if left.compareTo(right) >= 0 then left else right
+
+/** Diagnostic classification for the dominant local latency bucket between a
+  * certified anchor and its finalization observation.
+  */
+enum HotStuffDescendantFinalityLatencyBucket:
+  case ProposalActivationIdle
+  case ProviderNoWorkQuiescence
+  case VoteOrQcObservation
+  case FinalizationObservation
 
 /** Records the local first observation timestamps for a certified block. */
 final case class CertifiedBlockObservation(
@@ -112,12 +205,15 @@ final case class CertifiedBlockObservation(
     proposalId: ProposalId,
     blockId: BlockId,
     height: BlockHeight,
+    txSet: ProposalTxSet,
     window: HotStuffWindow,
     qcSubject: QuorumCertificateSubject,
     validatorSetHash: ValidatorSetHash,
     proposalObservedAt: Instant,
     certifiedObservedAt: Instant,
-)
+):
+  def proposalToCertified: Duration =
+    Duration.between(proposalObservedAt, certifiedObservedAt)
 
 /** Companion for `CertifiedBlockObservation`. */
 object CertifiedBlockObservation:
@@ -133,6 +229,7 @@ object CertifiedBlockObservation:
       proposalId = proposal.proposalId,
       blockId = proposal.targetBlockId,
       height = proposal.block.height,
+      txSet = proposal.txSet,
       window = proposal.window,
       qcSubject = qcSubject,
       validatorSetHash = proposal.window.validatorSetHash,

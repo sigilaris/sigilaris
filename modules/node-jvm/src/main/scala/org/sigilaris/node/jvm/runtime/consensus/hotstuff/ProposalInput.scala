@@ -261,6 +261,60 @@ object HotStuffProposalInputBranchContext:
       unavailableDetail = detail,
     )
 
+/** Derived finalization progress for the candidate parent branch. */
+final case class HotStuffProposalInputFinalizationProgress(
+    bestFinalizedBlockId: Option[BlockId],
+    certifiedAncestorCount: Int,
+    txBearingCertifiedAncestorCount: Int,
+    nearestTxBearingAncestorBlockId: Option[BlockId],
+    nearestTxBearingAncestorHeight: Option[BlockHeight],
+    nearestTxBearingAncestorDescendantDepthAfterProposal: Option[Int],
+    consensusFinalizationDescendantDepth: Int,
+):
+  def candidateProposalWouldFinalizeNearestTxBearingAncestor: Boolean =
+    nearestTxBearingAncestorDescendantDepthAfterProposal.exists(
+      _ >= consensusFinalizationDescendantDepth,
+    )
+
+/** Companion for `HotStuffProposalInputFinalizationProgress`. */
+object HotStuffProposalInputFinalizationProgress:
+  val empty: HotStuffProposalInputFinalizationProgress =
+    HotStuffProposalInputFinalizationProgress(
+      bestFinalizedBlockId = None,
+      certifiedAncestorCount = 0,
+      txBearingCertifiedAncestorCount = 0,
+      nearestTxBearingAncestorBlockId = None,
+      nearestTxBearingAncestorHeight = None,
+      nearestTxBearingAncestorDescendantDepthAfterProposal = None,
+      consensusFinalizationDescendantDepth =
+        HotStuffFinalityDrivePolicy.ConsensusFinalizationDescendantDepth,
+    )
+
+  private[hotstuff] def fromBranch(
+      branchContext: HotStuffProposalInputBranchContext,
+      requestHeight: BlockHeight,
+  ): HotStuffProposalInputFinalizationProgress =
+    val txBearingAncestors =
+      branchContext.ancestors.filter(_.txSet.txIds.nonEmpty)
+    val nearestTxBearing =
+      txBearingAncestors.headOption
+    HotStuffProposalInputFinalizationProgress(
+      bestFinalizedBlockId = branchContext.bestFinalizedBlockId,
+      certifiedAncestorCount = branchContext.ancestors.length,
+      txBearingCertifiedAncestorCount = txBearingAncestors.length,
+      nearestTxBearingAncestorBlockId = nearestTxBearing.map(_.blockId),
+      nearestTxBearingAncestorHeight = nearestTxBearing.map(_.height),
+      nearestTxBearingAncestorDescendantDepthAfterProposal =
+        nearestTxBearing.flatMap(ancestor =>
+          HotStuffFinalityDriveCandidate.descendantDepthAfterProposal(
+            requestHeight = requestHeight,
+            ancestorHeight = ancestor.height,
+          ),
+        ),
+      consensusFinalizationDescendantDepth =
+        HotStuffFinalityDrivePolicy.ConsensusFinalizationDescendantDepth,
+    )
+
 /** Application-neutral request for the next leader proposal body. */
 @SuppressWarnings(Array("org.wartremover.warts.DefaultArguments"))
 final case class HotStuffProposalInputRequest(
@@ -276,6 +330,9 @@ final case class HotStuffProposalInputRequest(
       HotStuffProposalTxExclusion.empty,
     branchContext: HotStuffProposalInputBranchContext =
       HotStuffProposalInputBranchContext.empty,
+    finalizationProgress: HotStuffProposalInputFinalizationProgress =
+      HotStuffProposalInputFinalizationProgress.empty,
+    finalityDrive: Option[HotStuffProposalInputFinalityDrive] = None,
 )
 
 /** Application-neutral proposal input that Sigilaris can sign as a HotStuff
