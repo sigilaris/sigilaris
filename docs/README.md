@@ -31,7 +31,7 @@
 - [dev/hotstuff-low-latency-profile.md](dev/hotstuff-low-latency-profile.md): HotStuff warm-cluster low-latency profile and residual risk notes
 - [dev/hotstuff-transitive-relay-handoff.md](dev/hotstuff-transitive-relay-handoff.md): HotStuff consensus artifact transitive relay deployment and diagnostics handoff notes
 - [dev/hotstuff-application-gossip-topic-handoff.md](dev/hotstuff-application-gossip-topic-handoff.md): HotStuff application gossip topic registration and catch-up handoff notes
-- [dev/v0.2.8-release-notes.md](dev/v0.2.8-release-notes.md): draft v0.2.8 HotStuff bounded descendant finality-drive release notes
+- [dev/v0.2.8-release-notes.md](dev/v0.2.8-release-notes.md): v0.2.8 HotStuff bounded descendant finality-drive and transaction pipeline release notes
 - [dev/v0.2.7-release-notes.md](dev/v0.2.7-release-notes.md): v0.2.7 HotStuff certified ancestor dependent transaction pipelining release notes
 - [dev/v0.2.6-release-notes.md](dev/v0.2.6-release-notes.md): v0.2.6 HotStuff tx uniqueness and transitive relay release notes
 - [dev/v0.2.5-release-notes.md](dev/v0.2.5-release-notes.md): v0.2.5 Armeria Tapir gossip peer transport release notes

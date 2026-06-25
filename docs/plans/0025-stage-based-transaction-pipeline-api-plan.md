@@ -562,6 +562,12 @@ ADR-0032 is accepted for the first implementation. The locked contract is:
     `84396ff7ed217843a7e7e0dda4300e1ef2f701c5`, and passed dependent-payment
     smoke at `target/local-four-node-consensus-smoke/20260625T025809Z`
     with `t1SubmittedToT2FinalizedMillis=472`.
+- 0.2.8 Central publish completed on 2026-06-25:
+  - `sbt "sonatypeBundleClean" "publishSigned"` succeeded.
+  - `sbt "sonatypeBundleRelease"` succeeded with Sonatype Central deployment id
+    `026d7d40-46db-423b-acfe-10f2db651bb2` and final state `PUBLISHED`.
+  - Maven Central returned HTTP 200 for
+    `sigilaris-core_3-0.2.8.pom` and `sigilaris-node-jvm_3-0.2.8.pom`.
 - Add SSE or streaming progress observation for clients that do not want to
   poll `GET /tx-pipeline/{pipelineId}`.
 - Add transactional idempotency-index persistence or startup repair for durable
