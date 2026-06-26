@@ -26,11 +26,26 @@ final case class ArtifactApplyResult(
   *   the gossip event
   * @param availableAt
   *   the instant at which this event became eligible for producer batching
+  * @param encodedSizeBytes
+  *   optional size of the encoded peer-facing event, when the source can
+  *   provide it for byte-budget enforcement
   */
 final case class AvailableGossipEvent[A](
     event: GossipEvent[A],
     availableAt: Instant,
+    encodedSizeBytes: Option[Long],
 )
+
+object AvailableGossipEvent:
+  def apply[A](
+      event: GossipEvent[A],
+      availableAt: Instant,
+  ): AvailableGossipEvent[A] =
+    AvailableGossipEvent(
+      event = event,
+      availableAt = availableAt,
+      encodedSizeBytes = None,
+    )
 
 /** Abstraction over a clock used by the gossip subsystem.
   *

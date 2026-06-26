@@ -134,7 +134,7 @@ object HotStuffGossipArtifact:
   * @param requestByIdLimit max IDs per request-by-ID batch
   * @param maxBatchItems max items per gossip batch
   * @param flushInterval how often to flush gossip batches
-  * @param deliveryPriority priority for delivery ordering (lower = higher priority)
+  * @param deliveryPriority priority for delivery ordering (higher = earlier delivery)
   */
 final case class HotStuffTopicPolicy private (
     exactKnownSetLimit: Int,

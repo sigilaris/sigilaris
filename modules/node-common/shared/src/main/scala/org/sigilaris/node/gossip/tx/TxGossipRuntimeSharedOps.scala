@@ -17,6 +17,7 @@ private[tx] trait TxGossipRuntimeSharedOps[F[_]: Sync, A]:
   protected def stateStore: TxGossipStateStore[F]
   protected def policy: TxRuntimePolicy
   protected def cascadeStrategy: TxCascadeStrategy[A]
+  protected def sidecarPlanner: GossipSidecarPlanner[F, A]
 
   protected final def expireState(
       state: TxGossipRuntimeState,
@@ -270,6 +271,20 @@ private[tx] trait TxGossipRuntimeSharedOps[F[_]: Sync, A]:
       servedRequestScopes.filterNot(mergedPendingScopedRequests.contains)
     val mergedRequestScopeRetryCounts =
       current.requestScopeRetryCounts -- clearedRetryScopes
+    val mergedSidecarHolds =
+      mergeSidecarHolds(
+        current = current.sidecarHolds,
+        polledFrom = polledFrom.sidecarHolds,
+        updated = updated.sidecarHolds,
+      )
+    val newSidecarDiagnostics =
+      sidecarDiagnosticsAdded(
+        before = polledFrom.sidecarDiagnostics,
+        after = updated.sidecarDiagnostics,
+      )
+    val mergedSidecarDiagnostics =
+      (current.sidecarDiagnostics ++ newSidecarDiagnostics)
+        .takeRight(TxProducerSessionState.MaxSidecarDiagnostics)
 
     current.copy(
       streamCursor = CompositeCursor(mergedStreamCursor),
@@ -277,4 +292,101 @@ private[tx] trait TxGossipRuntimeSharedOps[F[_]: Sync, A]:
       pendingRequestByIds = mergedPendingRequests,
       pendingRequestScopeIds = mergedPendingScopedRequests,
       requestScopeRetryCounts = mergedRequestScopeRetryCounts,
+      sidecarHolds = mergedSidecarHolds,
+      sidecarDiagnostics = mergedSidecarDiagnostics,
     )
+
+  private def mergeSidecarHolds(
+      current: Map[ChainTopic, GossipSidecarHoldState],
+      polledFrom: Map[ChainTopic, GossipSidecarHoldState],
+      updated: Map[ChainTopic, GossipSidecarHoldState],
+  ): Map[ChainTopic, GossipSidecarHoldState] =
+    val touchedKeys = polledFrom.keySet ++ updated.keySet
+    touchedKeys.foldLeft(current): (acc, chainTopic) =>
+      val before      = polledFrom.get(chainTopic)
+      val after       = updated.get(chainTopic)
+      val currentHold = current.get(chainTopic)
+      if sameSidecarHold(currentHold, before) then
+        after.fold(acc - chainTopic)(hold => acc.updated(chainTopic, hold))
+      else acc
+
+  private def sameSidecarHold(
+      left: Option[GossipSidecarHoldState],
+      right: Option[GossipSidecarHoldState],
+  ): Boolean =
+    (left, right) match
+      case (None, None) => true
+      case (Some(leftHold), Some(rightHold)) =>
+        leftHold.proposalId === rightHold.proposalId &&
+          leftHold.firstHeldAt.compareTo(rightHold.firstHeldAt) === 0 &&
+          leftHold.lastHeldAt.compareTo(rightHold.lastHeldAt) === 0 &&
+          leftHold.attempts === rightHold.attempts &&
+          sameSidecarReason(leftHold.reason, rightHold.reason)
+      case _ => false
+
+  private def sameSidecarReason(
+      left: GossipSidecarDiagnosticReason,
+      right: GossipSidecarDiagnosticReason,
+  ): Boolean =
+    (left, right) match
+      case (
+            GossipSidecarDiagnosticReason.SidecarSelected,
+            GossipSidecarDiagnosticReason.SidecarSelected,
+          ) =>
+        true
+      case (
+            GossipSidecarDiagnosticReason.SidecarHeld,
+            GossipSidecarDiagnosticReason.SidecarHeld,
+          ) =>
+        true
+      case (
+            GossipSidecarDiagnosticReason.SidecarFallback,
+            GossipSidecarDiagnosticReason.SidecarFallback,
+          ) =>
+        true
+      case (
+            GossipSidecarDiagnosticReason.SidecarCapExceeded,
+            GossipSidecarDiagnosticReason.SidecarCapExceeded,
+          ) =>
+        true
+      case (
+            GossipSidecarDiagnosticReason.SidecarLocalArtifactUnavailable,
+            GossipSidecarDiagnosticReason.SidecarLocalArtifactUnavailable,
+          ) =>
+        true
+      case (
+            GossipSidecarDiagnosticReason.ProposalDependencyResolverRejected,
+            GossipSidecarDiagnosticReason.ProposalDependencyResolverRejected,
+          ) =>
+        true
+      case (
+            GossipSidecarDiagnosticReason.ProposalDependencyResolverFailed,
+            GossipSidecarDiagnosticReason.ProposalDependencyResolverFailed,
+          ) =>
+        true
+      case _ => false
+
+  private def sameSidecarDiagnostic(
+      left: GossipSidecarDiagnostic,
+      right: GossipSidecarDiagnostic,
+  ): Boolean =
+    sameSidecarReason(left.reason, right.reason) &&
+      left.chainTopic.chainId === right.chainTopic.chainId &&
+      left.chainTopic.topic === right.chainTopic.topic &&
+      left.proposalId === right.proposalId &&
+      left.detail === right.detail
+
+  private def sidecarDiagnosticsAdded(
+      before: Vector[GossipSidecarDiagnostic],
+      after: Vector[GossipSidecarDiagnostic],
+  ): Vector[GossipSidecarDiagnostic] =
+    after
+      .foldLeft(before -> Vector.empty[GossipSidecarDiagnostic]):
+        case ((remainingBefore, added), diagnostic) =>
+          val matchingIndex =
+            remainingBefore.indexWhere(existing =>
+              sameSidecarDiagnostic(existing, diagnostic),
+            )
+          if matchingIndex < 0 then remainingBefore -> (added :+ diagnostic)
+          else remainingBefore.patch(matchingIndex, Nil, 1) -> added
+      ._2

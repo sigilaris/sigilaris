@@ -74,6 +74,9 @@ final case class HotStuffNodeRuntime[F[_]: Sync](
     pacemakerPolicy: HotStuffPacemakerPolicy = HotStuffPacemakerPolicy.default,
     finalityDrivePolicy: HotStuffFinalityDrivePolicy =
       HotStuffFinalityDrivePolicy.disabled,
+    proposalDependencyConfig:
+      HotStuffProposalApplicationDependencyRuntimeConfig[F] =
+      HotStuffProposalApplicationDependencyRuntimeConfig.legacyCompatible[F],
 ):
   def localPeer: PeerIdentity = bootstrapInput.localPeer
 
@@ -609,6 +612,8 @@ object HotStuffNodeRuntime:
         HotStuffPacemakerPolicy.default,
       finalityDrivePolicy: HotStuffFinalityDrivePolicy =
         HotStuffFinalityDrivePolicy.disabled,
+      proposalDependencyConfig:
+        HotStuffProposalApplicationDependencyRuntimeConfig[F],
   ): HotStuffNodeRuntime[F] =
     HotStuffNodeRuntime(
       bootstrapInput = bootstrapInput,
@@ -621,6 +626,7 @@ object HotStuffNodeRuntime:
       txUniquenessConfig = txUniquenessConfig,
       pacemakerPolicy = pacemakerPolicy,
       finalityDrivePolicy = finalityDrivePolicy,
+      proposalDependencyConfig = proposalDependencyConfig,
     )
 
   @SuppressWarnings(Array("org.wartremover.warts.DefaultArguments"))
@@ -637,6 +643,9 @@ object HotStuffNodeRuntime:
         HotStuffPacemakerPolicy.default,
       finalityDrivePolicy: HotStuffFinalityDrivePolicy =
         HotStuffFinalityDrivePolicy.disabled,
+      proposalDependencyConfig:
+        HotStuffProposalApplicationDependencyRuntimeConfig[F] =
+        HotStuffProposalApplicationDependencyRuntimeConfig.legacyCompatible[F],
   ): Either[HotStuffPolicyViolation, HotStuffNodeRuntime[F]] =
     validateBootstrapInput(bootstrapInput)
       .map(
@@ -649,6 +658,7 @@ object HotStuffNodeRuntime:
           txUniquenessConfig,
           pacemakerPolicy,
           finalityDrivePolicy,
+          proposalDependencyConfig,
         ),
       )
 
@@ -705,6 +715,9 @@ object HotStuffNodeRuntime:
         HotStuffPacemakerPolicy.default,
       finalityDrivePolicy: HotStuffFinalityDrivePolicy =
         HotStuffFinalityDrivePolicy.disabled,
+      proposalDependencyConfig:
+        HotStuffProposalApplicationDependencyRuntimeConfig[F] =
+        HotStuffProposalApplicationDependencyRuntimeConfig.legacyCompatible[F],
   )(using
       clock: GossipClock[F],
   ): F[Either[HotStuffPolicyViolation, HotStuffNodeRuntime[F]]] =
@@ -750,6 +763,7 @@ object HotStuffNodeRuntime:
                 txUniquenessConfig,
                 pacemakerPolicy,
                 finalityDrivePolicy,
+                proposalDependencyConfig,
               ),
               automaticConsensus = automaticConsensus,
               proposalInputConfig = proposalInputConfig,

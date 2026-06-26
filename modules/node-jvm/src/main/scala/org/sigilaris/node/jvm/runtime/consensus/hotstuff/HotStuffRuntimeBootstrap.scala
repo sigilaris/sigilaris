@@ -129,6 +129,9 @@ object HotStuffRuntimeBootstrap:
         HotStuffPacemakerPolicy.default,
       finalityDrivePolicy: HotStuffFinalityDrivePolicy =
         HotStuffFinalityDrivePolicy.disabled,
+      proposalDependencyConfig:
+        HotStuffProposalApplicationDependencyRuntimeConfig[F] =
+        HotStuffProposalApplicationDependencyRuntimeConfig.legacyCompatible[F],
   ): Resource[F, Either[String, HotStuffRuntimeBootstrap[F]]] =
     Resource
       .eval:
@@ -192,6 +195,7 @@ object HotStuffRuntimeBootstrap:
                       bootstrapTransport = transport,
                       storageLayout = storageLayout,
                       proposalInputConfig = proposalInputConfig,
+                      proposalDependencyConfig = proposalDependencyConfig,
                       proposalValidationConfig = proposalValidationConfig,
                       txUniquenessConfig = txUniquenessConfig,
                       pacemakerPolicy = pacemakerPolicy,
@@ -202,7 +206,7 @@ object HotStuffRuntimeBootstrap:
     * Typesafe Config.
     */
   @SuppressWarnings(Array("org.wartremover.warts.DefaultArguments"))
-  def fromConfigWithApplicationTopics[F[_]: Async: LiftIO, A](
+  def fromConfigWithApplicationTopics[F[_]: Async: LiftIO, A: ByteEncoder](
       config: Config,
       clock: GossipClock[F],
       applicationTopics: Vector[ApplicationGossipTopic[F, A]],
@@ -222,6 +226,9 @@ object HotStuffRuntimeBootstrap:
         HotStuffPacemakerPolicy.default,
       finalityDrivePolicy: HotStuffFinalityDrivePolicy =
         HotStuffFinalityDrivePolicy.disabled,
+      proposalDependencyConfig:
+        HotStuffProposalApplicationDependencyRuntimeConfig[F] =
+        HotStuffProposalApplicationDependencyRuntimeConfig.legacyCompatible[F],
   ): Resource[F, Either[
     String,
     HotStuffRuntimeBootstrapWithApplications[F, A],
@@ -298,6 +305,7 @@ object HotStuffRuntimeBootstrap:
                       bootstrapTransport = transport,
                       storageLayout = storageLayout,
                       proposalInputConfig = proposalInputConfig,
+                      proposalDependencyConfig = proposalDependencyConfig,
                       proposalValidationConfig = proposalValidationConfig,
                       txUniquenessConfig = txUniquenessConfig,
                       pacemakerPolicy = pacemakerPolicy,
@@ -327,6 +335,9 @@ object HotStuffRuntimeBootstrap:
         HotStuffPacemakerPolicy.default,
       finalityDrivePolicy: HotStuffFinalityDrivePolicy =
         HotStuffFinalityDrivePolicy.disabled,
+      proposalDependencyConfig:
+        HotStuffProposalApplicationDependencyRuntimeConfig[F] =
+        HotStuffProposalApplicationDependencyRuntimeConfig.legacyCompatible[F],
   ): Resource[F, Either[String, HotStuffRuntimeBootstrap[F]]] =
     fromTopologyWithGossipRuntime[
       F,
@@ -339,6 +350,7 @@ object HotStuffRuntimeBootstrap:
       bootstrapTransport = bootstrapTransport,
       storageLayout = storageLayout,
       proposalInputConfig = proposalInputConfig,
+      proposalDependencyConfig = proposalDependencyConfig,
       proposalValidationConfig = proposalValidationConfig,
       txUniquenessConfig = txUniquenessConfig,
       pacemakerPolicy = pacemakerPolicy,
@@ -369,7 +381,7 @@ object HotStuffRuntimeBootstrap:
     * explicit peer topology and consensus config.
     */
   @SuppressWarnings(Array("org.wartremover.warts.DefaultArguments"))
-  def fromTopologyWithApplicationTopics[F[_]: Async: LiftIO, A](
+  def fromTopologyWithApplicationTopics[F[_]: Async: LiftIO, A: ByteEncoder](
       topology: StaticPeerTopology,
       transportAuth: StaticPeerTransportAuth,
       consensusConfig: HotStuffBootstrapConfig,
@@ -389,6 +401,9 @@ object HotStuffRuntimeBootstrap:
         HotStuffPacemakerPolicy.default,
       finalityDrivePolicy: HotStuffFinalityDrivePolicy =
         HotStuffFinalityDrivePolicy.disabled,
+      proposalDependencyConfig:
+        HotStuffProposalApplicationDependencyRuntimeConfig[F] =
+        HotStuffProposalApplicationDependencyRuntimeConfig.legacyCompatible[F],
   ): Resource[
     F,
     Either[String, HotStuffRuntimeBootstrapWithApplications[F, A]],
@@ -404,31 +419,44 @@ object HotStuffRuntimeBootstrap:
       bootstrapTransport = bootstrapTransport,
       storageLayout = storageLayout,
       proposalInputConfig = proposalInputConfig,
+      proposalDependencyConfig = proposalDependencyConfig,
       proposalValidationConfig = proposalValidationConfig,
       txUniquenessConfig = txUniquenessConfig,
       pacemakerPolicy = pacemakerPolicy,
       finalityDrivePolicy = finalityDrivePolicy,
       buildGossipRuntime = consensus =>
+        val peerSource =
+          HotStuffPeerArtifact.source(
+            consensus.source,
+            consensus.topicContracts,
+            applicationTopics,
+          )
+        val peerSink =
+          HotStuffPeerArtifact.sink(
+            consensus.sink,
+            consensus.topicContracts,
+            applicationTopics,
+          )
+        val peerContracts =
+          HotStuffPeerArtifact.topicContracts(
+            consensus.topicContracts,
+            applicationTopics,
+          )
+        val sidecarPlanner =
+          HotStuffProposalSidecarPlanner.forPeerArtifacts[F, A](
+            config = consensus.proposalDependencyConfig,
+            source = peerSource,
+          )
         TxGossipRuntimeBootstrap.fromTopology[F, HotStuffPeerArtifact[A]](
           topology = topology,
           transportAuth = transportAuth,
           clock = clock,
-          source = HotStuffPeerArtifact.source(
-            consensus.source,
-            consensus.topicContracts,
-            applicationTopics,
-          ),
-          sink = HotStuffPeerArtifact.sink(
-            consensus.sink,
-            consensus.topicContracts,
-            applicationTopics,
-          ),
-          topicContracts = HotStuffPeerArtifact.topicContracts(
-            consensus.topicContracts,
-            applicationTopics,
-          ),
+          source = peerSource,
+          sink = peerSink,
+          topicContracts = peerContracts,
           runtimePolicy = runtimePolicy,
           handshakePolicy = handshakePolicy,
+          sidecarPlanner = Some(sidecarPlanner),
         ),
       assembleBootstrap = (consensus, gossipBootstrap) =>
         HotStuffRuntimeBootstrapWithApplications(
@@ -453,6 +481,8 @@ object HotStuffRuntimeBootstrap:
       txUniquenessConfig: HotStuffProposalTxUniquenessRuntimeConfig,
       pacemakerPolicy: HotStuffPacemakerPolicy,
       finalityDrivePolicy: HotStuffFinalityDrivePolicy,
+      proposalDependencyConfig:
+        HotStuffProposalApplicationDependencyRuntimeConfig[F],
       buildGossipRuntime: HotStuffNodeRuntime[F] => F[TxGossipBootstrap[F, A]],
       assembleBootstrap: (HotStuffNodeRuntime[F], TxGossipBootstrap[F, A]) => B,
   ): Resource[F, Either[String, B]] =
@@ -595,6 +625,8 @@ object HotStuffRuntimeBootstrap:
                                         diagnostics = Some(diagnostics),
                                         bootstrapLifecycle =
                                           bootstrapLifecycle.some,
+                                        proposalDependencyConfig =
+                                          proposalDependencyConfig,
                                         proposalValidationConfig =
                                           proposalValidationConfig,
                                         txUniquenessConfig = txUniquenessConfig,

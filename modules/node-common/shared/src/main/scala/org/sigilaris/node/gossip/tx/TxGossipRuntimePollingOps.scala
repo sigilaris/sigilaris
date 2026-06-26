@@ -16,15 +16,8 @@ private[tx] trait TxGossipRuntimePollingOps[F[_]: Sync, A]
   ): F[
     Either[CanonicalRejection, (TxProducerSessionState, Vector[GossipEvent[A]])],
   ] =
-    sessionState.subscriptions.values.toVector
-      .sortBy: chainTopic =>
-        val priority =
-          topicContracts
-            .contractFor(chainTopic.topic)
-            .toOption
-            .map(_.deliveryPriority)
-            .getOrElse(0)
-        (-priority, chainTopic.chainId.value, chainTopic.topic.value)
+    GossipTopicDeliveryOrder
+      .orderedSubscribedTopics(sessionState.subscriptions, topicContracts)
       .foldLeftM(
         (
           sessionState,
@@ -96,7 +89,7 @@ private[tx] trait TxGossipRuntimePollingOps[F[_]: Sync, A]
       )
       cascadeStrategy
         .selectLiveEvents(
-          filter = sessionState.filters.get(chainTopic.chainId),
+          filter = sessionState.filters.get(chainTopic),
           exactKnownIds = sessionState.exactKnownIds.getOrElse(
             chainTopic.chainId,
             Set.empty[StableArtifactId],
@@ -165,7 +158,7 @@ private[tx] trait TxGossipRuntimePollingOps[F[_]: Sync, A]
       cursorOverride.getOrElse(producerState.startCursorFor(chainTopic))
     val qos = contract.producerQoS(sessionState.batchingConfig)
 
-    for
+    (for
       explicitArtifacts <-
         if requestedIds.isEmpty then
           Vector.empty[AvailableGossipEvent[A]].pure[F]
@@ -176,85 +169,194 @@ private[tx] trait TxGossipRuntimePollingOps[F[_]: Sync, A]
         chainTopic.topic,
         startCursor,
       )
-    yield
-      val explicitResult = explicitArtifacts.traverse: available =>
-        contract
-          .exactKnownScopeOf(available.event)
-          .map(scope => scope -> available)
+    yield explicitArtifacts -> afterCursor).flatMap:
+      case (explicitArtifacts, afterCursor) =>
+        val explicitResult = explicitArtifacts.traverse: available =>
+          contract
+            .exactKnownScopeOf(available.event)
+            .map(scope => scope -> available)
 
-      afterCursor.flatMap: candidates =>
-        explicitResult.flatMap: scopedExplicitArtifacts =>
-          val requestedScopeSet = requestedScopes.map(_._1).toSet
-          val explicitMatched =
-            scopedExplicitArtifacts.collect:
-              case (Some(scope), available)
-                  if requestedScopeSet.contains(scope) =>
-                scope -> available
-          val explicitEvents = explicitMatched.map(_._2.event)
-          val liveCandidates = candidates.filterNot(candidate =>
-            explicitEvents.exists(_.id === candidate.event.id),
-          )
-          liveCandidates
-            .traverse: candidate =>
-              contract
-                .exactKnownScopeOf(candidate.event)
-                .map(scope => scope -> candidate)
-            .map: scopedLiveCandidates =>
-              val filteredLiveArtifacts =
-                scopedLiveCandidates.collect:
-                  case (Some(scope), candidate)
-                      if !sessionState.exactKnownScopeIds
-                        .getOrElse(scope, Set.empty[StableArtifactId])
-                        .contains(candidate.event.id) =>
-                    candidate
-              val explicitBatch = explicitEvents.take(qos.maxBatchItems)
-              val remainingCapacity =
-                (qos.maxBatchItems - explicitBatch.size).max(0)
-              val forceFlush = cursorOverride.nonEmpty
-              val liveBatch =
-                GossipProducerPolling.batchAvailableEvents(
-                  now = now,
-                  candidates = filteredLiveArtifacts,
-                  qos = qos,
-                  forceFlush = forceFlush,
-                  limit = remainingCapacity,
+        afterCursor match
+          case Left(rejection) =>
+            rejection
+              .asLeft[(TxProducerSessionState, Vector[GossipEvent[A]])]
+              .pure[F]
+          case Right(candidates) =>
+            explicitResult match
+              case Left(rejection) =>
+                rejection
+                  .asLeft[(TxProducerSessionState, Vector[GossipEvent[A]])]
+                  .pure[F]
+              case Right(scopedExplicitArtifacts) =>
+                val requestedScopeSet = requestedScopes.map(_._1).toSet
+                val explicitMatched =
+                  scopedExplicitArtifacts.collect:
+                    case (Some(scope), available)
+                        if requestedScopeSet.contains(scope) =>
+                      scope -> available
+                val explicitEvents = explicitMatched.map(_._2.event)
+                val liveCandidates = candidates.filterNot(candidate =>
+                  explicitEvents.exists(_.id === candidate.event.id),
                 )
-              val emitted = explicitBatch ++ liveBatch
-              val servedByScope =
-                explicitMatched.foldLeft(
-                  Map.empty[ExactKnownSetScope, Set[StableArtifactId]],
-                ): (acc, entry) =>
-                  val (scope, available) = entry
-                  acc.updated(
-                    scope,
-                    acc.getOrElse(scope, Set.empty[StableArtifactId]) +
-                      available.event.id,
+                liveCandidates
+                  .traverse: candidate =>
+                    contract
+                      .exactKnownScopeOf(candidate.event)
+                      .map(scope => scope -> candidate)
+                  .fold(
+                    rejection =>
+                      rejection
+                        .asLeft[
+                          (TxProducerSessionState, Vector[GossipEvent[A]]),
+                        ]
+                        .pure[F],
+                    scopedLiveCandidates =>
+                      val filteredLiveArtifacts =
+                        scopedLiveCandidates.collect:
+                          case (Some(scope), candidate)
+                              if !sessionState.exactKnownScopeIds
+                                .getOrElse(scope, Set.empty[StableArtifactId])
+                                .contains(candidate.event.id) =>
+                            candidate
+                      val explicitBatch = explicitEvents.take(qos.maxBatchItems)
+                      val remainingCapacity =
+                        (qos.maxBatchItems - explicitBatch.size).max(0)
+                      val servedByScope =
+                        explicitMatched.foldLeft(
+                          Map.empty[ExactKnownSetScope, Set[StableArtifactId]],
+                        ): (acc, entry) =>
+                          val (scope, available) = entry
+                          acc.updated(
+                            scope,
+                            acc.getOrElse(scope, Set.empty[StableArtifactId]) +
+                              available.event.id,
+                          )
+                      val updatedPendingScopeIds =
+                        if servedByScope.isEmpty then
+                          sessionState.pendingRequestScopeIds
+                        else
+                          servedByScope.foldLeft(
+                            sessionState.pendingRequestScopeIds,
+                          ): (acc, entry) =>
+                            val (scope, servedIds) = entry
+                            acc.updatedWith(scope):
+                              case None => None
+                              case Some(existing) =>
+                                val remaining =
+                                  existing.filterNot(servedIds.contains)
+                                remaining.some.filter(_.nonEmpty)
+                      val clearedRetryScopes =
+                        servedByScope.keySet.filterNot(
+                          updatedPendingScopeIds.contains,
+                        )
+                      val stateAfterExplicit = sessionState.copy(
+                        pendingRequestScopeIds = updatedPendingScopeIds,
+                        requestScopeRetryCounts =
+                          sessionState.requestScopeRetryCounts --
+                            clearedRetryScopes,
+                      )
+                      planExactKnownLiveBatch(
+                        now = now,
+                        sessionState = stateAfterExplicit,
+                        chainTopic = chainTopic,
+                        filteredLiveArtifacts = filteredLiveArtifacts,
+                        qos = qos,
+                        remainingCapacity = remainingCapacity,
+                        forceFlush = cursorOverride.nonEmpty,
+                      ).map:
+                        case (plannedState, liveBatch) =>
+                          (plannedState -> (explicitBatch ++ liveBatch))
+                            .asRight[CanonicalRejection],
                   )
-              val updatedProducerState =
-                producerState
-                  .advanceStreamCursor(chainTopic, liveBatch)
-                  .clearReplay(chainTopic)
-              val updatedPendingScopeIds =
-                if servedByScope.isEmpty then
-                  sessionState.pendingRequestScopeIds
-                else
-                  servedByScope.foldLeft(
-                    sessionState.pendingRequestScopeIds,
-                  ): (acc, entry) =>
-                    val (scope, servedIds) = entry
-                    acc.updatedWith(scope):
-                      case None => None
-                      case Some(existing) =>
-                        val remaining =
-                          existing.filterNot(servedIds.contains)
-                        remaining.some.filter(_.nonEmpty)
-              val clearedRetryScopes =
-                servedByScope.keySet.filterNot(updatedPendingScopeIds.contains)
-              val updatedState = sessionState
-                .withProducerState(updatedProducerState)
-                .copy(
-                  pendingRequestScopeIds = updatedPendingScopeIds,
-                  requestScopeRetryCounts =
-                    sessionState.requestScopeRetryCounts -- clearedRetryScopes,
-                )
-              updatedState -> emitted
+
+  private def planExactKnownLiveBatch(
+      now: Instant,
+      sessionState: TxProducerSessionState,
+      chainTopic: ChainTopic,
+      filteredLiveArtifacts: Vector[AvailableGossipEvent[A]],
+      qos: GossipProducerQoS,
+      remainingCapacity: Int,
+      forceFlush: Boolean,
+  ): F[(TxProducerSessionState, Vector[GossipEvent[A]])] =
+    if filteredLiveArtifacts.isEmpty then
+      val existingHold = sessionState.sidecarHolds.get(chainTopic)
+      val updatedProducerState =
+        existingHold.fold(sessionState.producerState.clearReplay(chainTopic)): _ =>
+          sessionState.producerState
+      val diagnostics =
+        existingHold
+          .fold(Vector.empty[GossipSidecarDiagnostic]): hold =>
+            Vector(
+              GossipSidecarDiagnostic(
+                reason = GossipSidecarDiagnosticReason.SidecarFallback,
+                chainTopic = chainTopic,
+                proposalId = hold.proposalId,
+                detail = Some("noLiveCandidates"),
+              ),
+            )
+      (
+        sessionState
+          .withProducerState(updatedProducerState)
+          .clearSidecarHold(chainTopic)
+          .appendSidecarDiagnostics(diagnostics) ->
+          Vector.empty[GossipEvent[A]]
+      ).pure[F]
+    else if remainingCapacity <= 0 then
+      val updatedProducerState =
+        if sessionState.sidecarHolds.contains(chainTopic) then
+          sessionState.producerState
+        else sessionState.producerState.clearReplay(chainTopic)
+      (
+        sessionState.withProducerState(updatedProducerState) ->
+          Vector.empty[GossipEvent[A]]
+      ).pure[F]
+    else
+      sidecarPlanner
+        .plan(
+          now = now,
+          sessionState = sessionState,
+          chainTopic = chainTopic,
+          candidates = filteredLiveArtifacts,
+          remainingCapacity = remainingCapacity,
+          existingHold = sessionState.sidecarHolds.get(chainTopic),
+        )
+        .map:
+          case GossipSidecarDecision.PassThrough() =>
+            val liveBatch =
+              GossipProducerPolling.batchAvailableEvents(
+                now = now,
+                candidates = filteredLiveArtifacts,
+                qos = qos,
+                forceFlush = forceFlush,
+                limit = remainingCapacity,
+              )
+            val updatedProducerState =
+              sessionState.producerState
+                .advanceStreamCursor(chainTopic, liveBatch)
+                .clearReplay(chainTopic)
+            sessionState.withProducerState(updatedProducerState) -> liveBatch
+          case GossipSidecarDecision.Emit(sidecars, proposal, diagnostics) =>
+            val updatedProducerState =
+              sessionState.producerState
+                .advanceStreamCursor(chainTopic, Vector(proposal))
+                .clearReplay(chainTopic)
+            sessionState
+              .withProducerState(updatedProducerState)
+              .clearSidecarHold(chainTopic)
+              .appendSidecarDiagnostics(diagnostics) ->
+              (sidecars :+ proposal)
+          case GossipSidecarDecision.Hold(proposalId, reason, diagnostics) =>
+            sessionState
+              .recordSidecarHold(chainTopic, proposalId, now, reason)
+              .appendSidecarDiagnostics(diagnostics) ->
+              Vector.empty[GossipEvent[A]]
+          case GossipSidecarDecision.Fallback(proposal, diagnostics) =>
+            val updatedProducerState =
+              sessionState.producerState
+                .advanceStreamCursor(chainTopic, Vector(proposal))
+                .clearReplay(chainTopic)
+            sessionState
+              .withProducerState(updatedProducerState)
+              .clearSidecarHold(chainTopic)
+              .appendSidecarDiagnostics(diagnostics) ->
+              Vector(proposal)

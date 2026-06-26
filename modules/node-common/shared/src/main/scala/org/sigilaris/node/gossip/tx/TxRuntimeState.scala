@@ -96,7 +96,9 @@ final case class TxRuntimePolicy(
   * @param streamCursor
   *   the cursor tracking most recently emitted events
   * @param filters
-  *   per-chain Bloom filters for deduplication
+  *   per-chain-topic Bloom filters for deduplication
+  * @param filterReceiptTimes
+  *   local receipt time for the latest filter by chain-topic
   * @param exactKnownIds
   *   per-chain exact known artifact ids
   * @param exactKnownScopeIds
@@ -109,6 +111,10 @@ final case class TxRuntimePolicy(
   *   per-scope pending request-by-id artifact ids
   * @param requestScopeRetryCounts
   *   per-scope request retry counts
+  * @param sidecarHolds
+  *   proposal-topic cursor holds for pending required sidecars
+  * @param sidecarDiagnostics
+  *   bounded recent sidecar planner diagnostics
   * @param idempotencyKeys
   *   recently applied control batch idempotency keys with timestamps
   * @param batchingConfig
@@ -122,7 +128,8 @@ final case class TxProducerSessionState(
     negotiated: NegotiatedSessionParameters,
     durableCursor: CompositeCursor = CompositeCursor.empty,
     streamCursor: CompositeCursor = CompositeCursor.empty,
-    filters: Map[ChainId, GossipFilter.TxBloomFilter] = Map.empty,
+    filters: Map[ChainTopic, GossipFilter.TxBloomFilter] = Map.empty,
+    filterReceiptTimes: Map[ChainTopic, Instant] = Map.empty,
     exactKnownIds: Map[ChainId, Set[StableArtifactId]] = Map.empty,
     exactKnownScopeIds: Map[ExactKnownSetScope, Set[StableArtifactId]] =
       Map.empty,
@@ -131,6 +138,8 @@ final case class TxProducerSessionState(
     pendingRequestScopeIds: Map[ExactKnownSetScope, Vector[StableArtifactId]] =
       Map.empty,
     requestScopeRetryCounts: Map[ExactKnownSetScope, Int] = Map.empty,
+    sidecarHolds: Map[ChainTopic, GossipSidecarHoldState] = Map.empty,
+    sidecarDiagnostics: Vector[GossipSidecarDiagnostic] = Vector.empty,
     idempotencyKeys: Map[ControlIdempotencyKey, Instant] = Map.empty,
     batchingConfig: TxBatchingConfig = TxBatchingConfig.default,
 ):
@@ -167,6 +176,52 @@ final case class TxProducerSessionState(
       streamCursor = producerState.streamCursor,
       pendingReplay = producerState.pendingReplay,
     )
+
+  /** Records a bounded hold for a proposal sidecar decision. */
+  def recordSidecarHold(
+      chainTopic: ChainTopic,
+      proposalId: StableArtifactId,
+      now: Instant,
+      reason: GossipSidecarDiagnosticReason,
+  ): TxProducerSessionState =
+    val nextHold =
+      sidecarHolds.get(chainTopic) match
+        case Some(existing) if existing.proposalId === proposalId =>
+          existing.copy(
+            lastHeldAt = now,
+            attempts = existing.attempts + 1,
+            reason = reason,
+          )
+        case _ =>
+          GossipSidecarHoldState(
+            proposalId = proposalId,
+            firstHeldAt = now,
+            lastHeldAt = now,
+            attempts = 1,
+            reason = reason,
+          )
+    copy(sidecarHolds = sidecarHolds.updated(chainTopic, nextHold))
+
+  /** Clears a proposal sidecar hold after delivery or fallback. */
+  def clearSidecarHold(
+      chainTopic: ChainTopic,
+  ): TxProducerSessionState =
+    copy(sidecarHolds = sidecarHolds - chainTopic)
+
+  /** Appends planner diagnostics while retaining only the recent bounded tail. */
+  def appendSidecarDiagnostics(
+      diagnostics: Vector[GossipSidecarDiagnostic],
+  ): TxProducerSessionState =
+    if diagnostics.isEmpty then this
+    else
+      copy(sidecarDiagnostics =
+        (sidecarDiagnostics ++ diagnostics)
+          .takeRight(TxProducerSessionState.MaxSidecarDiagnostics),
+      )
+
+/** Companion constants for producer session state. */
+object TxProducerSessionState:
+  val MaxSidecarDiagnostics: Int = 64
 
 /** Combined runtime state holding the session engine and outbound session
   * states.

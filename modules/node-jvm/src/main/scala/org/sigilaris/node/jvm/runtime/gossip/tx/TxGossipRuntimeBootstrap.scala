@@ -78,6 +78,7 @@ object TxGossipRuntimeBootstrap:
       runtimePolicy: TxRuntimePolicy = TxRuntimePolicy(),
       handshakePolicy: HandshakePolicy = HandshakePolicy.default,
       configPath: String = StaticPeerTopologyConfig.DefaultPath,
+      sidecarPlanner: Option[GossipSidecarPlanner[F, A]] = None,
   ): F[Either[String, TxGossipBootstrap[F, A]]] =
     StaticPeerTopologyConfig.load(config, configPath) match
       case Left(error) =>
@@ -96,6 +97,7 @@ object TxGossipRuntimeBootstrap:
               topicContracts = topicContracts,
               runtimePolicy = runtimePolicy,
               handshakePolicy = handshakePolicy,
+              sidecarPlanner = sidecarPlanner,
             ).map(_.asRight[String])
 
   /** Bootstraps a transaction gossip runtime from a pre-parsed topology.
@@ -132,6 +134,7 @@ object TxGossipRuntimeBootstrap:
       topicContracts: GossipTopicContractRegistry[A],
       runtimePolicy: TxRuntimePolicy = TxRuntimePolicy(),
       handshakePolicy: HandshakePolicy = HandshakePolicy.default,
+      sidecarPlanner: Option[GossipSidecarPlanner[F, A]] = None,
   ): F[TxGossipBootstrap[F, A]] =
     val registry      = StaticPeerRegistry(topology)
     val authenticator = StaticPeerAuthenticator[F](registry)
@@ -149,7 +152,7 @@ object TxGossipRuntimeBootstrap:
           registry = registry,
           authenticator = authenticator,
           transportAuth = transportAuth,
-          runtime = TxGossipRuntime.withPolicy[F, A](
+          runtime = TxGossipRuntime.configured[F, A](
             peerAuthenticator = authenticator,
             clock = clock,
             source = source,
@@ -157,5 +160,9 @@ object TxGossipRuntimeBootstrap:
             topicContracts = topicContracts,
             stateStore = stateStore,
             policy = runtimePolicy,
+            cascadeStrategy = TxCascadeStrategy.exactKnownOrBackfillUnavailable[
+              A,
+            ],
+            sidecarPlanner = sidecarPlanner,
           ),
         )

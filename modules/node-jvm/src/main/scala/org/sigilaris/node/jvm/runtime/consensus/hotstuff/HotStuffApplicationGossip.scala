@@ -164,7 +164,7 @@ object HotStuffPeerArtifact:
   /** Builds a composite source that delegates consensus topics to HotStuff and
     * application topics to their registrations.
     */
-  def source[F[_]: Applicative, A](
+  def source[F[_]: Applicative, A: ByteEncoder](
       consensusSource: GossipArtifactSource[F, HotStuffGossipArtifact],
       consensusContracts: GossipTopicContractRegistry[HotStuffGossipArtifact],
       applicationTopics: Vector[ApplicationGossipTopic[F, A]],
@@ -186,7 +186,7 @@ object HotStuffPeerArtifact:
   ): GossipTopicContractRegistry[HotStuffPeerArtifact[A]] =
     new CompositeTopicContractRegistry(consensusContracts, applicationTopics)
 
-  private final class CompositeSource[F[_]: Applicative, A](
+  private final class CompositeSource[F[_]: Applicative, A: ByteEncoder](
       consensusSource: GossipArtifactSource[F, HotStuffGossipArtifact],
       consensusContracts: GossipTopicContractRegistry[HotStuffGossipArtifact],
       applicationTopics: Vector[ApplicationGossipTopic[F, A]],
@@ -205,13 +205,13 @@ object HotStuffPeerArtifact:
         case Right(_) =>
           consensusSource
             .readAfter(chainId, topic, cursor)
-            .map(_.map(_.map(wrapConsensusEvent)))
+            .map(_.map(_.map(wrapConsensusEventWithoutSize)))
         case Left(consensusRejection) =>
           applicationsByTopic.get(topic) match
             case Some(applicationTopic) =>
               applicationTopic.source
                 .readAfter(chainId, topic, cursor)
-                .map(_.map(_.map(wrapApplicationEvent)))
+                .map(_.map(_.map(wrapApplicationEventWithoutSize)))
             case None =>
               consensusRejection
                 .asLeft[Vector[
@@ -228,32 +228,65 @@ object HotStuffPeerArtifact:
         case Right(_) =>
           consensusSource
             .readByIds(chainId, topic, ids)
-            .map(_.map(wrapConsensusEvent))
+            .map(_.map(wrapConsensusEventWithSize))
         case Left(_) =>
           applicationsByTopic.get(topic) match
             case Some(applicationTopic) =>
               applicationTopic.source
                 .readByIds(chainId, topic, ids)
-                .map(_.map(wrapApplicationEvent))
+                .map(_.map(wrapApplicationEventWithSize))
             case None =>
               Vector.empty[AvailableGossipEvent[HotStuffPeerArtifact[A]]]
                 .pure[F]
 
-    private def wrapConsensusEvent(
+    private def wrapConsensusEventWithoutSize(
         event: AvailableGossipEvent[HotStuffGossipArtifact],
     ): AvailableGossipEvent[HotStuffPeerArtifact[A]] =
-        event.copy(event =
-        event.event.copy(payload = consensusArtifact[A](event.event.payload)),
+      val payload = consensusArtifact[A](event.event.payload)
+      wrapConsensusEvent(event, payload, encodedSizeBytes = None)
+
+    private def wrapConsensusEventWithSize(
+        event: AvailableGossipEvent[HotStuffGossipArtifact],
+    ): AvailableGossipEvent[HotStuffPeerArtifact[A]] =
+      val payload = consensusArtifact[A](event.event.payload)
+      wrapConsensusEvent(event, payload, encodedSizeBytes(payload))
+
+    private def wrapConsensusEvent(
+        event: AvailableGossipEvent[HotStuffGossipArtifact],
+        payload: HotStuffPeerArtifact[A],
+        encodedSizeBytes: Option[Long],
+    ): AvailableGossipEvent[HotStuffPeerArtifact[A]] =
+      event.copy(
+        event = event.event.copy(payload = payload),
+        encodedSizeBytes = encodedSizeBytes,
       )
+
+    private def wrapApplicationEventWithoutSize(
+        event: AvailableGossipEvent[A],
+    ): AvailableGossipEvent[HotStuffPeerArtifact[A]] =
+      val payload = HotStuffPeerArtifact.Application(event.event.payload)
+      wrapApplicationEvent(event, payload, encodedSizeBytes = None)
+
+    private def wrapApplicationEventWithSize(
+        event: AvailableGossipEvent[A],
+    ): AvailableGossipEvent[HotStuffPeerArtifact[A]] =
+      val payload = HotStuffPeerArtifact.Application(event.event.payload)
+      wrapApplicationEvent(event, payload, encodedSizeBytes(payload))
 
     private def wrapApplicationEvent(
         event: AvailableGossipEvent[A],
+        payload: HotStuffPeerArtifact[A],
+        encodedSizeBytes: Option[Long],
     ): AvailableGossipEvent[HotStuffPeerArtifact[A]] =
-      event.copy(event =
-        event.event.copy(payload =
-          HotStuffPeerArtifact.Application(event.event.payload),
-        ),
+      event.copy(
+        event = event.event.copy(payload = payload),
+        encodedSizeBytes = encodedSizeBytes,
       )
+
+    private def encodedSizeBytes(
+        payload: HotStuffPeerArtifact[A],
+    ): Option[Long] =
+      Some(ByteEncoder[HotStuffPeerArtifact[A]].encode(payload).size)
 
   private final class CompositeSink[F[_]: Applicative, A](
       consensusSink: GossipArtifactSink[F, HotStuffGossipArtifact],

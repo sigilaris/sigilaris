@@ -124,7 +124,7 @@ private[tx] trait TxGossipRuntimeControlOps[F[_]: Sync, A]
           sessionWithPrunedKeys.asRight[CanonicalRejection.ControlBatchRejected],
         ):
           case (Right(current), op) =>
-            applyControlOp(current, op)
+            applyControlOp(now, current, op)
           case (left, _) =>
             left
         .map: updated =>
@@ -134,6 +134,7 @@ private[tx] trait TxGossipRuntimeControlOps[F[_]: Sync, A]
           ) -> ControlBatchOutcome.Applied
 
   protected final def applyControlOp(
+      now: Instant,
       sessionState: TxProducerSessionState,
       op: ControlOp,
   ): Either[CanonicalRejection.ControlBatchRejected, TxProducerSessionState] =
@@ -145,8 +146,15 @@ private[tx] trait TxGossipRuntimeControlOps[F[_]: Sync, A]
               TxBloomFilterSupport
                 .validate(bloomFilter, policy)
                 .map: validated =>
-                  sessionState.copy(filters =
-                    sessionState.filters.updated(chainId, validated),
+                  val chainTopic = ChainTopic(chainId, topic)
+                  sessionState.copy(
+                    filters =
+                      sessionState.filters.updated(chainTopic, validated),
+                    filterReceiptTimes =
+                      sessionState.filterReceiptTimes.updated(
+                        chainTopic,
+                        now,
+                      ),
                   )
 
       case ControlOp.SetKnownTx(chainId, ids) =>

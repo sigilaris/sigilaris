@@ -169,7 +169,9 @@ The target behavior is:
 - [HotStuff Low-Latency Profile](../dev/hotstuff-low-latency-profile.md)
 - [v0.2.7 Release Notes](../dev/v0.2.7-release-notes.md)
 - [0023 - Certified Ancestor Dependent Transaction Pipelining Plan](0023-certified-ancestor-dependent-transaction-pipelining-plan.md)
-- BBGO [0020 - Local Four-Node Dependent Payment Latency Progress](../../../bbgo3/docs/plans/0020-local-four-node-dependent-payment-latency-progress.md)
+- BBGO downstream plan 0020: Local Four-Node Dependent Payment Latency Progress
+  (downstream repository; intentionally not linked from Sigilaris to avoid a
+  sibling checkout dependency).
 
 ## Decisions To Lock Before Implementation
 

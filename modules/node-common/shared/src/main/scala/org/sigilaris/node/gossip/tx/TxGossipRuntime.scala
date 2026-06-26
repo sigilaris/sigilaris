@@ -23,6 +23,7 @@ final class TxGossipRuntime[F[_]: Sync, A](
     override protected val stateStore: TxGossipStateStore[F],
     override protected val policy: TxRuntimePolicy,
     override protected val cascadeStrategy: TxCascadeStrategy[A],
+    override protected val sidecarPlanner: GossipSidecarPlanner[F, A],
 ) extends TxGossipRuntimeControlOps[F, A]
     with TxGossipRuntimePollingOps[F, A]:
   private def authenticatedPeerMismatch(
@@ -737,6 +738,7 @@ object TxGossipRuntime:
       stateStore = stateStore,
       policy = policy,
       cascadeStrategy = TxCascadeStrategy.exactKnownOrBackfillUnavailable[A],
+      sidecarPlanner = None,
     )
 
   /** Creates a fully configured runtime with custom policy and cascade
@@ -756,6 +758,7 @@ object TxGossipRuntime:
       stateStore: TxGossipStateStore[F],
       policy: TxRuntimePolicy,
       cascadeStrategy: TxCascadeStrategy[A],
+      sidecarPlanner: Option[GossipSidecarPlanner[F, A]],
   ): TxGossipRuntime[F, A] =
     new TxGossipRuntime(
       peerAuthenticator = peerAuthenticator,
@@ -766,4 +769,6 @@ object TxGossipRuntime:
       stateStore = stateStore,
       policy = policy,
       cascadeStrategy = cascadeStrategy,
+      sidecarPlanner =
+        sidecarPlanner.getOrElse(GossipSidecarPlanner.disabled[F, A]),
     )

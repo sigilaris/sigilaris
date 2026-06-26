@@ -125,6 +125,27 @@ final case class GossipProducerSessionState(
           ),
         )
 
+private[gossip] object GossipTopicDeliveryOrder:
+  def orderedSubscribedTopics[A](
+      subscriptions: SessionSubscription,
+      topicContracts: GossipTopicContractRegistry[A],
+  ): Vector[ChainTopic] =
+    subscriptions.values.toVector.sortBy(chainTopic =>
+      sortKey(chainTopic, topicContracts),
+    )
+
+  private[gossip] def sortKey[A](
+      chainTopic: ChainTopic,
+      topicContracts: GossipTopicContractRegistry[A],
+  ): (Int, String, String) =
+    val priority =
+      topicContracts
+        .contractFor(chainTopic.topic)
+        .toOption
+        .map(_.deliveryPriority)
+        .getOrElse(0)
+    (-priority, chainTopic.chainId.value, chainTopic.topic.value)
+
 /** Utility for batching available gossip events according to QoS constraints.
   */
 object GossipProducerPolling:

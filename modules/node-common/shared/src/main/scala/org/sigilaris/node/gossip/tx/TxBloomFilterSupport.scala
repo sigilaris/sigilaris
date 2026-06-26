@@ -110,6 +110,16 @@ object TxBloomFilterSupport:
       val bitIndex  = index % 8
       ((filter.bitset(byteIndex) >> bitIndex) & 1.toByte) === 1.toByte
 
+  /** Counts set bits in the Bloom filter bitset. */
+  def setBitCount(filter: GossipFilter.TxBloomFilter): Int =
+    filter.bitset.toArray.foldLeft(0): (acc, byte) =>
+      acc + java.lang.Integer.bitCount(byte & 0xff)
+
+  /** Estimates Bloom saturation as set bits divided by total bits. */
+  def bitDensity(filter: GossipFilter.TxBloomFilter): Double =
+    if filter.bitset.isEmpty then 0.0d
+    else setBitCount(filter).toDouble / (filter.bitset.size.toDouble * 8.0d)
+
   private def indexes(
       filter: GossipFilter.TxBloomFilter,
       id: StableArtifactId,
