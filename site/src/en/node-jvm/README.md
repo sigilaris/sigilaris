@@ -9,8 +9,8 @@ SwayDB-backed persistence helpers.
 
 - runtime lifecycle seams under `org.sigilaris.node.jvm.runtime.*`
 - static peer topology and transport-auth configuration loaders
-- Armeria transport adapters for session open, event polling, control batches,
-  and bootstrap HTTP flows
+- Armeria transport adapters for session open, long-lived event streams,
+  control batches, and bootstrap HTTP flows
 - HotStuff bootstrap, catch-up, pacemaker, and artifact validation runtime
 - SwayDB-backed storage helpers for the current durable baseline
 

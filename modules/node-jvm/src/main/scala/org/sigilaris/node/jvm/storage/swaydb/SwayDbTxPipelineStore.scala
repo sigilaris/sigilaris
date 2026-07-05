@@ -14,6 +14,7 @@ import org.sigilaris.core.datatype.Utf8
 import org.sigilaris.core.util.SafeStringInterp.*
 import org.sigilaris.node.jvm.storage.{KeyValueStore, StoreIndex}
 import org.sigilaris.node.jvm.runtime.txpipeline.{
+  TxPipelineIdempotencyBinding,
   TxPipelineStore,
   TxPipelineStoreFailure,
   TxPipelineStoreUpdate,
@@ -47,28 +48,36 @@ final class SwayDbTxPipelineStore private (
       idempotencyKey: TxPipelineIdempotencyKey,
   ): EitherT[IO, TxPipelineStoreFailure, Option[TxPipelineRecord]] =
     for
-      pipelineIdValue <- byIdempotencyKey
-        .get(Utf8(idempotencyKey.value))
-        .leftMap(failure => TxPipelineStoreFailure.DecodeFailed(failure.msg))
-      record <- pipelineIdValue match
+      binding <- loadIdempotencyBinding(idempotencyKey)
+      record <- binding match
         case None => EitherT.rightT[IO, TxPipelineStoreFailure](None)
         case Some(value) =>
-          TxPipelineId.parse(value.asString) match
-            case Left(error) =>
+          loadByPipelineId(value.pipelineId).flatMap:
+            case Some(record) =>
+              if record.canonicalPayloadHash.value ===
+                  value.canonicalPayloadHash.value
+              then EitherT.rightT[IO, TxPipelineStoreFailure](Some(record))
+              else
+                EitherT.leftT[IO, Option[TxPipelineRecord]](
+                  TxPipelineStoreFailure.DecodeFailed(
+                    s"idempotency index hash mismatch for ${value.pipelineId.value}",
+                  ),
+                )
+            case None =>
               EitherT.leftT[IO, Option[TxPipelineRecord]](
-                TxPipelineStoreFailure.DecodeFailed(error),
+                TxPipelineStoreFailure.DecodeFailed(
+                  s"idempotency index points to missing pipeline ${value.pipelineId.value}",
+                ),
               )
-            case Right(pipelineId) =>
-              loadByPipelineId(pipelineId).flatMap:
-                case Some(record) =>
-                  EitherT.rightT[IO, TxPipelineStoreFailure](Some(record))
-                case None =>
-                  EitherT.leftT[IO, Option[TxPipelineRecord]](
-                    TxPipelineStoreFailure.DecodeFailed(
-                      s"idempotency index points to missing pipeline ${pipelineId.value}",
-                    ),
-                  )
     yield record
+
+  override def addIdempotencyAlias(
+      idempotencyKey: TxPipelineIdempotencyKey,
+      binding: TxPipelineIdempotencyBinding,
+  ): EitherT[IO, TxPipelineStoreFailure, TxPipelineRecord] =
+    EitherT:
+      gate.permit.use: _ =>
+        addIdempotencyAliasUnderGate(idempotencyKey, binding).value
 
   override def put(
       record: TxPipelineRecord,
@@ -140,24 +149,15 @@ final class SwayDbTxPipelineStore private (
     record.idempotencyKey match
       case None => EitherT.rightT(())
       case Some(key) =>
-        byIdempotencyKey
-          .get(Utf8(key.value))
-          .leftMap(failure => TxPipelineStoreFailure.DecodeFailed(failure.msg))
-          .flatMap:
-            case None => EitherT.rightT(())
-            case Some(existingPipelineId) =>
-              TxPipelineId.parse(existingPipelineId.asString) match
-                case Left(error) =>
-                  EitherT.leftT[IO, Unit](
-                    TxPipelineStoreFailure.DecodeFailed(error),
-                  )
-                case Right(pipelineId) =>
-                  EitherT.leftT[IO, Unit](
-                    TxPipelineStoreFailure.IdempotencyKeyAlreadyExists(
-                      key,
-                      pipelineId,
-                    ),
-                  )
+        loadIdempotencyBinding(key).flatMap:
+          case None => EitherT.rightT(())
+          case Some(existing) =>
+            EitherT.leftT[IO, Unit](
+              TxPipelineStoreFailure.IdempotencyKeyAlreadyExists(
+                key,
+                existing.pipelineId,
+              ),
+            )
 
   private def loadByPipelineId(
       pipelineId: TxPipelineId,
@@ -170,14 +170,107 @@ final class SwayDbTxPipelineStore private (
         case Some(value) =>
           EitherT.fromEither[IO](decodeRecord(value).map(Some(_)))
 
+  private def addIdempotencyAliasUnderGate(
+      idempotencyKey: TxPipelineIdempotencyKey,
+      binding: TxPipelineIdempotencyBinding,
+  ): EitherT[IO, TxPipelineStoreFailure, TxPipelineRecord] =
+    loadByPipelineId(binding.pipelineId).flatMap:
+      case None =>
+        EitherT.leftT[IO, TxPipelineRecord](
+          TxPipelineStoreFailure.PipelineMissing(binding.pipelineId),
+        )
+      case Some(record)
+          if record.canonicalPayloadHash.value =!=
+            binding.canonicalPayloadHash.value =>
+        EitherT.leftT[IO, TxPipelineRecord](
+          TxPipelineStoreFailure.DecodeFailed(
+            ss"idempotency alias hash mismatch for ${binding.pipelineId.value}",
+          ),
+        )
+      case Some(record) =>
+        loadIdempotencyBinding(idempotencyKey).flatMap:
+          case Some(existing)
+              if existing.pipelineId.value === binding.pipelineId.value &&
+                existing.canonicalPayloadHash.value ===
+                binding.canonicalPayloadHash.value =>
+            EitherT.rightT[IO, TxPipelineStoreFailure](record)
+          case Some(existing) =>
+            EitherT.leftT[IO, TxPipelineRecord](
+              TxPipelineStoreFailure.IdempotencyKeyAlreadyExists(
+                idempotencyKey,
+                existing.pipelineId,
+              ),
+            )
+          case None =>
+            persistIdempotencyBinding(idempotencyKey, binding).as(record)
+
   private def persistRecord(
       record: TxPipelineRecord,
   ): EitherT[IO, TxPipelineStoreFailure, Unit] =
     val writeRecord =
       byId.put(Utf8(record.pipelineId.value), encodeRecord(record))
+    // The record is the source of truth. If the process crashes before the
+    // idempotency index write, a later deterministic create observes the
+    // existing record and repairs convergence through the normal alias path.
     val writeIdempotency = record.idempotencyKey.fold(IO.unit): key =>
-      byIdempotencyKey.put(Utf8(key.value), Utf8(record.pipelineId.value))
+      persistIdempotencyBinding(
+        key,
+        TxPipelineIdempotencyBinding(
+          pipelineId = record.pipelineId,
+          canonicalPayloadHash = record.canonicalPayloadHash,
+        ),
+      ).value.void
     EitherT.right(writeRecord >> writeIdempotency)
+
+  private def loadIdempotencyBinding(
+      idempotencyKey: TxPipelineIdempotencyKey,
+  ): EitherT[IO, TxPipelineStoreFailure, Option[TxPipelineIdempotencyBinding]] =
+    byIdempotencyKey
+      .get(Utf8(idempotencyKey.value))
+      .leftMap(failure => TxPipelineStoreFailure.DecodeFailed(failure.msg))
+      .flatMap:
+        case None => EitherT.rightT[IO, TxPipelineStoreFailure](None)
+        case Some(value) =>
+          decode[TxPipelineIdempotencyBinding](value.asString) match
+            case Right(binding) =>
+              EitherT.rightT[IO, TxPipelineStoreFailure](Some(binding))
+            case Left(_) =>
+              // Backward compatibility for pre-0022 indexes that stored only the
+              // pipeline id. The old format has no hash, so admission must still
+              // compare the loaded record's identity hash against the current
+              // submit request before accepting this as a replay.
+              TxPipelineId.parse(value.asString) match
+                case Left(error) =>
+                  EitherT.leftT[IO, Option[TxPipelineIdempotencyBinding]](
+                    TxPipelineStoreFailure.DecodeFailed(error),
+                  )
+                case Right(pipelineId) =>
+                  loadByPipelineId(pipelineId).flatMap:
+                    case Some(record) =>
+                      EitherT.rightT[IO, TxPipelineStoreFailure](
+                        Some(
+                          TxPipelineIdempotencyBinding(
+                            pipelineId = pipelineId,
+                            canonicalPayloadHash = record.canonicalPayloadHash,
+                          ),
+                        ),
+                      )
+                    case None =>
+                      EitherT.leftT[IO, Option[TxPipelineIdempotencyBinding]](
+                        TxPipelineStoreFailure.DecodeFailed(
+                          s"idempotency index points to missing pipeline ${pipelineId.value}",
+                        ),
+                      )
+
+  private def persistIdempotencyBinding(
+      idempotencyKey: TxPipelineIdempotencyKey,
+      binding: TxPipelineIdempotencyBinding,
+  ): EitherT[IO, TxPipelineStoreFailure, Unit] =
+    EitherT.right:
+      byIdempotencyKey.put(
+        Utf8(idempotencyKey.value),
+        Utf8(binding.asJson.noSpaces),
+      )
 
   private def encodeRecord(record: TxPipelineRecord): Utf8 =
     Utf8(record.asJson.noSpaces)

@@ -57,6 +57,30 @@ trait GossipClock[F[_]]:
   /** @return the current instant */
   def now: F[Instant]
 
+/** Notifies runtime-owned stream drivers that a source appended an event for a
+  * chain-topic.
+  *
+  * Wakeups are advisory and may be coalesced by implementations; retained
+  * source data and session cursors remain the delivery source of truth.
+  * Implementations should publish only after the retained append is visible to
+  * subsequent source reads.
+  */
+trait GossipSourceAppendNotifier[F[_]]:
+
+  /** Publishes that new retained source data may be available for a
+    * chain-topic.
+    */
+  def sourceAppended(chainTopic: ChainTopic): F[Unit]
+
+/** Companion for `GossipSourceAppendNotifier`. */
+object GossipSourceAppendNotifier:
+
+  /** A notifier that intentionally drops advisory source wakeups. */
+  def noop[F[_]: Applicative]: GossipSourceAppendNotifier[F] =
+    new GossipSourceAppendNotifier[F]:
+      override def sourceAppended(chainTopic: ChainTopic): F[Unit] =
+        ().pure[F]
+
 /** Companion for `GossipClock` providing factory methods. */
 object GossipClock:
 

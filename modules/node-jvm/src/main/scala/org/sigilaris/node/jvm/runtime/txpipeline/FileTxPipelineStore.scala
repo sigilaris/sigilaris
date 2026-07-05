@@ -48,29 +48,36 @@ final class FileTxPipelineStore private (
       idempotencyKey: TxPipelineIdempotencyKey,
   ): EitherT[IO, TxPipelineStoreFailure, Option[TxPipelineRecord]] =
     for
-      pipelineId <- readTextFile(idempotencyPath(idempotencyKey)).flatMap:
+      binding <- readIdempotencyBinding(idempotencyKey)
+      record <- binding match
         case None => EitherT.rightT[IO, TxPipelineStoreFailure](None)
         case Some(value) =>
-          TxPipelineId.parse(value) match
-            case Left(error) =>
-              EitherT.leftT[IO, Option[TxPipelineId]](
-                TxPipelineStoreFailure.DecodeFailed(error),
-              )
-            case Right(pipelineId) =>
-              EitherT.rightT[IO, TxPipelineStoreFailure](Some(pipelineId))
-      record <- pipelineId match
-        case None => EitherT.rightT[IO, TxPipelineStoreFailure](None)
-        case Some(value) =>
-          get(value).flatMap:
+          get(value.pipelineId).flatMap:
             case Some(record) =>
-              EitherT.rightT[IO, TxPipelineStoreFailure](Some(record))
+              if record.canonicalPayloadHash.value ===
+                  value.canonicalPayloadHash.value
+              then EitherT.rightT[IO, TxPipelineStoreFailure](Some(record))
+              else
+                EitherT.leftT[IO, Option[TxPipelineRecord]](
+                  TxPipelineStoreFailure.DecodeFailed(
+                    s"idempotency index hash mismatch for ${value.pipelineId.value}",
+                  ),
+                )
             case None =>
               EitherT.leftT[IO, Option[TxPipelineRecord]](
                 TxPipelineStoreFailure.DecodeFailed(
-                  s"idempotency index points to missing pipeline ${value.value}",
+                  s"idempotency index points to missing pipeline ${value.pipelineId.value}",
                 ),
               )
     yield record
+
+  override def addIdempotencyAlias(
+      idempotencyKey: TxPipelineIdempotencyKey,
+      binding: TxPipelineIdempotencyBinding,
+  ): EitherT[IO, TxPipelineStoreFailure, TxPipelineRecord] =
+    EitherT:
+      gate.permit.use: _ =>
+        addIdempotencyAliasUnderGate(idempotencyKey, binding).value
 
   override def put(
       record: TxPipelineRecord,
@@ -150,30 +157,111 @@ final class FileTxPipelineStore private (
     record.idempotencyKey match
       case None => EitherT.rightT(())
       case Some(key) =>
-        readTextFile(idempotencyPath(key)).flatMap:
+        readIdempotencyBinding(key).flatMap:
           case None => EitherT.rightT(())
-          case Some(existingPipelineId) =>
-            TxPipelineId.parse(existingPipelineId) match
-              case Left(error) =>
-                EitherT.leftT[IO, Unit](
-                  TxPipelineStoreFailure.DecodeFailed(error),
-                )
-              case Right(pipelineId) =>
-                EitherT.leftT[IO, Unit](
-                  TxPipelineStoreFailure.IdempotencyKeyAlreadyExists(
-                    key,
-                    pipelineId,
-                  ),
-                )
+          case Some(existing) =>
+            EitherT.leftT[IO, Unit](
+              TxPipelineStoreFailure.IdempotencyKeyAlreadyExists(
+                key,
+                existing.pipelineId,
+              ),
+            )
+
+  private def addIdempotencyAliasUnderGate(
+      idempotencyKey: TxPipelineIdempotencyKey,
+      binding: TxPipelineIdempotencyBinding,
+  ): EitherT[IO, TxPipelineStoreFailure, TxPipelineRecord] =
+    readRecordFile(recordPath(binding.pipelineId)).flatMap:
+      case None =>
+        EitherT.leftT[IO, TxPipelineRecord](
+          TxPipelineStoreFailure.PipelineMissing(binding.pipelineId),
+        )
+      case Some(record)
+          if record.canonicalPayloadHash.value =!=
+            binding.canonicalPayloadHash.value =>
+        EitherT.leftT[IO, TxPipelineRecord](
+          TxPipelineStoreFailure.DecodeFailed(
+            ss"idempotency alias hash mismatch for ${binding.pipelineId.value}",
+          ),
+        )
+      case Some(record) =>
+        readIdempotencyBinding(idempotencyKey).flatMap:
+          case Some(existing)
+              if existing.pipelineId.value === binding.pipelineId.value &&
+                existing.canonicalPayloadHash.value ===
+                binding.canonicalPayloadHash.value =>
+            EitherT.rightT[IO, TxPipelineStoreFailure](record)
+          case Some(existing) =>
+            EitherT.leftT[IO, TxPipelineRecord](
+              TxPipelineStoreFailure.IdempotencyKeyAlreadyExists(
+                idempotencyKey,
+                existing.pipelineId,
+              ),
+            )
+          case None =>
+            writeIdempotencyBinding(idempotencyKey, binding).as(record)
 
   private def persistRecord(
       record: TxPipelineRecord,
   ): EitherT[IO, TxPipelineStoreFailure, Unit] =
     val writeRecord =
       writeTextFile(recordPath(record.pipelineId), record.asJson.noSpaces)
+    // The record is the source of truth. If the process crashes before the
+    // idempotency index write, a later deterministic create observes the
+    // existing record and repairs convergence through the normal alias path.
     val writeIdempotency = record.idempotencyKey.fold(IO.unit): key =>
-      writeTextFile(idempotencyPath(key), record.pipelineId.value)
+      writeIdempotencyBinding(
+        key,
+        TxPipelineIdempotencyBinding(
+          pipelineId = record.pipelineId,
+          canonicalPayloadHash = record.canonicalPayloadHash,
+        ),
+      ).value.void
     EitherT.right(writeRecord >> writeIdempotency)
+
+  private def readIdempotencyBinding(
+      idempotencyKey: TxPipelineIdempotencyKey,
+  ): EitherT[IO, TxPipelineStoreFailure, Option[TxPipelineIdempotencyBinding]] =
+    readTextFile(idempotencyPath(idempotencyKey)).flatMap:
+      case None => EitherT.rightT[IO, TxPipelineStoreFailure](None)
+      case Some(value) =>
+        decode[TxPipelineIdempotencyBinding](value) match
+          case Right(binding) =>
+            EitherT.rightT[IO, TxPipelineStoreFailure](Some(binding))
+          case Left(_) =>
+            // Backward compatibility for pre-0022 indexes that stored only the
+            // pipeline id. The old format has no hash, so admission must still
+            // compare the loaded record's identity hash against the current
+            // submit request before accepting this as a replay.
+            TxPipelineId.parse(value) match
+              case Left(error) =>
+                EitherT.leftT[IO, Option[TxPipelineIdempotencyBinding]](
+                  TxPipelineStoreFailure.DecodeFailed(error),
+                )
+              case Right(pipelineId) =>
+                readRecordFile(recordPath(pipelineId)).flatMap:
+                  case Some(record) =>
+                    EitherT.rightT[IO, TxPipelineStoreFailure](
+                      Some(
+                        TxPipelineIdempotencyBinding(
+                          pipelineId = pipelineId,
+                          canonicalPayloadHash = record.canonicalPayloadHash,
+                        ),
+                      ),
+                    )
+                  case None =>
+                    EitherT.leftT[IO, Option[TxPipelineIdempotencyBinding]](
+                      TxPipelineStoreFailure.DecodeFailed(
+                        s"idempotency index points to missing pipeline ${pipelineId.value}",
+                      ),
+                    )
+
+  private def writeIdempotencyBinding(
+      idempotencyKey: TxPipelineIdempotencyKey,
+      binding: TxPipelineIdempotencyBinding,
+  ): EitherT[IO, TxPipelineStoreFailure, Unit] =
+    EitherT.right:
+      writeTextFile(idempotencyPath(idempotencyKey), binding.asJson.noSpaces)
 
   private def readRecordFile(
       path: Path,

@@ -221,6 +221,24 @@ object EventRequestWire:
   given Decoder[EventRequestWire] = deriveDecoder
   given Encoder[EventRequestWire] = deriveEncoder
 
+/** Wire format for opening a long-lived event stream.
+  *
+  * @param kind
+  *   request kind; must be "stream" for the streaming event endpoint
+  * @param resume
+  *   optional composite cursor entries defining the reconnect resume position
+  */
+@SuppressWarnings(Array("org.wartremover.warts.DefaultArguments"))
+final case class StreamOpenRequestWire(
+    kind: String = "stream",
+    resume: Option[Vector[CursorEntryWire]] = None,
+)
+
+/** JSON codec instances for `StreamOpenRequestWire`. */
+object StreamOpenRequestWire:
+  given Decoder[StreamOpenRequestWire] = deriveDecoder
+  given Encoder[StreamOpenRequestWire] = deriveEncoder
+
 /** Wire format for a canonical rejection response.
   *
   * @param rejectionClass

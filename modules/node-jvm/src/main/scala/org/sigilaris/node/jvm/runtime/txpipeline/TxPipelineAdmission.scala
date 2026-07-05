@@ -38,7 +38,25 @@ object TxPipelineApplicationAdmission:
     _ => Applicative[F].pure(Right[TxPipelineValidationFailure, Unit](()))
 
 trait TxPipelineIdGenerator[F[_]]:
-  def nextPipelineId: F[TxPipelineId]
+  def nextPipelineId(
+      normalized: TxPipelineNormalizedRequest,
+  ): F[TxPipelineId]
+
+object TxPipelineIdGenerator:
+  def deterministicSha256[F[_]: Sync](
+      identityScope: String,
+  ): TxPipelineIdGenerator[F] =
+    new TxPipelineIdGenerator[F]:
+      override def nextPipelineId(
+          normalized: TxPipelineNormalizedRequest,
+      ): F[TxPipelineId] =
+        Sync[F].delay:
+          val identityHash =
+            TxPipelineAdmissionService.pipelineIdentityHash(
+              normalized,
+              identityScope,
+            )
+          TxPipelineId("txp_" + identityHash.value)
 
 trait TxPipelineAdmissionClock[F[_]]:
   def now: F[Instant]
@@ -60,6 +78,7 @@ final case class TxPipelineAdmissionOutcome(
 final class TxPipelineAdmissionService[F[_]: Sync](
     store: TxPipelineStore[F],
     idGenerator: TxPipelineIdGenerator[F],
+    identityScope: String,
     clock: TxPipelineAdmissionClock[F],
     hasher: TxPipelineTransactionHasher[F],
     applicationAdmission: TxPipelineApplicationAdmission[F],
@@ -84,9 +103,11 @@ final class TxPipelineAdmissionService[F[_]: Sync](
         TxPipelineRequestNormalizer
           .normalize(request, limits)
           .leftMap(TxPipelineAdmissionFailure.ValidationRejected(_))
-      canonicalHash = TxPipelineAdmissionService.canonicalPayloadHash(
-        normalized,
-      )
+      canonicalHash =
+        TxPipelineAdmissionService.pipelineIdentityHash(
+          normalized,
+          identityScope,
+        )
       replay <- existingReplay(idempotencyKey, canonicalHash)
       outcome <- replay match
         case Some(existing) =>
@@ -137,7 +158,7 @@ final class TxPipelineAdmissionService[F[_]: Sync](
           .map(_.leftMap(TxPipelineAdmissionFailure.ValidationRejected(_)))
       txHashes <- hashTransactions(normalized)
       pipelineId <- EitherT.right[TxPipelineAdmissionFailure](
-        idGenerator.nextPipelineId,
+        idGenerator.nextPipelineId(normalized),
       )
       acceptedAt <- EitherT.right[TxPipelineAdmissionFailure](clock.now)
       record <- EitherT.fromEither[F]:
@@ -185,8 +206,19 @@ final class TxPipelineAdmissionService[F[_]: Sync](
       canonicalHash: TxPipelineCanonicalPayloadHash,
   ): EitherT[F, TxPipelineAdmissionFailure, TxPipelineCreateOutcome] =
     for
-      _       <- enforceAcceptedNonterminalLimit
-      outcome <- createRecordOrReplay(record, canonicalHash)
+      convergence <- convergeExistingPipelineIfPresent(
+        pipelineId = record.pipelineId,
+        canonicalHash = canonicalHash,
+        idempotencyKey = record.idempotencyKey,
+      )
+      outcome <- convergence match
+        case Some(existing) =>
+          EitherT.rightT[F, TxPipelineAdmissionFailure](existing)
+        case None =>
+          for
+            _       <- enforceAcceptedNonterminalLimit
+            outcome <- createRecordOrReplay(record, canonicalHash)
+          yield outcome
     yield outcome
 
   private def createRecordOrReplay(
@@ -219,11 +251,104 @@ final class TxPipelineAdmissionService[F[_]: Sync](
               Left[TxPipelineAdmissionFailure, TxPipelineCreateOutcome](
                 rejected,
               )
+        case Left(TxPipelineStoreFailure.PipelineAlreadyExists(pipelineId)) =>
+          convergeExistingPipeline(
+            pipelineId = pipelineId,
+            canonicalHash = canonicalHash,
+            idempotencyKey = record.idempotencyKey,
+          ).value
         case Left(failure) =>
           Sync[F].pure:
             Left[TxPipelineAdmissionFailure, TxPipelineCreateOutcome](
               TxPipelineAdmissionFailure.StoreRejected(failure),
             )
+
+  private def convergeExistingPipelineIfPresent(
+      pipelineId: TxPipelineId,
+      canonicalHash: TxPipelineCanonicalPayloadHash,
+      idempotencyKey: Option[TxPipelineIdempotencyKey],
+  ): EitherT[F, TxPipelineAdmissionFailure, Option[TxPipelineCreateOutcome]] =
+    store
+      .get(pipelineId)
+      .leftMap(TxPipelineAdmissionFailure.StoreRejected(_))
+      .flatMap:
+        case None =>
+          EitherT.rightT[F, TxPipelineAdmissionFailure](None)
+        case Some(existing) =>
+          convergeExistingRecord(
+            existing,
+            canonicalHash,
+            idempotencyKey,
+          ).map(Some(_))
+
+  private def convergeExistingPipeline(
+      pipelineId: TxPipelineId,
+      canonicalHash: TxPipelineCanonicalPayloadHash,
+      idempotencyKey: Option[TxPipelineIdempotencyKey],
+  ): EitherT[F, TxPipelineAdmissionFailure, TxPipelineCreateOutcome] =
+    for
+      existing <- store
+        .get(pipelineId)
+        .leftMap(TxPipelineAdmissionFailure.StoreRejected(_))
+        .flatMap:
+          case Some(record) =>
+            EitherT.rightT[F, TxPipelineAdmissionFailure](record)
+          case None =>
+            EitherT.leftT[F, TxPipelineRecord](
+              TxPipelineAdmissionFailure.StoreRejected(
+                TxPipelineStoreFailure.PipelineMissing(pipelineId),
+              ),
+            )
+      outcome <- convergeExistingRecord(existing, canonicalHash, idempotencyKey)
+    yield outcome
+
+  private def convergeExistingRecord(
+      existing: TxPipelineRecord,
+      canonicalHash: TxPipelineCanonicalPayloadHash,
+      idempotencyKey: Option[TxPipelineIdempotencyKey],
+  ): EitherT[F, TxPipelineAdmissionFailure, TxPipelineCreateOutcome] =
+    for
+      _ <-
+        if existing.canonicalPayloadHash.value === canonicalHash.value then
+          EitherT.rightT[F, TxPipelineAdmissionFailure](())
+        else
+          EitherT.leftT[F, Unit](
+            TxPipelineAdmissionFailure.StoreRejected(
+              TxPipelineStoreFailure.DecodeFailed(
+                ss"pipeline id collision for ${existing.pipelineId.value}",
+              ),
+            ),
+          )
+      aliased <- bindAliasIfNeeded(existing, idempotencyKey, canonicalHash)
+    yield TxPipelineCreateOutcome(record = aliased, created = false)
+
+  private def bindAliasIfNeeded(
+      record: TxPipelineRecord,
+      idempotencyKey: Option[TxPipelineIdempotencyKey],
+      canonicalHash: TxPipelineCanonicalPayloadHash,
+  ): EitherT[F, TxPipelineAdmissionFailure, TxPipelineRecord] =
+    idempotencyKey match
+      case None => EitherT.rightT[F, TxPipelineAdmissionFailure](record)
+      case Some(key) =>
+        store
+          .addIdempotencyAlias(
+            key,
+            TxPipelineIdempotencyBinding(
+              pipelineId = record.pipelineId,
+              canonicalPayloadHash = canonicalHash,
+            ),
+          )
+          .leftMap:
+            case TxPipelineStoreFailure.IdempotencyKeyAlreadyExists(
+                  idempotencyKey,
+                  pipelineId,
+                ) =>
+              TxPipelineAdmissionFailure.IdempotencyConflict(
+                idempotencyKey,
+                pipelineId,
+              )
+            case failure =>
+              TxPipelineAdmissionFailure.StoreRejected(failure)
 
   private def createPermit: Resource[F, Unit] =
     Resource.make(Sync[F].blocking(createGate.acquire()))(_ =>
@@ -327,12 +452,22 @@ object TxPipelineAdmissionService:
 
   def canonicalPayloadHash(
       normalized: TxPipelineNormalizedRequest,
+      identityScope: String,
+  ): TxPipelineCanonicalPayloadHash =
+    pipelineIdentityHash(normalized, identityScope)
+
+  def pipelineIdentityHash(
+      normalized: TxPipelineNormalizedRequest,
+      identityScope: String,
   ): TxPipelineCanonicalPayloadHash =
     val digest = MessageDigest.getInstance("SHA-256")
     TxPipelineCanonicalPayloadHash(
       TxPipelineSha256.hex(
         digest.digest(
-          normalized.canonicalPayload.value.getBytes(StandardCharsets.UTF_8),
+          normalized
+            .identityPayload(identityScope)
+            .value
+            .getBytes(StandardCharsets.UTF_8),
         ),
       ),
     )

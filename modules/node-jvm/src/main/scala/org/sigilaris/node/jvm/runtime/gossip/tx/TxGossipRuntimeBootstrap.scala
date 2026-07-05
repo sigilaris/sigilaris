@@ -29,6 +29,8 @@ import org.sigilaris.node.jvm.runtime.gossip.{
   *   the transport authentication configuration
   * @param runtime
   *   the transaction gossip runtime
+  * @param wakeupBus
+  *   optional runtime wakeup bus used by streaming event delivery
   */
 final case class TxGossipBootstrap[F[_], A](
     topology: StaticPeerTopology,
@@ -36,6 +38,7 @@ final case class TxGossipBootstrap[F[_], A](
     authenticator: StaticPeerAuthenticator[F],
     transportAuth: StaticPeerTransportAuth,
     runtime: TxGossipRuntime[F, A],
+    wakeupBus: Option[TxGossipWakeupBus[F]],
 )
 
 @SuppressWarnings(Array("org.wartremover.warts.DefaultArguments"))
@@ -79,6 +82,7 @@ object TxGossipRuntimeBootstrap:
       handshakePolicy: HandshakePolicy = HandshakePolicy.default,
       configPath: String = StaticPeerTopologyConfig.DefaultPath,
       sidecarPlanner: Option[GossipSidecarPlanner[F, A]] = None,
+      wakeupBus: Option[TxGossipWakeupBus[F]] = None,
   ): F[Either[String, TxGossipBootstrap[F, A]]] =
     StaticPeerTopologyConfig.load(config, configPath) match
       case Left(error) =>
@@ -98,6 +102,7 @@ object TxGossipRuntimeBootstrap:
               runtimePolicy = runtimePolicy,
               handshakePolicy = handshakePolicy,
               sidecarPlanner = sidecarPlanner,
+              wakeupBus = wakeupBus,
             ).map(_.asRight[String])
 
   /** Bootstraps a transaction gossip runtime from a pre-parsed topology.
@@ -135,6 +140,7 @@ object TxGossipRuntimeBootstrap:
       runtimePolicy: TxRuntimePolicy = TxRuntimePolicy(),
       handshakePolicy: HandshakePolicy = HandshakePolicy.default,
       sidecarPlanner: Option[GossipSidecarPlanner[F, A]] = None,
+      wakeupBus: Option[TxGossipWakeupBus[F]] = None,
   ): F[TxGossipBootstrap[F, A]] =
     val registry      = StaticPeerRegistry(topology)
     val authenticator = StaticPeerAuthenticator[F](registry)
@@ -164,5 +170,7 @@ object TxGossipRuntimeBootstrap:
               A,
             ],
             sidecarPlanner = sidecarPlanner,
+            wakeupBus = wakeupBus,
           ),
+          wakeupBus = wakeupBus,
         )

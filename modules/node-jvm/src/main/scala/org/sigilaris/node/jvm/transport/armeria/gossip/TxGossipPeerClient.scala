@@ -6,8 +6,12 @@ import java.time.Duration
 import cats.effect.{Async, Resource}
 import cats.effect.std.Semaphore
 import cats.syntax.all.*
+import fs2.Stream
+import sttp.capabilities.fs2.Fs2Streams
 import sttp.client4.Backend
+import sttp.client4.StreamBackend
 import sttp.client4.armeria.cats.ArmeriaCatsBackend
+import sttp.client4.armeria.fs2.ArmeriaFs2Backend
 
 import org.sigilaris.core.codec.byte.ByteDecoder
 import org.sigilaris.node.gossip.*
@@ -18,10 +22,10 @@ trait TxGossipPeerClient[F[_], A]:
       rawProposal: String,
   ): F[Either[GossipPeerClientError, Either[CanonicalRejection, String]]]
 
-  def pollEvents(
+  def streamEvents(
       sessionId: DirectionalSessionId,
       rawRequest: String,
-  ): F[Either[GossipPeerClientError, Vector[EventEnvelopeWire[A]]]]
+  ): Stream[F, Either[GossipPeerClientError, EventEnvelopeWire[A]]]
 
   def sendControl(
       sessionId: DirectionalSessionId,
@@ -35,6 +39,10 @@ trait TxGossipPeerClient[F[_], A]:
 object TxGossipPeerClient:
   val DefaultRequestTimeout: Duration =
     HotStuffBootstrapPeerClient.DefaultRequestTimeout
+  val DefaultStreamRequestTimeout: Duration =
+    Duration.ZERO
+  val DefaultStreamIdleTimeout: Duration =
+    Duration.ofSeconds(90)
   val DefaultMaxConcurrentRequests: Int =
     HotStuffBootstrapPeerClient.DefaultMaxConcurrentRequests
   private val DisconnectAck: String = "ok"
@@ -45,25 +53,42 @@ object TxGossipPeerClient:
       transportAuth: StaticPeerTransportAuth,
       authenticatedPeer: PeerIdentity,
       requestTimeout: Duration = DefaultRequestTimeout,
+      streamRequestTimeout: Duration = DefaultStreamRequestTimeout,
+      streamIdleTimeout: Duration = DefaultStreamIdleTimeout,
       maxConcurrentRequests: Int = DefaultMaxConcurrentRequests,
   ): Resource[F, TxGossipPeerClient[F, A]] =
     Resource
-      .eval(validateConfig[F](requestTimeout, maxConcurrentRequests))
+      .eval(
+        validateConfig[F](
+          requestTimeout = requestTimeout,
+          streamRequestTimeout = streamRequestTimeout,
+          streamIdleTimeout = streamIdleTimeout,
+          maxConcurrentRequests = maxConcurrentRequests,
+        ),
+      )
       .productR(
         ArmeriaCatsBackend
           .resource[F]()
-          .evalMap(backend =>
-            Semaphore[F](maxConcurrentRequests.toLong).map(requestGate =>
-              apply(
-                baseUri = baseUri,
-                transportAuth = transportAuth,
-                authenticatedPeer = authenticatedPeer,
-                backend = backend,
-                requestTimeout = requestTimeout,
-                requestGate = requestGate,
-              ),
-            ),
-          ),
+          .flatMap: backend =>
+            ArmeriaFs2Backend
+              .resource[F]()
+              .evalMap: streamBackend =>
+                (
+                  Semaphore[F](maxConcurrentRequests.toLong),
+                  Semaphore[F](maxConcurrentRequests.toLong),
+                ).mapN: (requestGate, streamGate) =>
+                  apply(
+                    baseUri = baseUri,
+                    transportAuth = transportAuth,
+                    authenticatedPeer = authenticatedPeer,
+                    backend = backend,
+                    streamBackend = streamBackend,
+                    requestTimeout = requestTimeout,
+                    streamRequestTimeout = streamRequestTimeout,
+                    streamIdleTimeout = streamIdleTimeout,
+                    requestGate = requestGate,
+                    streamGate = streamGate,
+                  ),
       )
 
   @SuppressWarnings(Array("org.wartremover.warts.DefaultArguments"))
@@ -72,8 +97,12 @@ object TxGossipPeerClient:
       transportAuth: StaticPeerTransportAuth,
       authenticatedPeer: PeerIdentity,
       backend: Backend[F],
+      streamBackend: StreamBackend[F, Fs2Streams[F]],
       requestGate: Semaphore[F],
+      streamGate: Semaphore[F],
       requestTimeout: Duration = DefaultRequestTimeout,
+      streamRequestTimeout: Duration = DefaultStreamRequestTimeout,
+      streamIdleTimeout: Duration = DefaultStreamIdleTimeout,
   ): TxGossipPeerClient[F, A] =
     val sttpBaseUri = GossipTapirClientCore.baseUri(baseUri)
     new TxGossipPeerClient[F, A]:
@@ -88,30 +117,37 @@ object TxGossipPeerClient:
           ),
         )
 
-      override def pollEvents(
+      override def streamEvents(
           sessionId: DirectionalSessionId,
           rawRequest: String,
-      ): F[Either[GossipPeerClientError, Vector[EventEnvelopeWire[A]]]] =
+      ): Stream[F, Either[GossipPeerClientError, EventEnvelopeWire[A]]] =
         (
           for
-            prepared <- GossipTapirClientCore.txEventStreamRequest(
+            prepared <- GossipTapirClientCore.txEventStreamOpenRequest[F](
               sttpBaseUri,
               sessionId,
               rawRequest,
-              requestTimeout,
+              streamRequestTimeout,
             )
-            signed <- GossipTapirClientCore.withTransportAuth(
+            signed <- GossipTapirClientCore.withStreamTransportAuth(
               prepared,
               transportAuth,
               authenticatedPeer,
             )
           yield signed
         ).fold(
-          error => error.asLeft[Vector[EventEnvelopeWire[A]]].pure[F],
+          error => Stream.emit(error.asLeft[EventEnvelopeWire[A]]),
           signed =>
-            requestGate.permit.use: _ =>
-              GossipTapirClientCore
-                .sendEventEndpoint[F, A](backend, signed.request),
+            Stream
+              .resource(streamGate.permit)
+              .flatMap(_ =>
+                GossipTapirClientCore
+                  .sendEventStreamEndpoint[F, A](
+                    streamBackend,
+                    signed.request,
+                    streamIdleTimeout,
+                  ),
+              ),
         )
 
       override def sendControl(
@@ -188,12 +224,22 @@ object TxGossipPeerClient:
 
   private def validateConfig[F[_]: Async](
       requestTimeout: Duration,
+      streamRequestTimeout: Duration,
+      streamIdleTimeout: Duration,
       maxConcurrentRequests: Int,
   ): F[Unit] =
     Async[F].delay:
       require(
         requestTimeout.compareTo(Duration.ZERO) > 0,
         "requestTimeout must be positive",
+      )
+      require(
+        !streamRequestTimeout.isNegative,
+        "streamRequestTimeout must be zero or positive",
+      )
+      require(
+        !streamIdleTimeout.isNegative,
+        "streamIdleTimeout must be zero or positive",
       )
       require(
         maxConcurrentRequests > 0,

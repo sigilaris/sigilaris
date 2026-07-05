@@ -112,6 +112,24 @@ final case class HotStuffNodeRuntime[F[_]: Sync](
   def currentBootstrapDiagnostics: F[BootstrapDiagnostics] =
     bootstrapLifecycle.fold(services.bootstrap.diagnostics.current)(_.current)
 
+  def currentInMemorySourceDiagnostics
+      : F[Option[InMemoryHotStuffSourceDiagnostics]] =
+    inMemorySource.traverse(_.snapshot.map(_.diagnostics))
+
+  def currentInMemorySinkDiagnostics
+      : F[Option[InMemoryHotStuffSinkDiagnostics]] =
+    inMemorySink.traverse(_.sinkDiagnostics)
+
+  def currentProjectedGossipDiagnostics(
+      policy: HotStuffGossipDiagnosticsProjectionPolicy =
+        HotStuffGossipDiagnosticsProjectionPolicy.default,
+  ): F[HotStuffGossipDiagnosticsProjectionResult] =
+    HotStuffNodeRuntime.projectGossipDiagnosticsReads(
+      sourceRead = currentInMemorySourceDiagnostics,
+      sinkRead = currentInMemorySinkDiagnostics,
+      policy = policy,
+    )
+
   def currentFinalizationObservations
       : F[Map[ChainId, FinalizedAnchorObservation]] =
     inMemorySink.fold(
@@ -590,6 +608,28 @@ final case class HotStuffNodeRuntime[F[_]: Sync](
   * methods.
   */
 object HotStuffNodeRuntime:
+  private[hotstuff] def projectGossipDiagnosticsReads[F[_]: Sync](
+      sourceRead: F[Option[InMemoryHotStuffSourceDiagnostics]],
+      sinkRead: F[Option[InMemoryHotStuffSinkDiagnostics]],
+      policy: HotStuffGossipDiagnosticsProjectionPolicy,
+  ): F[HotStuffGossipDiagnosticsProjectionResult] =
+    for
+      sourceAttempt <- sourceRead.attempt
+      sinkAttempt   <- sinkRead.attempt
+    yield HotStuffGossipDiagnosticsProjection.project(
+      sourceRead = sourceAttempt.leftMap(diagnosticsReadFailure),
+      sinkRead = sinkAttempt.leftMap(diagnosticsReadFailure),
+      policy = policy,
+    )
+
+  // Projected diagnostics are status-facing values. Keep raw exception
+  // type/message details out of the snapshot; warning logging/dedup belongs to
+  // the caller boundary covered by plan 0029.
+  private def diagnosticsReadFailure(
+      _error: Throwable,
+  ): String =
+    "diagnostics-read-failed"
+
   /** Validates bootstrap input by checking for dual-active key holder
     * violations.
     */
@@ -670,13 +710,19 @@ object HotStuffNodeRuntime:
       validatorSet: ValidatorSet,
       gossipPolicy: HotStuffGossipPolicy = HotStuffGossipPolicy.default,
       relayPolicy: HotStuffRelayPolicy = HotStuffRelayPolicy.default,
+      sinkRetention: HotStuffArtifactSinkRetention =
+        HotStuffArtifactSinkRetention.default,
+      sourceAppendNotifier: Option[GossipSourceAppendNotifier[F]] = None,
   )(using
       clock: GossipClock[F],
   ): F[(HotStuffRuntimeServices[F], HotStuffInMemoryRuntimeDiagnostics[F])] =
+    val appendNotifier =
+      sourceAppendNotifier.getOrElse(GossipSourceAppendNotifier.noop[F])
     for
-      source <- InMemoryHotStuffArtifactSource.create[F]
+      source <- InMemoryHotStuffArtifactSource
+        .createWithNotifier[F](appendNotifier)
       sink <- InMemoryHotStuffArtifactSink
-        .create[F](validatorSet, relayPolicy, source)
+        .create[F](validatorSet, relayPolicy, source, sinkRetention)
     yield
       val diagnostics =
         HotStuffInMemoryRuntimeDiagnostics(source = source, sink = sink)
@@ -715,6 +761,8 @@ object HotStuffNodeRuntime:
         HotStuffPacemakerPolicy.default,
       finalityDrivePolicy: HotStuffFinalityDrivePolicy =
         HotStuffFinalityDrivePolicy.disabled,
+      sinkRetention: HotStuffArtifactSinkRetention =
+        HotStuffArtifactSinkRetention.default,
       proposalDependencyConfig:
         HotStuffProposalApplicationDependencyRuntimeConfig[F] =
         HotStuffProposalApplicationDependencyRuntimeConfig.legacyCompatible[F],
@@ -751,6 +799,7 @@ object HotStuffNodeRuntime:
           validatorSet,
           gossipPolicy,
           HotStuffRelayPolicy.forRole(role),
+          sinkRetention,
         ).flatMap: (services, diagnostics) =>
           InMemoryHotStuffPacemakerDriver
             .attach(

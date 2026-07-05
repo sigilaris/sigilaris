@@ -55,6 +55,29 @@ private[tx] trait TxGossipRuntimePollingOps[F[_]: Sync, A]
                       (updatedState -> (emitted ++ chainEvents))
                         .asRight[CanonicalRejection]
 
+  protected final def nextFlushDeadline(
+      now: Instant,
+      sessionState: TxProducerSessionState,
+  ): F[Option[Instant]] =
+    GossipTopicDeliveryOrder
+      .orderedSubscribedTopics(sessionState.subscriptions, topicContracts)
+      .foldLeftM(none[Instant]): (earliest, chainTopic) =>
+        val deadline =
+          if chainTopic.topic === GossipTopic.tx then
+            nextTxChainFlushDeadline(now, sessionState, chainTopic)
+          else
+            topicContracts.contractFor(chainTopic.topic) match
+              case Left(_) =>
+                now.some.pure[F]
+              case Right(contract) =>
+                nextExactKnownChainFlushDeadline(
+                  now,
+                  sessionState,
+                  chainTopic,
+                  contract,
+                )
+        deadline.map(next => earlierDeadline(earliest, next))
+
   protected final def pollTxChain(
       now: Instant,
       sessionState: TxProducerSessionState,
@@ -360,3 +383,127 @@ private[tx] trait TxGossipRuntimePollingOps[F[_]: Sync, A]
               .clearSidecarHold(chainTopic)
               .appendSidecarDiagnostics(diagnostics) ->
               Vector(proposal)
+
+  private def nextTxChainFlushDeadline(
+      now: Instant,
+      sessionState: TxProducerSessionState,
+      chainTopic: ChainTopic,
+  ): F[Option[Instant]] =
+    val requestedIds = sessionState.pendingRequestByIds.getOrElse(
+      chainTopic.chainId,
+      Vector.empty[StableArtifactId],
+    )
+    if requestedIds.nonEmpty then now.some.pure[F]
+    else
+      val producerState  = sessionState.producerState
+      val cursorOverride = producerState.pendingReplay.get(chainTopic)
+      val startCursor =
+        cursorOverride.getOrElse(producerState.startCursorFor(chainTopic))
+      source
+        .readAfter(chainTopic.chainId, chainTopic.topic, startCursor)
+        .map:
+          case Left(_) =>
+            Some(now)
+          case Right(candidates) =>
+            cascadeStrategy
+              .selectLiveEvents(
+                filter = sessionState.filters.get(chainTopic),
+                exactKnownIds = sessionState.exactKnownIds.getOrElse(
+                  chainTopic.chainId,
+                  Set.empty[StableArtifactId],
+                ),
+                candidates = candidates.map(_.event),
+              )
+              .fold(
+                _ => Some(now),
+                selectedEvents =>
+                  flushDeadlineForCandidates(
+                    now = now,
+                    candidates = selectArtifacts(candidates, selectedEvents),
+                    qos = sessionState.batchingConfig,
+                    forceFlush = cursorOverride.nonEmpty,
+                    limit = sessionState.batchingConfig.maxBatchItems,
+                  ),
+              )
+
+  private def nextExactKnownChainFlushDeadline(
+      now: Instant,
+      sessionState: TxProducerSessionState,
+      chainTopic: ChainTopic,
+      contract: GossipTopicContract[A],
+  ): F[Option[Instant]] =
+    val requestedScopes =
+      sessionState.pendingRequestScopeIds.toVector.collect:
+        case (scope, ids)
+            if scope.chainId === chainTopic.chainId &&
+              scope.topic === chainTopic.topic =>
+          scope -> ids
+    if requestedScopes.exists(_._2.nonEmpty) then now.some.pure[F]
+    else
+      val producerState  = sessionState.producerState
+      val cursorOverride = producerState.pendingReplay.get(chainTopic)
+      val startCursor =
+        cursorOverride.getOrElse(producerState.startCursorFor(chainTopic))
+      val qos = contract.producerQoS(sessionState.batchingConfig)
+      // The held proposal already consumed a flush attempt. Avoid a tight
+      // immediate retry loop; source/control wakeups or the keepalive deadline
+      // will re-drain and either find sidecars or surface fallback.
+      if sessionState.sidecarHolds.contains(chainTopic) && cursorOverride.isEmpty
+      then none[Instant].pure[F]
+      else
+        source
+          .readAfter(chainTopic.chainId, chainTopic.topic, startCursor)
+          .map:
+            case Left(_) =>
+              Some(now)
+            case Right(candidates) =>
+              candidates
+                .traverse(candidate =>
+                  contract
+                    .exactKnownScopeOf(candidate.event)
+                    .map(scope => scope -> candidate),
+                )
+                .fold(
+                  _ => Some(now),
+                  scopedCandidates =>
+                    val filtered =
+                      scopedCandidates.collect:
+                        case (Some(scope), candidate)
+                            if !sessionState.exactKnownScopeIds
+                              .getOrElse(scope, Set.empty[StableArtifactId])
+                              .contains(candidate.event.id) =>
+                          candidate
+                    flushDeadlineForCandidates(
+                      now = now,
+                      candidates = filtered,
+                      qos = qos,
+                      forceFlush = cursorOverride.nonEmpty,
+                      limit = qos.maxBatchItems,
+                    ),
+                )
+
+  private def flushDeadlineForCandidates(
+      now: Instant,
+      candidates: Vector[AvailableGossipEvent[A]],
+      qos: GossipProducerQoS,
+      forceFlush: Boolean,
+      limit: Int,
+  ): Option[Instant] =
+    if candidates.isEmpty then None
+    else
+      val threshold = qos.maxBatchItems.min(limit)
+      if threshold <= 0 then None
+      else if forceFlush || candidates.sizeCompare(threshold) >= 0 then
+        Some(now)
+      else candidates.headOption.map(_.availableAt.plus(qos.flushInterval))
+
+  private def earlierDeadline(
+      left: Option[Instant],
+      right: Option[Instant],
+  ): Option[Instant] =
+    (left, right) match
+      case (None, None)             => None
+      case (Some(value), None)      => Some(value)
+      case (None, Some(value))      => Some(value)
+      case (Some(first), Some(next)) =>
+        if first.isAfter(next) then Some(next) else Some(first)

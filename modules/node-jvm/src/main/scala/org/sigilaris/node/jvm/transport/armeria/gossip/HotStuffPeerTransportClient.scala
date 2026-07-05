@@ -6,8 +6,11 @@ import java.time.Duration
 import cats.effect.{Async, Resource}
 import cats.effect.std.Semaphore
 import cats.syntax.all.*
+import sttp.capabilities.fs2.Fs2Streams
 import sttp.client4.Backend
+import sttp.client4.StreamBackend
 import sttp.client4.armeria.cats.ArmeriaCatsBackend
+import sttp.client4.armeria.fs2.ArmeriaFs2Backend
 
 import org.sigilaris.core.codec.byte.ByteDecoder
 import org.sigilaris.node.gossip.*
@@ -33,6 +36,10 @@ final case class HotStuffPeerTransportClient[F[_], A](
 object HotStuffPeerTransportClient:
   val DefaultRequestTimeout: Duration =
     TxGossipPeerClient.DefaultRequestTimeout
+  val DefaultStreamRequestTimeout: Duration =
+    TxGossipPeerClient.DefaultStreamRequestTimeout
+  val DefaultStreamIdleTimeout: Duration =
+    TxGossipPeerClient.DefaultStreamIdleTimeout
   val DefaultMaxConcurrentRequests: Int =
     TxGossipPeerClient.DefaultMaxConcurrentRequests
 
@@ -41,6 +48,8 @@ object HotStuffPeerTransportClient:
       transportAuth: StaticPeerTransportAuth,
       authenticatedPeer: PeerIdentity,
       requestTimeout: Duration = DefaultRequestTimeout,
+      streamRequestTimeout: Duration = DefaultStreamRequestTimeout,
+      streamIdleTimeout: Duration = DefaultStreamIdleTimeout,
       maxConcurrentRequests: Int = DefaultMaxConcurrentRequests,
       bootstrapRequestTimeout: Duration =
         HotStuffBootstrapPeerClient.DefaultRequestTimeout,
@@ -56,6 +65,8 @@ object HotStuffPeerTransportClient:
       transportAuth = transportAuth,
       authenticatedPeer = authenticatedPeer,
       requestTimeout = requestTimeout,
+      streamRequestTimeout = streamRequestTimeout,
+      streamIdleTimeout = streamIdleTimeout,
       maxConcurrentRequests = maxConcurrentRequests,
       bootstrapRequestTimeout = bootstrapRequestTimeout,
       bootstrapMaxConcurrentRequests = bootstrapMaxConcurrentRequests,
@@ -67,6 +78,8 @@ object HotStuffPeerTransportClient:
       transportAuth: StaticPeerTransportAuth,
       authenticatedPeer: PeerIdentity,
       requestTimeout: Duration = DefaultRequestTimeout,
+      streamRequestTimeout: Duration = DefaultStreamRequestTimeout,
+      streamIdleTimeout: Duration = DefaultStreamIdleTimeout,
       maxConcurrentRequests: Int = DefaultMaxConcurrentRequests,
       bootstrapRequestTimeout: Duration =
         HotStuffBootstrapPeerClient.DefaultRequestTimeout,
@@ -82,6 +95,8 @@ object HotStuffPeerTransportClient:
       transportAuth = transportAuth,
       authenticatedPeer = authenticatedPeer,
       requestTimeout = requestTimeout,
+      streamRequestTimeout = streamRequestTimeout,
+      streamIdleTimeout = streamIdleTimeout,
       maxConcurrentRequests = maxConcurrentRequests,
       bootstrapRequestTimeout = bootstrapRequestTimeout,
       bootstrapMaxConcurrentRequests = bootstrapMaxConcurrentRequests,
@@ -93,6 +108,8 @@ object HotStuffPeerTransportClient:
       transportAuth: StaticPeerTransportAuth,
       authenticatedPeer: PeerIdentity,
       requestTimeout: Duration = DefaultRequestTimeout,
+      streamRequestTimeout: Duration = DefaultStreamRequestTimeout,
+      streamIdleTimeout: Duration = DefaultStreamIdleTimeout,
       maxConcurrentRequests: Int = DefaultMaxConcurrentRequests,
       bootstrapRequestTimeout: Duration =
         HotStuffBootstrapPeerClient.DefaultRequestTimeout,
@@ -104,6 +121,8 @@ object HotStuffPeerTransportClient:
       .eval(
         validateConfig[F](
           requestTimeout = requestTimeout,
+          streamRequestTimeout = streamRequestTimeout,
+          streamIdleTimeout = streamIdleTimeout,
           maxConcurrentRequests = maxConcurrentRequests,
           bootstrapRequestTimeout = bootstrapRequestTimeout,
           bootstrapMaxConcurrentRequests = bootstrapMaxConcurrentRequests,
@@ -112,57 +131,76 @@ object HotStuffPeerTransportClient:
       .productR:
         ArmeriaCatsBackend
           .resource[F]()
-          .evalMap: backend =>
-            assembleWithBackend(
-              peerBaseUris = peerBaseUris,
-              transportAuth = transportAuth,
-              authenticatedPeer = authenticatedPeer,
-              backend = backend,
-              requestTimeout = requestTimeout,
-              maxConcurrentRequests = maxConcurrentRequests,
-              bootstrapRequestTimeout = bootstrapRequestTimeout,
-              bootstrapMaxConcurrentRequests = bootstrapMaxConcurrentRequests,
-              proposalCatchUpReadiness = proposalCatchUpReadiness,
-            )
+          .flatMap: backend =>
+            ArmeriaFs2Backend
+              .resource[F]()
+              .evalMap: streamBackend =>
+                assembleWithBackend(
+                  peerBaseUris = peerBaseUris,
+                  transportAuth = transportAuth,
+                  authenticatedPeer = authenticatedPeer,
+                  backend = backend,
+                  streamBackend = streamBackend,
+                  requestTimeout = requestTimeout,
+                  streamRequestTimeout = streamRequestTimeout,
+                  streamIdleTimeout = streamIdleTimeout,
+                  maxConcurrentRequests = maxConcurrentRequests,
+                  bootstrapRequestTimeout = bootstrapRequestTimeout,
+                  bootstrapMaxConcurrentRequests =
+                    bootstrapMaxConcurrentRequests,
+                  proposalCatchUpReadiness = proposalCatchUpReadiness,
+                )
 
   private def assembleWithBackend[F[_]: Async, A: ByteDecoder](
       peerBaseUris: Map[PeerIdentity, URI],
       transportAuth: StaticPeerTransportAuth,
       authenticatedPeer: PeerIdentity,
       backend: Backend[F],
+      streamBackend: StreamBackend[F, Fs2Streams[F]],
       requestTimeout: Duration,
+      streamRequestTimeout: Duration,
+      streamIdleTimeout: Duration,
       maxConcurrentRequests: Int,
       bootstrapRequestTimeout: Duration,
       bootstrapMaxConcurrentRequests: Int,
       proposalCatchUpReadiness: Option[ProposalCatchUpReadiness[F]],
   ): F[HotStuffPeerTransportClient[F, A]] =
-    // maxConcurrentRequests is an aggregate outbound gossip cap shared by every
-    // peer client assembled here. Bootstrap has its own independent cap.
-    Semaphore[F](maxConcurrentRequests.toLong).map: requestGate =>
-      val gossipPeers =
-        peerBaseUris.map: (peerIdentity, baseUri) =>
-          peerIdentity -> TxGossipPeerClient[F, A](
-            baseUri = baseUri,
-            transportAuth = transportAuth,
-            authenticatedPeer = authenticatedPeer,
-            backend = backend,
-            requestGate = requestGate,
-            requestTimeout = requestTimeout,
+    // Finite requests keep an aggregate outbound cap. Streams get per-peer
+    // gates so a long-lived stream to one peer cannot block opening another
+    // peer's stream.
+    Semaphore[F](maxConcurrentRequests.toLong).flatMap: requestGate =>
+      peerBaseUris.toVector
+        .traverse: (peerIdentity, baseUri) =>
+          Semaphore[F](maxConcurrentRequests.toLong).map: streamGate =>
+            peerIdentity -> TxGossipPeerClient[F, A](
+              baseUri = baseUri,
+              transportAuth = transportAuth,
+              authenticatedPeer = authenticatedPeer,
+              backend = backend,
+              streamBackend = streamBackend,
+              requestGate = requestGate,
+              streamGate = streamGate,
+              requestTimeout = requestTimeout,
+              streamRequestTimeout = streamRequestTimeout,
+              streamIdleTimeout = streamIdleTimeout,
+            )
+        .map: gossipPeers =>
+          HotStuffPeerTransportClient(
+            gossipPeers = gossipPeers.toMap,
+            bootstrap = HotStuffBootstrapPeerClient.servicesWithBackend[F](
+              peerBaseUris = peerBaseUris,
+              transportAuth = transportAuth,
+              backend = backend,
+              requestTimeout = bootstrapRequestTimeout,
+              maxConcurrentRequests = bootstrapMaxConcurrentRequests,
+              proposalCatchUpReadiness = proposalCatchUpReadiness,
+            ),
           )
-      HotStuffPeerTransportClient(
-        gossipPeers = gossipPeers,
-        bootstrap = HotStuffBootstrapPeerClient.servicesWithBackend[F](
-          peerBaseUris = peerBaseUris,
-          transportAuth = transportAuth,
-          backend = backend,
-          requestTimeout = bootstrapRequestTimeout,
-          maxConcurrentRequests = bootstrapMaxConcurrentRequests,
-          proposalCatchUpReadiness = proposalCatchUpReadiness,
-        ),
-      )
 
   private def validateConfig[F[_]: Async](
       requestTimeout: Duration,
+      streamRequestTimeout: Duration,
+      streamIdleTimeout: Duration,
       maxConcurrentRequests: Int,
       bootstrapRequestTimeout: Duration,
       bootstrapMaxConcurrentRequests: Int,
@@ -171,6 +209,14 @@ object HotStuffPeerTransportClient:
       require(
         requestTimeout.compareTo(Duration.ZERO) > 0,
         "requestTimeout must be positive",
+      )
+      require(
+        !streamRequestTimeout.isNegative,
+        "streamRequestTimeout must be zero or positive",
+      )
+      require(
+        !streamIdleTimeout.isNegative,
+        "streamIdleTimeout must be zero or positive",
       )
       require(
         maxConcurrentRequests > 0,

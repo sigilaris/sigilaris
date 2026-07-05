@@ -11,6 +11,7 @@ import io.circe.Decoder
 import io.circe.parser.decode
 import io.circe.syntax.*
 import scodec.bits.ByteVector
+import sttp.capabilities.fs2.Fs2Streams
 import sttp.tapir.server.ServerEndpoint
 
 import org.sigilaris.core.codec.byte.{ByteDecoder, ByteEncoder}
@@ -441,8 +442,20 @@ object HotStuffGossipArmeriaAdapter:
     */
   def endpoints[F[_]: Async](
       bootstrap: HotStuffRuntimeBootstrap[F],
-  )(using ByteEncoder[HotStuffGossipArtifact]) =
-    TxGossipArmeriaAdapter.endpoints[F, HotStuffGossipArtifact](
+  )(using
+      ByteEncoder[HotStuffGossipArtifact],
+  ): List[ServerEndpoint[Fs2Streams[F], F]] =
+    finiteEndpoints(bootstrap) ++ streamEndpoints(bootstrap)
+
+  /** Creates finite request/response endpoints for the combined HotStuff gossip
+    * server.
+    */
+  def finiteEndpoints[F[_]: Async](
+      bootstrap: HotStuffRuntimeBootstrap[F],
+  )(using
+      ByteEncoder[HotStuffGossipArtifact],
+  ): List[ServerEndpoint[Fs2Streams[F], F]] =
+    TxGossipArmeriaAdapter.finiteEndpoints[F, HotStuffGossipArtifact](
       bootstrap.runtime,
       bootstrap.transportAuth,
     ) ++
@@ -451,3 +464,16 @@ object HotStuffGossipArmeriaAdapter:
         bootstrapServices = bootstrap.consensus.bootstrapServices,
         transportAuth = bootstrap.transportAuth,
       )
+
+  /** Creates long-lived streaming endpoints for the combined HotStuff gossip
+    * server.
+    */
+  def streamEndpoints[F[_]: Async](
+      bootstrap: HotStuffRuntimeBootstrap[F],
+  )(using
+      ByteEncoder[HotStuffGossipArtifact],
+  ): List[ServerEndpoint[Fs2Streams[F], F]] =
+    TxGossipArmeriaAdapter.streamEndpoints[F, HotStuffGossipArtifact](
+      bootstrap.runtime,
+      bootstrap.transportAuth,
+    )

@@ -10,7 +10,7 @@ cross-platform이며 `org.sigilaris.node.gossip`,
 - transport-neutral gossip/session contract
 - static peer registry와 authenticator abstraction
 - topic contract registry와 canonical rejection model
-- producer-session 및 polling state machinery
+- producer-session, cursor, polling-compatibility, streaming state machinery
 - runtime 간에 공유되는 transaction anti-entropy logic
 
 이 레이어의 목적은 gossip protocol contract와 shared runtime rule을 JVM 전용

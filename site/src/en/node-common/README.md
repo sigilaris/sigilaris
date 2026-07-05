@@ -10,7 +10,7 @@ is cross-platform and lives under `org.sigilaris.node.gossip` and
 - transport-neutral gossip/session contracts
 - static peer registry and authenticator abstractions
 - topic contract registry and canonical rejection model
-- producer-session and polling state machinery
+- producer-session, cursor, polling-compatibility, and streaming state machinery
 - transaction anti-entropy runtime logic shared across runtimes
 
 The goal of this layer is to keep gossip protocol contracts and shared runtime

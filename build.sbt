@@ -69,6 +69,8 @@ val Dependencies = new {
     libraryDependencies ++= Seq(
       "qa.hedgehog"   %%% "hedgehog-munit"    % V.hedgehog        % Test,
       "org.typelevel" %%% "munit-cats-effect" % V.munitCatsEffect % Test,
+      // TestControl must match the cats-effect core version on the classpath.
+      "org.typelevel" %%% "cats-effect-testkit" % V.catsEffect     % Test,
     ),
     Test / fork := true,
   )
@@ -78,6 +80,7 @@ val Dependencies = new {
       "com.softwaremill.sttp.tapir" %% "tapir-armeria-server-cats" % V.tapir,
       "com.softwaremill.sttp.tapir" %% "tapir-sttp-client4"        % V.tapir,
       "com.softwaremill.sttp.client4" %% "armeria-backend-cats"    % V.sttp,
+      "com.softwaremill.sttp.client4" %% "armeria-backend-fs2"     % V.sttp,
       "com.softwaremill.sttp.tapir" %% "tapir-openapi-docs"        % V.tapir,
       "com.softwaremill.sttp.apispec" %% "openapi-circe-yaml"      % V.openApiCirceYaml,
       "com.typesafe" % "config" % "1.4.3",
@@ -94,7 +97,7 @@ val Dependencies = new {
 }
 Global / onChangedBuildSource := ReloadOnSourceChanges
 ThisBuild / organization      := "org.sigilaris"
-ThisBuild / version           := "0.2.10-SNAPSHOT"
+ThisBuild / version           := "0.2.10"
 ThisBuild / scalaVersion      := V.Scala
 ThisBuild / semanticdbEnabled := true
 

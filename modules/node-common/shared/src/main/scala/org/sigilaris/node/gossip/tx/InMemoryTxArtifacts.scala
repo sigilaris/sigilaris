@@ -54,6 +54,7 @@ object InMemoryTxSinkSnapshot:
   */
 final class InMemoryTxArtifactSource[F[_]: Sync, A] private (
     clock: GossipClock[F],
+    notifier: GossipSourceAppendNotifier[F],
     ref: Ref[F, Map[ChainId, Vector[AvailableGossipEvent[A]]]],
 )(using txIdentity: TxIdentity[A])
     extends GossipArtifactSource[F, A]:
@@ -92,6 +93,9 @@ final class InMemoryTxArtifactSource[F[_]: Sync, A] private (
           availableAt = availableAt,
         )
         state.updated(chainId, chainEvents :+ available) -> event
+      .flatTap(_ =>
+        notifier.sourceAppended(ChainTopic(chainId, GossipTopic.tx)).attempt.void,
+      )
 
   /** Returns all stored events for the given chain.
     *
@@ -190,9 +194,18 @@ object InMemoryTxArtifactSource:
       clock: GossipClock[F],
       txIdentity: TxIdentity[A],
   ): F[InMemoryTxArtifactSource[F, A]] =
+    createWithNotifier(GossipSourceAppendNotifier.noop[F])
+
+  /** Creates a new source that notifies a runtime wakeup bus after appends. */
+  def createWithNotifier[F[_]: Sync, A](
+      notifier: GossipSourceAppendNotifier[F],
+  )(using
+      clock: GossipClock[F],
+      txIdentity: TxIdentity[A],
+  ): F[InMemoryTxArtifactSource[F, A]] =
     Ref
       .of[F, Map[ChainId, Vector[AvailableGossipEvent[A]]]](Map.empty)
-      .map(new InMemoryTxArtifactSource[F, A](clock, _))
+      .map(new InMemoryTxArtifactSource[F, A](clock, notifier, _))
 
 /** In-memory implementation of `GossipArtifactSink` for transaction
   * artifacts, primarily for testing.

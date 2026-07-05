@@ -16,7 +16,11 @@ import org.sigilaris.core.crypto.Hash
 import org.sigilaris.core.util.SafeStringInterp.*
 import org.sigilaris.node.jvm.runtime.block.BlockQuery
 import org.sigilaris.node.gossip.*
-import org.sigilaris.node.gossip.tx.{TxGossipRuntime, TxRuntimePolicy}
+import org.sigilaris.node.gossip.tx.{
+  TxGossipRuntime,
+  TxGossipWakeupBus,
+  TxRuntimePolicy,
+}
 import org.sigilaris.node.jvm.runtime.gossip.{
   StaticPeerBootstrapHttpTransportConfig,
   StaticPeerTopologyConfig,
@@ -39,6 +43,7 @@ final case class HotStuffRuntimeBootstrap[F[_]](
     transportAuth: StaticPeerTransportAuth,
     consensus: HotStuffNodeRuntime[F],
     runtime: TxGossipRuntime[F, HotStuffGossipArtifact],
+    wakeupBus: Option[TxGossipWakeupBus[F]],
 ):
   /** Releases consensus resources. */
   def close: F[Unit] =
@@ -55,6 +60,7 @@ final case class HotStuffRuntimeBootstrapWithApplications[F[_], A](
     consensus: HotStuffNodeRuntime[F],
     runtime: TxGossipRuntime[F, HotStuffPeerArtifact[A]],
     applicationTopics: Vector[ApplicationGossipTopic[F, A]],
+    wakeupBus: Option[TxGossipWakeupBus[F]],
 ):
   /** Releases consensus resources. */
   def close: F[Unit] =
@@ -355,7 +361,7 @@ object HotStuffRuntimeBootstrap:
       txUniquenessConfig = txUniquenessConfig,
       pacemakerPolicy = pacemakerPolicy,
       finalityDrivePolicy = finalityDrivePolicy,
-      buildGossipRuntime = consensus =>
+      buildGossipRuntime = (consensus, wakeupBus) =>
         TxGossipRuntimeBootstrap.fromTopology[F, HotStuffGossipArtifact](
           topology = topology,
           transportAuth = transportAuth,
@@ -365,6 +371,7 @@ object HotStuffRuntimeBootstrap:
           topicContracts = consensus.topicContracts,
           runtimePolicy = runtimePolicy,
           handshakePolicy = handshakePolicy,
+          wakeupBus = Some(wakeupBus),
         ),
       assembleBootstrap = (consensus, gossipBootstrap) =>
         HotStuffRuntimeBootstrap(
@@ -374,6 +381,7 @@ object HotStuffRuntimeBootstrap:
           transportAuth = gossipBootstrap.transportAuth,
           consensus = consensus,
           runtime = gossipBootstrap.runtime,
+          wakeupBus = gossipBootstrap.wakeupBus,
         ),
     )
 
@@ -424,7 +432,7 @@ object HotStuffRuntimeBootstrap:
       txUniquenessConfig = txUniquenessConfig,
       pacemakerPolicy = pacemakerPolicy,
       finalityDrivePolicy = finalityDrivePolicy,
-      buildGossipRuntime = consensus =>
+      buildGossipRuntime = (consensus, wakeupBus) =>
         val peerSource =
           HotStuffPeerArtifact.source(
             consensus.source,
@@ -457,6 +465,7 @@ object HotStuffRuntimeBootstrap:
           runtimePolicy = runtimePolicy,
           handshakePolicy = handshakePolicy,
           sidecarPlanner = Some(sidecarPlanner),
+          wakeupBus = Some(wakeupBus),
         ),
       assembleBootstrap = (consensus, gossipBootstrap) =>
         HotStuffRuntimeBootstrapWithApplications(
@@ -467,6 +476,7 @@ object HotStuffRuntimeBootstrap:
           consensus = consensus,
           runtime = gossipBootstrap.runtime,
           applicationTopics = applicationTopics,
+          wakeupBus = gossipBootstrap.wakeupBus,
         ),
     )
 
@@ -483,7 +493,10 @@ object HotStuffRuntimeBootstrap:
       finalityDrivePolicy: HotStuffFinalityDrivePolicy,
       proposalDependencyConfig:
         HotStuffProposalApplicationDependencyRuntimeConfig[F],
-      buildGossipRuntime: HotStuffNodeRuntime[F] => F[TxGossipBootstrap[F, A]],
+      buildGossipRuntime: (
+          HotStuffNodeRuntime[F],
+          TxGossipWakeupBus[F],
+      ) => F[TxGossipBootstrap[F, A]],
       assembleBootstrap: (HotStuffNodeRuntime[F], TxGossipBootstrap[F, A]) => B,
   ): Resource[F, Either[String, B]] =
     given GossipClock[F] = clock
@@ -538,12 +551,15 @@ object HotStuffRuntimeBootstrap:
                       Resource
                         .make(Async[F].pure(historicalArchive))(_.close)
                         .evalMap: archive =>
-                          HotStuffNodeRuntime
+                          TxGossipWakeupBus.create[F].flatMap: wakeupBus =>
+                            HotStuffNodeRuntime
                             .inMemoryServices[F](
                               validatorSet = validatedInput.validatorSet,
                               gossipPolicy = validatedInput.gossipPolicy,
                               relayPolicy = HotStuffRelayPolicy
                                 .forRole(validatedInput.role),
+                              sinkRetention = consensusConfig.sinkRetention,
+                              sourceAppendNotifier = Some(wakeupBus),
                             )
                             .flatMap: (services, diagnostics) =>
                               for
@@ -639,7 +655,10 @@ object HotStuffRuntimeBootstrap:
                                     txUniquenessConfig = txUniquenessConfig,
                                     finalityDrivePolicy = finalityDrivePolicy,
                                   )
-                                gossipBootstrap <- buildGossipRuntime(consensus)
+                                gossipBootstrap <- buildGossipRuntime(
+                                  consensus,
+                                  wakeupBus,
+                                )
                               yield assembleBootstrap(
                                 consensus,
                                 gossipBootstrap,

@@ -69,6 +69,36 @@ final case class VoteAccumulator(
       .filter: vote =>
         vote.window === window && vote.targetProposalId === proposalId
 
+  /** Number of vote bodies retained by this accumulator. */
+  def retainedVoteCount: Int =
+    votesById.size
+
+  /** Number of equivocation keys retained by this accumulator. */
+  def retainedEquivocationKeyCount: Int =
+    votesByEquivocationKey.size
+
+  /** Prunes retained votes with the supplied predicate. */
+  def prune(
+      retain: Vote => Boolean,
+  ): VoteAccumulator =
+    val retainedVotesById =
+      votesById.filter { case (_, vote) => retain(vote) }
+    val retainedVoteIds =
+      retainedVotesById.keySet
+    copy(
+      votesById = retainedVotesById,
+      votesByEquivocationKey =
+        votesByEquivocationKey.filter { case (_, vote) =>
+          retainedVoteIds.contains(vote.voteId)
+        },
+    )
+
+  /** Prunes retained votes to the supplied vote-id set. */
+  def pruneToVoteIds(
+      retainedVoteIds: Set[VoteId],
+  ): VoteAccumulator =
+    prune(vote => retainedVoteIds.contains(vote.voteId))
+
 /** Companion for `VoteAccumulator`. */
 object VoteAccumulator:
   /** An empty vote accumulator. */
@@ -120,6 +150,36 @@ final case class TimeoutVoteAccumulator(
       subject: TimeoutVoteSubject,
   ): Vector[TimeoutVote] =
     votesById.values.toVector.filter(_.subject === subject)
+
+  /** Number of timeout vote bodies retained by this accumulator. */
+  def retainedVoteCount: Int =
+    votesById.size
+
+  /** Number of equivocation keys retained by this accumulator. */
+  def retainedEquivocationKeyCount: Int =
+    votesByEquivocationKey.size
+
+  /** Prunes retained timeout votes with the supplied predicate. */
+  def prune(
+      retain: TimeoutVote => Boolean,
+  ): TimeoutVoteAccumulator =
+    val retainedVotesById =
+      votesById.filter { case (_, vote) => retain(vote) }
+    val retainedVoteIds =
+      retainedVotesById.keySet
+    copy(
+      votesById = retainedVotesById,
+      votesByEquivocationKey =
+        votesByEquivocationKey.filter { case (_, vote) =>
+          retainedVoteIds.contains(vote.timeoutVoteId)
+        },
+    )
+
+  /** Prunes retained timeout votes to the supplied timeout-vote-id set. */
+  def pruneToVoteIds(
+      retainedVoteIds: Set[TimeoutVoteId],
+  ): TimeoutVoteAccumulator =
+    prune(vote => retainedVoteIds.contains(vote.timeoutVoteId))
 
 /** Companion for `TimeoutVoteAccumulator`. */
 object TimeoutVoteAccumulator:

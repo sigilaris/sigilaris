@@ -22,6 +22,7 @@ import org.sigilaris.node.gossip.*
   * @param holders the validator key holder bindings
   * @param localKeys locally available signing keys by validator ID
   * @param gossipPolicy the gossip topic policies
+  * @param sinkRetention the in-memory sink retention policy
   * @param bootstrapTrustRootOverride optional override for the bootstrap trust root
   * @param historicalValidatorSets previously active validator sets for cross-epoch verification
   * @param historicalSyncEnabled whether historical backfill is enabled
@@ -33,6 +34,8 @@ final case class HotStuffBootstrapConfig(
     holders: Vector[ValidatorKeyHolder],
     localKeys: Map[ValidatorId, KeyPair],
     gossipPolicy: HotStuffGossipPolicy = HotStuffGossipPolicy.default,
+    sinkRetention: HotStuffArtifactSinkRetention =
+      HotStuffArtifactSinkRetention.default,
     bootstrapTrustRootOverride: Option[BootstrapTrustRoot] = None,
     historicalValidatorSets: Vector[ValidatorSet] = Vector.empty,
     historicalSyncEnabled: Boolean = true,
@@ -89,6 +92,7 @@ object HotStuffBootstrapConfig:
       localKeys <- requiredConfigList(section, "local-signers", "localSigners")
         .flatMap(parseLocalKeys(validatorSet))
       gossipPolicy <- loadGossipPolicy(section)
+      sinkRetention <- loadSinkRetention(section)
       historicalSyncEnabled <- optionalBoolean(
         section,
         "historical-sync-enabled",
@@ -107,6 +111,7 @@ object HotStuffBootstrapConfig:
       holders = holders,
       localKeys = localKeys,
       gossipPolicy = gossipPolicy,
+      sinkRetention = sinkRetention,
       bootstrapTrustRootOverride = bootstrapTrustRootOverride,
       historicalValidatorSets = historicalValidatorSets,
       historicalSyncEnabled = historicalSyncEnabled,
@@ -424,6 +429,87 @@ object HotStuffBootstrapConfig:
           timeoutVote = timeoutVote,
           newView = newView,
         )
+
+  private def loadSinkRetention(
+      section: Config,
+  ): Either[String, HotStuffArtifactSinkRetention] =
+    optionalConfig(section, "sink-retention", "sinkRetention") match
+      case Left(error) =>
+        error.asLeft[HotStuffArtifactSinkRetention]
+      case Right(None) =>
+        HotStuffArtifactSinkRetention.default.asRight[String]
+      case Right(Some(retentionSection)) =>
+        val unsupportedRejectedSampleKey: Option[String] =
+          Vector(
+            "retained-rejected-event-samples",
+            "retainedRejectedEventSamples",
+          ).find(retentionSection.hasPath)
+        unsupportedRejectedSampleKey match
+          case Some(_) =>
+            "retainedRejectedEventSamples is not supported yet; remove it from sink-retention".asLeft[
+              HotStuffArtifactSinkRetention,
+            ]
+          case None =>
+            for
+              finalizedHeightLag <- optionalLong(
+                retentionSection,
+                "finalized-height-lag",
+                "finalizedHeightLag",
+                HotStuffArtifactSinkRetention.default.finalizedHeightLag,
+              )
+              certifiedHeightLagDefault =
+                if findPath(
+                    retentionSection,
+                    "certified-height-lag",
+                    "certifiedHeightLag",
+                  ).isEmpty
+                then
+                  math.max(
+                    finalizedHeightLag,
+                    HotStuffArtifactSinkRetention.default.certifiedHeightLag,
+                  )
+                else HotStuffArtifactSinkRetention.default.certifiedHeightLag
+              certifiedHeightLag <- optionalLong(
+                retentionSection,
+                "certified-height-lag",
+                "certifiedHeightLag",
+                certifiedHeightLagDefault,
+              )
+              retainedTimeoutWindows <- optionalLong(
+                retentionSection,
+                "retained-timeout-windows",
+                "retainedTimeoutWindows",
+                HotStuffArtifactSinkRetention.default.retainedTimeoutWindows,
+              )
+              retainedNewViewWindows <- optionalLong(
+                retentionSection,
+                "retained-new-view-windows",
+                "retainedNewViewWindows",
+                HotStuffArtifactSinkRetention.default.retainedNewViewWindows,
+              )
+              retainedDuplicateEvents <- optionalInt(
+                retentionSection,
+                "retained-duplicate-events",
+                "retainedDuplicateEvents",
+                HotStuffArtifactSinkRetention.default.retainedDuplicateEvents,
+              )
+              pruneEveryAcceptedEvents <- optionalInt(
+                retentionSection,
+                "prune-every-accepted-events",
+                "pruneEveryAcceptedEvents",
+                HotStuffArtifactSinkRetention.default.pruneEveryAcceptedEvents,
+              )
+              retention <- HotStuffArtifactSinkRetention.fromValues(
+                finalizedHeightLag = finalizedHeightLag,
+                certifiedHeightLag = certifiedHeightLag,
+                retainedTimeoutWindows = retainedTimeoutWindows,
+                retainedNewViewWindows = retainedNewViewWindows,
+                retainedDuplicateEvents = retainedDuplicateEvents,
+                retainedRejectedEventSamples =
+                  HotStuffArtifactSinkRetention.default.retainedRejectedEventSamples,
+                pruneEveryAcceptedEvents = pruneEveryAcceptedEvents,
+              )
+            yield retention
 
   private def parseTopicPolicy(
       section: Either[String, Option[Config]],

@@ -67,7 +67,6 @@ object TxPipelineArmeriaAdapter:
                   store = store,
                   snapshot = outcome.snapshot,
                   waitFor = request.waitFor,
-                  replay = outcome.replayed,
                   waitCoordinator = waitCoordinator,
                   waitTimeout = waitTimeout,
                 ).map:
@@ -164,23 +163,20 @@ object TxPipelineArmeriaAdapter:
       store: TxPipelineStore[F],
       snapshot: TxPipelineSnapshot,
       waitFor: TxPipelineWaitMode,
-      replay: Boolean,
       waitCoordinator: TxPipelineWaitCoordinator[F],
       waitTimeout: Option[FiniteDuration],
   ): F[Either[TxPipelineProjectionFailure, TxPipelineSnapshot]] =
-    if replay then Async[F].pure(Right(snapshot))
-    else
-      waitFor match
-        case TxPipelineWaitMode.Accepted =>
-          Async[F].pure(Right(snapshot))
-        case mode =>
-          val wait =
-            waitCoordinator.waitFor(snapshot.pipelineId, mode)
-          waitTimeout match
-            case None =>
-              wait
-            case Some(timeout) =>
-              wait.timeoutTo(timeout, loadSnapshot(store, snapshot.pipelineId))
+    waitFor match
+      case TxPipelineWaitMode.Accepted =>
+        Async[F].pure(Right(snapshot))
+      case mode =>
+        val wait =
+          waitCoordinator.waitFor(snapshot.pipelineId, mode)
+        waitTimeout match
+          case None =>
+            wait
+          case Some(timeout) =>
+            wait.timeoutTo(timeout, loadSnapshot(store, snapshot.pipelineId))
 
   private def loadSnapshot[F[_]: Async](
       store: TxPipelineStore[F],
@@ -202,19 +198,19 @@ object TxPipelineArmeriaAdapter:
       waitFor: TxPipelineWaitMode,
       replay: Boolean,
   ): StatusCode =
-    if replay then StatusCode.Ok
-    else
-      waitFor match
-        case TxPipelineWaitMode.Accepted =>
-          StatusCode.Accepted
-        case TxPipelineWaitMode.Certified
-            if boundaryReachedOrTerminal(snapshot, certified = true) =>
-          StatusCode.Ok
-        case TxPipelineWaitMode.Finalized
-            if boundaryReachedOrTerminal(snapshot, certified = false) =>
-          StatusCode.Ok
-        case _ =>
-          StatusCode.Accepted
+    waitFor match
+      case TxPipelineWaitMode.Accepted if replay =>
+        StatusCode.Ok
+      case TxPipelineWaitMode.Accepted =>
+        StatusCode.Accepted
+      case TxPipelineWaitMode.Certified
+          if boundaryReachedOrTerminal(snapshot, certified = true) =>
+        StatusCode.Ok
+      case TxPipelineWaitMode.Finalized
+          if boundaryReachedOrTerminal(snapshot, certified = false) =>
+        StatusCode.Ok
+      case _ =>
+        StatusCode.Accepted
 
   private def boundaryReachedOrTerminal(
       snapshot: TxPipelineSnapshot,
@@ -289,6 +285,8 @@ object TxPipelineArmeriaAdapter:
       failure: TxPipelineStoreFailure,
   ): String =
     failure match
+      case TxPipelineStoreFailure.PipelineMissing(pipelineId) =>
+        s"pipeline missing: ${pipelineId.value}"
       case TxPipelineStoreFailure.PipelineAlreadyExists(pipelineId) =>
         s"pipeline already exists: ${pipelineId.value}"
       case TxPipelineStoreFailure.IdempotencyKeyAlreadyExists(

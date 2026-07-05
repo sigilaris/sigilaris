@@ -7,10 +7,12 @@ import scala.util.Try
 
 import cats.effect.Async
 import cats.syntax.all.*
+import fs2.Stream
 import io.circe.Decoder
 import io.circe.parser.decode
 import io.circe.syntax.*
 import scodec.bits.ByteVector
+import sttp.capabilities.fs2.Fs2Streams
 import sttp.tapir.server.ServerEndpoint
 
 import org.sigilaris.core.codec.byte.ByteEncoder
@@ -39,13 +41,38 @@ object TxGossipArmeriaAdapter:
   def endpoints[F[_]: Async, A: ByteEncoder](
       runtime: TxGossipRuntime[F, A],
       transportAuth: StaticPeerTransportAuth,
-  ): List[ServerEndpoint[Any, F]] =
+  ): List[ServerEndpoint[Fs2Streams[F], F]] =
+    // Convenience surface for compile/doc/test callers. Mixed production
+    // servers should mount `finiteEndpoints` and `streamEndpoints` separately
+    // through `ArmeriaServer.resourceWithScopedStreamTimeout` so finite routes
+    // keep their generic request-timeout guard.
+    finiteEndpoints(runtime, transportAuth) ++ streamEndpoints(
+      runtime,
+      transportAuth,
+    )
+
+  /** Creates finite request/response endpoints that keep the generic server
+    * request-timeout guard.
+    */
+  def finiteEndpoints[F[_]: Async, A: ByteEncoder](
+      runtime: TxGossipRuntime[F, A],
+      transportAuth: StaticPeerTransportAuth,
+  ): List[ServerEndpoint[Fs2Streams[F], F]] =
     List(
       sessionOpenEndpoint(runtime, transportAuth),
       eventStreamEndpoint(runtime, transportAuth),
       controlEndpoint(runtime, transportAuth),
       disconnectEndpoint(runtime, transportAuth),
     )
+
+  /** Creates long-lived streaming endpoints that should be mounted with a
+    * stream-scoped timeout policy.
+    */
+  def streamEndpoints[F[_]: Async, A: ByteEncoder](
+      runtime: TxGossipRuntime[F, A],
+      transportAuth: StaticPeerTransportAuth,
+  ): List[ServerEndpoint[Fs2Streams[F], F]] =
+    List(eventStreamOpenEndpoint(runtime, transportAuth))
 
   private def sessionOpenEndpoint[F[_]: Async, A](
       runtime: TxGossipRuntime[F, A],
@@ -94,6 +121,22 @@ object TxGossipArmeriaAdapter:
       .serverLogicSuccess:
         (sessionIdRaw, authenticatedPeerRaw, transportProofRaw, raw) =>
           handleEventRequest(
+            runtime = runtime,
+            transportAuth = transportAuth,
+            authenticatedPeerRaw = authenticatedPeerRaw,
+            transportProofRaw = transportProofRaw,
+            sessionIdRaw = sessionIdRaw,
+            raw = raw,
+          )
+
+  private def eventStreamOpenEndpoint[F[_]: Async, A: ByteEncoder](
+      runtime: TxGossipRuntime[F, A],
+      transportAuth: StaticPeerTransportAuth,
+  ): ServerEndpoint[Fs2Streams[F], F] =
+    TxGossipTapirEndpoints.eventStreamOpen[F]
+      .serverLogic:
+        (sessionIdRaw, authenticatedPeerRaw, transportProofRaw, raw) =>
+          handleEventStreamOpenRequest(
             runtime = runtime,
             transportAuth = transportAuth,
             authenticatedPeerRaw = authenticatedPeerRaw,
@@ -259,6 +302,61 @@ object TxGossipArmeriaAdapter:
                             )
                           ).pure[F]
 
+  private def handleEventStreamOpenRequest[F[_]: Async, A: ByteEncoder](
+      runtime: TxGossipRuntime[F, A],
+      transportAuth: StaticPeerTransportAuth,
+      authenticatedPeerRaw: Option[String],
+      transportProofRaw: Option[String],
+      sessionIdRaw: String,
+      raw: String,
+  ): F[Either[String, Stream[F, Byte]]] =
+    DirectionalSessionId.parse(sessionIdRaw) match
+      case Left(error) =>
+        renderRejection(handshakeRejected("invalidSessionId", error))
+          .asLeft[Stream[F, Byte]]
+          .pure[F]
+      case Right(sessionId) =>
+        authenticateRequest(
+          transportAuth = transportAuth,
+          authenticatedPeerRaw = authenticatedPeerRaw,
+          transportProofRaw = transportProofRaw,
+          requestPath = TxGossipTapirEndpoints.eventStreamOpenPath(sessionIdRaw),
+          requestBody = raw,
+        ) match
+          case Left(rejection) =>
+            renderRejection(rejection).asLeft[Stream[F, Byte]].pure[F]
+          case Right(authenticatedPeer) =>
+            runtime
+              .authorizeOpenSessionForPeer(sessionId, authenticatedPeer)
+              .flatMap:
+                case Left(rejection) =>
+                  renderRejection(rejection).asLeft[Stream[F, Byte]].pure[F]
+                case Right(_) =>
+                  decodeStreamOpenRequest(raw) match
+                    case Left(rejection) =>
+                      streamRejection[F, A](sessionId.value, rejection)
+                        .asRight[String]
+                        .pure[F]
+                    case Right(request) if request.kind =!= "stream" =>
+                      streamRejection[F, A](
+                        sessionId.value,
+                        handshakeRejected(
+                          "unknownStreamOpenRequestKind",
+                          request.kind,
+                        ),
+                      ).asRight[String].pure[F]
+                    case Right(request) =>
+                      applyStreamResume(runtime, sessionId, request).map:
+                        case Left(rejection) =>
+                          streamRejection[F, A](sessionId.value, rejection)
+                            .asRight[String]
+                        case Right(()) =>
+                          runtime
+                            .streamEvents(sessionId)
+                            .map(toEventEnvelopeWire(sessionId, _))
+                            .through(BinaryEventStreamCodec.encodeFrames[F, A])
+                            .asRight[String]
+
   private def handleControlRequest[F[_]: Async, A](
       runtime: TxGossipRuntime[F, A],
       transportAuth: StaticPeerTransportAuth,
@@ -396,6 +494,30 @@ object TxGossipArmeriaAdapter:
             handshakeRejected(reason, error.getMessage),
           ),
         )
+
+  private def decodeStreamOpenRequest(
+      raw: String,
+  ): Either[CanonicalRejection.HandshakeRejected, StreamOpenRequestWire] =
+    decode[StreamOpenRequestWire](raw).leftMap(error =>
+      handshakeRejected("invalidStreamOpenRequest", error.getMessage),
+    )
+
+  private def applyStreamResume[F[_]: Async, A](
+      runtime: TxGossipRuntime[F, A],
+      sessionId: DirectionalSessionId,
+      request: StreamOpenRequestWire,
+  ): F[Either[CanonicalRejection, Unit]] =
+    request.resume match
+      case None =>
+        ().asRight[CanonicalRejection].pure[F]
+      case Some(entries) =>
+        toCompositeCursor(entries) match
+          case Left(rejection) =>
+            rejection.asLeft[Unit].leftWiden[CanonicalRejection].pure[F]
+          case Right(cursor) =>
+            runtime
+              .applyStreamResumeCursor(sessionId, cursor)
+              .map(_.leftWiden[CanonicalRejection])
 
   private def authenticateRequest(
       transportAuth: StaticPeerTransportAuth,
@@ -658,6 +780,53 @@ object TxGossipArmeriaAdapter:
         )
       case EventStreamMessage.Rejection(rejection) =>
         eventRejection(sessionId.value, rejection)
+
+  private def toEventEnvelopeWire[A](
+      sessionId: DirectionalSessionId,
+      message: EventStreamMessage[A],
+  ): EventEnvelopeWire[A] =
+    message match
+      case EventStreamMessage.Event(event) =>
+        EventEnvelopeWire(
+          kind = "event",
+          sessionId = sessionId.value,
+          event = Some(
+            EventWire(
+              chainId = event.chainId.value,
+              topic = event.topic.value,
+              id = event.id.toHexLower,
+              cursor = event.cursor.toBase64Url,
+              ts = event.ts.toEpochMilli,
+              payload = event.payload,
+            ),
+          ),
+        )
+      case EventStreamMessage.KeepAlive(sessionId, at) =>
+        EventEnvelopeWire(
+          kind = "keepAlive",
+          sessionId = sessionId.value,
+          atEpochMs = Some(at.toEpochMilli),
+        )
+      case EventStreamMessage.Rejection(rejection) =>
+        EventEnvelopeWire(
+          kind = "rejection",
+          sessionId = sessionId.value,
+          rejection = Some(RejectionWire.fromCanonical(rejection)),
+        )
+
+  private def streamRejection[F[_]: Async, A: ByteEncoder](
+      sessionId: String,
+      rejection: CanonicalRejection,
+  ): Stream[F, Byte] =
+    Stream
+      .emit(
+        EventEnvelopeWire[A](
+          kind = "rejection",
+          sessionId = sessionId,
+          rejection = Some(RejectionWire.fromCanonical(rejection)),
+        ),
+      )
+      .through(BinaryEventStreamCodec.encodeFrames[F, A])
 
   private def eventRejection(
       sessionId: String,

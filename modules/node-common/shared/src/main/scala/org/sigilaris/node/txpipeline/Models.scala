@@ -214,6 +214,9 @@ final case class TxPipelineNormalizedRequest(
   def canonicalPayload: TxPipelineCanonicalPayload =
     TxPipelineCanonicalPayload.fromNormalized(this)
 
+  def identityPayload(identityScope: String): TxPipelineCanonicalPayload =
+    TxPipelineCanonicalPayload.identityFromNormalized(identityScope, this)
+
 object TxPipelineNormalizedRequest:
   given Decoder[TxPipelineNormalizedRequest] = deriveDecoder
   given Encoder[TxPipelineNormalizedRequest] = deriveEncoder
@@ -222,6 +225,8 @@ final case class TxPipelineCanonicalPayload(value: String)
 
 @SuppressWarnings(Array("org.wartremover.warts.Any"))
 object TxPipelineCanonicalPayload:
+  private val IdentityDomainSeparator: String = "bbgo.tx-pipeline.id.v1"
+
   def fromNormalized(
       normalized: TxPipelineNormalizedRequest,
   ): TxPipelineCanonicalPayload =
@@ -234,6 +239,22 @@ object TxPipelineCanonicalPayload:
 
     TxPipelineCanonicalPayload(
       s"waitFor:${normalized.waitFor.wire}\n${stageParts.mkString}",
+    )
+
+  def identityFromNormalized(
+      identityScope: String,
+      normalized: TxPipelineNormalizedRequest,
+  ): TxPipelineCanonicalPayload =
+    val scopeBytes = identityScope.getBytes(StandardCharsets.UTF_8).length
+    val stageParts = normalized.stages.map: stage =>
+      val txParts = stage.transactions.map: tx =>
+        val payload = tx.payload.value
+        val bytes   = tx.payload.utf8ByteSize
+        s"tx:${tx.transactionIndex}:$bytes:$payload\n"
+      s"stage:${stage.stageIndex}:${stage.transactions.size}\n${txParts.mkString}"
+
+    TxPipelineCanonicalPayload(
+      s"$IdentityDomainSeparator\nscope:$scopeBytes:$identityScope\nstages:${normalized.stages.size}\n${stageParts.mkString}",
     )
 
 final case class TxPipelineShapeLimits(

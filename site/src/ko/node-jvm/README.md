@@ -9,8 +9,8 @@ integration, Armeria HTTP transport adapter, SwayDB-backed persistence helper를
 
 - `org.sigilaris.node.jvm.runtime.*` 아래의 runtime lifecycle seam
 - static peer topology와 transport-auth configuration loader
-- session open, event polling, control batch, bootstrap HTTP flow를 담당하는
-  Armeria transport adapter
+- session open, long-lived event stream, control batch, bootstrap HTTP flow를
+  담당하는 Armeria transport adapter
 - HotStuff bootstrap, catch-up, pacemaker, artifact validation runtime
 - 현재 durable baseline을 위한 SwayDB-backed storage helper
 

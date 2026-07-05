@@ -31,18 +31,26 @@ final class InMemoryTxPipelineStore[F[_]: Sync] private (
             val idempotencyConflict = record.idempotencyKey.flatMap: key =>
               state.byIdempotencyKey.get(key).map(key -> _)
             idempotencyConflict match
-              case Some((idempotencyKey, existingPipelineId)) =>
+              case Some((idempotencyKey, existing)) =>
                 state ->
                   Left(
                     TxPipelineStoreFailure.IdempotencyKeyAlreadyExists(
                       idempotencyKey,
-                      existingPipelineId,
+                      existing.pipelineId,
                     ),
                   )
               case None =>
                 val nextByKey = record.idempotencyKey.fold(
                   state.byIdempotencyKey,
-                )(key => state.byIdempotencyKey.updated(key, record.pipelineId))
+                )(key =>
+                  state.byIdempotencyKey.updated(
+                    key,
+                    TxPipelineIdempotencyBinding(
+                      pipelineId = record.pipelineId,
+                      canonicalPayloadHash = record.canonicalPayloadHash,
+                    ),
+                  ),
+                )
                 state.copy(
                   byId = state.byId.updated(record.pipelineId, record),
                   byIdempotencyKey = nextByKey,
@@ -58,7 +66,48 @@ final class InMemoryTxPipelineStore[F[_]: Sync] private (
   ): EitherT[F, TxPipelineStoreFailure, Option[TxPipelineRecord]] =
     EitherT.right:
       ref.get.map: state =>
-        state.byIdempotencyKey.get(idempotencyKey).flatMap(state.byId.get)
+        state.byIdempotencyKey
+          .get(idempotencyKey)
+          .flatMap(binding => state.byId.get(binding.pipelineId))
+
+  override def addIdempotencyAlias(
+      idempotencyKey: TxPipelineIdempotencyKey,
+      binding: TxPipelineIdempotencyBinding,
+  ): EitherT[F, TxPipelineStoreFailure, TxPipelineRecord] =
+    EitherT:
+      ref.modify: state =>
+        state.byId.get(binding.pipelineId) match
+          case None =>
+            state -> Left(
+              TxPipelineStoreFailure.PipelineMissing(binding.pipelineId),
+            )
+          case Some(record)
+              if record.canonicalPayloadHash.value =!=
+                binding.canonicalPayloadHash.value =>
+            state -> Left(
+              TxPipelineStoreFailure.DecodeFailed(
+                ss"idempotency alias hash mismatch for ${binding.pipelineId.value}",
+              ),
+            )
+          case Some(record) =>
+            state.byIdempotencyKey.get(idempotencyKey) match
+              case Some(existing)
+                  if existing.pipelineId.value === binding.pipelineId.value &&
+                    existing.canonicalPayloadHash.value ===
+                    binding.canonicalPayloadHash.value =>
+                state -> Right(record)
+              case Some(existing) =>
+                state -> Left(
+                  TxPipelineStoreFailure.IdempotencyKeyAlreadyExists(
+                    idempotencyKey,
+                    existing.pipelineId,
+                  ),
+                )
+              case None =>
+                state.copy(
+                  byIdempotencyKey =
+                    state.byIdempotencyKey.updated(idempotencyKey, binding),
+                ) -> Right(record)
 
   override def put(
       record: TxPipelineRecord,
@@ -67,7 +116,15 @@ final class InMemoryTxPipelineStore[F[_]: Sync] private (
       ref.update: state =>
         val nextByKey = record.idempotencyKey.fold(
           state.byIdempotencyKey,
-        )(key => state.byIdempotencyKey.updated(key, record.pipelineId))
+        )(key =>
+          state.byIdempotencyKey.updated(
+            key,
+            TxPipelineIdempotencyBinding(
+              pipelineId = record.pipelineId,
+              canonicalPayloadHash = record.canonicalPayloadHash,
+            ),
+          ),
+        )
         state.copy(
           byId = state.byId.updated(record.pipelineId, record),
           byIdempotencyKey = nextByKey,
@@ -97,7 +154,13 @@ final class InMemoryTxPipelineStore[F[_]: Sync] private (
               val nextByKey = next.record.idempotencyKey.fold(
                 state.byIdempotencyKey,
               )(key =>
-                state.byIdempotencyKey.updated(key, next.record.pipelineId),
+                state.byIdempotencyKey.updated(
+                  key,
+                  TxPipelineIdempotencyBinding(
+                    pipelineId = next.record.pipelineId,
+                    canonicalPayloadHash = next.record.canonicalPayloadHash,
+                  ),
+                ),
               )
               state.copy(
                 byId = state.byId.updated(pipelineId, next.record),
@@ -120,7 +183,8 @@ final class InMemoryTxPipelineStore[F[_]: Sync] private (
 object InMemoryTxPipelineStore:
   private final case class State(
       byId: Map[TxPipelineId, TxPipelineRecord],
-      byIdempotencyKey: Map[TxPipelineIdempotencyKey, TxPipelineId],
+      byIdempotencyKey:
+        Map[TxPipelineIdempotencyKey, TxPipelineIdempotencyBinding],
   )
 
   private object State:

@@ -2,7 +2,11 @@ package org.sigilaris.node.jvm.runtime.txpipeline
 
 import cats.data.EitherT
 
+import io.circe.{Decoder, Encoder}
+import io.circe.generic.semiauto.*
+
 import org.sigilaris.node.txpipeline.{
+  TxPipelineCanonicalPayloadHash,
   TxPipelineId,
   TxPipelineIdempotencyKey,
   TxPipelineRecord,
@@ -20,6 +24,11 @@ trait TxPipelineStore[F[_]]:
   def getByIdempotencyKey(
       idempotencyKey: TxPipelineIdempotencyKey,
   ): EitherT[F, TxPipelineStoreFailure, Option[TxPipelineRecord]]
+
+  def addIdempotencyAlias(
+      idempotencyKey: TxPipelineIdempotencyKey,
+      binding: TxPipelineIdempotencyBinding,
+  ): EitherT[F, TxPipelineStoreFailure, TxPipelineRecord]
 
   def put(record: TxPipelineRecord): EitherT[F, TxPipelineStoreFailure, Unit]
 
@@ -39,7 +48,17 @@ final case class TxPipelineStoreUpdate(
     changed: Boolean,
 )
 
+final case class TxPipelineIdempotencyBinding(
+    pipelineId: TxPipelineId,
+    canonicalPayloadHash: TxPipelineCanonicalPayloadHash,
+)
+
+object TxPipelineIdempotencyBinding:
+  given Decoder[TxPipelineIdempotencyBinding] = deriveDecoder
+  given Encoder[TxPipelineIdempotencyBinding] = deriveEncoder
+
 enum TxPipelineStoreFailure:
+  case PipelineMissing(pipelineId: TxPipelineId)
   case PipelineAlreadyExists(pipelineId: TxPipelineId)
   case IdempotencyKeyAlreadyExists(
       idempotencyKey: TxPipelineIdempotencyKey,

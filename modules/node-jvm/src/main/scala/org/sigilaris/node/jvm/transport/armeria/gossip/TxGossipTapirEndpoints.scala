@@ -1,5 +1,7 @@
 package org.sigilaris.node.jvm.transport.armeria.gossip
 
+import cats.Id
+import sttp.capabilities.fs2.Fs2Streams
 import sttp.tapir.*
 
 /** Shared Tapir endpoint definitions for the transaction gossip peer protocol. */
@@ -9,6 +11,12 @@ object TxGossipTapirEndpoints:
 
   def eventStreamPath(sessionId: String): String =
     s"/gossip/events/${sessionId}"
+
+  def eventStreamOpenPath(sessionId: String): String =
+    s"/gossip/events/${sessionId}/stream"
+
+  val EventStreamOpenRoutePath: String =
+    "/gossip/events/{sessionId}/stream"
 
   def controlPath(sessionId: String): String =
     s"/gossip/control/${sessionId}"
@@ -39,6 +47,15 @@ object TxGossipTapirEndpoints:
       .in(stringBody)
       .out(byteArrayBody)
 
+  def eventStreamOpen[F[_]] =
+    endpoint.post
+      .in("gossip" / "events" / path[String]("sessionId") / "stream")
+      .in(authenticatedPeerHeader)
+      .in(transportProofHeader)
+      .in(stringBody)
+      .errorOut(stringBody)
+      .out(streamBinaryBody(Fs2Streams[F])(CodecFormat.OctetStream()))
+
   val control =
     endpoint.post
       .in("gossip" / "control" / path[String]("sessionId"))
@@ -57,4 +74,6 @@ object TxGossipTapirEndpoints:
       .out(stringBody)
 
   val all: List[AnyEndpoint] =
-    List(sessionOpen, eventStream, control, disconnect)
+    // OpenAPI generation only needs the path and media type; runtime endpoints
+    // use the effect-specific `eventStreamOpen[F]` definition.
+    List(sessionOpen, eventStream, eventStreamOpen[Id], control, disconnect)
