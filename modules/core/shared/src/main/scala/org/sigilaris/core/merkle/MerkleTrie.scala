@@ -14,7 +14,8 @@ import util.SafeStringInterp.*
 import MerkleTrieNode.{Children, MerkleHash}
 import Nibbles.{given, *}
 
-/** Merkle Trie operations providing key-value storage with cryptographic verification.
+/** Merkle Trie operations providing key-value storage with cryptographic
+  * verification.
   *
   * A Merkle Trie is a tree structure where:
   *   - Keys are represented as Nibbles (4-bit sequences)
@@ -24,27 +25,57 @@ import Nibbles.{given, *}
   * All operations are effectful and maintain state through [[MerkleTrieState]],
   * which tracks the root hash and accumulated differences.
   *
-  * @see [[MerkleTrieNode]] for node structure
-  * @see [[MerkleTrieState]] for state management
-  * @see [[Nibbles]] for key representation
+  * @see
+  *   [[MerkleTrieNode]] for node structure
+  * @see
+  *   [[MerkleTrieState]] for state management
+  * @see
+  *   [[Nibbles]] for key representation
   */
 object MerkleTrie:
 
   /** Storage layer for retrieving nodes by hash.
     *
-    * @tparam F the effect type
+    * @tparam F
+    *   the effect type
     */
   type NodeStore[F[_]] =
     Kleisli[EitherT[F, String, *], MerkleHash, Option[MerkleTrieNode]]
 
+  /** Identifies where a strict traversal failed to resolve a referenced node.
+    */
+  enum StrictTraversalPhase:
+    case Root, Descendant
+
+  /** Typed failures returned by strict trie traversal APIs. */
+  sealed trait StrictTraversalError extends Product with Serializable:
+    def message: String
+
+  object StrictTraversalError:
+    final case class NodeStoreFailure(message: String)
+        extends StrictTraversalError
+
+    final case class MissingNode(
+        hash: MerkleHash,
+        phase: StrictTraversalPhase,
+    ) extends StrictTraversalError:
+      override def message: String =
+        val phaseLabel = phase match
+          case StrictTraversalPhase.Root       => "root"
+          case StrictTraversalPhase.Descendant => "descendant"
+        ss"missing Merkle trie $phaseLabel node ${hash.hex}"
+
   /** Retrieves a value by key from the Merkle Trie.
     *
-    * Traverses the trie from the root, following the nibble path to find
-    * the value associated with the given key.
+    * Traverses the trie from the root, following the nibble path to find the
+    * value associated with the given key.
     *
-    * @tparam F the effect type
-    * @param key the key to look up
-    * @return stateful computation returning the value if found
+    * @tparam F
+    *   the effect type
+    * @param key
+    *   the key to look up
+    * @return
+    *   stateful computation returning the value if found
     */
   @SuppressWarnings(Array("org.wartremover.warts.Recursion"))
   def get[F[_]: Monad: NodeStore](
@@ -74,13 +105,17 @@ object MerkleTrie:
 
   /** Inserts or updates a key-value pair in the Merkle Trie.
     *
-    * Updates the trie structure, creating or modifying nodes as needed.
-    * The state is updated with the new root hash and accumulated differences.
+    * Updates the trie structure, creating or modifying nodes as needed. The
+    * state is updated with the new root hash and accumulated differences.
     *
-    * @tparam F the effect type
-    * @param key the key to insert
-    * @param value the value to associate with the key
-    * @return stateful computation that updates the trie
+    * @tparam F
+    *   the effect type
+    * @param key
+    *   the key to insert
+    * @param value
+    *   the value to associate with the key
+    * @return
+    *   stateful computation that updates the trie
     */
   @SuppressWarnings(Array("org.wartremover.warts.Recursion"))
   def put[F[_]: Monad: NodeStore](
@@ -117,7 +152,7 @@ object MerkleTrie:
                         .add(leaf1Hash, leaf1),
                     )
                 case (None, Some((index10, prefix10))) =>
-                  val leaf1 = MerkleTrieNode.leaf(prefix10, value)
+                  val leaf1     = MerkleTrieNode.leaf(prefix10, value)
                   val leaf1Hash = leaf1.toHash
                   val children: Children = Children.empty
                     .updateChild(index10, Some(leaf1Hash))
@@ -157,7 +192,7 @@ object MerkleTrie:
                   val leaf0 =
                     MerkleTrieNode.leaf(prefix00, value0)
                   val leaf0Hash = leaf0.toHash
-                  val leaf1 = MerkleTrieNode.leaf(prefix10, value)
+                  val leaf1     = MerkleTrieNode.leaf(prefix10, value)
                   val leaf1Hash = leaf1.toHash
                   val children: Children = Children.empty
                     .updateChild(index00, Some(leaf0Hash))
@@ -253,7 +288,7 @@ object MerkleTrie:
               case (Some((index00, prefix00)), Some((index10, prefix10))) =>
                 val child0     = node.setPrefix(prefix00)
                 val child0Hash = child0.toHash
-                val child1 = MerkleTrieNode.leaf(prefix10, value)
+                val child1     = MerkleTrieNode.leaf(prefix10, value)
                 val child1Hash = child1.toHash
                 val children1 = Children.empty
                   .updateChild(index00, Some(child0Hash))
@@ -283,12 +318,15 @@ object MerkleTrie:
 
   /** Removes a key-value pair from the Merkle Trie.
     *
-    * Deletes the node at the given key and updates parent nodes.
-    * May collapse branches when they become unnecessary.
+    * Deletes the node at the given key and updates parent nodes. May collapse
+    * branches when they become unnecessary.
     *
-    * @tparam F the effect type
-    * @param key the key to remove
-    * @return stateful computation returning true if key was found and removed
+    * @tparam F
+    *   the effect type
+    * @param key
+    *   the key to remove
+    * @return
+    *   stateful computation returning true if key was found and removed
     */
   @SuppressWarnings(Array("org.wartremover.warts.Recursion"))
   def remove[F[_]: Monad: NodeStore](
@@ -354,28 +392,59 @@ object MerkleTrie:
     *
     * Returns pairs in lexicographic order by key.
     *
-    * @tparam F the effect type
-    * @param key the starting key (inclusive)
-    * @return stateful computation returning a stream of (key, value) pairs
+    * @tparam F
+    *   the effect type
+    * @param key
+    *   the starting key (inclusive)
+    * @return
+    *   stateful computation returning a stream of (key, value) pairs
     */
-  @SuppressWarnings(Array("org.wartremover.warts.Overloading"))
   def streamFrom[F[_]: Monad: NodeStore](
       key: Nibbles,
   ): StateT[EitherT[F, String, *], MerkleTrieState, Stream[
     EitherT[F, String, *],
     (Nibbles, ByteVector),
   ]] =
-    streamFrom[F](key, key)
+    streamFromWith[F, String](
+      key,
+      key,
+      StrictTraversalPhase.Root,
+      (state, _) => getNode[F](state),
+    )
 
-  @SuppressWarnings(Array("org.wartremover.warts.Recursion"))
-  private def streamFrom[F[_]: Monad: NodeStore](
+  /** Strictly streams all key-value pairs starting from the given key.
+    *
+    * Unlike [[streamFrom]], a non-empty root or referenced descendant that
+    * cannot be resolved from the state diff or node store is returned as a
+    * typed [[StrictTraversalError.MissingNode]] failure.
+    */
+  def strictStreamFrom[F[_]: Monad: NodeStore](
       key: Nibbles,
-      originalKey: Nibbles,
-  ): StateT[EitherT[F, String, *], MerkleTrieState, Stream[
-    EitherT[F, String, *],
+  ): StateT[EitherT[F, StrictTraversalError, *], MerkleTrieState, Stream[
+    EitherT[F, StrictTraversalError, *],
     (Nibbles, ByteVector),
   ]] =
-    type ErrorOrF[A] = EitherT[F, String, A]
+    streamFromWith[F, StrictTraversalError](
+      key,
+      key,
+      StrictTraversalPhase.Root,
+      strictGetNode[F],
+    )
+
+  @SuppressWarnings(Array("org.wartremover.warts.Recursion"))
+  private def streamFromWith[F[_]: Monad, E](
+      key: Nibbles,
+      originalKey: Nibbles,
+      phase: StrictTraversalPhase,
+      loadNode: (
+          MerkleTrieState,
+          StrictTraversalPhase,
+      ) => EitherT[F, E, Option[MerkleTrieNode]],
+  ): StateT[EitherT[F, E, *], MerkleTrieState, Stream[
+    EitherT[F, E, *],
+    (Nibbles, ByteVector),
+  ]] =
+    type ErrorOrF[A] = EitherT[F, E, A]
 
     StateT.inspectF: (state: MerkleTrieState) =>
       scribe.debug(ss"from: ${key.hex}, ${state.toString}")
@@ -387,10 +456,15 @@ object MerkleTrie:
       ): OptionT[ErrorOrF, Stream[ErrorOrF, (Nibbles, ByteVector)]] =
         def runFrom(key: Nibbles)(
             hashWithIndex: (Option[MerkleHash], Int),
-        ): Stream[EitherT[F, String, *], (Nibbles, ByteVector)] =
+        ): Stream[EitherT[F, E, *], (Nibbles, ByteVector)] =
           Stream
             .eval:
-              streamFrom(key, originalKey)
+              streamFromWith(
+                key,
+                originalKey,
+                StrictTraversalPhase.Descendant,
+                loadNode,
+              )
                 .runA(state.copy(root = hashWithIndex._1))
             .flatten
             .map: (key, a) =>
@@ -410,7 +484,7 @@ object MerkleTrie:
             .flatMap(runFrom(Nibbles.empty))
 
           OptionT.liftF:
-            EitherT.rightT[F, String]:
+            EitherT.rightT[F, E]:
               initialValue ++ tailStream
         else
           for
@@ -421,7 +495,7 @@ object MerkleTrie:
               keyRemainder.unCons // keyRemainder is not empty here (key > prefix)
             targetChildrenWithIndex = children.toList.zipWithIndex.drop(index1)
             stream <- OptionT.liftF:
-              EitherT.rightT[F, String]:
+              EitherT.rightT[F, E]:
                 targetChildrenWithIndex match
                   case Nil => Stream.empty
                   case x :: xs =>
@@ -433,7 +507,7 @@ object MerkleTrie:
                     head ++ tail
           yield stream
 
-      OptionT(getNode[F](state))
+      OptionT(loadNode(state, phase))
         .flatMap:
           case MerkleTrieNode.Leaf(prefix, value) =>
 //            scribe.info(s"Leaf: $key <= $prefix: ${key <= prefix}")
@@ -456,15 +530,18 @@ object MerkleTrie:
 
   /** Streams key-value pairs in reverse lexicographic order.
     *
-    * Returns pairs starting with keyPrefix, up to (but not including)
-    * keyPrefix + keySuffix if provided.
+    * Returns pairs starting with keyPrefix, up to (but not including) keyPrefix
+    * + keySuffix if provided.
     *
-    * @tparam F the effect type
-    * @param keyPrefix the key prefix (inclusive)
-    * @param keySuffix optional suffix to limit the range (exclusive)
-    * @return stateful computation returning a reverse stream of (key, value) pairs
+    * @tparam F
+    *   the effect type
+    * @param keyPrefix
+    *   the key prefix (inclusive)
+    * @param keySuffix
+    *   optional suffix to limit the range (exclusive)
+    * @return
+    *   stateful computation returning a reverse stream of (key, value) pairs
     */
-  @SuppressWarnings(Array("org.wartremover.warts.Recursion"))
   def reverseStreamFrom[F[_]: Monad: NodeStore](
       keyPrefix: Nibbles,
       keySuffix: Option[Nibbles],
@@ -472,24 +549,69 @@ object MerkleTrie:
     EitherT[F, String, *],
     (Nibbles, ByteVector),
   ]] =
+    reverseStreamFromWith[F, String](
+      keyPrefix,
+      keySuffix,
+      StrictTraversalPhase.Root,
+      (state, _) => getNode[F](state),
+    )
+
+  /** Strictly streams key-value pairs in reverse lexicographic order.
+    *
+    * A non-empty root or referenced descendant that cannot be resolved is a
+    * typed failure rather than an empty or partial stream.
+    */
+  def strictReverseStreamFrom[F[_]: Monad: NodeStore](
+      keyPrefix: Nibbles,
+      keySuffix: Option[Nibbles],
+  ): StateT[EitherT[F, StrictTraversalError, *], MerkleTrieState, Stream[
+    EitherT[F, StrictTraversalError, *],
+    (Nibbles, ByteVector),
+  ]] =
+    reverseStreamFromWith[F, StrictTraversalError](
+      keyPrefix,
+      keySuffix,
+      StrictTraversalPhase.Root,
+      strictGetNode[F],
+    )
+
+  @SuppressWarnings(Array("org.wartremover.warts.Recursion"))
+  private def reverseStreamFromWith[F[_]: Monad, E](
+      keyPrefix: Nibbles,
+      keySuffix: Option[Nibbles],
+      phase: StrictTraversalPhase,
+      loadNode: (
+          MerkleTrieState,
+          StrictTraversalPhase,
+      ) => EitherT[F, E, Option[MerkleTrieNode]],
+  ): StateT[EitherT[F, E, *], MerkleTrieState, Stream[
+    EitherT[F, E, *],
+    (Nibbles, ByteVector),
+  ]] =
+    type ErrorOrF[A] = EitherT[F, E, A]
+
     StateT.inspectF: (state: MerkleTrieState) =>
-      scribe.debug(ss"from: (${keyPrefix.hex}, ${keySuffix.fold("\"\"")(_.hex)}): ${state.toString}")
+      scribe.debug(
+        ss"from: (${keyPrefix.hex}, ${keySuffix.fold("\"\"")(_.hex)}): ${state.toString}",
+      )
       def reverseBranchStream(
           prefix: Nibbles,
           children: MerkleTrieNode.Children,
           value: Option[ByteVector],
-      ): OptionT[EitherT[F, String, *], Stream[
-        EitherT[F, String, *],
-        (Nibbles, ByteVector),
-      ]] =
+      ): OptionT[ErrorOrF, Stream[ErrorOrF, (Nibbles, ByteVector)]] =
 
         def reverseRunFrom(keyPrefix: Nibbles, keySuffix: Option[Nibbles])(
             hashWithIndex: (Option[MerkleHash], Int),
-        ): Stream[EitherT[F, String, *], (Nibbles, ByteVector)] =
+        ): Stream[EitherT[F, E, *], (Nibbles, ByteVector)] =
 //          scribe.info(s"reverseRunFrom: $key, $hashWithIndex")
           Stream
             .eval:
-              reverseStreamFrom(keyPrefix, keySuffix)
+              reverseStreamFromWith(
+                keyPrefix,
+                keySuffix,
+                StrictTraversalPhase.Descendant,
+                loadNode,
+              )
                 .runA(state.copy(root = hashWithIndex._1))
             .flatten
             .map: (key, a) =>
@@ -502,7 +624,7 @@ object MerkleTrie:
           val lastStream =
             value.fold(Stream.empty): bytes =>
               Stream.eval:
-                EitherT.rightT[F, String]:
+                EitherT.rightT[F, E]:
                   (prefix, bytes)
 
           val initStream = Stream
@@ -510,38 +632,36 @@ object MerkleTrie:
             .flatMap(reverseRunFrom(Nibbles.empty, None))
 
           OptionT.liftF:
-            EitherT.rightT[F, String]:
+            EitherT.rightT[F, E]:
               initStream ++ lastStream
 
         def streamFromKeySuffix(
             keySuffix: Nibbles,
-        ): OptionT[EitherT[F, String, *], Stream[
-          EitherT[F, String, *],
-          (Nibbles, ByteVector),
-        ]] = keySuffix.unCons match
-          case None => reverseRunAllOptionT
-          case Some((index1, key1)) =>
-            val targetChildren = children.toList.zipWithIndex
-              .take(index1 + 1)
-              .reverse
-            targetChildren match
-              case Nil =>
-                OptionT.none
-              case x :: xs =>
-                OptionT.liftF:
-                  EitherT.rightT[F, String]:
-                    val headStream = Stream
-                      .emit(x)
-                      .flatMap:
-                        reverseRunFrom(Nibbles.empty, Some(key1))
-                    val tailStream = Stream
-                      .emits(xs.filter(_._1.nonEmpty))
-                      .flatMap:
-                        reverseRunFrom(Nibbles.empty, None)
-                    val lastStream = value.fold(Stream.empty): bytes =>
-                      Stream.emit((prefix, bytes))
+        ): OptionT[ErrorOrF, Stream[ErrorOrF, (Nibbles, ByteVector)]] =
+          keySuffix.unCons match
+            case None => reverseRunAllOptionT
+            case Some((index1, key1)) =>
+              val targetChildren = children.toList.zipWithIndex
+                .take(index1 + 1)
+                .reverse
+              targetChildren match
+                case Nil =>
+                  OptionT.none
+                case x :: xs =>
+                  OptionT.liftF:
+                    EitherT.rightT[F, E]:
+                      val headStream = Stream
+                        .emit(x)
+                        .flatMap:
+                          reverseRunFrom(Nibbles.empty, Some(key1))
+                      val tailStream = Stream
+                        .emits(xs.filter(_._1.nonEmpty))
+                        .flatMap:
+                          reverseRunFrom(Nibbles.empty, None)
+                      val lastStream = value.fold(Stream.empty): bytes =>
+                        Stream.emit((prefix, bytes))
 
-                    headStream ++ tailStream ++ lastStream
+                      headStream ++ tailStream ++ lastStream
 
         keyPrefix.stripPrefix(prefix) match
 
@@ -571,13 +691,13 @@ object MerkleTrie:
                   case Nil => OptionT.none
                   case x :: xs =>
                     OptionT.liftF:
-                      EitherT.rightT[F, String]:
+                      EitherT.rightT[F, E]:
                         Stream
                           .emit(x)
                           .flatMap:
                             reverseRunFrom(key1, keySuffix)
 
-      OptionT(getNode[F](state))
+      OptionT(loadNode(state, phase))
         .flatMap:
           case MerkleTrieNode.Leaf(prefix, value) =>
             prefix.stripPrefix(keyPrefix) match
@@ -597,14 +717,46 @@ object MerkleTrie:
         .value
         .map(_.getOrElse(Stream.empty))
 
+  private def strictGetNode[F[_]: Monad](
+      state: MerkleTrieState,
+      phase: StrictTraversalPhase,
+  )(using ns: NodeStore[F]): EitherT[
+    F,
+    StrictTraversalError,
+    Option[MerkleTrieNode],
+  ] =
+    state.root.fold(
+      EitherT.rightT[F, StrictTraversalError](
+        Option.empty[MerkleTrieNode],
+      ),
+    ): root =>
+      state.diff
+        .get(root)
+        .fold(
+          ns.run(root)
+            .leftMap(StrictTraversalError.NodeStoreFailure.apply)
+            .flatMap:
+              case Some(node) =>
+                EitherT.rightT[F, StrictTraversalError](Some(node))
+              case None =>
+                EitherT.leftT[F, Option[MerkleTrieNode]](
+                  StrictTraversalError.MissingNode(root, phase),
+                ),
+        ): node =>
+          EitherT.rightT[F, StrictTraversalError](Some(node))
+
   /** Retrieves the root node and its hash from state.
     *
     * Checks the diff first, then falls back to the node store.
     *
-    * @tparam F the effect type
-    * @param state the trie state
-    * @param ns the node store
-    * @return Some((node, hash)) if root exists, None otherwise
+    * @tparam F
+    *   the effect type
+    * @param state
+    *   the trie state
+    * @param ns
+    *   the node store
+    * @return
+    *   Some((node, hash)) if root exists, None otherwise
     */
   def getNodeAndStateRoot[F[_]: Monad](state: MerkleTrieState)(using
       ns: NodeStore[F],
@@ -619,10 +771,14 @@ object MerkleTrie:
     *
     * Checks the diff first, then falls back to the node store.
     *
-    * @tparam F the effect type
-    * @param state the trie state
-    * @param ns the node store
-    * @return Some(node) if root exists, None otherwise
+    * @tparam F
+    *   the effect type
+    * @param state
+    *   the trie state
+    * @param ns
+    *   the node store
+    * @return
+    *   Some(node) if root exists, None otherwise
     */
   def getNode[F[_]: Monad](state: MerkleTrieState)(using
       ns: NodeStore[F],
@@ -637,9 +793,12 @@ object MerkleTrie:
     *
     * Finds the longest common prefix and splits both Nibbles accordingly.
     *
-    * @param nibbles0 first Nibbles
-    * @param nibbles1 second Nibbles
-    * @return (common prefix, remainder0, remainder1)
+    * @param nibbles0
+    *   first Nibbles
+    * @param nibbles1
+    *   second Nibbles
+    * @return
+    *   (common prefix, remainder0, remainder1)
     */
   def getCommonPrefixNibbleAndRemainders(
       nibbles0: Nibbles,
