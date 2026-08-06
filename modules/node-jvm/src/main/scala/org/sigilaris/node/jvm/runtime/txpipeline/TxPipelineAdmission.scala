@@ -43,20 +43,37 @@ trait TxPipelineIdGenerator[F[_]]:
   ): F[TxPipelineId]
 
 object TxPipelineIdGenerator:
+  private trait DeterministicSha256Metadata:
+    def identityScope: String
+
   def deterministicSha256[F[_]: Sync](
       identityScope: String,
   ): TxPipelineIdGenerator[F] =
-    new TxPipelineIdGenerator[F]:
+    val generatorIdentityScope = identityScope
+    new TxPipelineIdGenerator[F] with DeterministicSha256Metadata:
+      override val identityScope: String = generatorIdentityScope
+
       override def nextPipelineId(
           normalized: TxPipelineNormalizedRequest,
       ): F[TxPipelineId] =
         Sync[F].delay:
-          val identityHash =
-            TxPipelineAdmissionService.pipelineIdentityHash(
-              normalized,
-              identityScope,
-            )
-          TxPipelineId("txp_" + identityHash.value)
+          TxPipelineIdentityStrategy
+            .v1Identity(normalized, identityScope)
+            .pipelineId
+
+  private[txpipeline] def nextPipelineIdForLegacy[F[_]: Sync](
+      idGenerator: TxPipelineIdGenerator[F],
+      normalized: TxPipelineNormalizedRequest,
+      identityScope: String,
+      canonicalPayloadHash: TxPipelineCanonicalPayloadHash,
+  ): F[TxPipelineId] =
+    idGenerator match
+      case deterministic: DeterministicSha256Metadata
+          if deterministic.identityScope === identityScope =>
+        Sync[F].pure:
+          TxPipelineIdentityStrategy.v1PipelineId(canonicalPayloadHash)
+      case _ =>
+        idGenerator.nextPipelineId(normalized)
 
 trait TxPipelineAdmissionClock[F[_]]:
   def now: F[Instant]
@@ -75,16 +92,73 @@ final case class TxPipelineAdmissionOutcome(
     replayed: Boolean,
 )
 
-final class TxPipelineAdmissionService[F[_]: Sync](
+@SuppressWarnings(Array("org.wartremover.warts.Overloading"))
+final class TxPipelineAdmissionService[F[_]: Sync] private (
     store: TxPipelineStore[F],
-    idGenerator: TxPipelineIdGenerator[F],
-    identityScope: String,
     clock: TxPipelineAdmissionClock[F],
     hasher: TxPipelineTransactionHasher[F],
     applicationAdmission: TxPipelineApplicationAdmission[F],
     workNotifier: TxPipelineWorkNotifier[F],
     limits: TxPipelineShapeLimits,
+    identityStrategy: TxPipelineIdentityStrategy[F],
 ):
+  // Scala 3 carries the class context-bound evidence onto each secondary
+  // constructor descriptor. Do not add another explicit `using Sync[F]` here:
+  // the emitted legacy descriptor already ends in exactly one Sync parameter,
+  // as pinned by TxPipelineIdentityStrategyAdmissionSuite and verified against
+  // the published 0.2.11 class.
+  /** Backward-compatible constructor for the pre-strategy admission surface.
+    *
+    * The supplied id generator is adapted to the single-result identity path.
+    * `deterministicSha256` consumes the already calculated v1 hash without
+    * recalculating it. Existing custom generators remain source-compatible, but
+    * the callback now runs once for every normalized submission, including
+    * idempotent replays and requests rejected after normalization, because
+    * identity is calculated before replay lookup and later admission checks.
+    */
+  def this(
+      store: TxPipelineStore[F],
+      idGenerator: TxPipelineIdGenerator[F],
+      identityScope: String,
+      clock: TxPipelineAdmissionClock[F],
+      hasher: TxPipelineTransactionHasher[F],
+      applicationAdmission: TxPipelineApplicationAdmission[F],
+      workNotifier: TxPipelineWorkNotifier[F],
+      limits: TxPipelineShapeLimits,
+  ) =
+    this(
+      store,
+      clock,
+      hasher,
+      applicationAdmission,
+      workNotifier,
+      limits,
+      TxPipelineAdmissionService.legacyIdentityStrategy(
+        identityScope,
+        idGenerator,
+      ),
+    )
+
+  /** Constructor for direct identity-strategy injection. */
+  def this(
+      store: TxPipelineStore[F],
+      identityStrategy: TxPipelineIdentityStrategy[F],
+      clock: TxPipelineAdmissionClock[F],
+      hasher: TxPipelineTransactionHasher[F],
+      applicationAdmission: TxPipelineApplicationAdmission[F],
+      workNotifier: TxPipelineWorkNotifier[F],
+      limits: TxPipelineShapeLimits,
+  ) =
+    this(
+      store,
+      clock,
+      hasher,
+      applicationAdmission,
+      workNotifier,
+      limits,
+      identityStrategy,
+    )
+
   private val createGate =
     Semaphore(1, true)
 
@@ -103,12 +177,12 @@ final class TxPipelineAdmissionService[F[_]: Sync](
         TxPipelineRequestNormalizer
           .normalize(request, limits)
           .leftMap(TxPipelineAdmissionFailure.ValidationRejected(_))
-      canonicalHash =
-        TxPipelineAdmissionService.pipelineIdentityHash(
-          normalized,
-          identityScope,
-        )
-      replay <- existingReplay(idempotencyKey, canonicalHash)
+      identity <- EitherT.right[TxPipelineAdmissionFailure]:
+        identityStrategy.identify(normalized)
+      replay <- existingReplay(
+        idempotencyKey,
+        identity.canonicalPayloadHash,
+      )
       outcome <- replay match
         case Some(existing) =>
           EitherT.rightT[F, TxPipelineAdmissionFailure](
@@ -118,7 +192,7 @@ final class TxPipelineAdmissionService[F[_]: Sync](
             ),
           )
         case None =>
-          acceptNewOutcome(normalized, idempotencyKey, canonicalHash)
+          acceptNewOutcome(normalized, idempotencyKey, identity)
     yield outcome
 
     result.value
@@ -149,30 +223,27 @@ final class TxPipelineAdmissionService[F[_]: Sync](
   private def acceptNewOutcome(
       normalized: TxPipelineNormalizedRequest,
       idempotencyKey: Option[TxPipelineIdempotencyKey],
-      canonicalHash: TxPipelineCanonicalPayloadHash,
+      identity: TxPipelineIdentity,
   ): EitherT[F, TxPipelineAdmissionFailure, TxPipelineAdmissionOutcome] =
     for
       _ <- EitherT:
         applicationAdmission
           .validate(normalized)
           .map(_.leftMap(TxPipelineAdmissionFailure.ValidationRejected(_)))
-      txHashes <- hashTransactions(normalized)
-      pipelineId <- EitherT.right[TxPipelineAdmissionFailure](
-        idGenerator.nextPipelineId(normalized),
-      )
+      txHashes   <- hashTransactions(normalized)
       acceptedAt <- EitherT.right[TxPipelineAdmissionFailure](clock.now)
       record <- EitherT.fromEither[F]:
         TxPipelineRecord
           .accepted(
-            pipelineId = pipelineId,
+            pipelineId = identity.pipelineId,
             normalized = normalized,
             txHashes = txHashes,
             idempotencyKey = idempotencyKey,
-            canonicalPayloadHash = canonicalHash,
+            canonicalPayloadHash = identity.canonicalPayloadHash,
             acceptedAt = acceptedAt,
           )
           .leftMap(TxPipelineAdmissionFailure.ValidationRejected(_))
-      created <- createOrReplay(record, canonicalHash)
+      created <- createOrReplay(record, identity.canonicalPayloadHash)
       _ <-
         if created.created then
           EitherT.right[TxPipelineAdmissionFailure]:
@@ -226,42 +297,45 @@ final class TxPipelineAdmissionService[F[_]: Sync](
       canonicalHash: TxPipelineCanonicalPayloadHash,
   ): EitherT[F, TxPipelineAdmissionFailure, TxPipelineCreateOutcome] =
     EitherT:
-      store.create(record).value.flatMap:
-        case Right(created) =>
-          Sync[F].pure:
-            Right[TxPipelineAdmissionFailure, TxPipelineCreateOutcome](
-              TxPipelineCreateOutcome(record = created, created = true),
-            )
-        case Left(
-              failure @ TxPipelineStoreFailure.IdempotencyKeyAlreadyExists(
-                idempotencyKey,
-                _,
-              ),
-            ) =>
-          existingReplay(Some(idempotencyKey), canonicalHash).value.map:
-            case Right(Some(existing)) =>
+      store
+        .create(record)
+        .value
+        .flatMap:
+          case Right(created) =>
+            Sync[F].pure:
               Right[TxPipelineAdmissionFailure, TxPipelineCreateOutcome](
-                TxPipelineCreateOutcome(record = existing, created = false),
+                TxPipelineCreateOutcome(record = created, created = true),
               )
-            case Right(None) =>
+          case Left(
+                failure @ TxPipelineStoreFailure.IdempotencyKeyAlreadyExists(
+                  idempotencyKey,
+                  _,
+                ),
+              ) =>
+            existingReplay(Some(idempotencyKey), canonicalHash).value.map:
+              case Right(Some(existing)) =>
+                Right[TxPipelineAdmissionFailure, TxPipelineCreateOutcome](
+                  TxPipelineCreateOutcome(record = existing, created = false),
+                )
+              case Right(None) =>
+                Left[TxPipelineAdmissionFailure, TxPipelineCreateOutcome](
+                  TxPipelineAdmissionFailure.StoreRejected(failure),
+                )
+              case Left(rejected) =>
+                Left[TxPipelineAdmissionFailure, TxPipelineCreateOutcome](
+                  rejected,
+                )
+          case Left(TxPipelineStoreFailure.PipelineAlreadyExists(pipelineId)) =>
+            convergeExistingPipeline(
+              pipelineId = pipelineId,
+              canonicalHash = canonicalHash,
+              idempotencyKey = record.idempotencyKey,
+            ).value
+          case Left(failure) =>
+            Sync[F].pure:
               Left[TxPipelineAdmissionFailure, TxPipelineCreateOutcome](
                 TxPipelineAdmissionFailure.StoreRejected(failure),
               )
-            case Left(rejected) =>
-              Left[TxPipelineAdmissionFailure, TxPipelineCreateOutcome](
-                rejected,
-              )
-        case Left(TxPipelineStoreFailure.PipelineAlreadyExists(pipelineId)) =>
-          convergeExistingPipeline(
-            pipelineId = pipelineId,
-            canonicalHash = canonicalHash,
-            idempotencyKey = record.idempotencyKey,
-          ).value
-        case Left(failure) =>
-          Sync[F].pure:
-            Left[TxPipelineAdmissionFailure, TxPipelineCreateOutcome](
-              TxPipelineAdmissionFailure.StoreRejected(failure),
-            )
 
   private def convergeExistingPipelineIfPresent(
       pipelineId: TxPipelineId,
@@ -399,10 +473,9 @@ final class TxPipelineAdmissionService[F[_]: Sync](
     TxPipelineAdmissionFailure.ValidationRejected(
       TxPipelineValidationFailure(
         reason = "acceptedNonterminalPipelineLimitExceeded",
-        detail =
-          Some(
-            ss"accepted nonterminal pipeline limit exceeded: live=${live.toString},max=${limits.maxAcceptedNonterminalPipelines.toString}",
-          ),
+        detail = Some(
+          ss"accepted nonterminal pipeline limit exceeded: live=${live.toString},max=${limits.maxAcceptedNonterminalPipelines.toString}",
+        ),
         stageIndex = None,
         transactionIndex = None,
       ),
@@ -450,6 +523,28 @@ private final case class TxPipelineCreateOutcome(
 object TxPipelineAdmissionService:
   private val CountPageSize: Int = 256
 
+  private def legacyIdentityStrategy[F[_]: Sync](
+      identityScope: String,
+      idGenerator: TxPipelineIdGenerator[F],
+  ): TxPipelineIdentityStrategy[F] =
+    TxPipelineIdentityStrategy: normalized =>
+      Sync[F]
+        .delay:
+          TxPipelineIdentityStrategy.v1CanonicalPayloadHash(
+            normalized,
+            identityScope,
+          )
+        .flatMap: canonicalPayloadHash =>
+          TxPipelineIdGenerator
+            .nextPipelineIdForLegacy(
+              idGenerator,
+              normalized,
+              identityScope,
+              canonicalPayloadHash,
+            )
+            .map: pipelineId =>
+              TxPipelineIdentity(canonicalPayloadHash, pipelineId)
+
   def canonicalPayloadHash(
       normalized: TxPipelineNormalizedRequest,
       identityScope: String,
@@ -460,19 +555,7 @@ object TxPipelineAdmissionService:
       normalized: TxPipelineNormalizedRequest,
       identityScope: String,
   ): TxPipelineCanonicalPayloadHash =
-    val digest = MessageDigest.getInstance("SHA-256")
-    TxPipelineCanonicalPayloadHash(
-      TxPipelineSha256.hex(
-        digest.digest(
-          normalized
-            .identityPayload(identityScope)
-            .value
-            .getBytes(StandardCharsets.UTF_8),
-        ),
-      ),
+    TxPipelineIdentityStrategy.v1CanonicalPayloadHash(
+      normalized,
+      identityScope,
     )
-
-@SuppressWarnings(Array("org.wartremover.warts.Any"))
-private object TxPipelineSha256:
-  def hex(bytes: Array[Byte]): String =
-    bytes.map(byte => f"${byte & 0xff}%02x").mkString

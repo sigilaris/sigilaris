@@ -60,14 +60,14 @@ Sigilaris 코덱과 RLP는 근본적인 설계 목표를 공유합니다:
 
 ### 2. 접두사 바이트 계산
 
-#### 짧은 데이터 (1-119 바이트)
+#### 짧은 데이터와 정확히 120바이트 데이터
 
 | 코덱 | 접두사 범위 | 공식 |
 |-------|--------------|------------|
-| **Sigilaris** | `0x81` - `0xf7` | `0x80 + data_length` |
+| **Sigilaris** | `0x81` - `0xf8` | `0x80 + data_length` |
 | **RLP (문자열)** | `0x80` - `0xb7` | `0x80 + data_length` |
 
-**Sigilaris 범위:** `0x81` - `0xf7` = 119개 가능 값 (1-119 바이트 데이터)
+**Sigilaris 범위:** `0x81` - `0xf8` = 120개 가능 값 (1-120 바이트 데이터)
 **RLP 범위:** `0x80` - `0xb7` = 56개 가능 값 (1-55 바이트 데이터)
 
 **예제 (10-바이트 데이터):**
@@ -76,19 +76,19 @@ Sigilaris: [0x8a][10 bytes data]    (prefix = 0x80 + 10)
 RLP:       [0x8a][10 bytes data]    (prefix = 0x80 + 10)
 ```
 
-#### 긴 데이터 (120+ 바이트)
+#### 긴 데이터 (Sigilaris에서는 121바이트 이상)
 
 | 코덱 | 접두사 범위 | 공식 |
 |-------|--------------|------------|
-| **Sigilaris** | `0xf8` - `0xff` | `0xf8 + (length_bytes - 1)` |
+| **Sigilaris** | `0xf9` - `0xff` | `0xf8 + (max(2, minimal_length_bytes) - 1)` |
 | **RLP (문자열)** | `0xb8` - `0xbf` | `0xb7 + length_bytes` |
 
 **예제 (200-바이트 데이터):**
 ```
 Sigilaris:
-  200은 인코딩에 1 바이트 필요 (0xc8)
-  Prefix: 0xf8 (0xf8 + 0)
-  Format: [0xf8][0xc8][200 bytes data]
+  200은 canonical 2바이트 길이 사용 (0x00c8)
+  Prefix: 0xf9 (0xf8 + 1)
+  Format: [0xf9][0x00][0xc8][200 bytes data]
 
 RLP:
   200은 인코딩에 1 바이트 필요 (0xc8)

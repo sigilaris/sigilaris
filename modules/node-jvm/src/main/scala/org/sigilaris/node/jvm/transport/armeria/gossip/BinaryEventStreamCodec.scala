@@ -22,17 +22,18 @@ private[gossip] enum BinaryEventEnvelope:
   case KeepAlive(sessionId: String, atEpochMs: Long)
   case Rejection(sessionId: String, rejection: RejectionWire)
 
-/** Binary codec for encoding and decoding streams of event envelopes in a compact frame format.
+/** Binary codec for encoding and decoding streams of event envelopes in a
+  * compact frame format.
   *
   * Each frame is length-prefixed and tagged with a version byte and kind byte,
   * enabling efficient binary transport of gossip events over HTTP.
   */
 object BinaryEventStreamCodec:
   /** MIME type for binary event stream responses. */
-  val MediaType: String       = "application/octet-stream"
+  val MediaType: String = "application/octet-stream"
 
   /** Current binary framing protocol version. */
-  val CurrentVersion: Byte    = 1.toByte
+  val CurrentVersion: Byte = 1.toByte
 
   /** Maximum allowed size in bytes for a single encoded event frame. */
   val MaxFrameSizeBytes: Long = 16L * 1024L * 1024L
@@ -40,13 +41,6 @@ object BinaryEventStreamCodec:
   private val EventTag: Byte     = 1.toByte
   private val KeepAliveTag: Byte = 2.toByte
   private val RejectionTag: Byte = 3.toByte
-  private val MaxFrameSizeMagnitudeBytes: BigInt =
-    BigInt(
-      ByteVector
-        .fromLong(MaxFrameSizeBytes)
-        .dropWhile(_ == 0x00.toByte)
-        .size,
-    )
 
   /** Incremental decoder state for length-prefixed binary event frames. */
   final case class DecoderState private[BinaryEventStreamCodec] (
@@ -226,10 +220,10 @@ object BinaryEventStreamCodec:
         case LengthRead.Complete(declaredSize, remainder) =>
           if declaredSize > BigInt(MaxFrameSizeBytes) then
             oversizeFrameError(declaredSize).asLeft[Unit]
-          else
-            truncatedFrameError(declaredSize, remainder.size).asLeft[Unit]
+          else truncatedFrameError(declaredSize, remainder.size).asLeft[Unit]
 
-  /** Encodes event envelopes to an FS2 byte stream of length-prefixed frames. */
+  /** Encodes event envelopes to an FS2 byte stream of length-prefixed frames.
+    */
   def encodeFrames[F[_], A: ByteEncoder](using
       ApplicativeError[F, Throwable],
   ): Pipe[F, EventEnvelopeWire[A], Byte] =
@@ -383,31 +377,34 @@ object BinaryEventStreamCodec:
       val head = bytes.head.toInt & 0xff
       val tail = bytes.tail
       if head <= 0x80 then LengthRead.Complete(BigInt(head), tail)
-      // Mirror ByteDecoder[BigNat] exactly here: 0xf8 is a medium-form head in
-      // the decoder even though normal frame encoding never emits it.
+      // Mirror ByteDecoder[BigNat] canonicality here while preserving the
+      // incremental NeedMore result for truncated prefixes.
       else if head <= 0xf8 then
         val sizeBytes = head - 0x80
         if tail.size < sizeBytes.toLong then LengthRead.NeedMore
         else
           val (front, back) = tail.splitAt(sizeBytes.toLong)
-          LengthRead.Complete(BigInt(1, front.toArray), back)
+          val first         = front.head.toInt & 0xff
+          if first === 0 then
+            LengthRead.Malformed(
+              "non-canonical event frame length prefix: leading-zero magnitude",
+            )
+          else if sizeBytes === 1 && first <= 0x80 then
+            LengthRead.Malformed(
+              "non-canonical event frame length prefix: values 0-128 use single-byte form",
+            )
+          else LengthRead.Complete(BigInt(1, front.toArray), back)
       else
         val sizeOfSize = head - 0xf8 + 1
         if tail.size < sizeOfSize.toLong then LengthRead.NeedMore
         else
-          val (sizeBytes, data) = tail.splitAt(sizeOfSize.toLong)
-          val size              = BigInt(1, sizeBytes.toArray)
-          if size > MaxFrameSizeMagnitudeBytes then
-            LengthRead.Malformed(
-              "oversize event frame length prefix: declared-size-bytes=" +
-                size.toString +
-                " max-size-bytes=" +
-                MaxFrameSizeMagnitudeBytes.toString,
-            )
-          else if BigInt(data.size) < size then LengthRead.NeedMore
-          else
-            val (front, back) = data.splitAt(size.toLong)
-            LengthRead.Complete(BigInt(1, front.toArray), back)
+          // A frame is bounded to 16 MiB, whose BigNat magnitude is at most
+          // four bytes. BigNat long form starts at a 121-byte magnitude, so no
+          // valid frame-length value can use it. Wait for the complete prefix
+          // before rejecting so a split prefix remains incrementally valid.
+          LengthRead.Malformed(
+            "invalid event frame length prefix: long form exceeds the bounded frame-length domain",
+          )
 
   @SuppressWarnings(
     Array("org.wartremover.warts.Nothing", "org.wartremover.warts.Recursion"),
@@ -427,8 +424,9 @@ object BinaryEventStreamCodec:
             Pull.output(Chunk.from(frames)) >> decodeFramePull(nextState, tail)
       case None =>
         finishDecode(state) match
-          case Left(error) => Pull.raiseError(new IllegalArgumentException(error))
-          case Right(())   => Pull.done
+          case Left(error) =>
+            Pull.raiseError(new IllegalArgumentException(error))
+          case Right(()) => Pull.done
 
   private def oversizeFrameError(
       declaredSize: BigInt,

@@ -153,7 +153,8 @@ type BigNat = BigInt :| Positive0  // non-negative BigInt
 
 **Encoding Rules:**
 
-The encoding uses three ranges for space efficiency:
+The encoding uses four ranges for space efficiency while reserving `0xf8` for
+the historical exact-120-byte form:
 
 1. **Single-byte range (0x00 ~ 0x80):** Values 0-128
    ```
@@ -166,11 +167,21 @@ The encoding uses three ranges for space efficiency:
    data_length: 1 to 119 (0xf7 - 0x80)
    ```
 
-3. **Long data range (0xf8 ~ 0xff):** Data length 120+ bytes
+3. **Exact 120-byte range (0xf8):** Data length exactly 120 bytes
+   ```
+   [0xf8][120 data_bytes]
+   ```
+
+4. **Long data range (0xf9 ~ 0xff):** Data length 121+ bytes
    ```
    [0xf8 + (length_byte_count - 1)][length_bytes][data_bytes]
-   length_byte_count: 1 to 8
+   length_byte_count: 2 to 8, using max(2, minimal unsigned width)
    ```
+
+The two-byte length form intentionally includes a leading `0x00` for lengths
+121-255. This keeps the already-published `0xf8 || data(120)` representation
+byte-for-byte stable and removes the former collision between that form and a
+one-byte long-form length.
 
 **Encoding Examples:**
 
@@ -184,6 +195,11 @@ The encoding uses three ranges for space efficiency:
 | 256 | `0x82 01 00` | Length 2, data 0x0100 |
 | 65535 | `0x82 ff ff` | Length 2, data 0xffff |
 | 65536 | `0x83 01 00 00` | Length 3, data 0x010000 |
+| 120-byte magnitude | `0xf8 [120 data bytes]` | Exact-120 compatibility form |
+| 121-byte magnitude | `0xf9 00 79 [121 data bytes]` | Two-byte length |
+| 255-byte magnitude | `0xf9 00 ff [255 data bytes]` | Two-byte length |
+| 256-byte magnitude | `0xf9 01 00 [256 data bytes]` | Two-byte length |
+| 65536-byte magnitude | `0xfa 01 00 00 [65536 data bytes]` | Three-byte length |
 
 **Decoding Algorithm:**
 
@@ -195,20 +211,32 @@ def decodeBigNat(bytes: ByteVector): (BigNat, ByteVector) =
     // Single byte: value is 0-128
     (BigInt(head), bytes.tail)
 
-  else if head <= 0xf7 then
-    // Short data: 1-119 byte data
+  else if head <= 0xf8 then
+    // Short/exact-120 data: 1-120 byte data
     val dataLength = head - 0x80
     val (dataBytes, remainder) = bytes.tail.splitAt(dataLength)
+    require(dataBytes.head != 0x00)
+    require(dataLength != 1 || (dataBytes.head & 0xff) > 0x80)
     (BigInt(1, dataBytes.toArray), remainder)
 
   else
-    // Long data: 120+ byte data
-    val lengthByteCount = head - 0xf7
+    // Canonical long data: 121+ byte data and at least two length bytes
+    val lengthByteCount = head - 0xf8 + 1
     val (lengthBytes, afterLength) = bytes.tail.splitAt(lengthByteCount)
-    val dataLength = BigInt(1, lengthBytes.toArray).toLong
+    val dataLengthBigInt = BigInt(1, lengthBytes.toArray)
+    require(dataLengthBigInt > 120 && dataLengthBigInt.isValidLong)
+    require(lengthByteCount == math.max(2, (dataLengthBigInt.bitLength + 7) / 8))
+    val dataLength = dataLengthBigInt.toLong
     val (dataBytes, remainder) = afterLength.splitAt(dataLength)
+    require(dataBytes.head != 0x00)
     (BigInt(1, dataBytes.toArray), remainder)
 ```
+
+The real decoder reports `DecodeFailure` rather than throwing on these
+canonicality checks, truncated length/data, or lengths above `Long.MaxValue`.
+Primitive `decode` keeps any trailing bytes in `DecodeResult.remainder` so
+product decoders can compose. Use `ByteDecoder.ops.to[A]` at a whole-value or
+storage/wire boundary when trailing bytes must be rejected.
 
 **Roundtrip Property:**
 ```scala mdoc:silent

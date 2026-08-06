@@ -143,7 +143,9 @@ object ByteEncoder:
     * Encoding rules:
     *   - 0x00 ~ 0x80: single byte for values 0-128
     *   - 0x81 ~ 0xf7: [0x80+len][data] for 1-119 byte data
-    *   - 0xf8 ~ 0xff: [0xf8+(ll-1)][len][data] for 120+ byte data
+    *   - 0xf8: [0xf8][data] for exactly 120-byte data
+    *   - 0xf9 ~ 0xff: [0xf8+(ll-1)][len][data] for 121+ byte data, where ll is
+    *     at least 2
     *
     * @see
     *   types.md for complete BigNat encoding specification
@@ -157,7 +159,14 @@ object ByteEncoder:
       if size < (0xf8 - 0x80) + 1 then
         ByteVector.fromByte((size + 0x80).toByte) ++ bytes
       else
-        val sizeBytes = ByteVector.fromLong(size).dropWhile(_ === 0x00.toByte)
+        val minimalSizeBytes =
+          ByteVector.fromLong(size).dropWhile(_ === 0x00.toByte)
+        // 0xf8 is already the canonical prefix for an exact 120-byte
+        // magnitude. Long form therefore starts at 0xf9 and uses at least two
+        // length bytes, including the leading 0x00 required for sizes 121-255.
+        val sizeBytes =
+          if minimalSizeBytes.size >= 2 then minimalSizeBytes
+          else ByteVector(0x00.toByte) ++ minimalSizeBytes
         ByteVector.fromByte(
           (sizeBytes.size + 0xf8 - 1).toByte,
         ) ++ sizeBytes ++ bytes

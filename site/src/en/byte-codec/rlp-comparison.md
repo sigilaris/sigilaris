@@ -60,14 +60,14 @@ Value 127:
 
 ### 2. Prefix Byte Calculation
 
-#### Short Data (1-119 bytes)
+#### Short Data and Exact 120-Byte Data
 
 | Codec | Prefix Range | Formula |
 |-------|--------------|---------|
-| **Sigilaris** | `0x81` - `0xf7` | `0x80 + data_length` |
+| **Sigilaris** | `0x81` - `0xf8` | `0x80 + data_length` |
 | **RLP (strings)** | `0x80` - `0xb7` | `0x80 + data_length` |
 
-**Sigilaris range:** `0x81` - `0xf7` = 119 possible values (1-119 byte data)
+**Sigilaris range:** `0x81` - `0xf8` = 120 possible values (1-120 byte data)
 **RLP range:** `0x80` - `0xb7` = 56 possible values (1-55 byte data)
 
 **Example (10-byte data):**
@@ -76,19 +76,19 @@ Sigilaris: [0x8a][10 bytes data]    (prefix = 0x80 + 10)
 RLP:       [0x8a][10 bytes data]    (prefix = 0x80 + 10)
 ```
 
-#### Long Data (120+ bytes)
+#### Long Data (121+ bytes in Sigilaris)
 
 | Codec | Prefix Range | Formula |
 |-------|--------------|---------|
-| **Sigilaris** | `0xf8` - `0xff` | `0xf8 + (length_bytes - 1)` |
+| **Sigilaris** | `0xf9` - `0xff` | `0xf8 + (max(2, minimal_length_bytes) - 1)` |
 | **RLP (strings)** | `0xb8` - `0xbf` | `0xb7 + length_bytes` |
 
 **Example (200-byte data):**
 ```
 Sigilaris:
-  200 requires 1 byte to encode (0xc8)
-  Prefix: 0xf8 (0xf8 + 0)
-  Format: [0xf8][0xc8][200 bytes data]
+  200 uses the canonical 2-byte length (0x00c8)
+  Prefix: 0xf9 (0xf8 + 1)
+  Format: [0xf9][0x00][0xc8][200 bytes data]
 
 RLP:
   200 requires 1 byte to encode (0xc8)

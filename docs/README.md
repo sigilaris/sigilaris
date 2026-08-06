@@ -28,9 +28,11 @@
 - [application-package-index.md](application-package-index.md)
 - [dev/hotstuff-proposal-input-provider-handoff.md](dev/hotstuff-proposal-input-provider-handoff.md): HotStuff proposal input and proposal validation provider handoff notes
 - [dev/tx-pipeline-api-handoff.md](dev/tx-pipeline-api-handoff.md): stage-based transaction pipeline API and provider composition handoff notes
+- [adr/0034-canonical-bignat-wire-encoding.md](adr/0034-canonical-bignat-wire-encoding.md): canonical BigNat exact-120 reservation, long-form widths, and decoder validation
 - [dev/hotstuff-low-latency-profile.md](dev/hotstuff-low-latency-profile.md): HotStuff warm-cluster low-latency profile and residual risk notes
 - [dev/hotstuff-transitive-relay-handoff.md](dev/hotstuff-transitive-relay-handoff.md): HotStuff consensus artifact transitive relay deployment and diagnostics handoff notes
 - [dev/hotstuff-application-gossip-topic-handoff.md](dev/hotstuff-application-gossip-topic-handoff.md): HotStuff application gossip topic registration and catch-up handoff notes
+- [dev/v0.2.12-release-notes.md](dev/v0.2.12-release-notes.md): v0.2.12 BigNat canonical-boundary repair, compatibility guidance, and release evidence
 - [dev/v0.2.10-release-notes.md](dev/v0.2.10-release-notes.md): v0.2.10 HotStuff gossip retention, diagnostics, tx pipeline id alias, and streaming gossip delivery release notes
 - [dev/v0.2.9-release-notes.md](dev/v0.2.9-release-notes.md): v0.2.9 application-neutral HotStuff proposal artifact prefetch release notes
 - [dev/v0.2.8-release-notes.md](dev/v0.2.8-release-notes.md): v0.2.8 HotStuff bounded descendant finality-drive and transaction pipeline release notes

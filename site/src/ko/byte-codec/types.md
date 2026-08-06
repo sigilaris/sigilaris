@@ -153,7 +153,8 @@ type BigNat = BigInt :| Positive0  // 음이 아닌 BigInt
 
 **인코딩 규칙:**
 
-인코딩은 공간 효율성을 위해 세 가지 범위를 사용합니다:
+인코딩은 공간 효율성을 유지하면서 기존의 정확히 120바이트 형식에
+`0xf8`을 예약하기 위해 네 가지 범위를 사용합니다:
 
 1. **단일 바이트 범위 (0x00 ~ 0x80):** 값 0-128
    ```
@@ -166,11 +167,20 @@ type BigNat = BigInt :| Positive0  // 음이 아닌 BigInt
    data_length: 1부터 119까지 (0xf7 - 0x80)
    ```
 
-3. **긴 데이터 범위 (0xf8 ~ 0xff):** 데이터 길이 120+ 바이트
+3. **정확히 120바이트 범위 (0xf8):** 데이터 길이 정확히 120바이트
+   ```
+   [0xf8][120 data_bytes]
+   ```
+
+4. **긴 데이터 범위 (0xf9 ~ 0xff):** 데이터 길이 121바이트 이상
    ```
    [0xf8 + (length_byte_count - 1)][length_bytes][data_bytes]
-   length_byte_count: 1부터 8까지
+   length_byte_count: 2부터 8까지, max(2, 최소 unsigned 너비) 사용
    ```
+
+121~255 길이의 2바이트 길이 형식은 의도적으로 선행 `0x00`을 포함합니다.
+이 규칙은 이미 배포된 `0xf8 || data(120)` 표현을 바이트 단위로 보존하면서,
+기존 형식과 1바이트 long-form 길이 사이의 충돌을 제거합니다.
 
 **인코딩 예제:**
 
@@ -184,6 +194,11 @@ type BigNat = BigInt :| Positive0  // 음이 아닌 BigInt
 | 256 | `0x82 01 00` | 길이 2, 데이터 0x0100 |
 | 65535 | `0x82 ff ff` | 길이 2, 데이터 0xffff |
 | 65536 | `0x83 01 00 00` | 길이 3, 데이터 0x010000 |
+| 120바이트 magnitude | `0xf8 [120 data bytes]` | 정확히 120바이트인 호환 형식 |
+| 121바이트 magnitude | `0xf9 00 79 [121 data bytes]` | 2바이트 길이 |
+| 255바이트 magnitude | `0xf9 00 ff [255 data bytes]` | 2바이트 길이 |
+| 256바이트 magnitude | `0xf9 01 00 [256 data bytes]` | 2바이트 길이 |
+| 65536바이트 magnitude | `0xfa 01 00 00 [65536 data bytes]` | 3바이트 길이 |
 
 **디코딩 알고리즘:**
 
@@ -195,20 +210,32 @@ def decodeBigNat(bytes: ByteVector): (BigNat, ByteVector) =
     // 단일 바이트: 값은 0-128
     (BigInt(head), bytes.tail)
 
-  else if head <= 0xf7 then
-    // 짧은 데이터: 1-119 바이트 데이터
+  else if head <= 0xf8 then
+    // 짧은/정확히 120바이트 데이터: 1-120 바이트 데이터
     val dataLength = head - 0x80
     val (dataBytes, remainder) = bytes.tail.splitAt(dataLength)
+    require(dataBytes.head != 0x00)
+    require(dataLength != 1 || (dataBytes.head & 0xff) > 0x80)
     (BigInt(1, dataBytes.toArray), remainder)
 
   else
-    // 긴 데이터: 120+ 바이트 데이터
-    val lengthByteCount = head - 0xf7
+    // canonical 긴 데이터: 121바이트 이상, 최소 2바이트 길이
+    val lengthByteCount = head - 0xf8 + 1
     val (lengthBytes, afterLength) = bytes.tail.splitAt(lengthByteCount)
-    val dataLength = BigInt(1, lengthBytes.toArray).toLong
+    val dataLengthBigInt = BigInt(1, lengthBytes.toArray)
+    require(dataLengthBigInt > 120 && dataLengthBigInt.isValidLong)
+    require(lengthByteCount == math.max(2, (dataLengthBigInt.bitLength + 7) / 8))
+    val dataLength = dataLengthBigInt.toLong
     val (dataBytes, remainder) = afterLength.splitAt(dataLength)
+    require(dataBytes.head != 0x00)
     (BigInt(1, dataBytes.toArray), remainder)
 ```
+
+실제 decoder는 위 canonicality 검사, 잘린 길이/데이터, 또는
+`Long.MaxValue`를 넘는 길이에 예외를 던지는 대신 `DecodeFailure`를 반환합니다.
+primitive `decode`는 product decoder 조합을 위해 뒤따르는 바이트를
+`DecodeResult.remainder`에 보존합니다. whole-value, 저장소, wire 경계에서
+trailing byte를 거부해야 한다면 `ByteDecoder.ops.to[A]`를 사용하십시오.
 
 **Roundtrip 속성:**
 ```scala mdoc:silent

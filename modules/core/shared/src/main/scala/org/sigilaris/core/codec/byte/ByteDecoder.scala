@@ -204,8 +204,12 @@ object ByteDecoder:
     *
     * Decoding rules:
     *   - 0x00 ~ 0x80: value is the byte itself
-    *   - 0x81 ~ 0xf7: length = byte - 0x80, read data
-    *   - 0xf8 ~ 0xff: read length-of-length, then length, then data
+    *   - 0x81 ~ 0xf8: length = byte - 0x80, read 1-120 data bytes
+    *   - 0xf9 ~ 0xff: read a canonical 2-8 byte length, then 121+ data bytes
+    *
+    * Rejects leading-zero magnitudes, redundant short form for single-byte
+    * values, long form for magnitudes of 120 bytes or fewer, over-wide length
+    * fields, truncated input, and lengths above `Long.MaxValue`.
     *
     * @see
     *   types.md for complete BigNat decoding specification
@@ -227,8 +231,17 @@ object ByteDecoder:
               .asLeft[DecodeResult[BigNat]]
           else
             val (front, back) = tail.splitAt(size.toLong)
-            DecodeResult(unsafeFromBigInt(BigInt(1, front.toArray)), back)
-              .asRight[DecodeFailure]
+            val first         = front.head & 0xff
+            if first === 0 then
+              DecodeFailure("non-canonical BigNat magnitude with leading zero")
+                .asLeft[DecodeResult[BigNat]]
+            else if size === 1 && first <= 0x80 then
+              DecodeFailure(
+                "non-canonical BigNat: values 0-128 use single-byte form",
+              ).asLeft[DecodeResult[BigNat]]
+            else
+              DecodeResult(unsafeFromBigInt(BigInt(1, front.toArray)), back)
+                .asRight[DecodeFailure]
         else
           val sizeOfNumber = head - 0xf8 + 1
           if tail.size < sizeOfNumber then
@@ -236,15 +249,39 @@ object ByteDecoder:
               .asLeft[DecodeResult[BigNat]]
           else
             val (sizeBytes, data) = tail.splitAt(sizeOfNumber.toLong)
-            val size              = BigInt(1, sizeBytes.toArray).toLong
+            val sizeAsBigInt      = BigInt(1, sizeBytes.toArray)
+            val minimalSizeWidth  = (sizeAsBigInt.bitLength + 7) / 8
+            val canonicalWidth    = math.max(2, minimalSizeWidth)
 
-            if data.size < size then
-              DecodeFailure(s"required byte size $size, but $data")
+            if sizeAsBigInt <= 120 then
+              DecodeFailure(
+                s"non-canonical BigNat long-form size $sizeAsBigInt",
+              ).asLeft[DecodeResult[BigNat]]
+            else if sizeOfNumber =!= canonicalWidth then
+              DecodeFailure(
+                s"non-canonical BigNat length width $sizeOfNumber for size $sizeAsBigInt",
+              ).asLeft[DecodeResult[BigNat]]
+            else if !sizeAsBigInt.isValidLong then
+              DecodeFailure(
+                s"BigNat byte size exceeds Long.MaxValue: $sizeAsBigInt",
+              )
                 .asLeft[DecodeResult[BigNat]]
             else
-              val (front, back) = data.splitAt(size)
-              DecodeResult(unsafeFromBigInt(BigInt(1, front.toArray)), back)
-                .asRight[DecodeFailure]
+              val size = sizeAsBigInt.toLong
+              if data.size < size then
+                DecodeFailure(s"required byte size $size, but $data")
+                  .asLeft[DecodeResult[BigNat]]
+              else
+                val (front, back) = data.splitAt(size)
+                if (front.head & 0xff) === 0 then
+                  DecodeFailure(
+                    "non-canonical BigNat magnitude with leading zero",
+                  ).asLeft[DecodeResult[BigNat]]
+                else
+                  DecodeResult(
+                    unsafeFromBigInt(BigInt(1, front.toArray)),
+                    back,
+                  ).asRight[DecodeFailure]
 
   /** Decodes signed integers using sign-magnitude decoding.
     *

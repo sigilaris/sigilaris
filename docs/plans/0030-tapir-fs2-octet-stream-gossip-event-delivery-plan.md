@@ -266,10 +266,12 @@ Completed on 2026-07-01.
   materializing the whole response.
 - The existing whole-vector `encode` and `decode` helpers remain available
   during migration and are implemented on top of the new frame primitives.
-- The outer frame length parser follows the canonical `BigNat` wire format and
-  rejects long-form length prefixes whose declared-size magnitude width exceeds
-  the maximum frame-size width, preventing unbounded buffering before the
-  `MaxFrameSizeBytes` guard can run.
+- The outer frame length parser applies canonical `BigNat` validation to direct,
+  short, and exact-120 forms, including leading-zero and redundant-short
+  rejection. Because a 16 MiB frame length has at most a four-byte magnitude,
+  the parser rejects every complete long-form prefix as outside the bounded
+  frame-length domain; `MaxFrameSizeBytes` still guards decoded short-form
+  values.
 - Tests cover arbitrary chunk boundaries, empty chunks, partial frames,
   multiple frames per chunk, malformed length prefixes, oversize frames,
   unknown version/kind tags, corrupt middle frames, truncated streams, and
