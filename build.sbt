@@ -97,7 +97,7 @@ val Dependencies = new {
 }
 Global / onChangedBuildSource := ReloadOnSourceChanges
 ThisBuild / organization      := "org.sigilaris"
-ThisBuild / version           := "0.2.12"
+ThisBuild / version           := "0.2.13-SNAPSHOT"
 ThisBuild / scalaVersion      := V.Scala
 ThisBuild / semanticdbEnabled := true
 
