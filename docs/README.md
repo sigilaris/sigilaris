@@ -32,7 +32,7 @@
 - [dev/hotstuff-low-latency-profile.md](dev/hotstuff-low-latency-profile.md): HotStuff warm-cluster low-latency profile and residual risk notes
 - [dev/hotstuff-transitive-relay-handoff.md](dev/hotstuff-transitive-relay-handoff.md): HotStuff consensus artifact transitive relay deployment and diagnostics handoff notes
 - [dev/hotstuff-application-gossip-topic-handoff.md](dev/hotstuff-application-gossip-topic-handoff.md): HotStuff application gossip topic registration and catch-up handoff notes
-- [dev/v0.2.12-release-notes.md](dev/v0.2.12-release-notes.md): v0.2.12 BigNat canonical-boundary repair, compatibility guidance, and release evidence
+- [releases/v0.2.12-release-notes.md](releases/v0.2.12-release-notes.md): published v0.2.12 BigNat canonical-boundary repair, compatibility guidance, and final verification
 - [dev/v0.2.10-release-notes.md](dev/v0.2.10-release-notes.md): v0.2.10 HotStuff gossip retention, diagnostics, tx pipeline id alias, and streaming gossip delivery release notes
 - [dev/v0.2.9-release-notes.md](dev/v0.2.9-release-notes.md): v0.2.9 application-neutral HotStuff proposal artifact prefetch release notes
 - [dev/v0.2.8-release-notes.md](dev/v0.2.8-release-notes.md): v0.2.8 HotStuff bounded descendant finality-drive and transaction pipeline release notes

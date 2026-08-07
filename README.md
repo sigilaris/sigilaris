@@ -119,7 +119,7 @@ High-performance cryptographic primitives for blockchain applications.
 ## Documentation
 
 - **[API Documentation](https://javadoc.io/doc/org.sigilaris/sigilaris-core_3/latest/index.html)** — Comprehensive Scaladoc
-- **[v0.2.12 Release Notes](docs/dev/v0.2.12-release-notes.md)** — BigNat canonical-boundary fix and upgrade notes
+- **[v0.2.12 Release Notes](docs/releases/v0.2.12-release-notes.md)** — Published BigNat canonical-boundary fix, upgrade notes, and final verification
 - **[v0.2.10 Release Notes](docs/dev/v0.2.10-release-notes.md)** — Earlier published release notes; v0.2.11 shipped without a standalone release-note file
 - **[Latest Release](https://github.com/sigilaris/sigilaris/releases/latest)** — Release notes and artifacts
 - **[GitHub Repository](https://github.com/sigilaris/sigilaris)** — Source code and examples
