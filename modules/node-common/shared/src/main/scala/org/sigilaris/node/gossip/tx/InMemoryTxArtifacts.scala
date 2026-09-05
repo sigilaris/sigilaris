@@ -76,26 +76,30 @@ final class InMemoryTxArtifactSource[F[_]: Sync, A] private (
       ts: Instant,
   ): F[GossipEvent[A]] =
     clock.now.flatMap: availableAt =>
-      ref.modify: state =>
-        val chainEvents =
-          state.getOrElse(chainId, Vector.empty[AvailableGossipEvent[A]])
-        val nextSequence = chainEvents.size.toLong + 1L
-        val event = GossipEvent(
-          chainId = chainId,
-          topic = GossipTopic.tx,
-          id = txIdentity.stableIdOf(payload),
-          cursor = cursorFor(nextSequence),
-          ts = ts,
-          payload = payload,
+      ref
+        .modify: state =>
+          val chainEvents =
+            state.getOrElse(chainId, Vector.empty[AvailableGossipEvent[A]])
+          val nextSequence = chainEvents.size.toLong + 1L
+          val event        = GossipEvent(
+            chainId = chainId,
+            topic = GossipTopic.tx,
+            id = txIdentity.stableIdOf(payload),
+            cursor = cursorFor(nextSequence),
+            ts = ts,
+            payload = payload,
+          )
+          val available = AvailableGossipEvent(
+            event = event,
+            availableAt = availableAt,
+          )
+          state.updated(chainId, chainEvents :+ available) -> event
+        .flatTap(_ =>
+          notifier
+            .sourceAppended(ChainTopic(chainId, GossipTopic.tx))
+            .attempt
+            .void,
         )
-        val available = AvailableGossipEvent(
-          event = event,
-          availableAt = availableAt,
-        )
-        state.updated(chainId, chainEvents :+ available) -> event
-      .flatTap(_ =>
-        notifier.sourceAppended(ChainTopic(chainId, GossipTopic.tx)).attempt.void,
-      )
 
   /** Returns all stored events for the given chain.
     *
@@ -207,8 +211,8 @@ object InMemoryTxArtifactSource:
       .of[F, Map[ChainId, Vector[AvailableGossipEvent[A]]]](Map.empty)
       .map(new InMemoryTxArtifactSource[F, A](clock, notifier, _))
 
-/** In-memory implementation of `GossipArtifactSink` for transaction
-  * artifacts, primarily for testing.
+/** In-memory implementation of `GossipArtifactSink` for transaction artifacts,
+  * primarily for testing.
   *
   * @tparam F
   *   the effect type

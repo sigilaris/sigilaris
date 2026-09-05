@@ -91,7 +91,7 @@ private[tx] trait TxGossipRuntimePollingOps[F[_]: Sync, A]
     )
     val producerState  = sessionState.producerState
     val cursorOverride = producerState.pendingReplay.get(chainTopic)
-    val startCursor =
+    val startCursor    =
       cursorOverride.getOrElse(producerState.startCursorFor(chainTopic))
 
     for
@@ -128,7 +128,7 @@ private[tx] trait TxGossipRuntimePollingOps[F[_]: Sync, A]
             (sessionState.batchingConfig.maxBatchItems - explicitBatch.size)
               .max(0)
           val forceFlush = cursorOverride.nonEmpty
-          val liveBatch =
+          val liveBatch  =
             GossipProducerPolling.batchAvailableEvents(
               now = now,
               candidates = selectedLiveArtifacts,
@@ -136,8 +136,8 @@ private[tx] trait TxGossipRuntimePollingOps[F[_]: Sync, A]
               forceFlush = forceFlush,
               limit = remainingCapacity,
             )
-          val emitted           = explicitBatch ++ liveBatch
-          val servedExplicitIds = explicitBatch.map(_.id).toSet
+          val emitted              = explicitBatch ++ liveBatch
+          val servedExplicitIds    = explicitBatch.map(_.id).toSet
           val updatedProducerState =
             producerState
               .advanceStreamCursor(chainTopic, liveBatch)
@@ -151,7 +151,7 @@ private[tx] trait TxGossipRuntimePollingOps[F[_]: Sync, A]
                 else
                   sessionState.pendingRequestByIds
                     .updatedWith(chainTopic.chainId):
-                      case None => None
+                      case None           => None
                       case Some(existing) =>
                         val remaining =
                           existing.filterNot(servedExplicitIds.contains)
@@ -177,7 +177,7 @@ private[tx] trait TxGossipRuntimePollingOps[F[_]: Sync, A]
     val requestedIds   = requestedScopes.flatMap(_._2).distinct
     val producerState  = sessionState.producerState
     val cursorOverride = producerState.pendingReplay.get(chainTopic)
-    val startCursor =
+    val startCursor    =
       cursorOverride.getOrElse(producerState.startCursorFor(chainTopic))
     val qos = contract.producerQoS(sessionState.batchingConfig)
 
@@ -212,7 +212,7 @@ private[tx] trait TxGossipRuntimePollingOps[F[_]: Sync, A]
                   .pure[F]
               case Right(scopedExplicitArtifacts) =>
                 val requestedScopeSet = requestedScopes.map(_._1).toSet
-                val explicitMatched =
+                val explicitMatched   =
                   scopedExplicitArtifacts.collect:
                     case (Some(scope), available)
                         if requestedScopeSet.contains(scope) =>
@@ -263,7 +263,7 @@ private[tx] trait TxGossipRuntimePollingOps[F[_]: Sync, A]
                           ): (acc, entry) =>
                             val (scope, servedIds) = entry
                             acc.updatedWith(scope):
-                              case None => None
+                              case None           => None
                               case Some(existing) =>
                                 val remaining =
                                   existing.filterNot(servedIds.contains)
@@ -302,10 +302,10 @@ private[tx] trait TxGossipRuntimePollingOps[F[_]: Sync, A]
       forceFlush: Boolean,
   ): F[(TxProducerSessionState, Vector[GossipEvent[A]])] =
     if filteredLiveArtifacts.isEmpty then
-      val existingHold = sessionState.sidecarHolds.get(chainTopic)
+      val existingHold         = sessionState.sidecarHolds.get(chainTopic)
       val updatedProducerState =
-        existingHold.fold(sessionState.producerState.clearReplay(chainTopic)): _ =>
-          sessionState.producerState
+        existingHold.fold(sessionState.producerState.clearReplay(chainTopic)):
+          _ => sessionState.producerState
       val diagnostics =
         existingHold
           .fold(Vector.empty[GossipSidecarDiagnostic]): hold =>
@@ -397,7 +397,7 @@ private[tx] trait TxGossipRuntimePollingOps[F[_]: Sync, A]
     else
       val producerState  = sessionState.producerState
       val cursorOverride = producerState.pendingReplay.get(chainTopic)
-      val startCursor =
+      val startCursor    =
         cursorOverride.getOrElse(producerState.startCursorFor(chainTopic))
       source
         .readAfter(chainTopic.chainId, chainTopic.topic, startCursor)
@@ -442,13 +442,15 @@ private[tx] trait TxGossipRuntimePollingOps[F[_]: Sync, A]
     else
       val producerState  = sessionState.producerState
       val cursorOverride = producerState.pendingReplay.get(chainTopic)
-      val startCursor =
+      val startCursor    =
         cursorOverride.getOrElse(producerState.startCursorFor(chainTopic))
       val qos = contract.producerQoS(sessionState.batchingConfig)
       // The held proposal already consumed a flush attempt. Avoid a tight
       // immediate retry loop; source/control wakeups or the keepalive deadline
       // will re-drain and either find sidecars or surface fallback.
-      if sessionState.sidecarHolds.contains(chainTopic) && cursorOverride.isEmpty
+      if sessionState.sidecarHolds.contains(
+          chainTopic,
+        ) && cursorOverride.isEmpty
       then none[Instant].pure[F]
       else
         source
@@ -502,8 +504,8 @@ private[tx] trait TxGossipRuntimePollingOps[F[_]: Sync, A]
       right: Option[Instant],
   ): Option[Instant] =
     (left, right) match
-      case (None, None)             => None
-      case (Some(value), None)      => Some(value)
-      case (None, Some(value))      => Some(value)
+      case (None, None)              => None
+      case (Some(value), None)       => Some(value)
+      case (None, Some(value))       => Some(value)
       case (Some(first), Some(next)) =>
         if first.isAfter(next) then Some(next) else Some(first)

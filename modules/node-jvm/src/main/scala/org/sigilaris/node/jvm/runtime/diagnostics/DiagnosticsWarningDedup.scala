@@ -11,7 +11,7 @@ final case class DiagnosticsWarningDedupPolicy private (
 )
 
 object DiagnosticsWarningDedupPolicy:
-  val DefaultMaxKeys: Int = 1024
+  val DefaultMaxKeys: Int                     = 1024
   val DefaultOverflowInterval: FiniteDuration = 1.minute
 
   val default: DiagnosticsWarningDedupPolicy =
@@ -95,7 +95,7 @@ final class DiagnosticsWarningDedup[F[_], W, K] private (
       now: FiniteDuration,
   )(current: State[K]): (State[K], Vector[W]) =
     val (timedCurrent, observedAt) = advanceObservedAt(current, now)
-    val key = keyOf(warning)
+    val key                        = keyOf(warning)
     if timedCurrent.keySet.contains(key) then
       refreshKey(timedCurrent, key) -> Vector.empty[W]
     else if timedCurrent.recency.sizeIs < policy.maxKeys then
@@ -107,7 +107,7 @@ final class DiagnosticsWarningDedup[F[_], W, K] private (
             keySet = timedCurrent.keySet - evictedKey,
             recency = timedCurrent.recency.drop(1),
           )
-          val added = addKey(evicted, key)
+          val added               = addKey(evicted, key)
           val (updated, overflow) =
             maybeOverflow(added, evictedKey, key, observedAt)
 
@@ -165,7 +165,7 @@ final class DiagnosticsWarningDedup[F[_], W, K] private (
 
   private def overflowReady(current: State[K], now: FiniteDuration): Boolean =
     current.lastOverflowAt match
-      case None => true
+      case None                 => true
       case Some(lastOverflowAt) =>
         now - lastOverflowAt >= policy.overflowInterval
 
@@ -180,12 +180,14 @@ object DiagnosticsWarningDedup:
   ): F[DiagnosticsWarningDedup[F, W, K]] =
     Ref
       .of[F, State[K]](State.empty)
-      .map(new DiagnosticsWarningDedup[F, W, K](
-        policy,
-        keyOf,
-        overflowWarning,
-        _,
-      ))
+      .map(
+        new DiagnosticsWarningDedup[F, W, K](
+          policy,
+          keyOf,
+          overflowWarning,
+          _,
+        ),
+      )
 
   private final case class State[K](
       keySet: Set[K],

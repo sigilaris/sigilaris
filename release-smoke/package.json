@@ -1,0 +1,9 @@
+{
+  "name": "sigilaris-release-smoke",
+  "private": true,
+  "version": "0.0.0",
+  "dependencies": {
+    "elliptic": "6.5.4",
+    "js-sha3": "0.8.0"
+  }
+}

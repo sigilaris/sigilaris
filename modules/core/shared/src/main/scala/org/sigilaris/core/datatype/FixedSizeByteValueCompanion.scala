@@ -36,8 +36,7 @@ trait FixedSizeByteValueCompanion[A]:
       case Right(value) => value
       case Left(err)    => throw new IllegalArgumentException(err)
 
-  extension (value: A)
-    def bytes: ByteVector = unwrap(value)
+  extension (value: A) def bytes: ByteVector = unwrap(value)
 
   given fixedSizeByteValueEq: Eq[A] = Eq.fromUniversalEquals
 
@@ -47,7 +46,9 @@ trait FixedSizeByteValueCompanion[A]:
   given fixedSizeByteValueDecoder: ByteDecoder[A] = bytes =>
     if bytes.size >= size.toLong then
       val (front, remainder) = bytes.splitAt(size.toLong)
-      Right[DecodeFailure, DecodeResult[A]](DecodeResult(wrap(front), remainder))
+      Right[DecodeFailure, DecodeResult[A]](
+        DecodeResult(wrap(front), remainder),
+      )
     else
       Left[DecodeFailure, DecodeResult[A]](
         DecodeFailure(

@@ -12,6 +12,7 @@ import org.sigilaris.node.jvm.runtime.block.BlockHeader
 enum VoteRecordOutcome:
   /** The vote was successfully recorded. */
   case Applied
+
   /** The vote was already present. */
   case Duplicate
 
@@ -19,6 +20,7 @@ enum VoteRecordOutcome:
 enum TimeoutVoteRecordOutcome:
   /** The timeout vote was successfully recorded. */
   case Applied
+
   /** The timeout vote was already present. */
   case Duplicate
 
@@ -87,10 +89,9 @@ final case class VoteAccumulator(
       retainedVotesById.keySet
     copy(
       votesById = retainedVotesById,
-      votesByEquivocationKey =
-        votesByEquivocationKey.filter { case (_, vote) =>
-          retainedVoteIds.contains(vote.voteId)
-        },
+      votesByEquivocationKey = votesByEquivocationKey.filter { case (_, vote) =>
+        retainedVoteIds.contains(vote.voteId)
+      },
     )
 
   /** Prunes retained votes to the supplied vote-id set. */
@@ -169,10 +170,9 @@ final case class TimeoutVoteAccumulator(
       retainedVotesById.keySet
     copy(
       votesById = retainedVotesById,
-      votesByEquivocationKey =
-        votesByEquivocationKey.filter { case (_, vote) =>
-          retainedVoteIds.contains(vote.timeoutVoteId)
-        },
+      votesByEquivocationKey = votesByEquivocationKey.filter { case (_, vote) =>
+        retainedVoteIds.contains(vote.timeoutVoteId)
+      },
     )
 
   /** Prunes retained timeout votes to the supplied timeout-vote-id set. */
@@ -190,9 +190,13 @@ object TimeoutVoteAccumulator:
       votesByEquivocationKey = Map.empty[EquivocationKey, TimeoutVote],
     )
 
-/** Assembles a quorum certificate from collected votes, verifying signatures and quorum threshold. */
+/** Assembles a quorum certificate from collected votes, verifying signatures
+  * and quorum threshold.
+  */
 object QuorumCertificateAssembler:
-  /** Assembles a QC from votes for the given subject, verifying each vote and checking the quorum. */
+  /** Assembles a QC from votes for the given subject, verifying each vote and
+    * checking the quorum.
+    */
   def assemble(
       subject: QuorumCertificateSubject,
       votes: Vector[Vote],
@@ -242,9 +246,13 @@ object QuorumCertificateAssembler:
       votes = byValidator.values.toVector.sortBy(_.voter.value),
     )
 
-/** Assembles a timeout certificate from collected timeout votes, verifying signatures and quorum. */
+/** Assembles a timeout certificate from collected timeout votes, verifying
+  * signatures and quorum.
+  */
 object TimeoutCertificateAssembler:
-  /** Assembles a TC from timeout votes for the given subject, verifying each vote and checking the quorum. */
+  /** Assembles a TC from timeout votes for the given subject, verifying each
+    * vote and checking the quorum.
+    */
   def assemble(
       subject: TimeoutVoteSubject,
       votes: Vector[TimeoutVote],
@@ -304,10 +312,14 @@ object TimeoutCertificateAssembler:
       ),
     )
 
-/** Validates HotStuff consensus artifacts: proposals, votes, QCs, timeout votes, TCs, and new views. */
+/** Validates HotStuff consensus artifacts: proposals, votes, QCs, timeout
+  * votes, TCs, and new views.
+  */
 @SuppressWarnings(Array("org.wartremover.warts.DefaultArguments"))
 object HotStuffValidator:
-  /** Validates a proposal's structure, signature, and justify chain against the validator set. */
+  /** Validates a proposal's structure, signature, and justify chain against the
+    * validator set.
+    */
   def validateProposal(
       proposal: Proposal,
       validatorSet: ValidatorSet,
@@ -397,7 +409,9 @@ object HotStuffValidator:
       )
     yield ()
 
-  /** Validates a vote's structure, signature, and membership in the validator set. */
+  /** Validates a vote's structure, signature, and membership in the validator
+    * set.
+    */
   def validateVote(
       vote: Vote,
       validatorSet: ValidatorSet,
@@ -448,7 +462,9 @@ object HotStuffValidator:
       )
     yield ()
 
-  /** Validates a quorum certificate by re-assembling it from the contained votes. */
+  /** Validates a quorum certificate by re-assembling it from the contained
+    * votes.
+    */
   def validateQuorumCertificate(
       qc: QuorumCertificate,
       validatorSet: ValidatorSet,
@@ -503,7 +519,9 @@ object HotStuffValidator:
       )
     yield ()
 
-  /** Validates a timeout certificate by re-assembling it from the contained votes. */
+  /** Validates a timeout certificate by re-assembling it from the contained
+    * votes.
+    */
   def validateTimeoutCertificate(
       timeoutCertificate: TimeoutCertificate,
       validatorSet: ValidatorSet,
@@ -519,7 +537,9 @@ object HotStuffValidator:
         .void
     yield ()
 
-  /** Validates a new-view message's structure, signature, QC, TC, and window consistency. */
+  /** Validates a new-view message's structure, signature, QC, TC, and window
+    * consistency.
+    */
   def validateNewView(
       newView: NewView,
       validatorSet: ValidatorSet,

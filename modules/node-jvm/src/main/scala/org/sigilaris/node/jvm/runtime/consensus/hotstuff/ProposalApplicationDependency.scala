@@ -73,8 +73,7 @@ object HotStuffProposalApplicationDependency:
       dependency.recoveryMode match
         case HotStuffProposalDependencyRecoveryMode.RequestByIdBackfillable =>
           acc.copy(
-            requestByIdBackfillable =
-              acc.requestByIdBackfillable :+ dependency,
+            requestByIdBackfillable = acc.requestByIdBackfillable :+ dependency,
           )
         case HotStuffProposalDependencyRecoveryMode.ProactiveFanoutOnly =>
           val required = dependency.criticality match
@@ -103,7 +102,8 @@ trait HotStuffProposalApplicationDependencyResolver[F[_]]:
 object HotStuffProposalApplicationDependencyResolver:
   def empty[F[_]: Sync]: HotStuffProposalApplicationDependencyResolver[F] =
     _ =>
-      Vector.empty[HotStuffProposalApplicationDependency]
+      Vector
+        .empty[HotStuffProposalApplicationDependency]
         .asRight[CanonicalRejection.ArtifactContractRejected]
         .pure[F]
 

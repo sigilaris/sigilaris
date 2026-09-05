@@ -120,9 +120,16 @@ object BlueprintDsl:
     * @return
     *   a mounted StateModule with StateReducer
     */
-  def mountAtPath[F[
-      _,
-  ], Path <: Tuple, MName <: String, Owns <: Tuple, Needs <: Tuple, Txs <: Tuple](
+  def mountAtPath[
+      F[
+          _,
+      ],
+      Path <: Tuple,
+      MName <: String,
+      Owns <: Tuple,
+      Needs <: Tuple,
+      Txs <: Tuple,
+  ](
       binding: (Path, ModuleBlueprint[F, MName, Owns, Needs, Txs]),
   )(using
       ModuleId.StringTuple[Path],
@@ -192,9 +199,16 @@ object BlueprintDsl:
     * @return
     *   a mounted StateModule with RoutedStateReducer
     */
-  def mountComposedAtPath[F[
-      _,
-  ], Path <: Tuple, MName <: String, Owns <: Tuple, Needs <: Tuple, Txs <: Tuple](
+  def mountComposedAtPath[
+      F[
+          _,
+      ],
+      Path <: Tuple,
+      MName <: String,
+      Owns <: Tuple,
+      Needs <: Tuple,
+      Txs <: Tuple,
+  ](
       binding: (Path, ComposedBlueprint[F, MName, Owns, Needs, Txs]),
   )(using
       ModuleId.StringTuple[Path],

@@ -50,8 +50,8 @@ enum HotStuffPeerArtifact[+A]:
 
 /** Composite artifact helpers for HotStuff peer gossip. */
 object HotStuffPeerArtifact:
-  private val ConsensusNamespace: Byte   = 0x01.toByte
-  private val ApplicationNamespace: Byte = 0x02.toByte
+  private val ConsensusNamespace: Byte             = 0x01.toByte
+  private val ApplicationNamespace: Byte           = 0x02.toByte
   private val ConsensusTopics: Vector[GossipTopic] =
     Vector(
       GossipTopic.consensusProposal,
@@ -149,10 +149,11 @@ object HotStuffPeerArtifact:
   /** Builds the default HotStuff consensus-topic subscription for one chain. */
   def consensusSubscription(chainId: ChainId): SessionSubscription =
     SessionSubscription.unsafe(
-      ConsensusTopics.map(topic => ChainTopic(chainId, topic))*
+      ConsensusTopics.map(topic => ChainTopic(chainId, topic))*,
     )
 
-  /** Builds a HotStuff consensus-plus-application subscription for one chain. */
+  /** Builds a HotStuff consensus-plus-application subscription for one chain.
+    */
   def subscription(
       chainId: ChainId,
       applicationTopics: Vector[ApplicationGossipTopic[?, ?]],
@@ -236,7 +237,8 @@ object HotStuffPeerArtifact:
                 .readByIds(chainId, topic, ids)
                 .map(_.map(wrapApplicationEventWithSize))
             case None =>
-              Vector.empty[AvailableGossipEvent[HotStuffPeerArtifact[A]]]
+              Vector
+                .empty[AvailableGossipEvent[HotStuffPeerArtifact[A]]]
                 .pure[F]
 
     private def wrapConsensusEventWithoutSize(
@@ -354,7 +356,7 @@ object HotStuffPeerArtifact:
         contract: GossipTopicContract[HotStuffGossipArtifact],
     ): GossipTopicContract[HotStuffPeerArtifact[A]] =
       new GossipTopicContract[HotStuffPeerArtifact[A]]:
-        override val topic: GossipTopic = contract.topic
+        override val topic: GossipTopic              = contract.topic
         override val exactKnownSetLimit: Option[Int] =
           contract.exactKnownSetLimit
         override val requestByIdLimit: Option[Int] =
@@ -391,7 +393,7 @@ object HotStuffPeerArtifact:
         contract: GossipTopicContract[A],
     ): GossipTopicContract[HotStuffPeerArtifact[A]] =
       new GossipTopicContract[HotStuffPeerArtifact[A]]:
-        override val topic: GossipTopic = contract.topic
+        override val topic: GossipTopic              = contract.topic
         override val exactKnownSetLimit: Option[Int] =
           contract.exactKnownSetLimit
         override val requestByIdLimit: Option[Int] =

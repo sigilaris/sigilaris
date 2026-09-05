@@ -27,13 +27,16 @@ import org.sigilaris.core.crypto.{CryptoOps, PublicKey}
 enum Account:
   /** A named account identified by a UTF-8 string, supporting key recovery.
     *
-    * @param name the account name
+    * @param name
+    *   the account name
     */
   case Named(name: Utf8)
 
-  /** An unnamed account identified only by a KeyId20, with no recovery mechanism.
+  /** An unnamed account identified only by a KeyId20, with no recovery
+    * mechanism.
     *
-    * @param keyId the 20-byte key identifier
+    * @param keyId
+    *   the 20-byte key identifier
     */
   case Unnamed(keyId: KeyId20)
 
@@ -76,9 +79,11 @@ object Account:
   */
 opaque type KeyId20 = ByteVector
 
-/** Companion for [[KeyId20]], providing construction, codec instances, and equality. */
+/** Companion for [[KeyId20]], providing construction, codec instances, and
+  * equality.
+  */
 object KeyId20 extends FixedSizeByteValueCompanion[KeyId20]:
-  override protected val size: Int    = 20
+  override protected val size: Int     = 20
   override protected val label: String = "KeyId20"
 
   override protected def wrap(bytes: ByteVector): KeyId20 = bytes
@@ -88,11 +93,14 @@ object KeyId20 extends FixedSizeByteValueCompanion[KeyId20]:
   /** Deterministically derives the key identifier for a public key. */
   def fromPublicKey(publicKey: PublicKey): KeyId20 =
     unsafe:
-      ByteVector.view(
-        CryptoOps.keccak256(publicKey.toBytes.toArray),
-      ).takeRight(20)
+      ByteVector
+        .view(
+          CryptoOps.keccak256(publicKey.toBytes.toArray),
+        )
+        .takeRight(20)
 
-  /** Unsafe version that assumes bytes is exactly 20 bytes (for internal use). */
+  /** Unsafe version that assumes bytes is exactly 20 bytes (for internal use).
+    */
   def unsafeApply(bytes: ByteVector): KeyId20 = unsafe(bytes)
 
 /** Account nonce stored on-chain and used for replay protection. */
@@ -183,8 +191,7 @@ object NonEmptyKeyIds
   ): Either[DecodeFailure, NonEmptyKeyIds] =
     Right[DecodeFailure, NonEmptyKeyIds](wrap(repr))
 
-  extension (entries: NonEmptyKeyIds)
-    inline def toSet: Set[KeyId20] = entries
+  extension (entries: NonEmptyKeyIds) inline def toSet: Set[KeyId20] = entries
 
 /** Account information stored on-chain.
   *

@@ -2,15 +2,23 @@ package org.sigilaris.node.jvm.storage.swaydb
 
 import java.nio.file.{Path, Paths}
 
-/** Defines the filesystem directory layout for all SwayDB-backed persistent stores.
+/** Defines the filesystem directory layout for all SwayDB-backed persistent
+  * stores.
   *
-  * @param root        the root directory for all storage
-  * @param block       paths for block-related stores
-  * @param transaction paths for transaction-related stores
-  * @param batch       paths for batch-related stores
-  * @param state       paths for consensus state stores
-  * @param event       paths for event-related stores
-  * @param pipeline    paths for transaction pipeline metadata stores
+  * @param root
+  *   the root directory for all storage
+  * @param block
+  *   paths for block-related stores
+  * @param transaction
+  *   paths for transaction-related stores
+  * @param batch
+  *   paths for batch-related stores
+  * @param state
+  *   paths for consensus state stores
+  * @param event
+  *   paths for event-related stores
+  * @param pipeline
+  *   paths for transaction pipeline metadata stores
   */
 final case class StorageLayout(
     root: Path,
@@ -20,66 +28,107 @@ final case class StorageLayout(
     state: StorageLayout.State,
     event: StorageLayout.Event,
     pipeline: StorageLayout.Pipeline,
+    application: StorageLayout.Application,
 )
 
-/** Companion providing nested path group types and factory methods for `StorageLayout`. */
+/** Companion providing nested path group types and factory methods for
+  * `StorageLayout`.
+  */
 object StorageLayout:
 
   /** Directory paths for block storage.
     *
-    * @param bestHeader path to the best block header store
-    * @param bodies     path to the block bodies store
+    * @param bestHeader
+    *   path to the best block header store
+    * @param bodies
+    *   path to the block bodies store
     */
   final case class Block(bestHeader: Path, bodies: Path)
 
   /** Directory paths for transaction storage.
     *
-    * @param immutable path to the immutable (finalized) transaction store
-    * @param meta      path to the transaction metadata store
+    * @param immutable
+    *   path to the immutable (finalized) transaction store
+    * @param meta
+    *   path to the transaction metadata store
     */
   final case class Transaction(immutable: Path, meta: Path)
 
   /** Directory paths for batch storage.
     *
-    * @param immutable path to the immutable batch store
-    * @param pending   path to the pending batch store
-    * @param committed path to the committed batch store
+    * @param immutable
+    *   path to the immutable batch store
+    * @param pending
+    *   path to the pending batch store
+    * @param committed
+    *   path to the committed batch store
     */
   final case class Batch(immutable: Path, pending: Path, committed: Path)
 
   /** Directory paths for consensus state storage.
     *
-    * @param snapshot          path to the snapshot metadata store
-    * @param nodes             path to the Merkle trie node store
-    * @param historicalArchive path to the historical archive store
+    * @param snapshot
+    *   path to the snapshot metadata store
+    * @param nodes
+    *   path to the Merkle trie node store
+    * @param historicalArchive
+    *   path to the historical archive store
     */
   final case class State(snapshot: Path, nodes: Path, historicalArchive: Path)
 
   /** Directory paths for event storage.
     *
-    * @param index path to the event index store
+    * @param index
+    *   path to the event index store
     */
   final case class Event(index: Path)
 
   /** Directory paths for transaction pipeline metadata storage.
     *
-    * @param metadata    path to the pipeline metadata store
-    * @param idempotency path to the idempotency-key index store
+    * @param metadata
+    *   path to the pipeline metadata store
+    * @param idempotency
+    *   path to the idempotency-key index store
+    * @param exactMetadata
+    *   path to exact-v2 verified descriptor records
+    * @param exactIdempotency
+    *   path to the exact-v2 idempotency-key index
     */
-  final case class Pipeline(metadata: Path, idempotency: Path)
+  final case class Pipeline(
+      metadata: Path,
+      idempotency: Path,
+      exactMetadata: Path,
+      exactIdempotency: Path,
+  )
 
-  /** Constructs a `StorageLayout` by resolving conventional subdirectory names under the given root.
+  /** Directory paths for height-bounded application safety state. */
+  final case class Application(
+      database: Path,
+      locks: Path,
+      reservations: Path,
+      applied: Path,
+      terminal: Path,
+      exactPipelines: Path,
+      journal: Path,
+      control: Path,
+  )
+
+  /** Constructs a `StorageLayout` by resolving conventional subdirectory names
+    * under the given root.
     *
-    * @param root the root directory
-    * @return a fully populated storage layout
+    * @param root
+    *   the root directory
+    * @return
+    *   a fully populated storage layout
     */
   def fromRoot(root: Path): StorageLayout =
-    val blockRoot = root.resolve("block")
-    val txRoot    = root.resolve("transaction")
-    val batchRoot = root.resolve("batch")
-    val stateRoot = root.resolve("state")
-    val eventRoot = root.resolve("event")
-    val pipelineRoot = root.resolve("tx-pipeline")
+    val blockRoot       = root.resolve("block")
+    val txRoot          = root.resolve("transaction")
+    val batchRoot       = root.resolve("batch")
+    val stateRoot       = root.resolve("state")
+    val eventRoot       = root.resolve("event")
+    val pipelineRoot    = root.resolve("tx-pipeline")
+    val applicationRoot = root.resolve("application")
 
     StorageLayout(
       root = root,
@@ -100,6 +149,18 @@ object StorageLayout:
       pipeline = Pipeline(
         pipelineRoot.resolve("metadata"),
         pipelineRoot.resolve("idempotency"),
+        pipelineRoot.resolve("exact-metadata"),
+        pipelineRoot.resolve("exact-idempotency"),
+      ),
+      application = Application(
+        applicationRoot.resolve("safety"),
+        applicationRoot.resolve("locks"),
+        applicationRoot.resolve("reservations"),
+        applicationRoot.resolve("applied"),
+        applicationRoot.resolve("terminal"),
+        applicationRoot.resolve("exact-pipelines"),
+        applicationRoot.resolve("journal"),
+        applicationRoot.resolve("control"),
       ),
     )
 

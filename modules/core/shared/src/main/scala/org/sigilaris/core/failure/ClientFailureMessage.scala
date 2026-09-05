@@ -6,8 +6,8 @@ import scala.util.matching.Regex
 /** Factory for structured client-facing failure messages.
   *
   * Encodes failure information into a standardized string format using
-  * [[FailureMessageFormat]], categorized by client failure kind
-  * (invalid request, forbidden, not found).
+  * [[FailureMessageFormat]], categorized by client failure kind (invalid
+  * request, forbidden, not found).
   */
 object ClientFailureMessage:
   /** Classification of client failure kinds. */

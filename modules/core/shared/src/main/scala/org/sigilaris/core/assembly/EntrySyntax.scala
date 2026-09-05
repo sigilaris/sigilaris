@@ -26,14 +26,16 @@ import org.sigilaris.core.application.state.Entry
   */
 object EntrySyntax:
 
-  /** Builder that captures a compile-time table name and creates an `Entry` when key and value types are supplied.
+  /** Builder that captures a compile-time table name and creates an `Entry`
+    * when key and value types are supplied.
     *
     * @tparam Name
     *   the singleton string literal representing the table name
     */
   final class EntryBuilder[Name <: String]:
 
-    /** Create an `Entry` with the captured table name and the given key/value codecs.
+    /** Create an `Entry` with the captured table name and the given key/value
+      * codecs.
       *
       * @tparam K
       *   the key type (must have a `ByteCodec` instance)
@@ -50,10 +52,12 @@ object EntrySyntax:
 
   extension (inline sc: StringContext)
 
-    /** String interpolator that creates an [[EntryBuilder]] from a literal table name.
+    /** String interpolator that creates an [[EntryBuilder]] from a literal
+      * table name.
       *
       * Usage: `entry"tableName"[K, V]` produces an `Entry["tableName", K, V]`.
-      * Only literal strings are accepted; spliced expressions cause a compile-time error.
+      * Only literal strings are accepted; spliced expressions cause a
+      * compile-time error.
       *
       * @param args
       *   interpolation arguments (must be empty; expressions are not supported)
@@ -88,7 +92,7 @@ object EntrySyntax:
 
     @tailrec
     def fromArg(term: Term): Option[String] = term match
-      case Typed(t, _) => fromArg(t)
+      case Typed(t, _)     => fromArg(t)
       case Repeated(ts, _) =>
         ts.collectFirst { case Literal(StringConstant(lit)) => lit }
       case Literal(StringConstant(lit)) => Some(lit)

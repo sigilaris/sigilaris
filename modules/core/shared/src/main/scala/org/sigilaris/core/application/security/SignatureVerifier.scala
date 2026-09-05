@@ -100,7 +100,7 @@ object SignatureVerifier:
   )(using Hash[T], Recover[T]): StoreF[F][KeyId20] =
     for
       recoveredKeyId <- recoverKeyId[F, T](signedTx, context)
-      _ <- verifyKeyOwnership[F](
+      _              <- verifyKeyOwnership[F](
         signedTx.sig,
         recoveredKeyId,
         envelopeTimestamp,

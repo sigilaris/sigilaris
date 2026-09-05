@@ -5,8 +5,8 @@ import scala.util.matching.Regex
 
 /** Factory for structured conflict failure messages.
   *
-  * Encodes conflict information (e.g., optimistic concurrency violations)
-  * into a standardized string format using [[FailureMessageFormat]].
+  * Encodes conflict information (e.g., optimistic concurrency violations) into
+  * a standardized string format using [[FailureMessageFormat]].
   */
 object ConflictMessage:
   /** Prefix prepended to all conflict error keys. */

@@ -208,7 +208,8 @@ final case class TxProducerSessionState(
   ): TxProducerSessionState =
     copy(sidecarHolds = sidecarHolds - chainTopic)
 
-  /** Appends planner diagnostics while retaining only the recent bounded tail. */
+  /** Appends planner diagnostics while retaining only the recent bounded tail.
+    */
   def appendSidecarDiagnostics(
       diagnostics: Vector[GossipSidecarDiagnostic],
   ): TxProducerSessionState =

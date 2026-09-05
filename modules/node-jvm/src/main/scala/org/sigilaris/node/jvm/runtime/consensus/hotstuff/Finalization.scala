@@ -173,7 +173,7 @@ final case class HotStuffDescendantFinalityTimingBreakdown(
       )
       val voteOrQc     = childProposalToChildCertified
       val finalization = grandchildProposalToFinalized
-      val maxObserved =
+      val maxObserved  =
         maxDuration(maxDuration(proposalIdle, voteOrQc), finalization)
       // Ties use a deterministic proposal-idle, vote/QC, finalization order.
       // Consumers that need strict source ordering should check
@@ -346,7 +346,7 @@ object HotStuffFinalizationTracker:
               else None
             .toVector
             .sortBy(fault => (fault.height, fault.chainId.value))
-        val faultHeights = safetyFaults.iterator.map(_.height).toSet
+        val faultHeights  = safetyFaults.iterator.map(_.height).toSet
         val bestFinalized =
           canonicalCandidates
             .filterNot(candidate =>
@@ -401,74 +401,76 @@ object HotStuffFinalizedAnchorVerifier:
         child.justify.subject.window
       grandchildQcSetEither <- validatorSetLookup.validatorSetFor:
         grandchild.justify.subject.window
-    yield for
-      anchorProposalSet <- anchorProposalSetEither.leftMap(
-        FinalizedAnchorVerificationFailure.fromValidation,
-      )
-      childProposalSet <- childProposalSetEither.leftMap(
-        FinalizedAnchorVerificationFailure.fromValidation,
-      )
-      grandchildProposalSet <- grandchildProposalSetEither.leftMap(
-        FinalizedAnchorVerificationFailure.fromValidation,
-      )
-      anchorQcSet <- anchorQcSetEither.leftMap(
-        FinalizedAnchorVerificationFailure.fromValidation,
-      )
-      childQcSet <- childQcSetEither.leftMap(
-        FinalizedAnchorVerificationFailure.fromValidation,
-      )
-      grandchildQcSet <- grandchildQcSetEither.leftMap(
-        FinalizedAnchorVerificationFailure.fromValidation,
-      )
-      _ <- HotStuffValidator
-        .validateQuorumCertificate(anchor.justify, anchorQcSet)
-        .leftMap(FinalizedAnchorVerificationFailure.fromValidation)
-      _ <- HotStuffValidator
-        .validateQuorumCertificate(child.justify, childQcSet)
-        .leftMap(FinalizedAnchorVerificationFailure.fromValidation)
-      _ <- HotStuffValidator
-        .validateQuorumCertificate(grandchild.justify, grandchildQcSet)
-        .leftMap(FinalizedAnchorVerificationFailure.fromValidation)
-      _ <- HotStuffValidator
-        .validateProposal(
-          anchor,
-          anchorProposalSet,
-          justifyValidatorSet = Some(anchorQcSet),
+    yield
+      for
+        anchorProposalSet <- anchorProposalSetEither.leftMap(
+          FinalizedAnchorVerificationFailure.fromValidation,
         )
-        .leftMap(FinalizedAnchorVerificationFailure.fromValidation)
-      _ <- HotStuffValidator
-        .validateProposal(
-          child,
-          childProposalSet,
-          justifyValidatorSet = Some(childQcSet),
+        childProposalSet <- childProposalSetEither.leftMap(
+          FinalizedAnchorVerificationFailure.fromValidation,
         )
-        .leftMap(FinalizedAnchorVerificationFailure.fromValidation)
-      _ <- HotStuffValidator
-        .validateProposal(
-          grandchild,
-          grandchildProposalSet,
-          justifyValidatorSet = Some(grandchildQcSet),
+        grandchildProposalSet <- grandchildProposalSetEither.leftMap(
+          FinalizedAnchorVerificationFailure.fromValidation,
         )
-        .leftMap(FinalizedAnchorVerificationFailure.fromValidation)
-      _ <- ensure(
-        proposalMatchesSubject(child.justify.subject, anchor),
-        "finalizedProofChildMismatch",
-        Some(anchor.proposalId.toHexLower),
-      )
-      _ <- ensure(
-        proposalMatchesSubject(grandchild.justify.subject, child),
-        "finalizedProofGrandchildMismatch",
-        Some(child.proposalId.toHexLower),
-      )
-      _ <- ensure(
-        Ordering[BlockHeight].lt(anchor.block.height, child.block.height) &&
-          Ordering[BlockHeight].lt(child.block.height, grandchild.block.height),
-        "finalizedProofHeightOrderMismatch",
-        Some(
-          ss"${anchor.block.height.render}:${child.block.height.render}:${grandchild.block.height.render}",
-        ),
-      )
-    yield suggestion
+        anchorQcSet <- anchorQcSetEither.leftMap(
+          FinalizedAnchorVerificationFailure.fromValidation,
+        )
+        childQcSet <- childQcSetEither.leftMap(
+          FinalizedAnchorVerificationFailure.fromValidation,
+        )
+        grandchildQcSet <- grandchildQcSetEither.leftMap(
+          FinalizedAnchorVerificationFailure.fromValidation,
+        )
+        _ <- HotStuffValidator
+          .validateQuorumCertificate(anchor.justify, anchorQcSet)
+          .leftMap(FinalizedAnchorVerificationFailure.fromValidation)
+        _ <- HotStuffValidator
+          .validateQuorumCertificate(child.justify, childQcSet)
+          .leftMap(FinalizedAnchorVerificationFailure.fromValidation)
+        _ <- HotStuffValidator
+          .validateQuorumCertificate(grandchild.justify, grandchildQcSet)
+          .leftMap(FinalizedAnchorVerificationFailure.fromValidation)
+        _ <- HotStuffValidator
+          .validateProposal(
+            anchor,
+            anchorProposalSet,
+            justifyValidatorSet = Some(anchorQcSet),
+          )
+          .leftMap(FinalizedAnchorVerificationFailure.fromValidation)
+        _ <- HotStuffValidator
+          .validateProposal(
+            child,
+            childProposalSet,
+            justifyValidatorSet = Some(childQcSet),
+          )
+          .leftMap(FinalizedAnchorVerificationFailure.fromValidation)
+        _ <- HotStuffValidator
+          .validateProposal(
+            grandchild,
+            grandchildProposalSet,
+            justifyValidatorSet = Some(grandchildQcSet),
+          )
+          .leftMap(FinalizedAnchorVerificationFailure.fromValidation)
+        _ <- ensure(
+          proposalMatchesSubject(child.justify.subject, anchor),
+          "finalizedProofChildMismatch",
+          Some(anchor.proposalId.toHexLower),
+        )
+        _ <- ensure(
+          proposalMatchesSubject(grandchild.justify.subject, child),
+          "finalizedProofGrandchildMismatch",
+          Some(child.proposalId.toHexLower),
+        )
+        _ <- ensure(
+          Ordering[BlockHeight].lt(anchor.block.height, child.block.height) &&
+            Ordering[BlockHeight]
+              .lt(child.block.height, grandchild.block.height),
+          "finalizedProofHeightOrderMismatch",
+          Some(
+            ss"${anchor.block.height.render}:${child.block.height.render}:${grandchild.block.height.render}",
+          ),
+        )
+      yield suggestion
 
   /** Selects the highest verified finalized anchor from multiple suggestions,
     * detecting safety faults.

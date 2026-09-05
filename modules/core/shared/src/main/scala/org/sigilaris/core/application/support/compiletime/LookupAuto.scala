@@ -9,27 +9,38 @@ import scala.quoted.*
   * descriptive compile-time error when the evidence cannot be derived.
   */
 object LookupAuto:
-  /** Derives a Lookup instance, reporting a descriptive compile-time error on failure.
+  /** Derives a Lookup instance, reporting a descriptive compile-time error on
+    * failure.
     *
-    * @tparam Schema the schema tuple
-    * @tparam Name the table name to look up
-    * @tparam K the expected key type
-    * @tparam V the expected value type
-    * @return a Lookup instance
+    * @tparam Schema
+    *   the schema tuple
+    * @tparam Name
+    *   the table name to look up
+    * @tparam K
+    *   the expected key type
+    * @tparam V
+    *   the expected value type
+    * @return
+    *   a Lookup instance
     */
   @SuppressWarnings(Array("org.wartremover.warts.Any"))
   transparent inline def derive[Schema <: Tuple, Name <: String, K, V]
       : Lookup[Schema, Name, K, V] =
     summonFrom {
       case lookup: Lookup[Schema, Name, K, V] => lookup
-      case _ =>
+      case _                                  =>
         fail[Schema, Name, K, V]
     }
 
   private inline def fail[Schema <: Tuple, Name <: String, K, V]: Nothing =
     ${ failImpl[Schema, Name, K, V] }
 
-  @SuppressWarnings(Array("org.wartremover.warts.Any", "org.wartremover.warts.ImplicitParameter"))
+  @SuppressWarnings(
+    Array(
+      "org.wartremover.warts.Any",
+      "org.wartremover.warts.ImplicitParameter",
+    ),
+  )
   private def failImpl[Schema <: Tuple, Name <: String, K, V](using
       Quotes,
       Type[Schema],

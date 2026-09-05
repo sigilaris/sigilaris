@@ -25,10 +25,14 @@ import scodec.bits.ByteVector
 )
 object PrefixFreeValidator:
 
-  /** Result of prefix-free validation, indicating whether a set of prefixes satisfies the prefix-free property. */
+  /** Result of prefix-free validation, indicating whether a set of prefixes
+    * satisfies the prefix-free property.
+    */
   sealed trait ValidationResult
 
-  /** Indicates all prefixes are distinct and no prefix is a strict prefix of another. */
+  /** Indicates all prefixes are distinct and no prefix is a strict prefix of
+    * another.
+    */
   case object Valid extends ValidationResult
 
   /** Indicates one encoded prefix is a strict prefix of another.
@@ -51,7 +55,8 @@ object PrefixFreeValidator:
   final case class IdenticalPrefixes(prefix: ByteVector, count: Int)
       extends ValidationResult
 
-  /** Checks whether byte vector `a` is a strict prefix of `b` (i.e. `a` is shorter and `b` starts with `a`).
+  /** Checks whether byte vector `a` is a strict prefix of `b` (i.e. `a` is
+    * shorter and `b` starts with `a`).
     *
     * @param a
     *   the candidate prefix
@@ -69,8 +74,8 @@ object PrefixFreeValidator:
     *   the list of encoded table prefixes to validate
     * @return
     *   [[Valid]] if all prefixes are distinct and prefix-free,
-    *   [[PrefixCollision]] if one prefix is a strict prefix of another,
-    *   or [[IdenticalPrefixes]] if duplicates exist
+    *   [[PrefixCollision]] if one prefix is a strict prefix of another, or
+    *   [[IdenticalPrefixes]] if duplicates exist
     */
   def validate(prefixes: List[ByteVector]): ValidationResult =
     // Check for identical prefixes
@@ -96,7 +101,8 @@ object PrefixFreeValidator:
   /** Validates prefixes with human-readable names for better error reporting.
     *
     * @param prefixes
-    *   list of (name, encoded prefix) pairs; the names are used only for diagnostics
+    *   list of (name, encoded prefix) pairs; the names are used only for
+    *   diagnostics
     * @return
     *   the [[ValidationResult]] for the underlying byte vectors
     */
@@ -105,7 +111,8 @@ object PrefixFreeValidator:
   ): ValidationResult =
     validate(prefixes.map(_._2))
 
-  /** Checks whether a new prefix would collide (be identical to or a strict prefix of) any existing prefix.
+  /** Checks whether a new prefix would collide (be identical to or a strict
+    * prefix of) any existing prefix.
     *
     * @param newPrefix
     *   the candidate prefix to test
@@ -120,7 +127,8 @@ object PrefixFreeValidator:
         isStrictPrefix(newPrefix, existingPrefix) ||
         isStrictPrefix(existingPrefix, newPrefix)
 
-  /** Formats a [[ValidationResult]] into a human-readable string for logging or test output.
+  /** Formats a [[ValidationResult]] into a human-readable string for logging or
+    * test output.
     *
     * @param result
     *   the validation result to format
@@ -142,7 +150,8 @@ object PrefixFreeValidator:
   Prefix: ${prefix.toHex}
   Occurrences: $count"""
 
-  /** Collects encoded table prefixes from a schema tuple at compile time using inline expansion.
+  /** Collects encoded table prefixes from a schema tuple at compile time using
+    * inline expansion.
     *
     * @tparam Path
     *   the mount path tuple
@@ -165,16 +174,19 @@ object PrefixFreeValidator:
         val prefix = tablePrefix[Path, name]
         collectSchemaPrefixes[Path, tail](prefix :: acc)
 
-  /** Validates that the given schema produces prefix-free table prefixes when mounted at the given path.
+  /** Validates that the given schema produces prefix-free table prefixes when
+    * mounted at the given path.
     *
-    * This is a runtime check that can be used in tests or during module assembly.
+    * This is a runtime check that can be used in tests or during module
+    * assembly.
     *
     * @tparam Path
     *   the mount path tuple
     * @tparam Schema
     *   the schema tuple of [[org.sigilaris.core.application.state.Entry]] types
     * @return
-    *   [[Valid]] if all entry prefixes are prefix-free, or an error result otherwise
+    *   [[Valid]] if all entry prefixes are prefix-free, or an error result
+    *   otherwise
     */
   inline def validateSchema[Path <: Tuple, Schema <: Tuple]: ValidationResult =
     val prefixes = collectSchemaPrefixes[Path, Schema]()
@@ -183,7 +195,7 @@ object PrefixFreeValidator:
   /** Example demonstrating how to validate a composed schema at runtime. */
   def exampleValidation(): Unit =
     // This would typically be used in tests or module assembly
-    type Path = ("app", "accounts")
+    type Path   = ("app", "accounts")
     type Schema =
       org.sigilaris.core.application.state.Entry["balances", String, Int] *:
         org.sigilaris.core.application.state.Entry[

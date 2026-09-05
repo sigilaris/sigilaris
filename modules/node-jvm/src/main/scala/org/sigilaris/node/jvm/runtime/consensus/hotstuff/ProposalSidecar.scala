@@ -443,7 +443,7 @@ object HotStuffProposalSidecarPlanner:
           ): (acc, entry) =>
             val (included, usedBytes, skipped) = acc
             val estimatedBytes = estimatedBytesOf(entry.dependency)
-            val fits =
+            val fits           =
               estimatedBytes <= policy.maxSidecarBytesPerPeerPoll - usedBytes
             if fits then
               (included :+ entry, usedBytes + estimatedBytes, skipped)
@@ -533,7 +533,7 @@ object HotStuffProposalSidecarPlanner:
         ): (acc, entry) =>
           val (kept, usedBytes, skippedAcc) = acc
           entry.available match
-            case None => (kept :+ entry, usedBytes, skippedAcc)
+            case None            => (kept :+ entry, usedBytes, skippedAcc)
             case Some(available) =>
               val actualBytes = actualBytesOf(entry.dependency, available)
               actualBytes match

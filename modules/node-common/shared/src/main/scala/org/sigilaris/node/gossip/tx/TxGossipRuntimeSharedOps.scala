@@ -23,7 +23,7 @@ private[tx] trait TxGossipRuntimeSharedOps[F[_]: Sync, A]:
       state: TxGossipRuntimeState,
       now: Instant,
   ): TxGossipRuntimeState =
-    val updatedEngine = state.engine.expireTimedOutSessions(now)
+    val updatedEngine        = state.engine.expireTimedOutSessions(now)
     val liveOutboundSessions = state.outboundSessions.filter:
       case (sessionId, _) =>
         updatedEngine
@@ -226,7 +226,7 @@ private[tx] trait TxGossipRuntimeSharedOps[F[_]: Sync, A]:
         if servedIds.isEmpty then acc
         else
           acc.updatedWith(chainId):
-            case None => None
+            case None           => None
             case Some(existing) =>
               val remaining = existing.filterNot(servedIds.contains)
               remaining.some.filter(_.nonEmpty)
@@ -249,7 +249,7 @@ private[tx] trait TxGossipRuntimeSharedOps[F[_]: Sync, A]:
         if servedIds.isEmpty then acc
         else
           acc.updatedWith(scope):
-            case None => None
+            case None           => None
             case Some(existing) =>
               val remaining = existing.filterNot(servedIds.contains)
               remaining.some.filter(_.nonEmpty)
@@ -315,13 +315,13 @@ private[tx] trait TxGossipRuntimeSharedOps[F[_]: Sync, A]:
       right: Option[GossipSidecarHoldState],
   ): Boolean =
     (left, right) match
-      case (None, None) => true
+      case (None, None)                      => true
       case (Some(leftHold), Some(rightHold)) =>
         leftHold.proposalId === rightHold.proposalId &&
-          leftHold.firstHeldAt.compareTo(rightHold.firstHeldAt) === 0 &&
-          leftHold.lastHeldAt.compareTo(rightHold.lastHeldAt) === 0 &&
-          leftHold.attempts === rightHold.attempts &&
-          sameSidecarReason(leftHold.reason, rightHold.reason)
+        leftHold.firstHeldAt.compareTo(rightHold.firstHeldAt) === 0 &&
+        leftHold.lastHeldAt.compareTo(rightHold.lastHeldAt) === 0 &&
+        leftHold.attempts === rightHold.attempts &&
+        sameSidecarReason(leftHold.reason, rightHold.reason)
       case _ => false
 
   private def sameSidecarReason(

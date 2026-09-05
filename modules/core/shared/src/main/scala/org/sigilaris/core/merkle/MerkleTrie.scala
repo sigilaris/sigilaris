@@ -83,7 +83,7 @@ object MerkleTrie:
   ): StateT[EitherT[F, String, *], MerkleTrieState, Option[ByteVector]] =
     StateT.inspectF: (state: MerkleTrieState) =>
       val optionT = for
-        node <- OptionT(getNode[F](state))
+        node     <- OptionT(getNode[F](state))
         stripped <- OptionT.fromOption[EitherT[F, String, *]]:
           key.stripPrefix(node.prefix)
         value <- stripped.unCons
@@ -133,7 +133,7 @@ object MerkleTrie:
               diff = state.diff.add(leafHash, leaf),
             )
         case Some((node, root)) =>
-          val prefix0: Nibbles = node.prefix
+          val prefix0: Nibbles                       = node.prefix
           val (commonPrefix, remainder0, remainder1) =
             getCommonPrefixNibbleAndRemainders(prefix0, key)
 
@@ -152,8 +152,8 @@ object MerkleTrie:
                         .add(leaf1Hash, leaf1),
                     )
                 case (None, Some((index10, prefix10))) =>
-                  val leaf1     = MerkleTrieNode.leaf(prefix10, value)
-                  val leaf1Hash = leaf1.toHash
+                  val leaf1              = MerkleTrieNode.leaf(prefix10, value)
+                  val leaf1Hash          = leaf1.toHash
                   val children: Children = Children.empty
                     .updateChild(index10, Some(leaf1Hash))
                   val branch = MerkleTrieNode.branchWithData(
@@ -172,7 +172,7 @@ object MerkleTrie:
                 case (Some((index00, prefix00)), None) =>
                   val leaf0 =
                     MerkleTrieNode.leaf(prefix00, value0)
-                  val leaf0Hash = leaf0.toHash
+                  val leaf0Hash          = leaf0.toHash
                   val children: Children = Children.empty
                     .updateChild(index00, Some(leaf0Hash))
                   val branch = MerkleTrieNode.branchWithData(
@@ -191,9 +191,9 @@ object MerkleTrie:
                 case (Some((index00, prefix00)), Some((index10, prefix10))) =>
                   val leaf0 =
                     MerkleTrieNode.leaf(prefix00, value0)
-                  val leaf0Hash = leaf0.toHash
-                  val leaf1     = MerkleTrieNode.leaf(prefix10, value)
-                  val leaf1Hash = leaf1.toHash
+                  val leaf0Hash          = leaf0.toHash
+                  val leaf1              = MerkleTrieNode.leaf(prefix10, value)
+                  val leaf1Hash          = leaf1.toHash
                   val children: Children = Children.empty
                     .updateChild(index00, Some(leaf0Hash))
                     .updateChild(index10, Some(leaf1Hash))
@@ -269,7 +269,7 @@ object MerkleTrie:
                 // prefix is larger than key
                 val child0     = node.setPrefix(prefix00)
                 val child0Hash = child0.toHash
-                val children1 = MerkleTrieNode.Children.empty
+                val children1  = MerkleTrieNode.Children.empty
                   .updateChild(index00, Some(child0Hash))
                 val branch1 = MerkleTrieNode.branchWithData(
                   commonPrefix,
@@ -290,7 +290,7 @@ object MerkleTrie:
                 val child0Hash = child0.toHash
                 val child1     = MerkleTrieNode.leaf(prefix10, value)
                 val child1Hash = child1.toHash
-                val children1 = Children.empty
+                val children1  = Children.empty
                   .updateChild(index00, Some(child0Hash))
                   .updateChild(index10, Some(child1Hash))
                 val branch1 = MerkleTrieNode.branch(
@@ -497,7 +497,7 @@ object MerkleTrie:
             stream <- OptionT.liftF:
               EitherT.rightT[F, E]:
                 targetChildrenWithIndex match
-                  case Nil => Stream.empty
+                  case Nil     => Stream.empty
                   case x :: xs =>
                     val head =
                       Stream.emit(x).flatMap(runFrom(key1))
@@ -639,7 +639,7 @@ object MerkleTrie:
             keySuffix: Nibbles,
         ): OptionT[ErrorOrF, Stream[ErrorOrF, (Nibbles, ByteVector)]] =
           keySuffix.unCons match
-            case None => reverseRunAllOptionT
+            case None                 => reverseRunAllOptionT
             case Some((index1, key1)) =>
               val targetChildren = children.toList.zipWithIndex
                 .take(index1 + 1)
@@ -679,7 +679,7 @@ object MerkleTrie:
                   else
                     // Here, keySuffix1 < prefixRemainder
                     keySuffix1.stripPrefix(prefixRemainder) match
-                      case None => OptionT.none
+                      case None             => OptionT.none
                       case Some(keySuffix2) =>
                         streamFromKeySuffix(keySuffix2)
           case Some(keyRemainder) =>
@@ -688,7 +688,7 @@ object MerkleTrie:
                 keySuffix.fold(reverseRunAllOptionT)(streamFromKeySuffix)
               case Some((index1, key1)) =>
                 children.toList.zipWithIndex.take(index1 + 1).reverse match
-                  case Nil => OptionT.none
+                  case Nil     => OptionT.none
                   case x :: xs =>
                     OptionT.liftF:
                       EitherT.rightT[F, E]:
@@ -701,7 +701,7 @@ object MerkleTrie:
         .flatMap:
           case MerkleTrieNode.Leaf(prefix, value) =>
             prefix.stripPrefix(keyPrefix) match
-              case None => OptionT.none
+              case None                  => OptionT.none
               case Some(prefixRemainder) =>
                 keySuffix match
                   case None =>
@@ -720,7 +720,9 @@ object MerkleTrie:
   private def strictGetNode[F[_]: Monad](
       state: MerkleTrieState,
       phase: StrictTraversalPhase,
-  )(using ns: NodeStore[F]): EitherT[
+  )(using
+      ns: NodeStore[F],
+  ): EitherT[
     F,
     StrictTraversalError,
     Option[MerkleTrieNode],
@@ -808,8 +810,8 @@ object MerkleTrie:
       .grouped(4L)
       .takeWhile(_ === BitVector.low(4L))
       .size
-    val nextPrefixBitSize = commonPrefixNibbleSize.toLong * 4L
-    val remainder0        = nibbles0.value drop nextPrefixBitSize
+    val nextPrefixBitSize          = commonPrefixNibbleSize.toLong * 4L
+    val remainder0                 = nibbles0.value drop nextPrefixBitSize
     val (commonPrefix, remainder1) =
       nibbles1.value splitAt nextPrefixBitSize
     (

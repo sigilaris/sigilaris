@@ -37,6 +37,7 @@ final case class ModuleId[Path <: Tuple] private (path: Path)
 object ModuleId:
   /** Evidence that a tuple consists only of `String` elements. */
   sealed trait StringTuple[Path <: Tuple]
+
   /** Companion providing given instances for [[StringTuple]]. */
   object StringTuple:
     given StringTuple[EmptyTuple] with {}

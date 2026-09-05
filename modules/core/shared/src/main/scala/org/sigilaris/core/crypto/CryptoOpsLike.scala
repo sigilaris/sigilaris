@@ -40,9 +40,10 @@ trait CryptoOpsLike:
   /** Derives a key pair from an existing private key.
     *
     * The caller is expected to supply a value in the valid range `[1, n-1]`
-    * where `n` is the curve order. The implementation reduces `privateKey mod n`
-    * before scalar multiplication and only validates that the value fits into a
-    * `UInt256`; it does **not** reject out-of-range inputs explicitly.
+    * where `n` is the curve order. The implementation reduces
+    * `privateKey mod n` before scalar multiplication and only validates that
+    * the value fits into a `UInt256`; it does **not** reject out-of-range
+    * inputs explicitly.
     *
     * @param privateKey
     *   private key as BigInt; should be in range `[1, n-1]` (prevalidated)

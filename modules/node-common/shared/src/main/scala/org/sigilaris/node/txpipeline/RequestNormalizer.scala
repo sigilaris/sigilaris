@@ -13,8 +13,7 @@ object TxPipelineRequestNormalizer:
       request: TxPipelineSubmitRequest,
       limits: TxPipelineShapeLimits,
   ): Either[TxPipelineValidationFailure, TxPipelineNormalizedRequest] =
-    for
-      _ <- validateShape(request, limits)
+    for _ <- validateShape(request, limits)
     yield
       val stages = request.stages.zipWithIndex.map:
         case (stage, stageIndex) =>
@@ -90,7 +89,9 @@ object TxPipelineRequestNormalizer:
       limits: TxPipelineShapeLimits,
   ): Either[TxPipelineValidationFailure, Unit] =
     if request.stages.isEmpty then
-      Left(TxPipelineValidationFailure("emptyStages", "stages must be non-empty"))
+      Left(
+        TxPipelineValidationFailure("emptyStages", "stages must be non-empty"),
+      )
     else if request.stages.size > limits.maxStages then
       Left:
         TxPipelineValidationFailure(
@@ -114,7 +115,7 @@ object TxPipelineRequestNormalizer:
           )
       match
         case Some(failure) => Left(failure)
-        case None         => validateTransactionTotals(request, limits)
+        case None          => validateTransactionTotals(request, limits)
 
   private def validateTransactionTotals(
       request: TxPipelineSubmitRequest,
@@ -150,7 +151,7 @@ object TxPipelineRequestNormalizer:
         )
     match
       case Some(failure) => Left(failure)
-      case None =>
+      case None          =>
         val totalPayloadBytes = indexedPayloads.map(_._1.utf8ByteSize).sum
         Either.cond(
           totalPayloadBytes <= limits.maxTotalPayloadBytes,

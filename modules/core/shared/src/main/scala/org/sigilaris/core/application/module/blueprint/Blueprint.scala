@@ -164,14 +164,18 @@ sealed trait Blueprint[F[
 ], MName <: String, Owns <: Tuple, Needs <: Tuple, Txs <: Tuple, +R]:
   /** The effect type used by this blueprint. */
   type EffectType[A] = F[A]
+
   /** The literal module name type. */
-  type ModuleName    = MName
+  type ModuleName = MName
+
   /** The owned schema tuple type. */
-  type OwnsType      = Owns
+  type OwnsType = Owns
+
   /** The needed schema tuple type. */
-  type NeedsType     = Needs
+  type NeedsType = Needs
+
   /** The transaction types tuple. */
-  type TxsType       = Txs
+  type TxsType = Txs
 
   /** The Entry instances for owned tables (runtime values that can create
     * tables).
@@ -308,7 +312,8 @@ final class ComposedBlueprint[F[
       RoutedStateReducer0[F, Owns, Needs],
     ]
 
-/** Companion for [[Blueprint]], providing composition and mounting operations. */
+/** Companion for [[Blueprint]], providing composition and mounting operations.
+  */
 object Blueprint:
   private final case class BlueprintData[F[
       _,
@@ -461,9 +466,18 @@ object Blueprint:
       projectionN2,
     )
 
-  private def composeBlueprintImpl[F[
-      _,
-  ], MOut <: String, O1 <: Tuple, N1 <: Tuple, T1 <: Tuple, O2 <: Tuple, N2 <: Tuple, T2 <: Tuple](
+  private def composeBlueprintImpl[
+      F[
+          _,
+      ],
+      MOut <: String,
+      O1 <: Tuple,
+      N1 <: Tuple,
+      T1 <: Tuple,
+      O2 <: Tuple,
+      N2 <: Tuple,
+      T2 <: Tuple,
+  ](
       a: BlueprintData[F, O1, N1, T1],
       b: BlueprintData[F, O2, N2, T2],
   )(using
@@ -503,8 +517,8 @@ object Blueprint:
           ownsTables: Tables[F, O1 ++ O2],
           provider: TablesProvider[F, N1 ++ N2],
       ): StoreF[F][(signedTx.value.Result, List[signedTx.value.Event])] =
-        val tx   = signedTx.value
-        val path = tx.moduleId.path
+        val tx                        = signedTx.value
+        val path                      = tx.moduleId.path
         val maybeHead: Option[String] = path match
           case (head: String) *: _ => Some(head)
           case EmptyTuple          => None

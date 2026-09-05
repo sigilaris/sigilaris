@@ -14,6 +14,7 @@ import sttp.tapir.docs.openapi.OpenAPIDocsInterpreter
 enum OpenApiFormat:
   /** YAML format output. */
   case Yaml
+
   /** JSON format output. */
   case Json
 
@@ -35,7 +36,9 @@ final case class OpenApiExportConfig(
     version: String,
 )
 
-/** Generates and writes OpenAPI specification documents from Tapir endpoint definitions. */
+/** Generates and writes OpenAPI specification documents from Tapir endpoint
+  * definitions.
+  */
 @SuppressWarnings(Array("org.wartremover.warts.DefaultArguments"))
 object TapirOpenApiExporter:
   /** Generates an OpenAPI document from the given Tapir endpoints.
@@ -77,7 +80,7 @@ object TapirOpenApiExporter:
       endpoints: List[AnyEndpoint],
       enrich: OpenAPI => OpenAPI = identity,
   ): F[Path] =
-    val docs = document(config.title, config.version, endpoints, enrich)
+    val docs     = document(config.title, config.version, endpoints, enrich)
     val rendered = config.format match
       case OpenApiFormat.Yaml => docs.toYaml
       case OpenApiFormat.Json => docs.asJson.spaces2

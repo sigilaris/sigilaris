@@ -72,7 +72,8 @@ final case class TxExecution[+Result, +Event](
   lazy val observedState: StoreState =
     StoreState(nextTrieState, actualAccessLog)
 
-  /** Explicit receipt/public projection that drops trie and raw witness state. */
+  /** Explicit receipt/public projection that drops trie and raw witness state.
+    */
   lazy val receiptProjection: TxExecutionReceiptProjection[Result, Event] =
     TxExecutionReceiptProjection(
       actualFootprint = actualFootprint,
@@ -80,6 +81,7 @@ final case class TxExecution[+Result, +Event](
       events = events,
     )
 
-  /** Legacy tuple wrapper retained for backward-compatible executor surfaces. */
+  /** Legacy tuple wrapper retained for backward-compatible executor surfaces.
+    */
   lazy val compatibilityTuple: (StoreState, (Result, List[Event])) =
     observedState -> (result, events)

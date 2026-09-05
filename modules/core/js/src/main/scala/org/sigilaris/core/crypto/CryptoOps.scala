@@ -80,8 +80,8 @@ object CryptoOps extends CryptoOpsLike:
       Array("org.wartremover.warts.Throw", "org.wartremover.warts.Overloading"),
     )
     def asScala: KeyPair =
-      val privHex = jsKeyPair.getPrivate().toStringBase(16)
-      val pBigInt = BigInt(privHex, 16)
+      val privHex    = jsKeyPair.getPrivate().toStringBase(16)
+      val pBigInt    = BigInt(privHex, 16)
       val p: UInt256 = UInt256
         .fromBigIntUnsigned(pBigInt)
         .getOrElse:
@@ -100,7 +100,7 @@ object CryptoOps extends CryptoOpsLike:
       keyPair: KeyPair,
       transactionHash: Array[Byte],
   ): Either[failure.SigilarisFailure, Signature] =
-    val jsSig = keyPair.toJs.sign(transactionHash.toUint8Array)
+    val jsSig             = keyPair.toJs.sign(transactionHash.toUint8Array)
     val sigObj: js.Object = js.Dynamic.literal(
       "r" -> jsSig.r.toStringBase(16),
       "s" -> jsSig.s.toStringBase(16),

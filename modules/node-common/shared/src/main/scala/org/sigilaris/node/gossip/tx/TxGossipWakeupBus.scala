@@ -36,39 +36,39 @@ final class TxGossipWakeupBus[F[_]: Concurrent] private (
   ): Resource[F, TxGossipWakeupSubscription[F]] =
     Resource
       .eval:
-        Queue.bounded[F, TxGossipWakeup](1).flatMap: queue =>
-          ref
-            .modify: state =>
-              if state.registrations.values.exists(_.sessionId === sessionId)
-              then state -> none[(Long, Queue[F, TxGossipWakeup])]
-              else
-                val registrationId = state.nextRegistrationId
-                val registration = TxGossipWakeupBus.RegisteredSession(
-                  sessionId = sessionId,
-                  subscriptions = subscriptions.values,
-                  queue = queue,
-                )
-                state.copy(
-                  nextRegistrationId = registrationId + 1L,
-                  registrations =
-                    state.registrations.updated(registrationId, registration),
-                ) -> (registrationId, queue).some
-            .flatMap:
-              case Some(value) =>
-                value.pure[F]
-              case None =>
-                Concurrent[F].raiseError:
-                  new IllegalStateException(
-                    "event stream already registered for session " +
-                      sessionId.value,
+        Queue
+          .bounded[F, TxGossipWakeup](1)
+          .flatMap: queue =>
+            ref
+              .modify: state =>
+                if state.registrations.values.exists(_.sessionId === sessionId)
+                then state -> none[(Long, Queue[F, TxGossipWakeup])]
+                else
+                  val registrationId = state.nextRegistrationId
+                  val registration   = TxGossipWakeupBus.RegisteredSession(
+                    sessionId = sessionId,
+                    subscriptions = subscriptions.values,
+                    queue = queue,
                   )
+                  state.copy(
+                    nextRegistrationId = registrationId + 1L,
+                    registrations =
+                      state.registrations.updated(registrationId, registration),
+                  ) -> (registrationId, queue).some
+              .flatMap:
+                case Some(value) =>
+                  value.pure[F]
+                case None =>
+                  Concurrent[F].raiseError:
+                    new IllegalStateException(
+                      "event stream already registered for session " +
+                        sessionId.value,
+                    )
       .flatMap: (registrationId, queue) =>
         Resource
           .make(Concurrent[F].unit)(_ =>
             ref.update(state =>
-              state.copy(registrations =
-                state.registrations - registrationId,
-              ),
+              state.copy(registrations = state.registrations - registrationId),
             ),
           )
           .as(TxGossipWakeupSubscription(queue.take))

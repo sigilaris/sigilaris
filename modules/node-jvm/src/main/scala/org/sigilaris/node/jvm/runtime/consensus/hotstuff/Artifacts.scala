@@ -34,7 +34,7 @@ given ByteEncoder[ChainId] =
 given ByteEncoder[StableArtifactId] =
   ByteEncoder[ByteVector].contramap(_.bytes)
 given ByteEncoder[HotStuffWindow] = ByteEncoder.derived
-given ByteEncoder[Signature] = signature =>
+given ByteEncoder[Signature]      = signature =>
   ByteEncoder[Long].encode(signature.v.toLong) ++
     signature.r.bytes ++ signature.s.bytes
 given [A: ByteEncoder]: ByteEncoder[Vector[A]] =
@@ -42,8 +42,10 @@ given [A: ByteEncoder]: ByteEncoder[Vector[A]] =
 
 /** Represents a failure during HotStuff consensus validation.
   *
-  * @param reason a short identifier for the validation failure
-  * @param detail optional human-readable detail about the failure
+  * @param reason
+  *   a short identifier for the validation failure
+  * @param detail
+  *   optional human-readable detail about the failure
   */
 final case class HotStuffValidationFailure(
     reason: String,
@@ -57,18 +59,23 @@ object HotStuffValidationFailure:
 
   /** Creates a validation failure without detail.
     *
-    * @param reason a short identifier for the failure
-    * @return a validation failure with no detail
+    * @param reason
+    *   a short identifier for the failure
+    * @return
+    *   a validation failure with no detail
     */
   def withoutDetail(
       reason: String,
   ): HotStuffValidationFailure =
     HotStuffValidationFailure(reason = reason, detail = None)
 
-/** A member of a validator set, pairing an identity with a cryptographic public key.
+/** A member of a validator set, pairing an identity with a cryptographic public
+  * key.
   *
-  * @param id the validator's unique identity
-  * @param publicKey the validator's public key used for signature verification
+  * @param id
+  *   the validator's unique identity
+  * @param publicKey
+  *   the validator's public key used for signature verification
   */
 final case class ValidatorMember(
     id: ValidatorId,
@@ -79,8 +86,10 @@ final case class ValidatorMember(
 enum ValidatorSetError:
   /** The validator set is empty. */
   case Empty
+
   /** Two or more validators share the same identity. */
   case DuplicateIds
+
   /** Two or more validators share the same public key. */
   case DuplicatePublicKeys
 
@@ -97,7 +106,9 @@ object ValidatorSetError:
         case ValidatorSetError.DuplicatePublicKeys =>
           "validator public keys must be unique"
 
-/** An ordered, deduplicated set of consensus validators with quorum calculation support. */
+/** An ordered, deduplicated set of consensus validators with quorum calculation
+  * support.
+  */
 final class ValidatorSet private (
     private val membersById: VectorMap[ValidatorId, ValidatorMember],
 ):
@@ -111,8 +122,10 @@ final class ValidatorSet private (
 
   /** Looks up a validator member by ID.
     *
-    * @param validatorId the validator identity to look up
-    * @return the member if present
+    * @param validatorId
+    *   the validator identity to look up
+    * @return
+    *   the member if present
     */
   def member(
       validatorId: ValidatorId,
@@ -121,15 +134,19 @@ final class ValidatorSet private (
 
   /** Checks whether the set contains a validator with the given ID.
     *
-    * @param validatorId the validator identity to check
-    * @return true if the validator is present
+    * @param validatorId
+    *   the validator identity to check
+    * @return
+    *   true if the validator is present
     */
   def contains(
       validatorId: ValidatorId,
   ): Boolean =
     membersById.contains(validatorId)
 
-  /** Returns the minimum number of votes needed for a quorum (2f+1 for 3f+1 validators). */
+  /** Returns the minimum number of votes needed for a quorum (2f+1 for 3f+1
+    * validators).
+    */
   def quorumSize: Int =
     HotStuffPolicy.validatedQuorumSize(membersById.size)
 
@@ -137,10 +154,13 @@ final class ValidatorSet private (
 @SuppressWarnings(Array("org.wartremover.warts.Throw"))
 object ValidatorSet:
 
-  /** Constructs a validator set from the given members, validating uniqueness constraints.
+  /** Constructs a validator set from the given members, validating uniqueness
+    * constraints.
     *
-    * @param members the validator members
-    * @return the validated validator set or an error
+    * @param members
+    *   the validator members
+    * @return
+    *   the validated validator set or an error
     */
   def apply(
       members: Vector[ValidatorMember],
@@ -173,10 +193,13 @@ object ValidatorSet:
       ),
     )
 
-  /** Constructs a validator set, throwing on validation failure. Intended for tests and bootstrap.
+  /** Constructs a validator set, throwing on validation failure. Intended for
+    * tests and bootstrap.
     *
-    * @param members the validator members
-    * @return the validator set
+    * @param members
+    *   the validator members
+    * @return
+    *   the validator set
     */
   def unsafe(
       members: Vector[ValidatorMember],
@@ -185,11 +208,15 @@ object ValidatorSet:
       case Right(validatorSet) => validatorSet
       case Left(error) => throw new IllegalArgumentException(error.message)
 
-/** The subject of a quorum certificate, identifying the proposal being certified.
+/** The subject of a quorum certificate, identifying the proposal being
+  * certified.
   *
-  * @param window the consensus window in which the proposal was made
-  * @param proposalId the certified proposal's unique identifier
-  * @param blockId the block ID targeted by the proposal
+  * @param window
+  *   the consensus window in which the proposal was made
+  * @param proposalId
+  *   the certified proposal's unique identifier
+  * @param blockId
+  *   the block ID targeted by the proposal
   */
 final case class QuorumCertificateSubject(
     window: HotStuffWindow,
@@ -203,9 +230,12 @@ object QuorumCertificateSubject:
 
 /** A vote before signing.
   *
-  * @param window the consensus window
-  * @param voter the voting validator
-  * @param targetProposalId the proposal being voted on
+  * @param window
+  *   the consensus window
+  * @param voter
+  *   the voting validator
+  * @param targetProposalId
+  *   the proposal being voted on
   */
 final case class UnsignedVote(
     window: HotStuffWindow,
@@ -215,11 +245,16 @@ final case class UnsignedVote(
 
 /** A signed consensus vote cast by a validator for a specific proposal.
   *
-  * @param voteId unique identifier for this vote
-  * @param window the consensus window
-  * @param voter the voting validator
-  * @param targetProposalId the proposal being voted on
-  * @param signature the cryptographic signature
+  * @param voteId
+  *   unique identifier for this vote
+  * @param window
+  *   the consensus window
+  * @param voter
+  *   the voting validator
+  * @param targetProposalId
+  *   the proposal being voted on
+  * @param signature
+  *   the cryptographic signature
   */
 final case class Vote(
     voteId: VoteId,
@@ -242,9 +277,12 @@ object Vote:
 
   /** Signs an unsigned vote using the given key pair.
     *
-    * @param unsigned the vote to sign
-    * @param keyPair the signer's key pair
-    * @return the signed vote or a validation failure
+    * @param unsigned
+    *   the vote to sign
+    * @param keyPair
+    *   the signer's key pair
+    * @return
+    *   the signed vote or a validation failure
     */
   def sign(
       unsigned: UnsignedVote,
@@ -275,7 +313,8 @@ object Vote:
   ): ByteVector =
     HotStuffCanonicalEncoding.voteSignBytes(unsigned)
 
-  /** Recomputes the vote ID from the vote's fields, for verification purposes. */
+  /** Recomputes the vote ID from the vote's fields, for verification purposes.
+    */
   def recomputeId(
       vote: Vote,
   ): VoteId =
@@ -289,8 +328,10 @@ object Vote:
 
 /** A quorum certificate aggregating sufficient votes to certify a proposal.
   *
-  * @param subject the proposal subject being certified
-  * @param votes the collected validator votes meeting the quorum threshold
+  * @param subject
+  *   the proposal subject being certified
+  * @param votes
+  *   the collected validator votes meeting the quorum threshold
   */
 final case class QuorumCertificate(
     subject: QuorumCertificateSubject,
@@ -299,15 +340,17 @@ final case class QuorumCertificate(
 
 /** An ordered set of transaction IDs included in a consensus proposal.
   *
-  * @param txIds the transaction identifiers in canonical order
+  * @param txIds
+  *   the transaction identifiers in canonical order
   */
 final case class ProposalTxSet(
     txIds: Vector[StableArtifactId],
 )
 
-/** Companion for `ProposalTxSet`, providing canonicalization and wire encoding. */
+/** Companion for `ProposalTxSet`, providing canonicalization and wire encoding.
+  */
 object ProposalTxSet:
-  given Eq[ProposalTxSet] = Eq.by(_.txIds)
+  given Eq[ProposalTxSet]          = Eq.by(_.txIds)
   given ByteEncoder[ProposalTxSet] =
     txSet =>
       val firstUnsupported = firstUnsupportedTxId(txSet)
@@ -358,9 +401,12 @@ object ProposalTxSet:
 
   /** Creates a canonical proposal tx set by hashing each transaction reference.
     *
-    * @tparam TxRef the transaction reference type, which must be hashable
-    * @param txs the transactions to include
-    * @return a canonically ordered proposal tx set
+    * @tparam TxRef
+    *   the transaction reference type, which must be hashable
+    * @param txs
+    *   the transactions to include
+    * @return
+    *   a canonically ordered proposal tx set
     */
   def fromTxs[TxRef: Hash](
       txs: Iterable[TxRef],
@@ -374,7 +420,9 @@ object ProposalTxSet:
       ),
     )
 
-  /** Checks whether the transaction set is already in canonical order with no duplicates. */
+  /** Checks whether the transaction set is already in canonical order with no
+    * duplicates.
+    */
   def isCanonical(
       txSet: ProposalTxSet,
   ): Boolean =
@@ -390,7 +438,9 @@ object ProposalTxSet:
           (txId.some, compareCanonicalOrder(previous, txId) < 0)
       ._2
 
-  /** Returns the first transaction ID that is not fixed-width wire compatible (not 32 bytes). */
+  /** Returns the first transaction ID that is not fixed-width wire compatible
+    * (not 32 bytes).
+    */
   def firstUnsupportedTxId(
       txSet: ProposalTxSet,
   ): Option[StableArtifactId] =
@@ -410,12 +460,18 @@ object ProposalTxSet:
 
 /** A proposal before signing.
   *
-  * @param window the consensus window
-  * @param proposer the proposing validator
-  * @param targetBlockId the block ID being proposed
-  * @param block the block header
-  * @param txSet the transaction set included in the proposal
-  * @param justify the quorum certificate justifying this proposal
+  * @param window
+  *   the consensus window
+  * @param proposer
+  *   the proposing validator
+  * @param targetBlockId
+  *   the block ID being proposed
+  * @param block
+  *   the block header
+  * @param txSet
+  *   the transaction set included in the proposal
+  * @param justify
+  *   the quorum certificate justifying this proposal
   */
 final case class UnsignedProposal(
     window: HotStuffWindow,
@@ -428,14 +484,22 @@ final case class UnsignedProposal(
 
 /** A signed consensus proposal emitted by a leader validator.
   *
-  * @param proposalId unique identifier for this proposal
-  * @param window the consensus window
-  * @param proposer the proposing validator
-  * @param targetBlockId the block ID being proposed
-  * @param block the block header
-  * @param txSet the transaction set included in the proposal
-  * @param justify the quorum certificate justifying this proposal
-  * @param signature the cryptographic signature of the proposer
+  * @param proposalId
+  *   unique identifier for this proposal
+  * @param window
+  *   the consensus window
+  * @param proposer
+  *   the proposing validator
+  * @param targetBlockId
+  *   the block ID being proposed
+  * @param block
+  *   the block header
+  * @param txSet
+  *   the transaction set included in the proposal
+  * @param justify
+  *   the quorum certificate justifying this proposal
+  * @param signature
+  *   the cryptographic signature of the proposer
   */
 final case class Proposal(
     proposalId: ProposalId,
@@ -453,9 +517,12 @@ object Proposal:
 
   /** Signs an unsigned proposal using the given key pair.
     *
-    * @param unsigned the proposal to sign
-    * @param keyPair the signer's key pair
-    * @return the signed proposal or a validation failure
+    * @param unsigned
+    *   the proposal to sign
+    * @param keyPair
+    *   the signer's key pair
+    * @return
+    *   the signed proposal or a validation failure
     */
   def sign(
       unsigned: UnsignedProposal,
@@ -498,7 +565,8 @@ object Proposal:
               signature = signature,
             )
 
-  /** Returns the canonical bytes to be signed for the given unsigned proposal. */
+  /** Returns the canonical bytes to be signed for the given unsigned proposal.
+    */
   def signBytes(
       unsigned: UnsignedProposal,
   ): ByteVector =
@@ -506,7 +574,9 @@ object Proposal:
       normalizeUnsignedProposal(unsigned),
     )
 
-  /** Recomputes the proposal ID from the proposal's fields, for verification purposes. */
+  /** Recomputes the proposal ID from the proposal's fields, for verification
+    * purposes.
+    */
   def recomputeId(
       proposal: Proposal,
   ): ProposalId =
@@ -532,7 +602,8 @@ object Proposal:
   ): Proposal =
     proposal.copy(txSet = ProposalTxSet.canonical(proposal.txSet))
 
-/** Canonical encoding and hashing operations for HotStuff consensus artifacts. */
+/** Canonical encoding and hashing operations for HotStuff consensus artifacts.
+  */
 object HotStuffCanonicalEncoding:
   private val ProposalSignDomain: Utf8 = Utf8:
     "sigilaris.hotstuff.proposal.sign.v1"
@@ -597,9 +668,12 @@ object HotStuffCanonicalEncoding:
 
   /** Hashes the byte-encoded form of a value using Keccak-256.
     *
-    * @tparam A the value type, which must be byte-encodable
-    * @param value the value to hash
-    * @return the 256-bit hash
+    * @tparam A
+    *   the value type, which must be byte-encodable
+    * @param value
+    *   the value to hash
+    * @return
+    *   the 256-bit hash
     */
   def hashEncoded[A: ByteEncoder](
       value: A,

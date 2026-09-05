@@ -40,8 +40,9 @@ object HotStuffArtifactSourceRetention:
 
 /** Retention policy for the in-memory HotStuff artifact sink.
   *
-  * `retainedRejectedEventSamples` is reserved for a bounded rejected-body sample
-  * if one is added later. The current sink records rejection counters only.
+  * `retainedRejectedEventSamples` is reserved for a bounded rejected-body
+  * sample if one is added later. The current sink records rejection counters
+  * only.
   */
 final case class HotStuffArtifactSinkRetention private (
     finalizedHeightLag: Long,
@@ -86,7 +87,7 @@ object HotStuffArtifactSinkRetention:
     )
     checks.collectFirst { case (false, error) => error } match
       case Some(error) => error.asLeft[HotStuffArtifactSinkRetention]
-      case None =>
+      case None        =>
         HotStuffArtifactSinkRetention(
           finalizedHeightLag = finalizedHeightLag,
           certifiedHeightLag = certifiedHeightLag,
@@ -199,8 +200,7 @@ object HotStuffSinkRetainedCounts:
       voteAccumulatorEquivocationKeys =
         snapshot.accumulator.retainedEquivocationKeyCount,
       timeoutVotes = snapshot.timeoutVotes.size,
-      timeoutAccumulatorVotes =
-        snapshot.timeoutAccumulator.retainedVoteCount,
+      timeoutAccumulatorVotes = snapshot.timeoutAccumulator.retainedVoteCount,
       timeoutAccumulatorEquivocationKeys =
         snapshot.timeoutAccumulator.retainedEquivocationKeyCount,
       timeoutCertificates = snapshot.timeoutCertificates.size,
@@ -232,15 +232,13 @@ final case class HotStuffSinkPrunedCounts(
       proposals = proposals + other.proposals,
       votes = votes + other.votes,
       voteAccumulatorVotes = voteAccumulatorVotes + other.voteAccumulatorVotes,
-      voteAccumulatorEquivocationKeys =
-        voteAccumulatorEquivocationKeys +
-          other.voteAccumulatorEquivocationKeys,
+      voteAccumulatorEquivocationKeys = voteAccumulatorEquivocationKeys +
+        other.voteAccumulatorEquivocationKeys,
       timeoutVotes = timeoutVotes + other.timeoutVotes,
       timeoutAccumulatorVotes =
         timeoutAccumulatorVotes + other.timeoutAccumulatorVotes,
-      timeoutAccumulatorEquivocationKeys =
-        timeoutAccumulatorEquivocationKeys +
-          other.timeoutAccumulatorEquivocationKeys,
+      timeoutAccumulatorEquivocationKeys = timeoutAccumulatorEquivocationKeys +
+        other.timeoutAccumulatorEquivocationKeys,
       timeoutCertificates = timeoutCertificates + other.timeoutCertificates,
       newViews = newViews + other.newViews,
       newViewsBySenderWindow =
@@ -279,22 +277,19 @@ object HotStuffSinkPrunedCounts:
       votes = delta(before.votes, after.votes),
       voteAccumulatorVotes =
         delta(before.voteAccumulatorVotes, after.voteAccumulatorVotes),
-      voteAccumulatorEquivocationKeys =
-        delta(
-          before.voteAccumulatorEquivocationKeys,
-          after.voteAccumulatorEquivocationKeys,
-        ),
+      voteAccumulatorEquivocationKeys = delta(
+        before.voteAccumulatorEquivocationKeys,
+        after.voteAccumulatorEquivocationKeys,
+      ),
       timeoutVotes = delta(before.timeoutVotes, after.timeoutVotes),
-      timeoutAccumulatorVotes =
-        delta(
-          before.timeoutAccumulatorVotes,
-          after.timeoutAccumulatorVotes,
-        ),
-      timeoutAccumulatorEquivocationKeys =
-        delta(
-          before.timeoutAccumulatorEquivocationKeys,
-          after.timeoutAccumulatorEquivocationKeys,
-        ),
+      timeoutAccumulatorVotes = delta(
+        before.timeoutAccumulatorVotes,
+        after.timeoutAccumulatorVotes,
+      ),
+      timeoutAccumulatorEquivocationKeys = delta(
+        before.timeoutAccumulatorEquivocationKeys,
+        after.timeoutAccumulatorEquivocationKeys,
+      ),
       timeoutCertificates =
         delta(before.timeoutCertificates, after.timeoutCertificates),
       newViews = delta(before.newViews, after.newViews),
@@ -302,8 +297,7 @@ object HotStuffSinkPrunedCounts:
         delta(before.newViewsBySenderWindow, after.newViewsBySenderWindow),
       qcs = delta(before.qcs, after.qcs),
       safetyFaults = delta(before.safetyFaults, after.safetyFaults),
-      duplicateSamples =
-        delta(before.duplicateSamples, after.duplicateSamples),
+      duplicateSamples = delta(before.duplicateSamples, after.duplicateSamples),
     )
 
   private def delta(
@@ -324,10 +318,8 @@ object HotStuffSinkRetentionWatermarks:
     HotStuffSinkRetentionWatermarks(
       finalizedRetainFromHeightByChain = Map.empty[ChainId, BigInt],
       certifiedRetainFromHeightByChain = Map.empty[ChainId, BigInt],
-      retainedTimeoutWindowFloorByChain =
-        Map.empty[ChainId, HotStuffWindow],
-      retainedNewViewWindowFloorByChain =
-        Map.empty[ChainId, HotStuffWindow],
+      retainedTimeoutWindowFloorByChain = Map.empty[ChainId, HotStuffWindow],
+      retainedNewViewWindowFloorByChain = Map.empty[ChainId, HotStuffWindow],
     )
 
 final case class InMemoryHotStuffSinkDiagnostics(
@@ -577,8 +569,8 @@ object InMemoryHotStuffSinkSnapshot:
             proposal.window.chainId,
             proposal.block.height,
           )
-    val retainedProposalIds = retainedProposals.keySet
-    val knownProposalIds    = snapshot.proposals.keySet
+    val retainedProposalIds        = retainedProposals.keySet
+    val knownProposalIds           = snapshot.proposals.keySet
     val retainedJustifyProposalIds =
       retainedProposals.valuesIterator.map(_.justify.subject.proposalId).toSet
     val retainedQcs =
@@ -624,7 +616,7 @@ object InMemoryHotStuffSinkSnapshot:
     val retainedNewViews =
       snapshot.newViews.filter: (_, newView) =>
         retainedNewViewWindows.contains(newView.window)
-    val retainedNewViewIds = retainedNewViews.keySet
+    val retainedNewViewIds                  = retainedNewViews.keySet
     val retainedTimeoutSubjectsFromNewViews =
       retainedNewViews.valuesIterator.map(_.timeoutCertificate.subject).toSet
     val retainedTimeoutCertificates =
@@ -649,7 +641,7 @@ object InMemoryHotStuffSinkSnapshot:
       newViewsBySenderWindow =
         snapshot.newViewsBySenderWindow.filter { case (_, newView) =>
           retainedNewViewIds.contains(newView.newViewId)
-      },
+        },
       qcs = retainedQcs,
       finalization = retainedFinalization,
       // recordDuplicate accounts duplicate-sample pruning when appending. The
@@ -662,7 +654,8 @@ object InMemoryHotStuffSinkSnapshot:
     prunedSnapshot.copy(
       diagnostics = prunedSnapshot.diagnostics.updateRetention(
         retainedCounts = afterCounts,
-        prunedCounts = HotStuffSinkPrunedCounts.between(beforeCounts, afterCounts),
+        prunedCounts =
+          HotStuffSinkPrunedCounts.between(beforeCounts, afterCounts),
         retentionWatermarks = retentionWatermarks,
       ),
     )
@@ -696,7 +689,11 @@ object InMemoryHotStuffSinkSnapshot:
             oldByBlockHeight(fault.chainId, fault.height)
         val boundedSafetyFaults =
           if hasKnownRetentionFloor(chainId) then retainedSafetyFaults
-          else retainNewestSafetyFaults(retainedSafetyFaults, fallbackSafetyFaultCap)
+          else
+            retainNewestSafetyFaults(
+              retainedSafetyFaults,
+              fallbackSafetyFaultCap,
+            )
         chainId -> snapshot.copy(
           safetyFaults = boundedSafetyFaults,
         )
@@ -756,8 +753,7 @@ object InMemoryHotStuffSinkSnapshot:
       .groupBy(_.chainId)
       .valuesIterator
       .flatMap: chainWindows =>
-        chainWindows
-          .distinct
+        chainWindows.distinct
           .sortBy(window =>
             (
               window.height,
@@ -809,11 +805,11 @@ private final case class SinkPruneGate(
       forcePrune: Boolean,
       retention: HotStuffArtifactSinkRetention,
   ): (Boolean, SinkPruneGate) =
-    val nextCount = acceptedEventsSincePrune + 1
+    val nextCount   = acceptedEventsSincePrune + 1
     val shouldPrune =
       forcePrune || nextCount >= retention.pruneEveryAcceptedEvents
     if shouldPrune then true -> SinkPruneGate.empty
-    else false -> copy(acceptedEventsSincePrune = nextCount)
+    else false               -> copy(acceptedEventsSincePrune = nextCount)
 
 private object SinkPruneGate:
   val empty: SinkPruneGate =
@@ -1314,7 +1310,7 @@ private final case class SourceTopicState(
       available: AvailableGossipEvent[HotStuffGossipArtifact],
       retention: HotStuffArtifactSourceRetention,
   ): SourceTopicState =
-    val inserted = events :+ available
+    val inserted   = events :+ available
     val pruneCount =
       math.max(0, inserted.size - retention.retainedEventsPerTopic)
     val retained =
@@ -1372,39 +1368,41 @@ final class InMemoryHotStuffArtifactSource[F[_]: Sync] private (
       ts: Instant,
   ): F[GossipEvent[HotStuffGossipArtifact]] =
     clock.now.flatMap: availableAt =>
-      ref.modify: state =>
-        val chainId = artifact match
-          case HotStuffGossipArtifact.ProposalArtifact(proposal) =>
-            proposal.window.chainId
-          case HotStuffGossipArtifact.VoteArtifact(vote) => vote.window.chainId
-          case HotStuffGossipArtifact.TimeoutVoteArtifact(timeoutVote) =>
-            timeoutVote.subject.window.chainId
-          case HotStuffGossipArtifact.NewViewArtifact(newView) =>
-            newView.window.chainId
-        val topic      = HotStuffGossipArtifact.topicOf(artifact)
-        val chainTopic = ChainTopic(chainId, topic)
-        val topicState = state.getOrElse(
-          chainTopic,
-          SourceTopicState.empty,
+      ref
+        .modify: state =>
+          val chainId = artifact match
+            case HotStuffGossipArtifact.ProposalArtifact(proposal) =>
+              proposal.window.chainId
+            case HotStuffGossipArtifact.VoteArtifact(vote) =>
+              vote.window.chainId
+            case HotStuffGossipArtifact.TimeoutVoteArtifact(timeoutVote) =>
+              timeoutVote.subject.window.chainId
+            case HotStuffGossipArtifact.NewViewArtifact(newView) =>
+              newView.window.chainId
+          val topic      = HotStuffGossipArtifact.topicOf(artifact)
+          val chainTopic = ChainTopic(chainId, topic)
+          val topicState = state.getOrElse(
+            chainTopic,
+            SourceTopicState.empty,
+          )
+          val event = GossipEvent(
+            chainId = chainId,
+            topic = topic,
+            id = HotStuffGossipArtifact.stableIdOf(artifact),
+            cursor = cursorFor(topicState.nextSequence),
+            ts = ts,
+            payload = artifact,
+          )
+          val available =
+            AvailableGossipEvent(event = event, availableAt = availableAt)
+          state.updated(chainTopic, topicState.append(available, retention)) ->
+            event
+        .flatTap(event =>
+          notifier
+            .sourceAppended(ChainTopic(event.chainId, event.topic))
+            .attempt
+            .void,
         )
-        val event = GossipEvent(
-          chainId = chainId,
-          topic = topic,
-          id = HotStuffGossipArtifact.stableIdOf(artifact),
-          cursor = cursorFor(topicState.nextSequence),
-          ts = ts,
-          payload = artifact,
-        )
-        val available =
-          AvailableGossipEvent(event = event, availableAt = availableAt)
-        state.updated(chainTopic, topicState.append(available, retention)) ->
-          event
-      .flatTap(event =>
-        notifier
-          .sourceAppended(ChainTopic(event.chainId, event.topic))
-          .attempt
-          .void,
-      )
 
   override def readAfter(
       chainId: ChainId,
@@ -1499,7 +1497,7 @@ final class InMemoryHotStuffArtifactSource[F[_]: Sync] private (
             acc.updated(available.event.id, available)
       val distinctIds = ids.distinct
       val found       = distinctIds.flatMap(latestById.get)
-      val missCount =
+      val missCount   =
         distinctIds.count(id => !latestById.contains(id))
       val updatedState =
         if missCount === 0 then state
@@ -1590,7 +1588,8 @@ object InMemoryHotStuffArtifactSource:
       GossipSourceAppendNotifier.noop[F],
     )
 
-  /** Creates a new in-memory gossip artifact source with retention and wakeups. */
+  /** Creates a new in-memory gossip artifact source with retention and wakeups.
+    */
   def createWithRetentionAndNotifier[F[_]: Sync](
       retention: HotStuffArtifactSourceRetention,
       notifier: GossipSourceAppendNotifier[F],
@@ -2031,7 +2030,7 @@ final class InMemoryHotStuffArtifactSink[F[_]: Sync] private (
       subjects: IterableOnce[QuorumCertificateSubject],
   ): Boolean =
     subjects.iterator.exists: subject =>
-      val chainId = subject.window.chainId
+      val chainId   = subject.window.chainId
       val nextFloor =
         InMemoryHotStuffSinkSnapshot.floorHeight(
           InMemoryHotStuffSinkSnapshot.hotStuffHeightValue(
@@ -2106,9 +2105,11 @@ final class InMemoryHotStuffArtifactSink[F[_]: Sync] private (
         val refreshedSnapshot =
           refreshed.getOrElse(chainId, FinalizationTrackerSnapshot.empty)
         val previousFaults =
-          previous.get(chainId).fold(Vector.empty[FinalizedAnchorSafetyFault])(
-            _.safetyFaults,
-          )
+          previous
+            .get(chainId)
+            .fold(Vector.empty[FinalizedAnchorSafetyFault])(
+              _.safetyFaults,
+            )
         val mergedFaults =
           // A chain can surface the same safety fault across repeated
           // finalization refreshes. The fault identity is the finalized
@@ -2158,8 +2159,7 @@ final class InMemoryHotStuffArtifactSink[F[_]: Sync] private (
       : F[Vector[FinalizedTxRangeObservation]] =
     ref.get.map(_.observations.txRangeHistory)
 
-  private[hotstuff] def sinkDiagnostics
-      : F[InMemoryHotStuffSinkDiagnostics] =
+  private[hotstuff] def sinkDiagnostics: F[InMemoryHotStuffSinkDiagnostics] =
     ref.get.map(_.snapshot.diagnostics)
 
 /** Companion for `InMemoryHotStuffArtifactSink`. */
@@ -2186,8 +2186,12 @@ object InMemoryHotStuffArtifactSink:
     )
 
   @SuppressWarnings(Array("org.wartremover.warts.DefaultArguments"))
-  def createWithProposalValidation[F[_]
-    : Sync, TxRef: ByteEncoder: Hash, ResultRef: ByteEncoder, Event: ByteEncoder](
+  def createWithProposalValidation[
+      F[_]: Sync,
+      TxRef: ByteEncoder: Hash,
+      ResultRef: ByteEncoder,
+      Event: ByteEncoder,
+  ](
       validatorSet: ValidatorSet,
       relayPolicy: HotStuffRelayPolicy,
       relayPublisher: HotStuffArtifactPublisher[F],

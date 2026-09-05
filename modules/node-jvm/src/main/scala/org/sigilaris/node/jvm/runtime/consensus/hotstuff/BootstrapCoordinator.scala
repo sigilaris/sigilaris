@@ -21,8 +21,10 @@ import org.sigilaris.node.gossip.tx.TxRuntimePolicy
 
 /** Controls retry timing for bootstrap coordination attempts.
   *
-  * @param baseDelay the base delay between retries
-  * @param maxDelay the maximum delay cap
+  * @param baseDelay
+  *   the base delay between retries
+  * @param maxDelay
+  *   the maximum delay cap
   */
 final case class BootstrapRetryPolicy(
     baseDelay: Duration,
@@ -31,7 +33,8 @@ final case class BootstrapRetryPolicy(
   require(!baseDelay.isNegative, "baseDelay must be non-negative")
   require(!maxDelay.isNegative, "maxDelay must be non-negative")
 
-  /** Computes the next retry instant using linear backoff capped at maxDelay. */
+  /** Computes the next retry instant using linear backoff capped at maxDelay.
+    */
   def nextRetryAt(
       now: Instant,
       attempt: Int,
@@ -52,8 +55,10 @@ object BootstrapRetryPolicy:
 
 /** Represents a failure during bootstrap coordination.
   *
-  * @param reason a short identifier for the failure
-  * @param detail optional human-readable detail
+  * @param reason
+  *   a short identifier for the failure
+  * @param detail
+  *   optional human-readable detail
   */
 final case class BootstrapCoordinatorFailure(
     reason: String,
@@ -82,8 +87,10 @@ object BootstrapCoordinatorFailure:
 
 /** The result of assessing a proposal's readiness for catch-up voting.
   *
-  * @param voteReadiness whether the node is ready to vote on this proposal
-  * @param controlBatch an optional gossip control batch to request missing data
+  * @param voteReadiness
+  *   whether the node is ready to vote on this proposal
+  * @param controlBatch
+  *   an optional gossip control batch to request missing data
   */
 final case class ProposalCatchUpAssessment(
     voteReadiness: BootstrapVoteReadiness,
@@ -97,7 +104,8 @@ trait ProposalCatchUpReadiness[F[_]]:
       proposal: Proposal,
   ): F[Either[BootstrapCoordinatorFailure, ProposalCatchUpAssessment]]
 
-/** Companion for `ProposalCatchUpReadiness`, providing static factory methods. */
+/** Companion for `ProposalCatchUpReadiness`, providing static factory methods.
+  */
 object ProposalCatchUpReadiness:
   /** Creates readiness that always returns the given static assessment. */
   def static[F[_]: Sync](
@@ -145,7 +153,9 @@ object ProposalCatchUpReadiness:
           .asLeft[ProposalCatchUpAssessment]
           .pure[F]
 
-  /** Creates readiness that validates proposals against a block query and requests missing transactions. */
+  /** Creates readiness that validates proposals against a block query and
+    * requests missing transactions.
+    */
   def fromBlockQuery[
       F[_]: Sync,
       TxRef: ByteEncoder: Hash,
@@ -214,7 +224,9 @@ object ProposalCatchUpReadiness:
                     controlBatch = None,
                   ).asRight[BootstrapCoordinatorFailure]
 
-/** The result of a forward catch-up operation, tracking applied and queued proposals. */
+/** The result of a forward catch-up operation, tracking applied and queued
+  * proposals.
+  */
 final case class ForwardCatchUpResult(
     applied: Vector[Proposal],
     queued: Vector[Proposal],
@@ -224,10 +236,14 @@ final case class ForwardCatchUpResult(
     voteReadiness: BootstrapVoteReadiness,
 )
 
-/** Plans forward catch-up by applying replayed and live proposals in chain order. */
+/** Plans forward catch-up by applying replayed and live proposals in chain
+  * order.
+  */
 object HotStuffForwardCatchUp:
 
-  /** Plans a forward catch-up from an anchor, applying replayed and live proposals sequentially. */
+  /** Plans a forward catch-up from an anchor, applying replayed and live
+    * proposals sequentially.
+    */
   def plan[F[_]: Sync](
       anchor: FinalizedAnchorSuggestion,
       replayed: Vector[Proposal],
@@ -395,7 +411,9 @@ object HotStuffForwardCatchUp:
 
     canonicalChain ++ unresolvedHigher
 
-/** Coordinates the full bootstrap process: discovery, snapshot sync, and forward catch-up. */
+/** Coordinates the full bootstrap process: discovery, snapshot sync, and
+  * forward catch-up.
+  */
 trait BootstrapCoordinator[F[_]] extends BootstrapDiagnosticsSource[F]:
   /** Discovers finalized anchor suggestions from available peer sessions. */
   def discover(
@@ -556,9 +574,9 @@ private final class InMemoryBootstrapCoordinator[F[_]: Sync](
               nextRetryAt = None,
               lastFailure = None,
             )
-          *> suggestion.some
-            .asRight[BootstrapCoordinatorFailure]
-            .pure[F]
+        *> suggestion.some
+          .asRight[BootstrapCoordinatorFailure]
+          .pure[F]
 
   override def bootstrap(
       chainId: ChainId,
@@ -734,8 +752,8 @@ private final class InMemoryBootstrapCoordinator[F[_]: Sync](
       anchor: FinalizedAnchorSuggestion,
       sessions: Vector[BootstrapSessionBinding],
   ): F[Either[BootstrapCoordinatorFailure, Vector[Proposal]]] =
-    val replayPageSize = 256
-    val replayMaxLimit = replayPageSize * 16
+    val replayPageSize    = 256
+    val replayMaxLimit    = replayPageSize * 16
     val replayStartHeight =
       BlockHeight(BigNat.add(anchor.anchorHeight.toBigNat, BigNat.One))
 
@@ -881,8 +899,8 @@ private final class InMemoryBootstrapCoordinator[F[_]: Sync](
       now: Instant,
   ): F[Unit] =
     ref.update: state =>
-      val attempts  = state.retryAttempts + 1
-      val nextRetry = Some(retryPolicy.nextRetryAt(now, attempts))
+      val attempts   = state.retryAttempts + 1
+      val nextRetry  = Some(retryPolicy.nextRetryAt(now, attempts))
       val chainState =
         state.chains.getOrElse(chainId, BootstrapCoordinatorChainState.empty)
       state.copy(
@@ -904,8 +922,8 @@ private final class InMemoryBootstrapCoordinator[F[_]: Sync](
       faults: Vector[FinalizedAnchorSafetyFault],
   ): F[Unit] =
     ref.update: state =>
-      val attempts  = state.retryAttempts + 1
-      val nextRetry = Some(retryPolicy.nextRetryAt(now, attempts))
+      val attempts   = state.retryAttempts + 1
+      val nextRetry  = Some(retryPolicy.nextRetryAt(now, attempts))
       val chainState =
         state.chains.getOrElse(chainId, BootstrapCoordinatorChainState.empty)
       state.copy(

@@ -39,7 +39,8 @@ object StaticPeerTransportAuthConfig:
       topology: StaticPeerTopology,
       path: String = DefaultPath,
   ): Either[String, StaticPeerTransportAuth] =
-    TypesafeConfigParsing.requiredSection(config, path)
+    TypesafeConfigParsing
+      .requiredSection(config, path)
       .flatMap(loadSection(_, topology))
 
   /** Loads transport auth from a pre-resolved config section.
@@ -70,11 +71,11 @@ object StaticPeerTransportAuthConfig:
       section: Config,
   ): Either[String, StaticPeerTransportAuthConfigInput] =
     for
-      authSection <- TransportAuth.required(section)
+      authSection    <- TransportAuth.required(section)
       peerSecretsRaw <- PeerSecrets.required(authSection)
-      peerSecrets <- peerSecretsRaw.toList.traverse: (peerRaw, secretRaw) =>
+      peerSecrets    <- peerSecretsRaw.toList.traverse: (peerRaw, secretRaw) =>
         for
-          peer <- PeerIdentity.parse(peerRaw)
+          peer   <- PeerIdentity.parse(peerRaw)
           secret <- TransportSharedSecret.fromUtf8(secretRaw)
         yield peer -> secret
     yield StaticPeerTransportAuthConfigInput(peerSecrets = peerSecrets.toMap)

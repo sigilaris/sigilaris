@@ -82,8 +82,8 @@ object BinaryEventStreamCodec:
             val (front, back) = sizeResult.remainder.splitAt(declaredSize)
             DecodeResult(front, back).asRight[DecodeFailure]
 
-  private given ByteEncoder[String] = ByteEncoder[Utf8].contramap(Utf8(_))
-  private given ByteDecoder[String] = ByteDecoder[Utf8].map(_.asString)
+  private given ByteEncoder[String]     = ByteEncoder[Utf8].contramap(Utf8(_))
+  private given ByteDecoder[String]     = ByteDecoder[Utf8].map(_.asString)
   private given ByteEncoder[ByteVector] = bytes =>
     encodeLengthPrefix(bytes.size) ++ bytes
   private given ByteDecoder[ByteVector] =
@@ -185,7 +185,7 @@ object BinaryEventStreamCodec:
         finishDecode(state).flatMap: _ =>
           events match
             case Vector(single) => single.asRight[String]
-            case other =>
+            case other          =>
               (
                 "expected one event frame but decoded " +
                   other.size.toString
@@ -450,7 +450,7 @@ object BinaryEventStreamCodec:
   ): Either[String, EventEnvelopeWire[A]] =
     for
       versionResult <- ByteDecoder[Byte].decode(frameBytes).leftMap(_.msg)
-      kindResult <- ByteDecoder[Byte]
+      kindResult    <- ByteDecoder[Byte]
         .decode(versionResult.remainder)
         .leftMap(_.msg)
       version = versionResult.value.toInt & 0xff
@@ -482,7 +482,7 @@ object BinaryEventStreamCodec:
       .flatMap:
         case DecodeResult(payload, remainder) =>
           for
-            _ <- ensureEmptyRemainder("event frame", remainder)
+            _              <- ensureEmptyRemainder("event frame", remainder)
             decodedPayload <- decodeStrict[A](
               "event payload",
               payload.payloadBytes,

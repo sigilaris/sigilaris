@@ -16,7 +16,9 @@ enum HotStuffGossipArtifact:
   case TimeoutVoteArtifact(timeoutVote: TimeoutVote)
   case NewViewArtifact(newView: NewView)
 
-/** Companion for `HotStuffGossipArtifact`, providing topic/ID resolution and encoding. */
+/** Companion for `HotStuffGossipArtifact`, providing topic/ID resolution and
+  * encoding.
+  */
 object HotStuffGossipArtifact:
   private final case class ArtifactMetadata(
       tag: Byte,
@@ -33,8 +35,9 @@ object HotStuffGossipArtifact:
         ArtifactMetadata(
           tag = 0x01.toByte,
           topic = GossipTopic.consensusProposal,
-          stableId =
-            StableArtifactId.unsafeFromBytes(proposal.proposalId.toUInt256.bytes),
+          stableId = StableArtifactId.unsafeFromBytes(
+            proposal.proposalId.toUInt256.bytes,
+          ),
           encodedPayload = proposal.toBytes,
         )
       case HotStuffGossipArtifact.VoteArtifact(vote) =>
@@ -50,7 +53,8 @@ object HotStuffGossipArtifact:
           tag = 0x03.toByte,
           topic = GossipTopic.consensusTimeoutVote,
           stableId = StableArtifactId.unsafeFromBytes:
-            timeoutVote.timeoutVoteId.toUInt256.bytes,
+            timeoutVote.timeoutVoteId.toUInt256.bytes
+          ,
           encodedPayload = timeoutVote.toBytes,
         )
       case HotStuffGossipArtifact.NewViewArtifact(newView) =>
@@ -130,11 +134,16 @@ object HotStuffGossipArtifact:
 
 /** Per-topic gossip configuration for a HotStuff artifact type.
   *
-  * @param exactKnownSetLimit max entries in the exact-known set
-  * @param requestByIdLimit max IDs per request-by-ID batch
-  * @param maxBatchItems max items per gossip batch
-  * @param flushInterval how often to flush gossip batches
-  * @param deliveryPriority priority for delivery ordering (higher = earlier delivery)
+  * @param exactKnownSetLimit
+  *   max entries in the exact-known set
+  * @param requestByIdLimit
+  *   max IDs per request-by-ID batch
+  * @param maxBatchItems
+  *   max items per gossip batch
+  * @param flushInterval
+  *   how often to flush gossip batches
+  * @param deliveryPriority
+  *   priority for delivery ordering (higher = earlier delivery)
   */
 final case class HotStuffTopicPolicy private (
     exactKnownSetLimit: Int,
@@ -310,8 +319,8 @@ object HotStuffTopic:
     ): Option[ArtifactContractView]
 
   private object ProposalContractSpec extends ArtifactContractSpec:
-    val topic: GossipTopic        = GossipTopic.consensusProposal
-    val invalidReason: String     = "invalidConsensusProposalEvent"
+    val topic: GossipTopic    = GossipTopic.consensusProposal
+    val invalidReason: String = "invalidConsensusProposalEvent"
 
     def viewOf(
         artifact: HotStuffGossipArtifact,
@@ -330,8 +339,8 @@ object HotStuffTopic:
           None
 
   private object VoteContractSpec extends ArtifactContractSpec:
-    val topic: GossipTopic        = GossipTopic.consensusVote
-    val invalidReason: String     = "invalidConsensusVoteEvent"
+    val topic: GossipTopic    = GossipTopic.consensusVote
+    val invalidReason: String = "invalidConsensusVoteEvent"
 
     def viewOf(
         artifact: HotStuffGossipArtifact,
@@ -350,8 +359,8 @@ object HotStuffTopic:
           None
 
   private object TimeoutVoteContractSpec extends ArtifactContractSpec:
-    val topic: GossipTopic        = GossipTopic.consensusTimeoutVote
-    val invalidReason: String     = "invalidConsensusTimeoutVoteEvent"
+    val topic: GossipTopic    = GossipTopic.consensusTimeoutVote
+    val invalidReason: String = "invalidConsensusTimeoutVoteEvent"
 
     def viewOf(
         artifact: HotStuffGossipArtifact,
@@ -370,8 +379,8 @@ object HotStuffTopic:
           None
 
   private object NewViewContractSpec extends ArtifactContractSpec:
-    val topic: GossipTopic        = GossipTopic.consensusNewView
-    val invalidReason: String     = "invalidConsensusNewViewEvent"
+    val topic: GossipTopic    = GossipTopic.consensusNewView
+    val invalidReason: String = "invalidConsensusNewViewEvent"
 
     def viewOf(
         artifact: HotStuffGossipArtifact,
@@ -415,7 +424,7 @@ object HotStuffTopic:
       spec: ArtifactContractSpec,
   ): GossipTopicContract[HotStuffGossipArtifact] =
     new GossipTopicContract[HotStuffGossipArtifact]:
-      override val topic: GossipTopic = spec.topic
+      override val topic: GossipTopic              = spec.topic
       override val exactKnownSetLimit: Option[Int] = Some:
         policy.exactKnownSetLimit
       override val requestByIdLimit: Option[Int] = Some(policy.requestByIdLimit)
@@ -480,7 +489,9 @@ object HotStuffTopic:
   ): GossipTopicContract[HotStuffGossipArtifact] =
     contractFor(policy, NewViewContractSpec)
 
-  /** Creates a complete gossip topic contract registry for all HotStuff artifact types. */
+  /** Creates a complete gossip topic contract registry for all HotStuff
+    * artifact types.
+    */
   @SuppressWarnings(Array("org.wartremover.warts.DefaultArguments"))
   def registry(
       policy: HotStuffGossipPolicy = HotStuffGossipPolicy.default,

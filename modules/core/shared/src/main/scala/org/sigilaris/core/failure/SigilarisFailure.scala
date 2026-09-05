@@ -22,16 +22,16 @@ sealed trait SigilarisFailure extends NoStackTrace:
 object SigilarisFailure:
   /** Closed family for the baseline core failure hierarchy. */
   enum Kind(val code: FailureCode):
-    case Unknown extends Kind(FailureCode.Unknown)
-    case Decode extends Kind(FailureCode.Decode)
-    case Parse extends Kind(FailureCode.Parse)
-    case Trie extends Kind(FailureCode.Trie)
-    case Routing extends Kind(FailureCode.Routing)
-    case Crypto extends Kind(FailureCode.Crypto)
-    case UInt256TooLong extends Kind(FailureCode.UInt256.TooLong)
+    case Unknown              extends Kind(FailureCode.Unknown)
+    case Decode               extends Kind(FailureCode.Decode)
+    case Parse                extends Kind(FailureCode.Parse)
+    case Trie                 extends Kind(FailureCode.Trie)
+    case Routing              extends Kind(FailureCode.Routing)
+    case Crypto               extends Kind(FailureCode.Crypto)
+    case UInt256TooLong       extends Kind(FailureCode.UInt256.TooLong)
     case UInt256NegativeValue extends Kind(FailureCode.UInt256.NegativeValue)
-    case UInt256Overflow extends Kind(FailureCode.UInt256.Overflow)
-    case UInt256InvalidHex extends Kind(FailureCode.UInt256.InvalidHex)
+    case UInt256Overflow      extends Kind(FailureCode.UInt256.Overflow)
+    case UInt256InvalidHex    extends Kind(FailureCode.UInt256.InvalidHex)
 
 /** Decoding failed with a descriptive message (e.g., type mismatch, missing
   * field).
@@ -96,11 +96,13 @@ final case class UInt256TooLong(actualBytes: Long, maxBytes: Int)
   def msg: String =
     ss"Too long: ${actualBytes.toString} bytes > ${maxBytes.toString}"
 
-/** The input value is negative, which is invalid for an unsigned 256-bit integer. */
+/** The input value is negative, which is invalid for an unsigned 256-bit
+  * integer.
+  */
 case object UInt256NegativeValue extends UInt256Failure:
   override val kind: SigilarisFailure.Kind =
     SigilarisFailure.Kind.UInt256NegativeValue
-  val msg: String                = "Negative value for UInt256"
+  val msg: String = "Negative value for UInt256"
 
 /** The input value exceeds the 2^256 - 1 upper bound.
   *
@@ -110,9 +112,10 @@ case object UInt256NegativeValue extends UInt256Failure:
 final case class UInt256Overflow(detail: String) extends UInt256Failure:
   override val kind: SigilarisFailure.Kind =
     SigilarisFailure.Kind.UInt256Overflow
-  def msg: String                = detail
+  def msg: String = detail
 
-/** The input hex string contains characters that are not valid hexadecimal digits.
+/** The input hex string contains characters that are not valid hexadecimal
+  * digits.
   *
   * @param detail
   *   description of the hex parsing error
@@ -120,4 +123,4 @@ final case class UInt256Overflow(detail: String) extends UInt256Failure:
 final case class UInt256InvalidHex(detail: String) extends UInt256Failure:
   override val kind: SigilarisFailure.Kind =
     SigilarisFailure.Kind.UInt256InvalidHex
-  def msg: String                = detail
+  def msg: String = detail

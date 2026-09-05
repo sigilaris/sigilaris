@@ -139,45 +139,45 @@ object JsonKeyCodec:
   // Base instances
   /** Key codec for String (identity). */
   given stringKey: JsonKeyCodec[String] with
-    def encodeKey(key: String): String = key
+    def encodeKey(key: String): String                        = key
     def decodeKey(key: String): Either[DecodeFailure, String] =
       key.asRight[DecodeFailure]
 
   /** Key codec for UUID (toString / fromString). */
   given uuidKey: JsonKeyCodec[UUID] with
-    def encodeKey(key: UUID): String = key.toString
+    def encodeKey(key: UUID): String                        = key.toString
     def decodeKey(key: String): Either[DecodeFailure, UUID] =
       Try(UUID.fromString(key)).toOption
         .toRight(DecodeFailure(ss"Invalid UUID key: ${key}"))
 
   /** Key codec for Int (toString / parse). */
   given intKey: JsonKeyCodec[Int] with
-    def encodeKey(key: Int): String = key.toString
+    def encodeKey(key: Int): String                        = key.toString
     def decodeKey(key: String): Either[DecodeFailure, Int] =
       key.toIntOption.toRight(DecodeFailure(ss"Invalid Int key: ${key}"))
 
   /** Key codec for Long (toString / parse). */
   given longKey: JsonKeyCodec[Long] with
-    def encodeKey(key: Long): String = key.toString
+    def encodeKey(key: Long): String                        = key.toString
     def decodeKey(key: String): Either[DecodeFailure, Long] =
       key.toLongOption.toRight(DecodeFailure(ss"Invalid Long key: ${key}"))
 
   /** Key codec for Double (toString / parse). */
   given doubleKey: JsonKeyCodec[Double] with
-    def encodeKey(key: Double): String = key.toString
+    def encodeKey(key: Double): String                        = key.toString
     def decodeKey(key: String): Either[DecodeFailure, Double] =
       key.toDoubleOption.toRight(DecodeFailure(ss"Invalid Double key: ${key}"))
 
   /** Key codec for BigInt (toString / parse). */
   given bigIntKey: JsonKeyCodec[BigInt] with
-    def encodeKey(key: BigInt): String = key.toString
+    def encodeKey(key: BigInt): String                        = key.toString
     def decodeKey(key: String): Either[DecodeFailure, BigInt] =
       Try(BigInt(key)).toOption
         .toRight(DecodeFailure(ss"Invalid BigInt key: ${key}"))
 
   /** Key codec for BigDecimal (toString / parse). */
   given bigDecimalKey: JsonKeyCodec[BigDecimal] with
-    def encodeKey(key: BigDecimal): String = key.toString
+    def encodeKey(key: BigDecimal): String                        = key.toString
     def decodeKey(key: String): Either[DecodeFailure, BigDecimal] =
       Try(BigDecimal(key)).toOption
         .toRight(DecodeFailure(ss"Invalid BigDecimal key: ${key}"))

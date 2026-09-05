@@ -63,7 +63,9 @@ object NewViewId:
     ByteEncoder[UInt256].contramap(_.toUInt256)
   given Eq[NewViewId] = Eq.by(_.toUInt256)
 
-/** The subject of a timeout vote, combining the consensus window and the voter's highest known QC. */
+/** The subject of a timeout vote, combining the consensus window and the
+  * voter's highest known QC.
+  */
 final case class TimeoutVoteSubject(
     window: HotStuffWindow,
     highestKnownQc: QuorumCertificateSubject,
@@ -136,7 +138,8 @@ object TimeoutVote:
         signature = timeoutVote.signature,
       )
 
-/** A certificate aggregating sufficient timeout votes to trigger a view change. */
+/** A certificate aggregating sufficient timeout votes to trigger a view change.
+  */
 final case class TimeoutCertificate(
     subject: TimeoutVoteSubject,
     votes: Vector[TimeoutVote],
@@ -151,7 +154,9 @@ final case class UnsignedNewView(
     timeoutCertificate: TimeoutCertificate,
 )
 
-/** A signed new-view message sent to the next leader after a timeout certificate is formed. */
+/** A signed new-view message sent to the next leader after a timeout
+  * certificate is formed.
+  */
 final case class NewView(
     newViewId: NewViewId,
     window: HotStuffWindow,
@@ -212,15 +217,19 @@ object NewView:
         signature = newView.signature,
       )
 
-/** Core pacemaker utilities for deterministic leader election and window advancement. */
+/** Core pacemaker utilities for deterministic leader election and window
+  * advancement.
+  */
 object HotStuffPacemaker:
-  /** Selects the leader for the given window using a deterministic round-robin scheme. */
+  /** Selects the leader for the given window using a deterministic round-robin
+    * scheme.
+    */
   def deterministicLeader(
       window: HotStuffWindow,
       validatorSet: ValidatorSet,
   ): ValidatorId =
     val members = validatorSet.members
-    val index =
+    val index   =
       (
         window.view.toBigNat.toBigInt %
           BigInt(members.size.toLong)
@@ -233,7 +242,9 @@ object HotStuffPacemaker:
   ): HotStuffWindow =
     window.copy(view = window.view.next)
 
-/** Canonical encoding and hashing operations for pacemaker artifacts (timeout votes and new views). */
+/** Canonical encoding and hashing operations for pacemaker artifacts (timeout
+  * votes and new views).
+  */
 object HotStuffPacemakerCanonicalEncoding:
   private val TimeoutVoteSignDomain: Utf8 =
     Utf8("sigilaris.hotstuff.timeout-vote.sign.v1")

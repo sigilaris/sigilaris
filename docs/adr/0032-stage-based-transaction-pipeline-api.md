@@ -3,6 +3,9 @@
 ## Status
 Accepted
 
+ADR-0036 extends the generic certified-ancestor stage API with an explicitly activated exact ordered-atomic pipeline
+mode and signed inclusion deadline. Generic pipelines retain the rules in this ADR.
+
 ## Context
 - ADR-0031 defines certified-ancestor dependent transaction pipelining:
   dependent application transactions may be accepted before finality, but they
@@ -36,7 +39,8 @@ Accepted
      transactions.
    - The inner vector is a same-stage proposal candidate group. Transactions in
      the same stage may be proposed together in one block subject to normal
-     application validation and transaction limits.
+     application validation and transaction limits, but cannot consume one another's new outputs unless an ADR-0036
+     exact ordered-atomic profile is activated.
    - The outer vector is a certified-ancestor barrier sequence. Stage `N + 1`
      must not become proposal-eligible until stage `N` is certified on the
      candidate parent branch.
@@ -101,24 +105,20 @@ Accepted
    - The exact HTTP path can be adapted by an embedding node API, but the
      semantic contract is the dedicated pipeline contract above.
 
-4. **Define the stage barrier as certified-ancestor progress, not same-block
-   execution order.**
-   - A later stage must not rely on outputs produced earlier in the same
-     proposal.
-   - Stage identity is submission/node-local metadata. It is not consensus
-     metadata embedded into transactions or proposals by Sigilaris core.
-   - The node admission layer and proposal input provider enforce stage
-     barriers by keeping later-stage work out of normal proposal selection until
-     the previous stage barrier is satisfied.
-   - Vote-time enforcement reduces to ADR-0031 branch dependency validation:
-     an embedder validation provider rejects a proposal when a transaction's
-     required certified-ancestor dependency is not present on the proposal's
-     parent branch.
-   - The validator-visible rejection reason should distinguish a stage-derived
-     dependency branch conflict from an ordinary application reducer failure,
-     using the ADR-0031 dependency validation taxonomy.
-   - The barrier is satisfied only when the required previous stage block is a
-     certified ancestor of the candidate parent branch.
+4. **Use certified-ancestor barriers by default and explicit activated modes for exact same-batch dependencies.**
+   - The default outer-stage barrier remains certified ancestry: a later stage does not rely on outputs created earlier
+     in the same proposal.
+   - ADR-0036 permits an application-registered exact `Producer -> Consumer` `OrderedAtomic` profile. The whole signed
+     application plan commits to a stable pipeline id, ordered transaction ids, the deterministic exact producer output,
+     profile/version, and one `lastInclusionHeight` signed identically by every stage transaction.
+   - In `OrderedAtomic`, the two profile transactions may occupy one ordered atomic batch. Validators reject the whole
+     pipeline if either step fails; no partial committed producer is exposed.
+   - In `CertifiedAncestor`, the ordinary stage barrier and ADR-0031 branch checks apply. Any proven descendant is valid;
+     adjacent placement is the preferred latency profile.
+   - Generic stage identity remains submission/node-local metadata. Only a separately activated application profile's
+     signed plan becomes validator-visible input; Sigilaris does not infer a consensus DAG from arbitrary stages.
+   - Outside an activated profile, same-block dynamic output discovery, cross-stage consumption and implicit
+     `Latest` remain invalid.
 
 5. **Return pipeline-shaped submission and query responses.**
    - A pipeline response preserves the same outer stage shape as the request.
@@ -251,6 +251,11 @@ Accepted
      canonical payload must be rejected as an idempotency conflict.
    - Without an idempotency key, repeated submissions are independent pipeline
      submissions.
+   - For an ADR-0036 activated profile, the application transaction plan additionally signs a stable application
+     `pipelineId` and `lastInclusionHeight`. The node query id may be derived from that value but HTTP idempotency and
+     application/consensus identity remain distinct domains.
+   - Before expiry, retries use the same key and exact signed bytes. After finalized-height `expiredUnapplied`, a new
+     attempt requires newly signed bytes, a new deadline and new transaction ids.
 
 10. **Keep Sigilaris application-neutral.**
    - Sigilaris does not infer application-specific ledger object, account,
@@ -280,6 +285,8 @@ Accepted
    - `POST /tx-pipeline` carries a JSON body with required `stages` and
      required `waitFor`. `stages` is a non-empty outer array of non-empty inner
      arrays. `waitFor` accepts `accepted`, `certified`, or `finalized`.
+   - An embedding API may add a versioned `executionMode`. `ordered-atomic-v1` is valid only for an activated exact
+     profile and never grants arbitrary same-stage transactions access to each other's new outputs.
    - HTTP idempotency uses the `Idempotency-Key` header. In-process admission
      may pass the same key through an optional metadata field, but the key is
      never embedded into HotStuff artifacts.
@@ -343,6 +350,8 @@ Accepted
   barrier requires certified ancestry. Vote validation enforces the same safety
   through ADR-0031 dependency branch checks, not through consensus-visible stage
   metadata.
+- An activated ordered-atomic profile can remove one certified-ancestor wait for a narrowly declared dependency while
+  keeping consumer finalization as the success boundary.
 
 ## Rejected Alternatives
 1. **Expose only the pipeline endpoint and no single-transaction convenience
@@ -373,17 +382,17 @@ Accepted
    - The required safety boundary for proposal eligibility is certified
      ancestry, while external settlement can still wait for finality.
 
-5. **Allow cross-stage transactions in the same proposal if the application
-   reducer can order them**
+5. **Allow arbitrary cross-stage transactions in the same proposal if the application reducer can order them**
    - This changes the meaning of a stage barrier from certified ancestry to
      intra-block execution order.
    - It would make the pipeline API ambiguous and harder to validate across
      independent validators.
-   - Same-block execution remains available by placing transactions in the same
-     inner stage.
+   - Same-block dependency is available only through ADR-0036's activated exact ordered-atomic profile. Merely placing
+     transactions in one inner stage does not authorize a newly-created-output dependency.
 
 ## References
 - [ADR-0031: Certified Ancestor Dependent Transaction Pipelining](0031-certified-ancestor-dependent-transaction-pipelining.md)
+- [ADR-0036: Height-bounded application locks and explicit pipeline dependencies](0036-height-bounded-application-locks-and-explicit-pipeline-dependencies.md)
 - [ADR-0029: HotStuff Proposal Tx Uniqueness Policy](0029-hotstuff-proposal-tx-uniqueness-policy.md)
 
 ## Follow-Up

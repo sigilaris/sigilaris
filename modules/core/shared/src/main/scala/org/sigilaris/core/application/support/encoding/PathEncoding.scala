@@ -68,7 +68,7 @@ inline def encodePath[Path <: Tuple]: ByteVector =
 private inline def encodePathAcc[Path <: Tuple](acc: ByteVector): ByteVector =
   inline erasedValue[Path] match
     case _: EmptyTuple => acc
-    case _: (h *: t) =>
+    case _: (h *: t)   =>
       val segment: ByteVector = encodeSegment[h & String]
       val newAcc: ByteVector  = acc ++ segment
       encodePathAcc[t](newAcc)
@@ -134,14 +134,17 @@ trait PathEncoder[Path <: Tuple]:
     */
   def encode: ByteVector
 
-/** Helper typeclass to collect path segments as a list of strings for runtime encoding.
+/** Helper typeclass to collect path segments as a list of strings for runtime
+  * encoding.
   *
-  * @tparam T the path tuple type
+  * @tparam T
+  *   the path tuple type
   */
 trait SegmentCollector[T <: Tuple]:
   /** Collects all segments from the type-level path into a runtime list.
     *
-    * @return the path segments in order
+    * @return
+    *   the path segments in order
     */
   def collect: List[String]
 
@@ -156,7 +159,9 @@ object SegmentCollector:
   ): SegmentCollector[H *: T] with
     def collect: List[String] = ev.value :: tailCollector.collect
 
-/** Companion for [[PathEncoder]], providing derivation instances for empty and non-empty paths. */
+/** Companion for [[PathEncoder]], providing derivation instances for empty and
+  * non-empty paths.
+  */
 object PathEncoder:
   /** Base case: empty path encodes to length header (0) only. */
   given empty: PathEncoder[EmptyTuple] with

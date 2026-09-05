@@ -685,6 +685,7 @@ trait GossipTopicContract[A]:
   ]] =
     none[ExactKnownSetScope]
       .asRight[CanonicalRejection.ArtifactContractRejected]
+
   /** @return optional limit on the size of exact known sets */
   def exactKnownSetLimit: Option[Int] = None
 
@@ -694,8 +695,8 @@ trait GossipTopicContract[A]:
   /** @return delivery priority; higher values are delivered first */
   def deliveryPriority: Int = 0
 
-  /** Returns the producer QoS settings for this contract, optionally
-    * overriding the default.
+  /** Returns the producer QoS settings for this contract, optionally overriding
+    * the default.
     *
     * @param default
     *   the default QoS settings

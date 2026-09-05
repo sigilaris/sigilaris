@@ -27,7 +27,8 @@ private final class SnapshotStoreFailureException(
       case Some(detail) => failure.reason + ": " + detail
       case None         => failure.reason
 
-/** Persistent store for snapshot synchronization metadata, keyed by chain ID. */
+/** Persistent store for snapshot synchronization metadata, keyed by chain ID.
+  */
 trait SnapshotMetadataStore[F[_]]:
   def get(
       chainId: org.sigilaris.node.gossip.ChainId,
@@ -49,7 +50,9 @@ trait SnapshotMetadataStore[F[_]]:
       chainId: org.sigilaris.node.gossip.ChainId,
   ): F[Unit]
 
-/** Companion for `SnapshotMetadataStore`, providing in-memory and key-value-backed implementations. */
+/** Companion for `SnapshotMetadataStore`, providing in-memory and
+  * key-value-backed implementations.
+  */
 object SnapshotMetadataStore:
   private val latestOrdering: Ordering[SnapshotMetadata] =
     Ordering.by[SnapshotMetadata, (Instant, BlockHeight, String, String)]:
@@ -150,35 +153,39 @@ object SnapshotMetadataStore:
         ): F[Unit] =
           writeLock.permit.use: _ =>
             list(metadata.anchor.chainId).flatMap: history =>
-              keyValueStore.put(
-                metadata.anchor.chainId,
-                upsertHistory(history, metadata),
-              ).handleErrorWith:
-                case error: SnapshotStoreFailureException =>
-                  Concurrent[F].raiseError(error)
-                case NonFatal(error) =>
-                  Concurrent[F].raiseError:
-                    SnapshotSyncFailure.raiseStorageFailure(
-                      reason = "snapshotMetadataWriteFailed",
-                      detail = Option(error.getMessage),
-                    )
-                case error =>
-                  Concurrent[F].raiseError(error)
+              keyValueStore
+                .put(
+                  metadata.anchor.chainId,
+                  upsertHistory(history, metadata),
+                )
+                .handleErrorWith:
+                  case error: SnapshotStoreFailureException =>
+                    Concurrent[F].raiseError(error)
+                  case NonFatal(error) =>
+                    Concurrent[F].raiseError:
+                      SnapshotSyncFailure.raiseStorageFailure(
+                        reason = "snapshotMetadataWriteFailed",
+                        detail = Option(error.getMessage),
+                      )
+                  case error =>
+                    Concurrent[F].raiseError(error)
 
         override def remove(
             chainId: org.sigilaris.node.gossip.ChainId,
         ): F[Unit] =
-          keyValueStore.remove(chainId).handleErrorWith:
-            case error: SnapshotStoreFailureException =>
-              Concurrent[F].raiseError(error)
-            case NonFatal(error) =>
-              Concurrent[F].raiseError:
-                SnapshotSyncFailure.raiseStorageFailure(
-                  reason = "snapshotMetadataWriteFailed",
-                  detail = Option(error.getMessage),
-                )
-            case error =>
-              Concurrent[F].raiseError(error)
+          keyValueStore
+            .remove(chainId)
+            .handleErrorWith:
+              case error: SnapshotStoreFailureException =>
+                Concurrent[F].raiseError(error)
+              case NonFatal(error) =>
+                Concurrent[F].raiseError:
+                  SnapshotSyncFailure.raiseStorageFailure(
+                    reason = "snapshotMetadataWriteFailed",
+                    detail = Option(error.getMessage),
+                  )
+              case error =>
+                Concurrent[F].raiseError(error)
 
   private final class InMemorySnapshotMetadataStore[F[_]: Sync](
       ref: Ref[F, Map[org.sigilaris.node.gossip.ChainId, Vector[
@@ -271,7 +278,9 @@ trait SnapshotNodeStore[F[_]]:
   )(using Functor[F]): F[Boolean] =
     get(hash).map(_.nonEmpty)
 
-/** Companion for `SnapshotNodeStore`, providing in-memory and key-value-backed implementations. */
+/** Companion for `SnapshotNodeStore`, providing in-memory and key-value-backed
+  * implementations.
+  */
 object SnapshotNodeStore:
   /** Creates an in-memory node store backed by a Ref. */
   def inMemory[F[_]: Sync]: F[SnapshotNodeStore[F]] =
@@ -314,17 +323,19 @@ object SnapshotNodeStore:
       override def put(
           node: SnapshotTrieNode,
       ): F[Unit] =
-        keyValueStore.put(node.hash, node.node).handleErrorWith:
-          case error: SnapshotStoreFailureException =>
-            Sync[F].raiseError(error)
-          case NonFatal(error) =>
-            Sync[F].raiseError:
-              SnapshotSyncFailure.raiseStorageFailure(
-                reason = "snapshotNodeWriteFailed",
-                detail = Option(error.getMessage),
-              )
-          case error =>
-            Sync[F].raiseError(error)
+        keyValueStore
+          .put(node.hash, node.node)
+          .handleErrorWith:
+            case error: SnapshotStoreFailureException =>
+              Sync[F].raiseError(error)
+            case NonFatal(error) =>
+              Sync[F].raiseError:
+                SnapshotSyncFailure.raiseStorageFailure(
+                  reason = "snapshotNodeWriteFailed",
+                  detail = Option(error.getMessage),
+                )
+            case error =>
+              Sync[F].raiseError(error)
 
   private final class InMemorySnapshotNodeStore[F[_]: Sync](
       ref: Ref[F, Map[MerkleTrieNode.MerkleHash, MerkleTrieNode]],
@@ -365,7 +376,9 @@ final case class SnapshotSyncResult(
     fetchedNodeCount: Long,
 )
 
-/** Policy controlling how many rounds of peer fetching to attempt during snapshot sync. */
+/** Policy controlling how many rounds of peer fetching to attempt during
+  * snapshot sync.
+  */
 final case class SnapshotFetchPolicy private (
     maxPeerRounds: Int,
 )
@@ -393,7 +406,9 @@ object SnapshotFetchPolicy:
   val default: SnapshotFetchPolicy =
     unsafe(maxPeerRounds = 3)
 
-/** Coordinates snapshot synchronization by fetching trie nodes from peers and persisting them locally. */
+/** Coordinates snapshot synchronization by fetching trie nodes from peers and
+  * persisting them locally.
+  */
 trait SnapshotCoordinator[F[_]]:
   def sync(
       anchor: FinalizedAnchorSuggestion,
@@ -401,9 +416,13 @@ trait SnapshotCoordinator[F[_]]:
       startedAt: Instant,
   ): F[Either[SnapshotSyncFailure, SnapshotSyncResult]]
 
-/** Verifies the integrity of fetched snapshot trie nodes by checking their hashes. */
+/** Verifies the integrity of fetched snapshot trie nodes by checking their
+  * hashes.
+  */
 object SnapshotNodeVerifier:
-  /** Verifies a batch of snapshot trie nodes, checking each hash matches the node content. */
+  /** Verifies a batch of snapshot trie nodes, checking each hash matches the
+    * node content.
+    */
   def verifyBatch(
       nodes: Vector[SnapshotTrieNode],
   ): Either[SnapshotSyncFailure, Vector[SnapshotTrieNode]] =
@@ -424,13 +443,17 @@ object SnapshotNodeVerifier:
             ),
           )
 
-  /** Converts a state root to its equivalent Merkle hash for snapshot traversal. */
+  /** Converts a state root to its equivalent Merkle hash for snapshot
+    * traversal.
+    */
   def rootHash(
       stateRoot: org.sigilaris.node.jvm.runtime.block.StateRoot,
   ): MerkleTrieNode.MerkleHash =
     Hash.Value[MerkleTrieNode](stateRoot.toUInt256)
 
-/** Runtime implementation of `SnapshotNodeFetchService` backed by a local node store. */
+/** Runtime implementation of `SnapshotNodeFetchService` backed by a local node
+  * store.
+  */
 object SnapshotNodeFetchServiceRuntime:
   /** Creates a fetch service that serves nodes from a local store. */
   def fromNodeStore[F[_]: Sync](
@@ -454,7 +477,9 @@ object SnapshotNodeFetchServiceRuntime:
             loaded.flatten
               .asRight[org.sigilaris.node.gossip.CanonicalRejection]
 
-/** Companion for `SnapshotCoordinator`, providing factory methods with varying configuration. */
+/** Companion for `SnapshotCoordinator`, providing factory methods with varying
+  * configuration.
+  */
 object SnapshotCoordinator:
   def create[F[_]: Sync: Clock](
       chainId: org.sigilaris.node.gossip.ChainId,
@@ -517,7 +542,7 @@ object SnapshotCoordinator:
           sessions: Vector[BootstrapSessionBinding],
           startedAt: Instant,
       ): F[Either[SnapshotSyncFailure, SnapshotSyncResult]] =
-        val rootHash = SnapshotNodeVerifier.rootHash(anchor.stateRoot)
+        val rootHash        = SnapshotNodeVerifier.rootHash(anchor.stateRoot)
         val initialMetadata =
           SnapshotMetadata(
             anchor = anchor.snapshotAnchor,
@@ -713,7 +738,7 @@ object SnapshotCoordinator:
           else
             for
               loadedBefore <- loadNodes(pending)
-              fetchResult <-
+              fetchResult  <-
                 if pending.forall(loadedBefore.contains) then
                   0L.asRight[SnapshotSyncFailure].pure[F]
                 else fetchMissing(pending.filterNot(loadedBefore.contains))
@@ -747,7 +772,7 @@ object SnapshotCoordinator:
                           .toLong,
                       )
                     else
-                      val visitedNow = visited ++ pending
+                      val visitedNow   = visited ++ pending
                       val nextFrontier =
                         childHashes(loadedAfter.values)
                           .filterNot(visitedNow.contains)

@@ -22,14 +22,17 @@ import org.sigilaris.node.jvm.runtime.consensus.hotstuff.*
 import org.sigilaris.node.jvm.runtime.consensus.hotstuff.given
 import org.sigilaris.node.gossip.*
 import org.sigilaris.node.gossip.tx.TxGossipRuntime
+
 /** Server-side Armeria/Tapir adapter for HotStuff bootstrap protocol endpoints.
   *
-  * Exposes finalized suggestion, snapshot fetch, proposal replay, and historical backfill
-  * endpoints with transport authentication and bootstrap capability verification.
+  * Exposes finalized suggestion, snapshot fetch, proposal replay, and
+  * historical backfill endpoints with transport authentication and bootstrap
+  * capability verification.
   */
 @SuppressWarnings(Array("org.wartremover.warts.Any"))
 object HotStuffBootstrapArmeriaAdapter:
-  /** Creates the list of Tapir server endpoints for the HotStuff bootstrap protocol.
+  /** Creates the list of Tapir server endpoints for the HotStuff bootstrap
+    * protocol.
     *
     * @tparam F
     *   the effect type
@@ -38,7 +41,8 @@ object HotStuffBootstrapArmeriaAdapter:
     * @param sessionRuntime
     *   runtime for authorizing gossip sessions
     * @param bootstrapServices
-    *   services providing finalized suggestions, snapshots, replay, and backfill
+    *   services providing finalized suggestions, snapshots, replay, and
+    *   backfill
     * @param transportAuth
     *   transport authentication for verifying peer requests
     * @return
@@ -429,14 +433,19 @@ object HotStuffBootstrapArmeriaAdapter:
       reason = reason,
       detail = Some(detail),
     )
-/** Convenience adapter combining transaction gossip and HotStuff bootstrap endpoints. */
+
+/** Convenience adapter combining transaction gossip and HotStuff bootstrap
+  * endpoints.
+  */
 object HotStuffGossipArmeriaAdapter:
-  /** Creates all server endpoints for both transaction gossip and HotStuff bootstrap protocols.
+  /** Creates all server endpoints for both transaction gossip and HotStuff
+    * bootstrap protocols.
     *
     * @tparam F
     *   the effect type
     * @param bootstrap
-    *   the HotStuff runtime bootstrap containing runtime, auth, and consensus services
+    *   the HotStuff runtime bootstrap containing runtime, auth, and consensus
+    *   services
     * @return
     *   combined list of gossip and bootstrap server endpoints
     */

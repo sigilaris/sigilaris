@@ -109,9 +109,16 @@ object StateModuleExecutor:
     runWithModule(initial, signedTx, module)
 
   /** Legacy tuple wrapper for routed execution against a composed module. */
-  def runRoutedWithModule[F[
-      _,
-  ], Path <: Tuple, Owns <: Tuple, Needs <: Tuple, Txs <: Tuple, T <: Tx & ModuleRoutedTx](
+  def runRoutedWithModule[
+      F[
+          _,
+      ],
+      Path <: Tuple,
+      Owns <: Tuple,
+      Needs <: Tuple,
+      Txs <: Tuple,
+      T <: Tx & ModuleRoutedTx,
+  ](
       initial: StoreState,
       signedTx: Signed[T],
       module: RoutedModule[F, Path, Owns, Needs, Txs],
@@ -126,9 +133,16 @@ object StateModuleExecutor:
   /** Executes a routed transaction with a fresh access log and returns the
     * per-transaction execution witness.
     */
-  def runExecutionRoutedWithModule[F[
-      _,
-  ], Path <: Tuple, Owns <: Tuple, Needs <: Tuple, Txs <: Tuple, T <: Tx & ModuleRoutedTx](
+  def runExecutionRoutedWithModule[
+      F[
+          _,
+      ],
+      Path <: Tuple,
+      Owns <: Tuple,
+      Needs <: Tuple,
+      Txs <: Tuple,
+      T <: Tx & ModuleRoutedTx,
+  ](
       initial: StoreState,
       signedTx: Signed[T],
       module: RoutedModule[F, Path, Owns, Needs, Txs],
@@ -144,10 +158,19 @@ object StateModuleExecutor:
         case (nextState, (result, events)) =>
           toExecution(nextState, result, events)
 
-  /** Legacy tuple wrapper over [[runRoutedWithModule]] using an implicit module. */
-  def runRouted[F[
-      _,
-  ], Path <: Tuple, Owns <: Tuple, Needs <: Tuple, Txs <: Tuple, T <: Tx & ModuleRoutedTx](
+  /** Legacy tuple wrapper over [[runRoutedWithModule]] using an implicit
+    * module.
+    */
+  def runRouted[
+      F[
+          _,
+      ],
+      Path <: Tuple,
+      Owns <: Tuple,
+      Needs <: Tuple,
+      Txs <: Tuple,
+      T <: Tx & ModuleRoutedTx,
+  ](
       initial: StoreState,
       signedTx: Signed[T],
   )(using
@@ -177,9 +200,16 @@ object StateModuleExecutor:
   /** Executes a routed transaction using an implicit module and returns the
     * execution witness.
     */
-  def runExecutionRouted[F[
-      _,
-  ], Path <: Tuple, Owns <: Tuple, Needs <: Tuple, Txs <: Tuple, T <: Tx & ModuleRoutedTx](
+  def runExecutionRouted[
+      F[
+          _,
+      ],
+      Path <: Tuple,
+      Owns <: Tuple,
+      Needs <: Tuple,
+      Txs <: Tuple,
+      T <: Tx & ModuleRoutedTx,
+  ](
       initial: StoreState,
       signedTx: Signed[T],
   )(using
@@ -248,7 +278,8 @@ object StateModuleExecutor:
   ): Eff[F][TxExecution[signedTx.value.Result, signedTx.value.Event]] =
     runExecutionFromEmptyWithModule(signedTx, module)
 
-  /** Convenience to obtain the plain `F` result for the legacy tuple wrapper. */
+  /** Convenience to obtain the plain `F` result for the legacy tuple wrapper.
+    */
   def runValueWithModule[F[
       _,
   ], Path <: Tuple, Owns <: Tuple, Needs <: Tuple, Txs <: Tuple, T <: Tx](

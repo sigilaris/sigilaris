@@ -4,7 +4,8 @@ import cats.Id
 import sttp.capabilities.fs2.Fs2Streams
 import sttp.tapir.*
 
-/** Shared Tapir endpoint definitions for the transaction gossip peer protocol. */
+/** Shared Tapir endpoint definitions for the transaction gossip peer protocol.
+  */
 @SuppressWarnings(Array("org.wartremover.warts.Any"))
 object TxGossipTapirEndpoints:
   val SessionOpenPath: String = "/gossip/session/open"

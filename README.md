@@ -24,7 +24,7 @@ Sigilaris provides type-safe, deterministic building blocks for constructing cus
 Add Sigilaris to your `build.sbt`:
 
 ```scala
-libraryDependencies += "org.sigilaris" %%% "sigilaris-core" % "VERSION"
+libraryDependencies += "org.sigilaris" %%% "sigilaris-core" % "0.3.0-M2"
 ```
 
 Cross-platform support:
@@ -37,9 +37,9 @@ When you need the shared node contract layer directly on JVM/JS, add
 
 ```scala
 libraryDependencies ++= Seq(
-  "org.sigilaris" %%% "sigilaris-core" % "VERSION",
-  "org.sigilaris" %%% "sigilaris-node-common" % "VERSION", // optional when consuming shared node contracts directly
-  "org.sigilaris" %% "sigilaris-node-jvm" % "VERSION",     // optional JVM runtime bundle; transitively depends on node-common
+  "org.sigilaris" %%% "sigilaris-core" % "0.3.0-M2",
+  "org.sigilaris" %%% "sigilaris-node-common" % "0.3.0-M2", // optional when consuming shared node contracts directly
+  "org.sigilaris" %% "sigilaris-node-jvm" % "0.3.0-M2",     // optional JVM runtime bundle; transitively depends on node-common
 )
 ```
 
@@ -119,6 +119,8 @@ High-performance cryptographic primitives for blockchain applications.
 ## Documentation
 
 - **[API Documentation](https://javadoc.io/doc/org.sigilaris/sigilaris-core_3/latest/index.html)** — Comprehensive Scaladoc
+- **[v0.3.0-M2 Release Notes](docs/releases/v0.3.0-M2-release-notes.md)** — Exact pipeline recovery and admission hardening, M1 migration, and artifact verification
+- **[v0.3.0-M2 Integration Guide](docs/releases/v0.3.0-M2-integration-guide.md)** — Application profile activation and exact-pipeline integration
 - **[v0.2.12 Release Notes](docs/releases/v0.2.12-release-notes.md)** — Published BigNat canonical-boundary fix, upgrade notes, and final verification
 - **[v0.2.10 Release Notes](docs/dev/v0.2.10-release-notes.md)** — Earlier published release notes; v0.2.11 shipped without a standalone release-note file
 - **[Latest Release](https://github.com/sigilaris/sigilaris/releases/latest)** — Release notes and artifacts
@@ -175,11 +177,11 @@ Built with:
 ---
 
 **Maven Coordinates:**
-- JVM core: `org.sigilaris:sigilaris-core_3:VERSION`
-- Scala.js core: `org.sigilaris:sigilaris-core_sjs1_3:VERSION`
-- JVM node-common: `org.sigilaris:sigilaris-node-common_3:VERSION`
-- Scala.js node-common: `org.sigilaris:sigilaris-node-common_sjs1_3:VERSION`
-- JVM node bundle: `org.sigilaris:sigilaris-node-jvm_3:VERSION`
+- JVM core: `org.sigilaris:sigilaris-core_3:0.3.0-M2`
+- Scala.js core: `org.sigilaris:sigilaris-core_sjs1_3:0.3.0-M2`
+- JVM node-common: `org.sigilaris:sigilaris-node-common_3:0.3.0-M2`
+- Scala.js node-common: `org.sigilaris:sigilaris-node-common_sjs1_3:0.3.0-M2`
+- JVM node bundle: `org.sigilaris:sigilaris-node-jvm_3:0.3.0-M2`
 
 Downstream projects can resolve published artifacts from Maven Central using the version shown by the Maven Central badge.
 

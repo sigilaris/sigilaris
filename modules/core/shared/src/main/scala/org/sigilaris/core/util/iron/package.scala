@@ -7,8 +7,8 @@ import scodec.bits.{BitVector, ByteVector}
 
 import SafeStringInterp.*
 
-/** Iron `Constraint` that validates the bit-length of a `BitVector`
-  * by delegating to an underlying `Long`-based constraint.
+/** Iron `Constraint` that validates the bit-length of a `BitVector` by
+  * delegating to an underlying `Long`-based constraint.
   *
   * @tparam C
   *   the constraint predicate type (e.g., `GreaterEqual[256]`)
@@ -28,8 +28,8 @@ inline given [C, Impl <: Constraint[Long, C]](using
     inline impl: Impl,
 ): LengthBitVector[C, Impl] = new LengthBitVector[C, Impl]
 
-/** Iron `Constraint` that validates the byte-length of a `ByteVector`
-  * by delegating to an underlying `Long`-based constraint.
+/** Iron `Constraint` that validates the byte-length of a `ByteVector` by
+  * delegating to an underlying `Long`-based constraint.
   *
   * @tparam C
   *   the constraint predicate type (e.g., `StrictEqual[32]`)

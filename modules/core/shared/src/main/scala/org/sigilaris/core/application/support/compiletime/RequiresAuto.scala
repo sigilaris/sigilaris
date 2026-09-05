@@ -5,25 +5,34 @@ import scala.quoted.*
 
 /** Inline derivation helper for [[Requires]]. */
 object RequiresAuto:
-  /** Derives a Requires instance, reporting a descriptive compile-time error on failure.
+  /** Derives a Requires instance, reporting a descriptive compile-time error on
+    * failure.
     *
-    * @tparam Needs the required tables tuple
-    * @tparam Schema the available schema tuple
-    * @return a Requires instance
+    * @tparam Needs
+    *   the required tables tuple
+    * @tparam Schema
+    *   the available schema tuple
+    * @return
+    *   a Requires instance
     */
   @SuppressWarnings(Array("org.wartremover.warts.Any"))
   transparent inline def derive[Needs <: Tuple, Schema <: Tuple]
       : Requires[Needs, Schema] =
     summonFrom {
       case evidence: Requires[Needs, Schema] => evidence
-      case _ =>
+      case _                                 =>
         fail[Needs, Schema]
     }
 
   private inline def fail[Needs <: Tuple, Schema <: Tuple]: Nothing =
     ${ failImpl[Needs, Schema] }
 
-  @SuppressWarnings(Array("org.wartremover.warts.Any", "org.wartremover.warts.ImplicitParameter"))
+  @SuppressWarnings(
+    Array(
+      "org.wartremover.warts.Any",
+      "org.wartremover.warts.ImplicitParameter",
+    ),
+  )
   private def failImpl[Needs <: Tuple, Schema <: Tuple](using
       Quotes,
       Type[Needs],

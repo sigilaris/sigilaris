@@ -4,19 +4,24 @@ import scala.concurrent.{ExecutionContext, Future, Promise}
 
 import cats.effect.IO
 import cats.effect.unsafe.IORuntime
-import swaydb.{IO as SwayIO}
+import swaydb.IO as SwayIO
 
-/** Provides a cats-effect IO-based `swaydb.Bag.Async` implementation for SwayDB integration. */
+/** Provides a cats-effect IO-based `swaydb.Bag.Async` implementation for SwayDB
+  * integration.
+  */
 @SuppressWarnings(Array("org.wartremover.warts.Nothing"))
 object Bag:
 
   /** Type alias for the SwayDB asynchronous bag. */
   type Async[F[_]] = swaydb.Bag.Async[F]
 
-  /** Creates an asynchronous SwayDB bag backed by the given cats-effect IO runtime.
+  /** Creates an asynchronous SwayDB bag backed by the given cats-effect IO
+    * runtime.
     *
-    * @param runtime the IORuntime to use for executing IO effects
-    * @return an `Async[IO]` bag suitable for SwayDB operations
+    * @param runtime
+    *   the IORuntime to use for executing IO effects
+    * @return
+    *   an `Async[IO]` bag suitable for SwayDB operations
     */
   def fromRuntime(runtime: IORuntime): Async[IO] =
     new swaydb.Bag.Async[IO]:

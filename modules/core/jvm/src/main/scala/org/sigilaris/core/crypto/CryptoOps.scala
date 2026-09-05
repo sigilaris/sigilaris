@@ -81,7 +81,7 @@ object CryptoOps extends CryptoOpsLike:
   // Use shared domain parameters from CryptoParams
   private inline def CurveParams: X9ECParameters =
     internal.CryptoParams.curveParams
-  private inline def Curve: ECDomainParameters = internal.CryptoParams.curve
+  private inline def Curve: ECDomainParameters  = internal.CryptoParams.curve
   private inline def HalfCurveOrder: BigInteger =
     internal.CryptoParams.halfCurveOrder
 
@@ -104,7 +104,7 @@ object CryptoOps extends CryptoOpsLike:
     val gen  = KeyPairGenerator.getInstance("ECDSA", "BC")
     val spec = new ECGenParameterSpec("secp256k1")
     gen.initialize(spec, secureRandom)
-    val pair = gen.generateKeyPair
+    val pair                          = gen.generateKeyPair
     val maybeKeyPair: Option[KeyPair] =
       (pair.getPrivate, pair.getPublic) match
         case (bcecPrivate: BCECPrivateKey, bcecPublic: BCECPublicKey) =>
@@ -148,7 +148,8 @@ object CryptoOps extends CryptoOpsLike:
           ss"Failed to convert private key to UInt256: ${privateKey.toString}",
         )
 
-  /** Signs a message hash with ECDSA using deterministic k-generation (RFC 6979).
+  /** Signs a message hash with ECDSA using deterministic k-generation (RFC
+    * 6979).
     *
     * Normalizes the s-value to Low-S form (s <= n/2) and computes the recovery
     * parameter by trial recovery.
@@ -166,7 +167,7 @@ object CryptoOps extends CryptoOpsLike:
       transactionHash: Array[Byte],
   ): Either[failure.SigilarisFailure, Signature] =
 
-    val signer = new ECDSASigner(new HMacDSAKCalculator(new SHA256Digest()))
+    val signer     = new ECDSASigner(new HMacDSAKCalculator(new SHA256Digest()))
     val privParams = new org.bouncycastle.crypto.params.ECPrivateKeyParameters(
       keyPair.privateKey.toJavaBigIntegerUnsigned,
       internal.CryptoParams.curve,
@@ -177,8 +178,8 @@ object CryptoOps extends CryptoOpsLike:
       if sValue.compareTo(HalfCurveOrder) > 0 then Curve.getN.subtract(sValue)
       else sValue
     for
-      r256 <- UInt256.fromBigIntegerUnsigned(r)
-      s256 <- UInt256.fromBigIntegerUnsigned(sBig)
+      r256  <- UInt256.fromBigIntegerUnsigned(r)
+      s256  <- UInt256.fromBigIntegerUnsigned(sBig)
       recId <- (0 until 4)
         .find: id =>
           recoverFromSignature(
@@ -195,9 +196,9 @@ object CryptoOps extends CryptoOpsLike:
 
   /** Recovers the public key from a (v, r, s) signature and message hash.
     *
-    * Accepts signatures with either High-S or Low-S; internally normalizes s
-    * to Low-S before recovery. The recovery parameter v determines which
-    * candidate public key to return.
+    * Accepts signatures with either High-S or Low-S; internally normalizes s to
+    * Low-S before recovery. The recovery parameter v determines which candidate
+    * public key to return.
     *
     * @param signature
     *   ECDSA signature with recovery parameter v (27-30)
@@ -238,7 +239,7 @@ object CryptoOps extends CryptoOpsLike:
     else
       val R =
         def decompressKey(xBN: BigInteger, yBit: Boolean): ECPoint =
-          val x9 = internal.CryptoParams.x9
+          val x9                   = internal.CryptoParams.x9
           val compEnc: Array[Byte] =
             x9.integerToBytes(xBN, 1 + x9.getByteLength(Curve.getCurve()))
           compEnc(0) = if yBit then 0x03 else 0x02
@@ -246,12 +247,12 @@ object CryptoOps extends CryptoOpsLike:
         decompressKey(x, ((recIdAdj & 1) == 1))
       if !R.multiply(n).isInfinity() then None
       else
-        val e        = new BigInteger(1, message)
-        val eInv     = BigInteger.ZERO subtract e mod n
-        val rInv     = r modInverse n
-        val sNorm    = internal.CryptoParams.normalizeS(s)
-        val srInv    = rInv multiply sNorm mod n
-        val eInvrInv = rInv multiply eInv mod n
+        val e          = new BigInteger(1, message)
+        val eInv       = BigInteger.ZERO subtract e mod n
+        val rInv       = r modInverse n
+        val sNorm      = internal.CryptoParams.normalizeS(s)
+        val srInv      = rInv multiply sNorm mod n
+        val eInvrInv   = rInv multiply eInv mod n
         val q: ECPoint =
           ECAlgorithms.sumOfTwoMultiplies(Curve.getG(), eInvrInv, R, srInv)
         Some(PublicKey.fromECPoint(q))

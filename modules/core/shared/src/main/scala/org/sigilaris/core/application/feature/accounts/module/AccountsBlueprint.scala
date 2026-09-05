@@ -5,11 +5,7 @@ import cats.syntax.eq.*
 
 import org.sigilaris.core.codec.byte.{ByteDecoder, ByteEncoder}
 import org.sigilaris.core.datatype.{BigNat, Utf8}
-import org.sigilaris.core.failure.{
-  CryptoFailure,
-  FailureCode,
-  TrieFailure,
-}
+import org.sigilaris.core.failure.{CryptoFailure, FailureCode, TrieFailure}
 import org.sigilaris.core.application.feature.accounts.domain.*
 import org.sigilaris.core.application.feature.accounts.transactions.*
 import org.sigilaris.core.application.module.blueprint.{
@@ -43,7 +39,9 @@ object AccountsSchema:
   given tupleByteDecoder: ByteDecoder[(Utf8, KeyId20)] =
     TupleKeyCodecs.pairDecoder[Utf8, KeyId20]
 
-  /** The accounts module table schema: accounts table and name-key lookup table. */
+  /** The accounts module table schema: accounts table and name-key lookup
+    * table.
+    */
   type AccountsSchema = (
       Entry["accounts", Utf8, AccountInfo],
       Entry["nameKey", (Utf8, KeyId20), KeyInfo],
@@ -53,7 +51,7 @@ object AccountsSchema:
   val accountsEntry = new Entry["accounts", Utf8, AccountInfo]("accounts")
 
   /** Entry descriptor for the name-key table ((name, keyId) -> key info). */
-  val nameKeyEntry  = new Entry["nameKey", (Utf8, KeyId20), KeyInfo]("nameKey")
+  val nameKeyEntry = new Entry["nameKey", (Utf8, KeyId20), KeyInfo]("nameKey")
 
   /** All entry descriptors for the accounts module as a typed tuple. */
   val accountsEntries: AccountsSchema =
@@ -72,7 +70,8 @@ object AccountsSchema:
   * `SignatureVerifier` utility to guarantee consistent key recovery and
   * expiration checks.
   *
-  * @tparam F the effect type
+  * @tparam F
+  *   the effect type
   */
 @SuppressWarnings(
   Array(
@@ -135,10 +134,10 @@ class AccountsReducer[F[_]: Monad]
     *
     * Checks that the signer has permission to modify the target account.
     * Authorization is granted if:
-    *   - Signer is the account owner
-    *     (`accountSig.account == Account.Named(targetName)`)
-    *   - Signer is the account's guardian
-    *     (`Some(accountSig.account) == accountInfo.guardian`)
+    *   - Signer is the account owner (`accountSig.account ==
+    *     Account.Named(targetName)`)
+    *   - Signer is the account's guardian (`Some(accountSig.account) ==
+    *     accountInfo.guardian`)
     *
     * @param targetName
     *   the account being modified
@@ -163,7 +162,7 @@ class AccountsReducer[F[_]: Monad]
       // Second check: signer is the guardian
       for
         maybeInfo <- accountsTable.get(accountsTable.brand(targetName))
-        _ <- maybeInfo match
+        _         <- maybeInfo match
           case Some(info) if info.guardian.contains(accountSig.account) =>
             StoreF.pure[F, Unit](())
           case Some(_) =>
@@ -267,7 +266,7 @@ class AccountsReducer[F[_]: Monad]
         else
           for
             maybeExisting <- accountsTable.get(accountsTable.brand(tx.name))
-            created <- maybeExisting match
+            created       <- maybeExisting match
               case Some(_) =>
                 StoreF.raise[
                   F,
@@ -334,7 +333,7 @@ class AccountsReducer[F[_]: Monad]
 
     for
       maybeInfo <- accountsTable.get(accountsTable.brand(tx.name))
-      result <- maybeInfo match
+      result    <- maybeInfo match
         case Some(info) =>
           if info.nonce === tx.nonce then
             val newInfo = AccountInfo(
@@ -409,7 +408,7 @@ class AccountsReducer[F[_]: Monad]
     else
       for
         maybeInfo <- accountsTable.get(accountsTable.brand(tx.name))
-        result <- maybeInfo match
+        result    <- maybeInfo match
           case Some(info) =>
             if info.nonce === tx.nonce then
               // Add all keys sequentially
@@ -417,7 +416,7 @@ class AccountsReducer[F[_]: Monad]
                 tx.keyIds.toMap.foldLeft(StoreF.pure[F, Unit](())) {
                   case (acc, (keyId, description)) =>
                     for
-                      _ <- acc
+                      _             <- acc
                       maybeExisting <- nameKeyTable.get(
                         nameKeyTable.brand((tx.name, keyId)),
                       )
@@ -450,7 +449,10 @@ class AccountsReducer[F[_]: Monad]
               )
             else
               StoreF
-                .raise[F, (AccountsResult[Unit], List[AccountsEvent[KeysAdded]])]:
+                .raise[
+                  F,
+                  (AccountsResult[Unit], List[AccountsEvent[KeysAdded]]),
+                ]:
                   TrieFailure:
                     invalidRequest(
                       AccountNonceMismatchCode,
@@ -510,7 +512,7 @@ class AccountsReducer[F[_]: Monad]
     else
       for
         maybeInfo <- accountsTable.get(accountsTable.brand(tx.name))
-        result <- maybeInfo match
+        result    <- maybeInfo match
           case Some(info) =>
             if info.nonce === tx.nonce then
               // Remove all keys sequentially
@@ -548,7 +550,10 @@ class AccountsReducer[F[_]: Monad]
                   )
           case None =>
             StoreF
-              .raise[F, (AccountsResult[Unit], List[AccountsEvent[KeysRemoved]])]:
+              .raise[
+                F,
+                (AccountsResult[Unit], List[AccountsEvent[KeysRemoved]]),
+              ]:
                 TrieFailure:
                   notFound(
                     AccountNotFoundCode,
@@ -585,7 +590,7 @@ class AccountsReducer[F[_]: Monad]
 
     for
       maybeInfo <- accountsTable.get(accountsTable.brand(tx.name))
-      result <- maybeInfo match
+      result    <- maybeInfo match
         case Some(info) =>
           if info.nonce === tx.nonce then
             for _ <- accountsTable.remove(accountsTable.brand(tx.name))
@@ -639,9 +644,12 @@ object AccountsBP:
 
   /** Creates the accounts module blueprint for a given effect type.
     *
-    * @tparam F the effect type
-    * @param nodeStore the MerkleTrie node store
-    * @return a ModuleBlueprint for the accounts module
+    * @tparam F
+    *   the effect type
+    * @param nodeStore
+    *   the MerkleTrie node store
+    * @return
+    *   a ModuleBlueprint for the accounts module
     */
   def apply[F[_]: Monad](using
       @annotation.unused nodeStore: org.sigilaris.core.merkle.MerkleTrie.NodeStore[

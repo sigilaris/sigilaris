@@ -16,7 +16,8 @@ package org.sigilaris.core.assembly
   */
 object TablesProviderOps:
 
-  /** Extension providing `toTablesProvider` on any mounted [[org.sigilaris.core.application.module.runtime.StateModule]].
+  /** Extension providing `toTablesProvider` on any mounted
+    * [[org.sigilaris.core.application.module.runtime.StateModule]].
     *
     * @tparam F
     *   the effect type
@@ -34,7 +35,14 @@ object TablesProviderOps:
   extension [F[
       _,
   ], Path <: Tuple, Owns <: Tuple, Needs <: Tuple, Txs <: Tuple, R](
-      module: org.sigilaris.core.application.module.runtime.StateModule[F, Path, Owns, Needs, Txs, R]
+      module: org.sigilaris.core.application.module.runtime.StateModule[
+        F,
+        Path,
+        Owns,
+        Needs,
+        Txs,
+        R,
+      ]
   )
     /** Derive a `TablesProvider` for the module's owned schema.
       *
@@ -44,7 +52,8 @@ object TablesProviderOps:
       * and avoid leaking it beyond the intended assembly scope.
       *
       * @return
-      *   a [[org.sigilaris.core.application.module.provider.TablesProvider]] exposing the module's owned tables
+      *   a [[org.sigilaris.core.application.module.provider.TablesProvider]]
+      *   exposing the module's owned tables
       */
     def toTablesProvider
         : org.sigilaris.core.application.module.provider.TablesProvider[

@@ -72,7 +72,8 @@ object GossipArtifactKnownStateClassifier:
           GossipArtifactKnownState.Ambiguous(
             GossipArtifactAmbiguityReason.BloomSaturated,
           )
-        case Some(filter) if TxBloomFilterSupport.mightContain(filter, artifactId) =>
+        case Some(filter)
+            if TxBloomFilterSupport.mightContain(filter, artifactId) =>
           GossipArtifactKnownState.Ambiguous(
             GossipArtifactAmbiguityReason.BloomMatched,
           )

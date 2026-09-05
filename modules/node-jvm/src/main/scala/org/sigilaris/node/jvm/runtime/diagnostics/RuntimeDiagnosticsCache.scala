@@ -15,7 +15,9 @@ object RuntimeDiagnosticsCachePolicy:
   val default: RuntimeDiagnosticsCachePolicy =
     unsafe(DefaultTtl)
 
-  def fromTtl(ttl: FiniteDuration): Either[String, RuntimeDiagnosticsCachePolicy] =
+  def fromTtl(
+      ttl: FiniteDuration,
+  ): Either[String, RuntimeDiagnosticsCachePolicy] =
     Either.cond(
       ttl > Duration.Zero,
       RuntimeDiagnosticsCachePolicy(ttl),
@@ -41,7 +43,7 @@ final class RuntimeDiagnosticsCache[F[_], A] private (
       for
         now     <- F.monotonic
         current <- state.get
-        value <- freshValue(current, now) match
+        value   <- freshValue(current, now) match
           case Some(cached) =>
             cached.pure[F]
           case None =>
@@ -52,7 +54,7 @@ final class RuntimeDiagnosticsCache[F[_], A] private (
                 for
                   signal   <- Deferred[F, RefreshResult[A]]
                   decision <- state.modify(decide(signal, now))
-                  value <- decision match
+                  value    <- decision match
                     case Decision.Hit(value) =>
                       value.pure[F]
                     case Decision.Wait(existing) =>
@@ -93,7 +95,7 @@ final class RuntimeDiagnosticsCache[F[_], A] private (
       refresh.attempt
         .flatMap:
           case Right(value) => completeSuccess(signal, value)
-          case Left(error)  => completeFailure(signal, error)
+          case Left(error)  => completeFailure(signal, error),
     ):
       case Outcome.Canceled() => completeCanceled(signal)
       case _                  => F.unit

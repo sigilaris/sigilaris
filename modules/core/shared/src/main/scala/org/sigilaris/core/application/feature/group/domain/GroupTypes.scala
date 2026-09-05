@@ -23,7 +23,8 @@ import org.sigilaris.core.application.feature.accounts.domain.Account
   */
 opaque type GroupId = Utf8
 
-/** Companion for [[GroupId]], providing construction, codecs, and conversions. */
+/** Companion for [[GroupId]], providing construction, codecs, and conversions.
+  */
 object GroupId extends ValidatedKeyLikeOpaqueValueCompanion[GroupId, Utf8]:
   def apply(utf8: Utf8): Either[String, GroupId] =
     Either.cond(utf8.asString.nonEmpty, wrap(utf8), "GroupId must be non-empty")
@@ -54,7 +55,8 @@ object GroupId extends ValidatedKeyLikeOpaqueValueCompanion[GroupId, Utf8]:
   extension (g: GroupId)
     /** Converts this GroupId back to its underlying Utf8 representation.
       *
-      * @return the UTF-8 string
+      * @return
+      *   the UTF-8 string
       */
     inline def toUtf8: Utf8 = g
 
@@ -135,7 +137,8 @@ object MemberCount extends OpaqueValueCompanion[MemberCount, BigNat]:
         case Right(updated) => updated
         case Left(error)    => throw new IllegalArgumentException(error)
 
-/** Non-empty set of group members supplied to membership mutation transactions. */
+/** Non-empty set of group members supplied to membership mutation transactions.
+  */
 opaque type NonEmptyGroupAccounts = Set[Account]
 
 /** Companion for [[NonEmptyGroupAccounts]]. */

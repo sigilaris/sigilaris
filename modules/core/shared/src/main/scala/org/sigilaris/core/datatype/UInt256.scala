@@ -40,7 +40,7 @@ import org.sigilaris.core.failure.{
   *   val invalid = UInt256.fromHex("xyz")      // Left(UInt256InvalidHex(...))
   *
   *   // From BigInt
-  *   val u3 = UInt256.fromBigIntUnsigned(BigInt(42)) // Right(UInt256)
+  *   val u3       = UInt256.fromBigIntUnsigned(BigInt(42)) // Right(UInt256)
   *   val negative =
   *     UInt256.fromBigIntUnsigned(BigInt(-1)) // Left(UInt256NegativeValue)
   *   val overflow = UInt256.fromBigIntUnsigned(
@@ -49,7 +49,7 @@ import org.sigilaris.core.failure.{
   *
   *   // From bytes
   *   val bytes = ByteVector.fromHex("cafe").get
-  *   val u4 =
+  *   val u4    =
   *     UInt256.fromBytesBE(bytes) // Right(UInt256), left-padded to 32 bytes
   *
   *   // Conversion
@@ -76,7 +76,9 @@ import org.sigilaris.core.failure.{
   */
 opaque type UInt256 = ByteVector
 
-/** Companion object providing constructors, conversions, and typeclass instances for [[UInt256]]. */
+/** Companion object providing constructors, conversions, and typeclass
+  * instances for [[UInt256]].
+  */
 object UInt256:
   /** Fixed size in bytes for UInt256 (32 bytes = 256 bits). */
   val Size: Int = 32
@@ -206,7 +208,7 @@ object UInt256:
       value: java.math.BigInteger,
   ): Either[UInt256Failure, UInt256] =
     for
-      nonNeg <- Either.cond(value.signum >= 0, value, UInt256NegativeValue)
+      nonNeg     <- Either.cond(value.signum >= 0, value, UInt256NegativeValue)
       validRange <- Either.cond(
         nonNeg.bitLength <= 256,
         nonNeg,

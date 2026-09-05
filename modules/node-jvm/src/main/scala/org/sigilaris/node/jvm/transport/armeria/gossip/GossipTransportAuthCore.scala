@@ -8,7 +8,11 @@ import javax.crypto.spec.SecretKeySpec
 
 import scodec.bits.ByteVector
 
-import org.sigilaris.node.gossip.{DirectionalSessionId, PeerIdentity, StaticPeerTransportAuth}
+import org.sigilaris.node.gossip.{
+  DirectionalSessionId,
+  PeerIdentity,
+  StaticPeerTransportAuth,
+}
 
 private[gossip] object GossipTransportAuthCore:
   private val TransportProofInfo      = "sigilaris.transport-proof.v1"

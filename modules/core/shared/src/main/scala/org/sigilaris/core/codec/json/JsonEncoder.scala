@@ -97,7 +97,7 @@ trait JsonEncoderInstances:
 
   private def applyNaming(name: String, p: FieldNamingPolicy): String =
     p match
-      case FieldNamingPolicy.Identity => name
+      case FieldNamingPolicy.Identity  => name
       case FieldNamingPolicy.CamelCase =>
         if name.isEmpty then name
         else ss"${name.head.toLower.toString}${name.tail}"
@@ -150,7 +150,9 @@ trait JsonEncoderInstances:
   given vectorEncoder[A: JsonEncoder]: JsonEncoder[Vector[A]] = mk: (xs, _) =>
     JsonValue.JArray(xs.iterator.map(a => JsonEncoder[A].encode(a)).toVector)
 
-  /** Encodes Map as JObject by converting keys with [[JsonKeyCodec]] to field names. */
+  /** Encodes Map as JObject by converting keys with [[JsonKeyCodec]] to field
+    * names.
+    */
   given mapEncoder[K, V](using
       JsonKeyCodec[K],
       JsonEncoder[V],
@@ -166,7 +168,9 @@ trait JsonEncoderInstances:
         .toMap
       JsonValue.JObject(pairs)
 
-  /** Derives an encoder for product types (case classes) by encoding each field into a JObject. */
+  /** Derives an encoder for product types (case classes) by encoding each field
+    * into a JObject.
+    */
   @SuppressWarnings(Array("org.wartremover.warts.AsInstanceOf"))
   inline given derivedProductEncoder[A](using
       m: Mirror.ProductOf[A],
@@ -177,7 +181,7 @@ trait JsonEncoderInstances:
       )
       val encs            = encoders[m.MirroredElemTypes]
       val values: Product = a.asInstanceOf[Product]
-      val fields = names.iterator.zipWithIndex.flatMap: (n, i) =>
+      val fields          = names.iterator.zipWithIndex.flatMap: (n, i) =>
         val enc = encs(i).asInstanceOf[JsonEncoder[Any]]
         val jv  = enc.encode(values.productElement(i))
         jv match
@@ -185,7 +189,9 @@ trait JsonEncoderInstances:
           case _                                     => Some(n -> jv)
       JsonValue.JObject(fields.toMap)
 
-  /** Derives an encoder for sum types (sealed traits/enums) using wrapped-by-type-key discriminator. */
+  /** Derives an encoder for sum types (sealed traits/enums) using
+    * wrapped-by-type-key discriminator.
+    */
   @SuppressWarnings(Array("org.wartremover.warts.AsInstanceOf"))
   inline given derivedSumEncoder[A](using m: Mirror.SumOf[A]): JsonEncoder[A] =
     mk: (a, cfg) =>

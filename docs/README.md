@@ -28,10 +28,18 @@
 - [application-package-index.md](application-package-index.md)
 - [dev/hotstuff-proposal-input-provider-handoff.md](dev/hotstuff-proposal-input-provider-handoff.md): HotStuff proposal input and proposal validation provider handoff notes
 - [dev/tx-pipeline-api-handoff.md](dev/tx-pipeline-api-handoff.md): stage-based transaction pipeline API and provider composition handoff notes
+- [adr/0035-application-execution-lanes-ordered-waves-and-certified-fast-admission.md](adr/0035-application-execution-lanes-ordered-waves-and-certified-fast-admission.md): `v0.3.0-M1` application execution lanes, ordered working-state waves, and certified-fast admission boundary
+- [adr/0036-height-bounded-application-locks-and-explicit-pipeline-dependencies.md](adr/0036-height-bounded-application-locks-and-explicit-pipeline-dependencies.md): finalized-height-bounded application locks, maintenance drain-to-empty, and explicit exact pipeline dependencies
 - [adr/0034-canonical-bignat-wire-encoding.md](adr/0034-canonical-bignat-wire-encoding.md): canonical BigNat exact-120 reservation, long-form widths, and decoder validation
 - [dev/hotstuff-low-latency-profile.md](dev/hotstuff-low-latency-profile.md): HotStuff warm-cluster low-latency profile and residual risk notes
 - [dev/hotstuff-transitive-relay-handoff.md](dev/hotstuff-transitive-relay-handoff.md): HotStuff consensus artifact transitive relay deployment and diagnostics handoff notes
 - [dev/hotstuff-application-gossip-topic-handoff.md](dev/hotstuff-application-gossip-topic-handoff.md): HotStuff application gossip topic registration and catch-up handoff notes
+- [dev/application-safety-operations-runbook.md](dev/application-safety-operations-runbook.md): `0.3.0-M2` exact-pipeline startup, diagnostics, retry, expiry, drain, rotation, and backup/restore procedures
+- [releases/v0.3.0-M2-integration-guide.md](releases/v0.3.0-M2-integration-guide.md): M1-to-M2 migration, application verifier registration, exact submission, startup, and rotation integration
+- [releases/v0.3.0-M2-release-notes.md](releases/v0.3.0-M2-release-notes.md): M2 recovery and admission hardening, source compatibility, verification, and deferred operational work
+- [dev/v0.3.0-m1-compatibility-matrix.md](dev/v0.3.0-m1-compatibility-matrix.md): JVM/Scala.js artifacts, protocol/store versions, and historical read boundaries
+- [dev/v0.3.0-m1-golden-vectors.md](dev/v0.3.0-m1-golden-vectors.md): canonical M1 JSON, binary preimages, commitments, and persistent checksums
+- [releases/v0.3.0-M1-release-notes.md](releases/v0.3.0-M1-release-notes.md): published M1 scope, immutable coordinates/checksums, compatibility, verification, and limitations
 - [releases/v0.2.12-release-notes.md](releases/v0.2.12-release-notes.md): published v0.2.12 BigNat canonical-boundary repair, compatibility guidance, and final verification
 - [dev/v0.2.10-release-notes.md](dev/v0.2.10-release-notes.md): v0.2.10 HotStuff gossip retention, diagnostics, tx pipeline id alias, and streaming gossip delivery release notes
 - [dev/v0.2.9-release-notes.md](dev/v0.2.9-release-notes.md): v0.2.9 application-neutral HotStuff proposal artifact prefetch release notes

@@ -3,7 +3,7 @@ package codec.json
 package backend.circe
 
 import failure.ParseFailure
-import io.circe.{Json as CJson}
+import io.circe.Json as CJson
 import io.circe.parser
 // no syntax imports needed
 import ops.{JsonParser, JsonPrinter}
@@ -26,11 +26,11 @@ private[circe] object CirceConversions:
 
   @SuppressWarnings(Array("org.wartremover.warts.Recursion"))
   def fromCore(j: JsonValue): CJson = j match
-    case JsonValue.JNull          => CJson.Null
-    case JsonValue.JBool(b)       => CJson.fromBoolean(b)
-    case JsonValue.JNumber(n)     => CJson.fromBigDecimal(n)
-    case JsonValue.JString(s)     => CJson.fromString(s)
-    case JsonValue.JArray(values) => CJson.fromValues(values.map(fromCore))
+    case JsonValue.JNull           => CJson.Null
+    case JsonValue.JBool(b)        => CJson.fromBoolean(b)
+    case JsonValue.JNumber(n)      => CJson.fromBigDecimal(n)
+    case JsonValue.JString(s)      => CJson.fromString(s)
+    case JsonValue.JArray(values)  => CJson.fromValues(values.map(fromCore))
     case JsonValue.JObject(fields) =>
       CJson.fromFields(fields.view.mapValues(fromCore))
 

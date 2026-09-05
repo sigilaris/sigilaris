@@ -31,20 +31,23 @@ import org.sigilaris.core.application.transactions.{Signed, Tx}
 import org.sigilaris.core.codec.byte.ByteCodec
 import org.sigilaris.core.crypto.{Hash, PublicKey, Recover}
 
-/** Conflict footprint derivation and scheduling classification for the current application's transaction types.
+/** Conflict footprint derivation and scheduling classification for the current
+  * application's transaction types.
   *
-  * Maps each concrete transaction type to its read/write state references
-  * so the batch planner can detect conflicts and choose between schedulable
-  * and compatibility execution modes.
+  * Maps each concrete transaction type to its read/write state references so
+  * the batch planner can detect conflicts and choose between schedulable and
+  * compatibility execution modes.
   */
 object CurrentApplicationScheduling:
   /** Mount path for the accounts module. */
   type AccountsPath = "app" *: "accounts" *: EmptyTuple
 
   /** Mount path for the groups module. */
-  type GroupsPath   = "app" *: "groups" *: EmptyTuple
+  type GroupsPath = "app" *: "groups" *: EmptyTuple
 
-  /** Transaction families that always require compatibility-mode execution. Currently empty. */
+  /** Transaction families that always require compatibility-mode execution.
+    * Currently empty.
+    */
   val documentedCompatibilityFamilies: Vector[String] = Vector.empty[String]
 
   private val accountsPrefix: ByteVector =
@@ -165,8 +168,10 @@ object CurrentApplicationScheduling:
 
   /** Derives the conflict footprint for a CreateNamedAccount transaction.
     *
-    * @param signed the signed transaction
-    * @return the derived footprint or a derivation failure
+    * @param signed
+    *   the signed transaction
+    * @return
+    *   the derived footprint or a derivation failure
     */
   def deriveCreateNamedAccount(
       signed: Signed[CreateNamedAccount],
@@ -182,8 +187,10 @@ object CurrentApplicationScheduling:
 
   /** Derives the conflict footprint for an UpdateAccount transaction.
     *
-    * @param signed the signed transaction
-    * @return the derived footprint or a derivation failure
+    * @param signed
+    *   the signed transaction
+    * @return
+    *   the derived footprint or a derivation failure
     */
   def deriveUpdateAccount(
       signed: Signed[UpdateAccount],
@@ -192,8 +199,10 @@ object CurrentApplicationScheduling:
 
   /** Derives the conflict footprint for an AddKeyIds transaction.
     *
-    * @param signed the signed transaction
-    * @return the derived footprint or a derivation failure
+    * @param signed
+    *   the signed transaction
+    * @return
+    *   the derived footprint or a derivation failure
     */
   def deriveAddKeyIds(
       signed: Signed[AddKeyIds],
@@ -209,8 +218,10 @@ object CurrentApplicationScheduling:
 
   /** Derives the conflict footprint for a RemoveKeyIds transaction.
     *
-    * @param signed the signed transaction
-    * @return the derived footprint or a derivation failure
+    * @param signed
+    *   the signed transaction
+    * @return
+    *   the derived footprint or a derivation failure
     */
   def deriveRemoveKeyIds(
       signed: Signed[RemoveKeyIds],
@@ -218,7 +229,7 @@ object CurrentApplicationScheduling:
     signerKeyReads(signed).map: signerReads =>
       val tx           = signed.value
       val accountState = accountRef(tx.name)
-      val keyRefs =
+      val keyRefs      =
         tx.keyIds.toSet.map(keyId => nameKeyRef(tx.name, keyId))
       ConflictFootprint(
         reads = signerReads + accountState ++ keyRefs,
@@ -227,8 +238,10 @@ object CurrentApplicationScheduling:
 
   /** Derives the conflict footprint for a RemoveAccount transaction.
     *
-    * @param signed the signed transaction
-    * @return the derived footprint or a derivation failure
+    * @param signed
+    *   the signed transaction
+    * @return
+    *   the derived footprint or a derivation failure
     */
   def deriveRemoveAccount(
       signed: Signed[RemoveAccount],
@@ -241,8 +254,10 @@ object CurrentApplicationScheduling:
 
   /** Derives the conflict footprint for a CreateGroup transaction.
     *
-    * @param signed the signed transaction
-    * @return the derived footprint or a derivation failure
+    * @param signed
+    *   the signed transaction
+    * @return
+    *   the derived footprint or a derivation failure
     */
   def deriveCreateGroup(
       signed: Signed[CreateGroup],
@@ -251,8 +266,10 @@ object CurrentApplicationScheduling:
 
   /** Derives the conflict footprint for a DisbandGroup transaction.
     *
-    * @param signed the signed transaction
-    * @return the derived footprint or a derivation failure
+    * @param signed
+    *   the signed transaction
+    * @return
+    *   the derived footprint or a derivation failure
     */
   def deriveDisbandGroup(
       signed: Signed[DisbandGroup],
@@ -261,8 +278,10 @@ object CurrentApplicationScheduling:
 
   /** Derives the conflict footprint for an AddAccounts transaction.
     *
-    * @param signed the signed transaction
-    * @return the derived footprint or a derivation failure
+    * @param signed
+    *   the signed transaction
+    * @return
+    *   the derived footprint or a derivation failure
     */
   def deriveAddAccounts(
       signed: Signed[AddAccounts],
@@ -275,8 +294,10 @@ object CurrentApplicationScheduling:
 
   /** Derives the conflict footprint for a RemoveAccounts transaction.
     *
-    * @param signed the signed transaction
-    * @return the derived footprint or a derivation failure
+    * @param signed
+    *   the signed transaction
+    * @return
+    *   the derived footprint or a derivation failure
     */
   def deriveRemoveAccounts(
       signed: Signed[RemoveAccounts],
@@ -289,18 +310,23 @@ object CurrentApplicationScheduling:
 
   /** Derives the conflict footprint for a ReplaceCoordinator transaction.
     *
-    * @param signed the signed transaction
-    * @return the derived footprint or a derivation failure
+    * @param signed
+    *   the signed transaction
+    * @return
+    *   the derived footprint or a derivation failure
     */
   def deriveReplaceCoordinator(
       signed: Signed[ReplaceCoordinator],
   ): Either[FootprintDerivationFailure, ConflictFootprint] =
     deriveGroupOnlyFootprint(signed, signed.value.groupId)
 
-  /** Derives the conflict footprint for any supported signed transaction by dispatching on its runtime type.
+  /** Derives the conflict footprint for any supported signed transaction by
+    * dispatching on its runtime type.
     *
-    * @param signed the signed transaction (any supported type)
-    * @return the derived footprint or a derivation failure
+    * @param signed
+    *   the signed transaction (any supported type)
+    * @return
+    *   the derived footprint or a derivation failure
     */
   @SuppressWarnings(Array("org.wartremover.warts.AsInstanceOf"))
   def deriveSigned(
@@ -338,8 +364,10 @@ object CurrentApplicationScheduling:
 
   /** Classifies a signed transaction as schedulable or compatibility.
     *
-    * @param signed the signed transaction
-    * @return the scheduling classification
+    * @param signed
+    *   the signed transaction
+    * @return
+    *   the scheduling classification
     */
   def classify(
       signed: Signed[? <: Tx],

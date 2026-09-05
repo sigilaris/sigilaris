@@ -466,7 +466,7 @@ object HotStuffProposalDependencyBackfill:
         key: BackfillAttemptKey,
         nextCount: Int,
     ): BackfillAttemptState =
-      val known = currentState.counts.contains(key)
+      val known   = currentState.counts.contains(key)
       val updated =
         currentState.copy(
           counts = currentState.counts.updated(key, nextCount),
@@ -610,7 +610,7 @@ object HotStuffProposalDependencyBackfill:
               ))
             case Right(limit) =>
               val effectiveLimit = policy.maxIdsPerControlBatch.min(limit)
-              val chunks =
+              val chunks         =
                 scopedDependencies
                   .grouped(effectiveLimit)
                   .toVector

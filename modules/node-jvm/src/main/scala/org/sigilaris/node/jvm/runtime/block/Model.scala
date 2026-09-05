@@ -9,6 +9,11 @@ import scodec.bits.ByteVector
 
 import org.sigilaris.core.codec.byte.ByteEncoder
 import org.sigilaris.core.codec.byte.ByteEncoder.ops.*
+import org.sigilaris.core.application.protocol.{
+  ExecutionId,
+  ExecutionPlan,
+  ExecutionPlanRoot,
+}
 import org.sigilaris.core.crypto.CryptoOps
 import org.sigilaris.core.datatype.{BigNat, UInt256, Utf8}
 import org.sigilaris.core.util.SafeStringInterp.*
@@ -147,7 +152,7 @@ object BlockHeight:
 
   given ByteEncoder[BlockHeight] = ByteEncoder[BigNat].contramap(_.toBigNat)
   given Eq[BlockHeight]          = Eq.by(_.toBigNat)
-  given Ordering[BlockHeight] =
+  given Ordering[BlockHeight]    =
     Ordering.by[BlockHeight, BigNat](_.toBigNat)(using BigNat.bignatOrdering)
 
 /** Cryptographic commitment to the global state at a given block. */
@@ -379,6 +384,14 @@ object BlockRecordHash:
         right.toUInt256.bytes.toArray,
       )
 
+enum BlockHeaderVersion(val tag: Byte):
+  case V1 extends BlockHeaderVersion(1.toByte)
+  case V2 extends BlockHeaderVersion(2.toByte)
+
+object BlockHeaderVersion:
+  given ByteEncoder[BlockHeaderVersion] =
+    ByteEncoder[Byte].contramap(_.tag)
+
 /** Immutable header of a block containing linkage and commitment data.
   *
   * @param parent
@@ -398,10 +411,150 @@ final case class BlockHeader(
     stateRoot: StateRoot,
     bodyRoot: BodyRoot,
     timestamp: BlockTimestamp,
-) derives ByteEncoder
+    version: BlockHeaderVersion,
+    executionPlanRoot: Option[ExecutionPlanRoot],
+)
 
 /** Companion for `BlockHeader`. */
+@SuppressWarnings(Array("org.wartremover.warts.Equals"))
 object BlockHeader:
+  def apply(
+      parent: Option[BlockId],
+      height: BlockHeight,
+      stateRoot: StateRoot,
+      bodyRoot: BodyRoot,
+      timestamp: BlockTimestamp,
+  ): BlockHeader =
+    BlockHeader(
+      parent = parent,
+      height = height,
+      stateRoot = stateRoot,
+      bodyRoot = bodyRoot,
+      timestamp = timestamp,
+      version = BlockHeaderVersion.V1,
+      executionPlanRoot = None,
+    )
+
+  private final case class LegacyEncoding(
+      parent: Option[BlockId],
+      height: BlockHeight,
+      stateRoot: StateRoot,
+      bodyRoot: BodyRoot,
+      timestamp: BlockTimestamp,
+  ) derives ByteEncoder
+
+  private final case class V2Encoding(
+      version: BlockHeaderVersion,
+      parent: Option[BlockId],
+      height: BlockHeight,
+      stateRoot: StateRoot,
+      bodyRoot: BodyRoot,
+      timestamp: BlockTimestamp,
+      executionPlanRoot: Option[ExecutionPlanRoot],
+  ) derives ByteEncoder
+
+  given ByteEncoder[BlockHeader] with
+    override def encode(header: BlockHeader): ByteVector =
+      header.version match
+        case BlockHeaderVersion.V1 =>
+          LegacyEncoding(
+            header.parent,
+            header.height,
+            header.stateRoot,
+            header.bodyRoot,
+            header.timestamp,
+          ).toBytes
+        case BlockHeaderVersion.V2 =>
+          V2Encoding(
+            header.version,
+            header.parent,
+            header.height,
+            header.stateRoot,
+            header.bodyRoot,
+            header.timestamp,
+            header.executionPlanRoot,
+          ).toBytes
+
+  def validateVersionedCommitment(
+      header: BlockHeader,
+  ): Either[BlockValidationFailure, Unit] =
+    header.version match
+      case BlockHeaderVersion.V1 =>
+        Either.cond(
+          header.executionPlanRoot.isEmpty,
+          (),
+          BlockValidationFailure(
+            reason = "historicalHeaderHasExecutionPlanRoot",
+            detail = None,
+          ),
+        )
+      case BlockHeaderVersion.V2 =>
+        Either.cond(
+          header.executionPlanRoot.nonEmpty,
+          (),
+          BlockValidationFailure(
+            reason = "executionPlanRootMissing",
+            detail = None,
+          ),
+        )
+
+  def validateExecutionPlan(
+      header: BlockHeader,
+      plan: ExecutionPlan,
+      expectedMembers: Vector[ExecutionId],
+  ): Either[BlockValidationFailure, Unit] =
+    for
+      _ <- validateVersionedCommitment(header)
+      _ <- Either.cond(
+        header.version == BlockHeaderVersion.V2,
+        (),
+        BlockValidationFailure(
+          reason = "executionPlanUnsupportedByHeader",
+          detail = None,
+        ),
+      )
+      _ <- ExecutionPlan
+        .validate(plan, expectedMembers)
+        .left
+        .map(failure =>
+          BlockValidationFailure(
+            reason = "executionPlanInvalid",
+            detail = Some(renderPlanFailure(failure)),
+          ),
+        )
+      actualRoot = ExecutionPlan.computeRoot(plan)
+      _ <- Either.cond(
+        header.executionPlanRoot.contains(actualRoot),
+        (),
+        BlockValidationFailure(
+          reason = "executionPlanRootMismatch",
+          detail = Some(
+            ss"actual=${actualRoot.toHexLower}",
+          ),
+        ),
+      )
+    yield ()
+
+  private def renderPlanFailure(
+      failure: org.sigilaris.core.application.protocol.ExecutionPlanValidationFailure,
+  ): String = failure match
+    case org.sigilaris.core.application.protocol.ExecutionPlanValidationFailure
+          .UnsupportedVersion(actual) =>
+      ss"unsupportedVersion=${actual.toString}"
+    case org.sigilaris.core.application.protocol.ExecutionPlanValidationFailure.EmptyPlan =>
+      "emptyPlan"
+    case org.sigilaris.core.application.protocol.ExecutionPlanValidationFailure
+          .EmptyWave(index) =>
+      ss"emptyWave=${index.toString}"
+    case org.sigilaris.core.application.protocol.ExecutionPlanValidationFailure
+          .ConflictFreeOrderMismatch(index) =>
+      ss"conflictFreeOrderMismatch=${index.toString}"
+    case org.sigilaris.core.application.protocol.ExecutionPlanValidationFailure
+          .DuplicateExecution(executionId) =>
+      ss"duplicateExecution=${executionId.toHexLower}"
+    case org.sigilaris.core.application.protocol.ExecutionPlanValidationFailure
+          .MembershipMismatch(expected, actual) =>
+      ss"membershipMismatch expected=${expected.length.toString} actual=${actual.length.toString}"
 
   /** Returns the raw bytes used as pre-image input for computing the block
     * identifier.
@@ -427,6 +580,38 @@ object BlockHeader:
       header: BlockHeader,
   ): BlockId =
     BlockId(BlockCanonicalEncoding.blockHeaderId(header))
+
+final case class BlockProtocolActivation(
+    activationHeight: BlockHeight,
+    requiredVersion: BlockHeaderVersion,
+)
+
+@SuppressWarnings(Array("org.wartremover.warts.Equals"))
+object BlockProtocolActivation:
+  def validate(
+      activation: BlockProtocolActivation,
+      header: BlockHeader,
+  ): Either[BlockValidationFailure, Unit] =
+    val versionExpected =
+      summon[Ordering[BlockHeight]].gteq(
+        header.height,
+        activation.activationHeight,
+      )
+    val expected =
+      if versionExpected then activation.requiredVersion
+      else BlockHeaderVersion.V1
+    Either
+      .cond(
+        header.version == expected,
+        (),
+        BlockValidationFailure(
+          reason = "blockHeaderVersionActivationMismatch",
+          detail = Some(
+            ss"expected=${expected.tag.toString} actual=${header.version.tag.toString}",
+          ),
+        ),
+      )
+      .flatMap(_ => BlockHeader.validateVersionedCommitment(header))
 
 /** A single record within a block body, linking a transaction to its result and
   * emitted events.
@@ -643,11 +828,15 @@ object BlockView:
   def validate[TxRef: ByteEncoder, ResultRef: ByteEncoder, Event: ByteEncoder](
       view: BlockView[TxRef, ResultRef, Event],
   ): Either[BlockValidationFailure, Unit] =
-    BlockBody.verifyBodyRoot(view.body, view.header.bodyRoot)
+    BlockHeader
+      .validateVersionedCommitment(view.header)
+      .flatMap(_ => BlockBody.verifyBodyRoot(view.body, view.header.bodyRoot))
 
 private object BlockCanonicalEncoding:
-  private val BlockHeaderIdDomain: Utf8 =
+  private val BlockHeaderIdDomainV1: Utf8 =
     Utf8("sigilaris.block.header.id.v1")
+  private val BlockHeaderIdDomainV2: Utf8 =
+    Utf8("sigilaris.block.header.id.v2")
   private val BlockRecordHashDomain: Utf8 =
     Utf8("sigilaris.block.record.hash.v1")
   private val BlockBodyRootDomain: Utf8 =
@@ -677,7 +866,10 @@ private object BlockCanonicalEncoding:
       header: BlockHeader,
   ): ByteVector =
     BlockHeaderIdInput(
-      domain = BlockHeaderIdDomain,
+      domain = header.version match
+        case BlockHeaderVersion.V1 => BlockHeaderIdDomainV1
+        case BlockHeaderVersion.V2 => BlockHeaderIdDomainV2
+      ,
       header = header,
     ).toBytes
 

@@ -113,13 +113,14 @@ package org.sigilaris.core
   *   import org.sigilaris.core.assembly.PrefixFreeValidator
   *
   *   // Validate at compile-time
-  *   val result = PrefixFreeValidator.validateSchema[("app",), MySchema]
+  *   val result =
+  *     PrefixFreeValidator.validateSchema["app" *: EmptyTuple, MySchema]
   *   assert(result == PrefixFreeValidator.Valid)
   *
   *   // Validate at runtime with names for debugging
   *   val prefixes = List(
-  *     ("accounts", tablePrefix[("app",), "accounts"]),
-  *     ("balances", tablePrefix[("app",), "balances"])
+  *     ("accounts", tablePrefix["app" *: EmptyTuple, "accounts"]),
+  *     ("balances", tablePrefix["app" *: EmptyTuple, "balances"]),
   *   )
   *   val result2 = PrefixFreeValidator.validateWithNames(prefixes)
   *   ```

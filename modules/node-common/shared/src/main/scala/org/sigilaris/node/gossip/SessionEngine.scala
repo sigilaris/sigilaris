@@ -291,7 +291,7 @@ final case class GossipSessionEngine(
       maxControlRetryInterval: Option[java.time.Duration] = None,
   ): Either[HandshakeRejected, (GossipSessionEngine, SessionOpenProposal)] =
     ensureDirectNeighbor(peer).flatMap: _ =>
-      val existing = relationships.get(peer)
+      val existing              = relationships.get(peer)
       val existingOutboundAlive =
         existing.flatMap(_.outbound).exists(_.isAlive)
       Either
@@ -413,7 +413,7 @@ final case class GossipSessionEngine(
       case Right((_, Left(rejection))) =>
         this -> InboundHandshakeResult.Rejected(rejection)
       case Right((_, Right(ack))) =>
-        val existing = relationships.get(proposal.initiator)
+        val existing                = relationships.get(proposal.initiator)
         val (updatedEngine, result) =
           existing match
             case Some(relationship)
@@ -428,7 +428,7 @@ final case class GossipSessionEngine(
                   localCorrelation,
                 ) < 0
               then
-                val superseded = relationship.outbound.map(_.sessionId)
+                val superseded     = relationship.outbound.map(_.sessionId)
                 val closedOutbound = relationship.outbound.map:
                   _.copy(status = DirectionalSessionStatus.Closed)
                 val inbound = buildAcceptedInboundSession(proposal, ack, now)
@@ -485,7 +485,7 @@ final case class GossipSessionEngine(
                 ) ->
                   InboundHandshakeResult.Accepted(ack, None)
             case None =>
-              val inbound = buildAcceptedInboundSession(proposal, ack, now)
+              val inbound      = buildAcceptedInboundSession(proposal, ack, now)
               val relationship = recomputeRelationship(
                 PeerRelationship.withInbound(inbound),
               )
@@ -752,13 +752,13 @@ final case class GossipSessionEngine(
   ): PeerRelationship =
     val outboundAlive = relationship.outbound.exists(_.isAlive)
     val inboundAlive  = relationship.inbound.exists(_.isAlive)
-    val bothOpen =
+    val bothOpen      =
       relationship.outbound.exists(
         _.status === DirectionalSessionStatus.Open,
       ) &&
         relationship.inbound.exists(_.status === DirectionalSessionStatus.Open)
     val wasBidirectionalOpen = relationship.wasBidirectionalOpen || bothOpen
-    val nextStatus =
+    val nextStatus           =
       if bothOpen then PeerRelationshipStatus.Open
       else if outboundAlive || inboundAlive then
         if wasBidirectionalOpen then PeerRelationshipStatus.HalfOpen

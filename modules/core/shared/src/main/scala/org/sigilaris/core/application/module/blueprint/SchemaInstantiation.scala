@@ -4,7 +4,10 @@ import cats.Monad
 import scodec.bits.ByteVector
 
 import org.sigilaris.core.application.state.{Entry, Tables}
-import org.sigilaris.core.application.support.encoding.{PathEncoder, tablePrefixRuntime}
+import org.sigilaris.core.application.support.encoding.{
+  PathEncoder,
+  tablePrefixRuntime,
+}
 import org.sigilaris.core.merkle.MerkleTrie
 
 /** Typeclass for instantiating tables from Entry instances.
@@ -30,7 +33,9 @@ trait SchemaMapper[F[_], Path <: Tuple, Schema <: Tuple]:
     */
   def instantiate(schema: Schema): Tables[F, Schema]
 
-/** Companion for [[SchemaMapper]], providing derivation instances for empty and cons schemas. */
+/** Companion for [[SchemaMapper]], providing derivation instances for empty and
+  * cons schemas.
+  */
 object SchemaMapper:
   /** Base case: empty schema produces no tables. */
   given empty[F[_], Path <: Tuple]: SchemaMapper[F, Path, EmptyTuple] with

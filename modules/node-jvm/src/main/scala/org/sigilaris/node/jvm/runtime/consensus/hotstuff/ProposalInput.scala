@@ -111,7 +111,7 @@ object HotStuffProposalInputBranchContext:
         )
       case Some(parent) =>
         val proposalVector = proposals.iterator.toVector
-        val index = ProposalIndex(
+        val index          = ProposalIndex(
           byProposalId = proposalVector.iterator
             .map(p => p.proposalId -> p)
             .toMap,
@@ -556,7 +556,7 @@ object HotStuffProposalInputValidator:
       request: HotStuffProposalInputRequest,
       input: HotStuffProposalInput,
   ): Either[HotStuffValidationFailure, Unit] =
-    val excluded = request.txExclusion.excludedTxIds.txIds.toSet
+    val excluded      = request.txExclusion.excludedTxIds.txIds.toSet
     val conflictCount =
       input.txSet.txIds.count(txId => excluded.contains(txId))
     ensure(

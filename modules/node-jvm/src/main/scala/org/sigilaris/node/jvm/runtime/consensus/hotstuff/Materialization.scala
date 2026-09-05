@@ -15,7 +15,9 @@ import org.sigilaris.node.jvm.runtime.block.BlockHeight
 import org.sigilaris.node.gossip.{ChainId, ControlBatch}
 import org.sigilaris.node.jvm.storage.swaydb.{Bag, StorageLayout, SwayStores}
 
-/** Captures the materialized state of a forward catch-up for persistence or replay. */
+/** Captures the materialized state of a forward catch-up for persistence or
+  * replay.
+  */
 final case class ForwardCatchUpMaterialization(
     chainId: ChainId,
     anchor: SnapshotAnchor,
@@ -30,7 +32,9 @@ final case class ForwardCatchUpMaterialization(
 
 /** Stores forward catch-up materializations keyed by chain ID. */
 trait ForwardCatchUpStore[F[_]]:
-  /** Retrieves the current forward catch-up materialization for the given chain. */
+  /** Retrieves the current forward catch-up materialization for the given
+    * chain.
+    */
   def current(
       chainId: ChainId,
   ): F[Option[ForwardCatchUpMaterialization]]
@@ -77,14 +81,18 @@ object ForwardCatchUpStore:
 enum HistoricalArchiveSource:
   /** Stored during background historical backfill. */
   case BackgroundBackfill
+
   /** Stored during archive synchronization. */
   case ArchiveSync
 
 /** An entry in the historical proposal archive.
   *
-  * @param proposal the archived proposal
-  * @param source the source that produced this entry
-  * @param storedAt the time this entry was stored
+  * @param proposal
+  *   the archived proposal
+  * @param source
+  *   the source that produced this entry
+  * @param storedAt
+  *   the time this entry was stored
   */
 final case class HistoricalArchiveEntry(
     proposal: Proposal,
@@ -92,7 +100,9 @@ final case class HistoricalArchiveEntry(
     storedAt: Instant,
 )
 
-/** Persistent archive for historical proposals, supporting list, put, remove, and deduplication. */
+/** Persistent archive for historical proposals, supporting list, put, remove,
+  * and deduplication.
+  */
 trait HistoricalProposalArchive[F[_]]:
   /** Releases resources held by the archive. */
   def close: F[Unit]
@@ -108,7 +118,9 @@ trait HistoricalProposalArchive[F[_]]:
       proposalId: ProposalId,
   ): F[Boolean]
 
-  /** Archives proposals, returning the IDs of newly stored ones (skipping duplicates). */
+  /** Archives proposals, returning the IDs of newly stored ones (skipping
+    * duplicates).
+    */
   def putAll(
       chainId: ChainId,
       proposals: Vector[Proposal],
@@ -116,18 +128,22 @@ trait HistoricalProposalArchive[F[_]]:
       storedAt: Instant,
   ): F[Vector[ProposalId]]
 
-  /** Removes the given proposals from the archive, returning the count actually removed. */
+  /** Removes the given proposals from the archive, returning the count actually
+    * removed.
+    */
   def removeAll(
       chainId: ChainId,
       proposalIds: Vector[ProposalId],
   ): F[Int]
 
-/** Companion for `HistoricalProposalArchive`, providing in-memory and SwayDB-backed implementations. */
+/** Companion for `HistoricalProposalArchive`, providing in-memory and
+  * SwayDB-backed implementations.
+  */
 object HistoricalProposalArchive:
   private val SchemaVersionV1: Byte = 0x01.toByte
   private val ListPageSize: Int     = 256
   private val RecoveredStoredAt     = Instant.EPOCH
-  private val ScanStartProposalId =
+  private val ScanStartProposalId   =
     ProposalId(
       org.sigilaris.core.datatype.UInt256.unsafeFromBigIntUnsigned(BigInt(0)),
     )
@@ -311,7 +327,7 @@ object HistoricalProposalArchive:
               val existing =
                 current.getOrElse(chainId, Vector.empty[HistoricalArchiveEntry])
               val idsToRemove = proposalIds.toSet
-              val retained =
+              val retained    =
                 existing.filterNot(entry =>
                   idsToRemove.contains(entry.proposal.proposalId),
                 )
@@ -366,7 +382,7 @@ object HistoricalProposalArchive:
           for
             _        <- ensureOpen
             metadata <- metadataRef.get
-            stored <- LiftIO[F].liftIO:
+            stored   <- LiftIO[F].liftIO:
               listEntries(sharedStore.store, chainId)
             decoded <- stored.traverse: (key, bytes) =>
               Async[F].fromEither:
@@ -420,7 +436,7 @@ object HistoricalProposalArchive:
       ): F[Vector[ProposalId]] =
         lifecycleLock.permit.use { _ =>
           for
-            _ <- ensureOpen
+            _           <- ensureOpen
             writeResult <- LiftIO[F].liftIO:
               proposals
                 .foldLeftM(
@@ -494,7 +510,7 @@ object HistoricalProposalArchive:
         val dedupedIds = proposalIds.distinct
         lifecycleLock.permit.use { _ =>
           for
-            _ <- ensureOpen
+            _       <- ensureOpen
             removed <- LiftIO[F].liftIO:
               dedupedIds
                 .traverse: proposalId =>

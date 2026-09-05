@@ -19,7 +19,8 @@ package org.sigilaris.core.assembly
   *   [[org.sigilaris.core.application.support.compiletime.RequiresAuto]]
   */
 object TablesAccessOps:
-  /** Derive [[org.sigilaris.core.application.support.compiletime.Lookup]] evidence without repeating summoning boilerplate.
+  /** Derive [[org.sigilaris.core.application.support.compiletime.Lookup]]
+    * evidence without repeating summoning boilerplate.
     *
     * @tparam Schema
     *   the schema tuple to search
@@ -30,7 +31,8 @@ object TablesAccessOps:
     * @tparam V
     *   the expected value type
     * @return
-    *   a [[org.sigilaris.core.application.support.compiletime.Lookup]] witness for the specified entry
+    *   a [[org.sigilaris.core.application.support.compiletime.Lookup]] witness
+    *   for the specified entry
     */
   transparent inline def deriveLookup[Schema <: Tuple, Name <: String, K, V]
       : org.sigilaris.core.application.support.compiletime.Lookup[
@@ -42,14 +44,16 @@ object TablesAccessOps:
     org.sigilaris.core.application.support.compiletime.LookupAuto
       .derive[Schema, Name, K, V]
 
-  /** Derive [[org.sigilaris.core.application.support.compiletime.Requires]] evidence without repeating summoning boilerplate.
+  /** Derive [[org.sigilaris.core.application.support.compiletime.Requires]]
+    * evidence without repeating summoning boilerplate.
     *
     * @tparam Needs
     *   the tuple of entries that a module requires
     * @tparam Schema
     *   the schema tuple that must satisfy those requirements
     * @return
-    *   a [[org.sigilaris.core.application.support.compiletime.Requires]] witness proving `Schema` covers `Needs`
+    *   a [[org.sigilaris.core.application.support.compiletime.Requires]]
+    *   witness proving `Schema` covers `Needs`
     */
   transparent inline def deriveRequires[Needs <: Tuple, Schema <: Tuple]
       : org.sigilaris.core.application.support.compiletime.Requires[
@@ -67,10 +71,14 @@ object TablesAccessOps:
     *   the provider's schema tuple
     */
   extension [F[_], Schema <: Tuple](
-      provider: org.sigilaris.core.application.module.provider.TablesProvider[F, Schema]
+      provider: org.sigilaris.core.application.module.provider.TablesProvider[
+        F,
+        Schema,
+      ]
   )
 
-    /** Retrieve a specific table from this provider using implicit [[org.sigilaris.core.application.support.compiletime.Lookup]] evidence.
+    /** Retrieve a specific table from this provider using implicit
+      * [[org.sigilaris.core.application.support.compiletime.Lookup]] evidence.
       *
       * @tparam Name
       *   the entry name to look up

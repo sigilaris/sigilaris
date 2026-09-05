@@ -12,7 +12,9 @@ import org.sigilaris.node.jvm.runtime.block.{
   BlockView,
 }
 
-/** A rejection from the HotStuff runtime, wrapping either a policy or validation failure. */
+/** A rejection from the HotStuff runtime, wrapping either a policy or
+  * validation failure.
+  */
 enum HotStuffRuntimeRejection:
   case Policy(rejection: HotStuffPolicyViolation)
   case Validation(rejection: HotStuffValidationFailure)
@@ -22,17 +24,19 @@ object HotStuffRuntimeRejection:
   extension (rejection: HotStuffRuntimeRejection)
     def reason: String =
       rejection match
-        case HotStuffRuntimeRejection.Policy(policy) => policy.reason
+        case HotStuffRuntimeRejection.Policy(policy)         => policy.reason
         case HotStuffRuntimeRejection.Validation(validation) =>
           validation.reason
 
     def detail: Option[String] =
       rejection match
-        case HotStuffRuntimeRejection.Policy(policy) => policy.detail
+        case HotStuffRuntimeRejection.Policy(policy)         => policy.detail
         case HotStuffRuntimeRejection.Validation(validation) =>
           validation.detail
 
-/** The result of successfully emitting a proposal, including the conflict-free selection and block view. */
+/** The result of successfully emitting a proposal, including the conflict-free
+  * selection and block view.
+  */
 final case class HotStuffProposalEmission[TxRef, ResultRef, Event](
     selection: ConflictFreeBlockBodySelection[TxRef, ResultRef, Event],
     view: BlockView[TxRef, ResultRef, Event],
@@ -41,7 +45,9 @@ final case class HotStuffProposalEmission[TxRef, ResultRef, Event](
     ],
 )
 
-/** Runtime scheduling utilities for validating proposal views against block queries. */
+/** Runtime scheduling utilities for validating proposal views against block
+  * queries.
+  */
 object HotStuffRuntimeScheduling:
   private[hotstuff] def fromBlockValidationFailure(
       failure: BlockValidationFailure,
@@ -51,9 +57,15 @@ object HotStuffRuntimeScheduling:
       detail = failure.detail,
     )
 
-  /** Validates a proposal's block view by loading it from the block query and checking scheduling compliance. */
-  def validateProposalViewFromBlockQuery[F[_]
-    : Sync, TxRef: ByteEncoder: Hash, ResultRef: ByteEncoder, Event: ByteEncoder](
+  /** Validates a proposal's block view by loading it from the block query and
+    * checking scheduling compliance.
+    */
+  def validateProposalViewFromBlockQuery[
+      F[_]: Sync,
+      TxRef: ByteEncoder: Hash,
+      ResultRef: ByteEncoder,
+      Event: ByteEncoder,
+  ](
       proposal: Proposal,
       validatorSet: ValidatorSet,
       blockQuery: BlockQuery[F, TxRef, ResultRef, Event],
@@ -82,8 +94,12 @@ object HotStuffRuntimeScheduling:
             .map(_ => view)
 
   /** Creates a proposal validation function backed by a block query. */
-  def proposalValidationFromBlockQuery[F[_]
-    : Sync, TxRef: ByteEncoder: Hash, ResultRef: ByteEncoder, Event: ByteEncoder](
+  def proposalValidationFromBlockQuery[
+      F[_]: Sync,
+      TxRef: ByteEncoder: Hash,
+      ResultRef: ByteEncoder,
+      Event: ByteEncoder,
+  ](
       validatorSet: ValidatorSet,
       blockQuery: BlockQuery[F, TxRef, ResultRef, Event],
   )(
@@ -96,7 +112,9 @@ object HotStuffRuntimeScheduling:
         blockQuery = blockQuery,
       )(classifyTx).map(_.void)
 
-  /** Creates a proposal validation function that accepts all proposals without checks. */
+  /** Creates a proposal validation function that accepts all proposals without
+    * checks.
+    */
   def allowAll[F[_]: Sync]
       : Proposal => F[Either[HotStuffValidationFailure, Unit]] =
     _ => Sync[F].pure(().asRight[HotStuffValidationFailure])

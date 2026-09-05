@@ -58,7 +58,7 @@ trait JsonDecoder[A]:
     * @example
     *   ```scala
     *   val intDecoder: JsonDecoder[Int] = JsonDecoder[Int]
-    *   val evenDecoder = intDecoder.emap { n =>
+    *   val evenDecoder                  = intDecoder.emap { n =>
     *     if n % 2 == 0 then Right(n) else Left(DecodeFailure("Not even"))
     *   }
     *   ```
@@ -156,7 +156,7 @@ trait JsonDecoderInstances:
       case JsonValue.JString(s) if cfg.writeBigDecimalAsString =>
         success(BigDecimal(s))
       case JsonValue.JNumber(n) => success(n)
-      case other =>
+      case other                =>
         typeMismatch[BigDecimal]("bigdecimal (string or number)", other)
 
   /** Decodes Instant from ISO-8601 JString. */
@@ -202,7 +202,7 @@ trait JsonDecoderInstances:
               m     <- acc
               key   <- JsonKeyCodec[K].decodeKey(rawKey)
               value <- JsonDecoder[V].decode(jv)
-              res <-
+              res   <-
                 if m.contains(key) then
                   DecodeFailure(
                     ss"Duplicate key after normalization: ${rawKey}",
@@ -231,7 +231,7 @@ trait JsonDecoderInstances:
 
   private def applyNaming(name: String, p: FieldNamingPolicy): String =
     p match
-      case FieldNamingPolicy.Identity => name
+      case FieldNamingPolicy.Identity  => name
       case FieldNamingPolicy.CamelCase =>
         if name.isEmpty then name
         else ss"${name.head.toLower.toString}${name.tail}"
@@ -240,7 +240,9 @@ trait JsonDecoderInstances:
       case FieldNamingPolicy.KebabCase =>
         name.replaceAll("([a-z0-9])([A-Z])", "$1-$2").toLowerCase(Locale.ROOT)
 
-  /** Derives a decoder for product types (case classes) by decoding each field from a JObject. */
+  /** Derives a decoder for product types (case classes) by decoding each field
+    * from a JObject.
+    */
   @SuppressWarnings(
     Array(
       "org.wartremover.warts.AsInstanceOf",
@@ -253,8 +255,8 @@ trait JsonDecoderInstances:
     case (JsonValue.JObject(fields), cfg) =>
       val names = elemLabels[m.MirroredElemLabels].map: n =>
         applyNaming(n, cfg.fieldNaming)
-      val decs = decoders[m.MirroredElemTypes]
-      val bldr = new Array[Any](names.size)
+      val decs                             = decoders[m.MirroredElemTypes]
+      val bldr                             = new Array[Any](names.size)
       val res: Either[DecodeFailure, Unit] = (0 until names.size)
         .foldLeft[Either[DecodeFailure, Unit]](().asRight): (acc, idx) =>
           acc.flatMap: _ =>
@@ -263,7 +265,7 @@ trait JsonDecoderInstances:
             val toDecodeEither: Either[DecodeFailure, JsonValue] =
               fields.get(n) match
                 case Some(jv) => jv.asRight[DecodeFailure]
-                case None =>
+                case None     =>
                   if cfg.treatAbsentAsNull then
                     JsonValue.JNull.asRight[DecodeFailure]
                   else DecodeFailure(ss"Missing field: ${n}").asLeft[JsonValue]
@@ -277,7 +279,9 @@ trait JsonDecoderInstances:
         m.fromProduct(tuple)
     case (other, _) => typeMismatch[A]("object", other)
 
-  /** Derives a decoder for sum types (sealed traits/enums) using wrapped-by-type-key discriminator. */
+  /** Derives a decoder for sum types (sealed traits/enums) using
+    * wrapped-by-type-key discriminator.
+    */
   @SuppressWarnings(
     Array(
       "org.wartremover.warts.AsInstanceOf",
@@ -300,7 +304,7 @@ trait JsonDecoderInstances:
               val decs: List[JsonDecoder[?]] =
                 inline erasedValue[m.MirroredElemTypes] match
                   case _: EmptyTuple => Nil
-                  case _: (h *: t) =>
+                  case _: (h *: t)   =>
                     summonInline[JsonDecoder[h]] :: decoders[t]
               val dec = decs(idx).asInstanceOf[JsonDecoder[Any]]
               dec.decode(body).map(_.asInstanceOf[A])

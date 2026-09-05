@@ -173,7 +173,9 @@ final class StateModule[F[
     val prefixFreePath: PrefixFreePath[Path, Owns],
 )
 
-/** Companion for [[StateModule]], providing mounting, composition, and factory operations. */
+/** Companion for [[StateModule]], providing mounting, composition, and factory
+  * operations.
+  */
 object StateModule:
   /** Mount a single-module blueprint at a specific path, creating a
     * StateModule.
@@ -244,9 +246,16 @@ object StateModule:
     mountImpl[F, MName, Path, Owns, Needs, Txs]:
       blueprint.asInstanceOf[ModuleBlueprint[F, MName, Owns, Needs, Txs]]
 
-  private def mountImpl[F[
-      _,
-  ], MName <: String, Path <: Tuple, Owns <: Tuple, Needs <: Tuple, Txs <: Tuple](
+  private def mountImpl[
+      F[
+          _,
+      ],
+      MName <: String,
+      Path <: Tuple,
+      Owns <: Tuple,
+      Needs <: Tuple,
+      Txs <: Tuple,
+  ](
       blueprint: ModuleBlueprint[F, MName, Owns, Needs, Txs],
   )(using
       @annotation.unused monad: Monad[F],
@@ -290,14 +299,18 @@ object StateModule:
       tablesProvider = blueprint.provider,
     )(using blueprint.uniqueNames, prefixFreePath)
 
-  /** Mount a composed blueprint at a specific path, creating a StateModule with a RoutedStateReducer.
+  /** Mount a composed blueprint at a specific path, creating a StateModule with
+    * a RoutedStateReducer.
     *
-    * Similar to [[mount]] but for composed blueprints that require ModuleRoutedTx
-    * for transaction routing.
+    * Similar to [[mount]] but for composed blueprints that require
+    * ModuleRoutedTx for transaction routing.
     *
-    * @tparam Path the mount path (only type parameter that needs explicit specification)
-    * @param blueprint the composed blueprint to mount
-    * @return a mounted state module with a routed reducer
+    * @tparam Path
+    *   the mount path (only type parameter that needs explicit specification)
+    * @param blueprint
+    *   the composed blueprint to mount
+    * @return
+    *   a mounted state module with a routed reducer
     */
   @SuppressWarnings(Array("org.wartremover.warts.AsInstanceOf"))
   def mountComposed[Path <: Tuple](
@@ -329,9 +342,16 @@ object StateModule:
     mountComposedImpl[F, MName, Path, Owns, Needs, Txs]:
       blueprint.asInstanceOf[ComposedBlueprint[F, MName, Owns, Needs, Txs]]
 
-  private def mountComposedImpl[F[
-      _,
-  ], MName <: String, Path <: Tuple, Owns <: Tuple, Needs <: Tuple, Txs <: Tuple](
+  private def mountComposedImpl[
+      F[
+          _,
+      ],
+      MName <: String,
+      Path <: Tuple,
+      Owns <: Tuple,
+      Needs <: Tuple,
+      Txs <: Tuple,
+  ](
       blueprint: ComposedBlueprint[F, MName, Owns, Needs, Txs],
   )(using
       @annotation.unused monad: Monad[F],
@@ -374,17 +394,33 @@ object StateModule:
       tablesProvider = blueprint.provider,
     )(using blueprint.uniqueNames, prefixFreePath)
 
-  /** Extends two mounted state modules at the same path into one with merged schemas.
+  /** Extends two mounted state modules at the same path into one with merged
+    * schemas.
     *
-    * The merged module tries the first reducer, and on failure falls back to the second.
+    * The merged module tries the first reducer, and on failure falls back to
+    * the second.
     *
-    * @tparam F the effect type
-    * @param a the first state module
-    * @param b the second state module
-    * @return a merged state module with combined schemas and transactions
+    * @tparam F
+    *   the effect type
+    * @param a
+    *   the first state module
+    * @param b
+    *   the second state module
+    * @return
+    *   a merged state module with combined schemas and transactions
     */
-  def extend[F[_]
-    : cats.Monad, Path <: Tuple, O1 <: Tuple, N1 <: Tuple, O2 <: Tuple, N2 <: Tuple, T1 <: Tuple, T2 <: Tuple, R1, R2](
+  def extend[
+      F[_]: cats.Monad,
+      Path <: Tuple,
+      O1 <: Tuple,
+      N1 <: Tuple,
+      O2 <: Tuple,
+      N2 <: Tuple,
+      T1 <: Tuple,
+      T2 <: Tuple,
+      R1,
+      R2,
+  ](
       a: StateModule[F, Path, O1, N1, T1, R1],
       b: StateModule[F, Path, O2, N2, T2, R2],
   )(using
@@ -428,8 +464,14 @@ object StateModule:
     )(using uniqueNames, prefixFreePath)
 
   @SuppressWarnings(Array("org.wartremover.warts.AsInstanceOf"))
-  private def mergeReducers[F[_]
-    : cats.Monad, Path <: Tuple, O1 <: Tuple, N1 <: Tuple, O2 <: Tuple, N2 <: Tuple](
+  private def mergeReducers[
+      F[_]: cats.Monad,
+      Path <: Tuple,
+      O1 <: Tuple,
+      N1 <: Tuple,
+      O2 <: Tuple,
+      N2 <: Tuple,
+  ](
       r1: StateReducer[F, Path, O1, N1],
       r2: StateReducer[F, Path, O2, N2],
   ): StateReducer[F, Path, O1 ++ O2, N1 ++ N2] =
@@ -463,17 +505,23 @@ object StateModule:
                   .asInstanceOf[Requires[signedTx.value.Writes, O2 ++ N2]],
               ).run(s)
 
-  /** Factory for building state modules at arbitrary paths from a fixed blueprint.
+  /** Factory for building state modules at arbitrary paths from a fixed
+    * blueprint.
     *
-    * @tparam F the effect type
-    * @tparam Owns the owned schema tuple
-    * @tparam Txs the transaction types tuple
+    * @tparam F
+    *   the effect type
+    * @tparam Owns
+    *   the owned schema tuple
+    * @tparam Txs
+    *   the transaction types tuple
     */
   trait ModuleFactory[F[_], Owns <: Tuple, Txs <: Tuple]:
     /** Builds a state module mounted at the given path.
       *
-      * @tparam Path the mount path
-      * @return a mounted state module
+      * @tparam Path
+      *   the mount path
+      * @return
+      *   a mounted state module
       */
     def build[Path <: Tuple](using
         @annotation.unused monad: cats.Monad[F],
@@ -493,12 +541,18 @@ object StateModule:
   object ModuleFactory:
     /** Creates a ModuleFactory from a blueprint with no external dependencies.
       *
-      * @tparam F the effect type
-      * @tparam MName the module name
-      * @tparam Owns the owned schema tuple
-      * @tparam Txs the transaction types tuple
-      * @param blueprint the module blueprint to wrap
-      * @return a ModuleFactory that can mount the blueprint at any path
+      * @tparam F
+      *   the effect type
+      * @tparam MName
+      *   the module name
+      * @tparam Owns
+      *   the owned schema tuple
+      * @tparam Txs
+      *   the transaction types tuple
+      * @param blueprint
+      *   the module blueprint to wrap
+      * @return
+      *   a ModuleFactory that can mount the blueprint at any path
       */
     def fromBlueprint[F[_], MName <: String, Owns <: Tuple, Txs <: Tuple](
         blueprint: ModuleBlueprint[F, MName, Owns, EmptyTuple, Txs],

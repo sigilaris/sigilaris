@@ -183,8 +183,10 @@ final class InMemoryTxPipelineStore[F[_]: Sync] private (
 object InMemoryTxPipelineStore:
   private final case class State(
       byId: Map[TxPipelineId, TxPipelineRecord],
-      byIdempotencyKey:
-        Map[TxPipelineIdempotencyKey, TxPipelineIdempotencyBinding],
+      byIdempotencyKey: Map[
+        TxPipelineIdempotencyKey,
+        TxPipelineIdempotencyBinding,
+      ],
   )
 
   private object State:

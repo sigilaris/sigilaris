@@ -63,7 +63,9 @@ import failure.DecodeFailure
   */
 opaque type Utf8Key = String
 
-/** Companion object providing constructors, encoding, and typeclass instances for [[Utf8Key]]. */
+/** Companion object providing constructors, encoding, and typeclass instances
+  * for [[Utf8Key]].
+  */
 object Utf8Key:
   /** Terminator byte marking end of encoded string. */
   private val Terminator: Byte = 0x00
@@ -212,7 +214,7 @@ object Utf8Key:
 
         for
           unescaped <- unescape(encoded)
-          str <- unescaped.decodeUtf8.leftMap(_ =>
+          str       <- unescaped.decodeUtf8.leftMap(_ =>
             DecodeFailure("Invalid UTF-8 bytes in Utf8Key"),
           )
         yield DecodeResult[Utf8Key](str, remainder)

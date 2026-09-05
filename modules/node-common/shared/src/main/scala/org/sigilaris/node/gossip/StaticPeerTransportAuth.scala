@@ -42,6 +42,7 @@ object TransportSharedSecret:
     TransportSharedSecret(
       ByteVector.view(value.getBytes(StandardCharsets.UTF_8)),
     )
+
 /** Transport authentication state holding per-peer shared secrets.
   *
   * @param localPeer
@@ -96,7 +97,7 @@ object StaticPeerTransportAuth:
       peerSecrets: Map[PeerIdentity, TransportSharedSecret],
   ): Either[String, StaticPeerTransportAuth] =
     val requiredPeers = topology.knownPeers + topology.localNodeIdentity
-    val missing = requiredPeers
+    val missing       = requiredPeers
       .diff(peerSecrets.keySet)
       .toVector
       .sortBy(_.value)

@@ -141,7 +141,7 @@ object CryptoParams:
       */
     val enabled: Boolean =
       sys.props.get(propKey) match
-        case None => true
+        case None    => true
         case Some(v) =>
           v.toLowerCase(Locale.ROOT) match
             case "false" => false

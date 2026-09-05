@@ -35,7 +35,9 @@ import org.sigilaris.core.application.state.{
 )
 trait Requires[Needs <: Tuple, Schema <: Tuple]
 
-/** Companion for [[Requires]], providing base and inductive derivation instances. */
+/** Companion for [[Requires]], providing base and inductive derivation
+  * instances.
+  */
 object Requires:
   /** EmptyTuple requires nothing from any schema. */
   given emptyRequires[Schema <: Tuple]: Requires[EmptyTuple, Schema] =
@@ -94,7 +96,9 @@ object Contains:
 )
 trait UniqueNames[Schema <: Tuple]
 
-/** Companion for [[UniqueNames]], providing derivation instances for empty, single, and cons cases. */
+/** Companion for [[UniqueNames]], providing derivation instances for empty,
+  * single, and cons cases.
+  */
 object UniqueNames:
   /** EmptyTuple trivially has unique names. */
   given emptyUnique: UniqueNames[EmptyTuple] =

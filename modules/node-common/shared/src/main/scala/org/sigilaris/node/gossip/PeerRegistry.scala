@@ -82,7 +82,7 @@ object StaticPeerTopology:
       directNeighbors: List[String],
   ): Either[String, StaticPeerTopology] =
     for
-      local <- PeerIdentity.parse(localNodeIdentity)
+      local       <- PeerIdentity.parse(localNodeIdentity)
       parsedKnown <- knownPeers.foldLeft[Either[String, Set[PeerIdentity]]](
         Set.empty[PeerIdentity].asRight[String],
       ):

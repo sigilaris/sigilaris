@@ -139,7 +139,6 @@ object ByteDecoder:
       p: Mirror.ProductOf[A],
       elems: => List[ByteDecoder[?]],
   ): ByteDecoder[A] = (bytes: ByteVector) =>
-
     def reverse(tuple: Tuple): Tuple =
       @SuppressWarnings(Array("org.wartremover.warts.Any"))
       @annotation.tailrec
@@ -341,7 +340,7 @@ object ByteDecoder:
         head match
           case 0x00 => DecodeResult(false, remainder).asRight[DecodeFailure]
           case 0x01 => DecodeResult(true, remainder).asRight[DecodeFailure]
-          case _ =>
+          case _    =>
             val rawHex = Integer.toHexString(head)
             val hex    = if head < 16 then "0" + rawHex else rawHex
             DecodeFailure("Invalid boolean byte: 0x" + hex)

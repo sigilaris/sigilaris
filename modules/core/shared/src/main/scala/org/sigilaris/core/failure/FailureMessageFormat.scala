@@ -24,7 +24,7 @@ private[failure] object FailureMessageFormat:
     val trimmedKey     = errorKey.trim
     val trimmedMessage = message.map(_.trim).filter(_.nonEmpty)
     val trimmedDetail  = detail.map(_.trim).filter(_.nonEmpty)
-    val base =
+    val base           =
       trimmedMessage.fold(trimmedKey)(trimmedKey + MessageSeparator + _)
     trimmedDetail.fold(base)(base + DetailSeparator + _)
 
@@ -33,10 +33,10 @@ private[failure] object FailureMessageFormat:
   ): FailureMessageEnvelope =
     // Keep legacy compat by treating the first detail separator as the split
     // point; canonical payloads should not embed the literal separator token.
-    val trimmed = rendered.trim
+    val trimmed               = rendered.trim
     val messageSeparatorIndex = trimmed.indexOf(MessageSeparator)
     if messageSeparatorIndex >= 0 then
-      val key = trimmed.substring(0, messageSeparatorIndex)
+      val key     = trimmed.substring(0, messageSeparatorIndex)
       val payload =
         trimmed.substring(messageSeparatorIndex + MessageSeparator.length)
       val detailSeparatorIndex = payload.indexOf(DetailSeparator)
@@ -44,8 +44,9 @@ private[failure] object FailureMessageFormat:
         FailureMessageEnvelope.normalized(
           errorKey = key,
           message = Some(payload.substring(0, detailSeparatorIndex)),
-          detail =
-            Some(payload.substring(detailSeparatorIndex + DetailSeparator.length)),
+          detail = Some(
+            payload.substring(detailSeparatorIndex + DetailSeparator.length),
+          ),
         )
       else
         FailureMessageEnvelope.normalized(
@@ -59,7 +60,8 @@ private[failure] object FailureMessageFormat:
         FailureMessageEnvelope.normalized(
           errorKey = trimmed.substring(0, detailSeparatorIndex),
           message = None,
-          detail =
-            Some(trimmed.substring(detailSeparatorIndex + DetailSeparator.length)),
+          detail = Some(
+            trimmed.substring(detailSeparatorIndex + DetailSeparator.length),
+          ),
         )
       else FailureMessageEnvelope.normalized(trimmed, None, None)

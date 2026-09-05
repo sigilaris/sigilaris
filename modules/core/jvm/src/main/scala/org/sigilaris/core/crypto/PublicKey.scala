@@ -85,7 +85,7 @@ object PublicKey:
     private def xy64Array(): Array[Byte] =
       cachedXY64Ref.get() match
         case Some(arr) => arr
-        case None =>
+        case None      =>
           val combined =
             val xb  = x.bytes.toArray
             val yb  = y.bytes.toArray
@@ -100,10 +100,10 @@ object PublicKey:
     override private[crypto] def asECPoint(): ECPoint =
       cachedPointNormRef.get() match
         case Some(np) => np
-        case None =>
+        case None     =>
           val decoded = cachedPointRef.get() match
             case Some(p) => p
-            case None =>
+            case None    =>
               val point = internal.CryptoParams.curve.getCurve.decodePoint({
                 val xy  = xy64Array()
                 val enc = new Array[Byte](65)
@@ -140,7 +140,7 @@ object PublicKey:
     override private[crypto] def asECPoint(): ECPoint =
       cachedNormRef.get() match
         case Some(np) => np
-        case None =>
+        case None     =>
           val np = if p.isNormalized then p else p.normalize()
           if internal.CryptoParams.CachePolicy.enabled then
             cachedNormRef.set(Some(np))
@@ -150,10 +150,12 @@ object PublicKey:
     override def x: UInt256 =
       cachedXRef.get() match
         case Some(v) => v
-        case None =>
+        case None    =>
           val v =
             val np = asECPoint()
-            UInt256.fromBigIntegerUnsigned(np.getAffineXCoord.toBigInteger) match
+            UInt256.fromBigIntegerUnsigned(
+              np.getAffineXCoord.toBigInteger,
+            ) match
               case Right(u) => u
               case Left(e)  => throw new IllegalArgumentException(e.msg)
           if internal.CryptoParams.CachePolicy.enabled then
@@ -164,10 +166,12 @@ object PublicKey:
     override def y: UInt256 =
       cachedYRef.get() match
         case Some(v) => v
-        case None =>
+        case None    =>
           val v =
             val np = asECPoint()
-            UInt256.fromBigIntegerUnsigned(np.getAffineYCoord.toBigInteger) match
+            UInt256.fromBigIntegerUnsigned(
+              np.getAffineYCoord.toBigInteger,
+            ) match
               case Right(u) => u
               case Left(e)  => throw new IllegalArgumentException(e.msg)
           if internal.CryptoParams.CachePolicy.enabled then
@@ -177,7 +181,7 @@ object PublicKey:
     private def xy64Array(): Array[Byte] =
       cachedXY64Ref.get() match
         case Some(arr) => arr
-        case None =>
+        case None      =>
           val xb  = x.bytes.toArray
           val yb  = y.bytes.toArray
           val out = new Array[Byte](64)
@@ -238,17 +242,23 @@ object PublicKey:
     */
   def fromECPoint(p: ECPoint): PublicKey = Point(p)
 
-  /** [[codec.byte.ByteEncoder]] instance that serializes a public key to 64 bytes (x||y). */
+  /** [[codec.byte.ByteEncoder]] instance that serializes a public key to 64
+    * bytes (x||y).
+    */
   inline given pubkeyByteEncoder: ByteEncoder[PublicKey] with
     def encode(pubkey: PublicKey): ByteVector = pubkey.toBytes
 
-  /** [[codec.byte.ByteDecoder]] instance that deserializes a public key from 64 bytes (x||y). */
+  /** [[codec.byte.ByteDecoder]] instance that deserializes a public key from 64
+    * bytes (x||y).
+    */
   given pubkeyByteDecoder: ByteDecoder[PublicKey] =
     ByteDecoder.fromFixedSizeBytes(64)(identity).emap { bytes =>
       fromByteArray(bytes.toArray).left.map(e => DecodeFailure(e.msg))
     }
 
-  /** Default [[Hash]] instance for public keys, using Keccak-256 over the 64-byte representation. */
+  /** Default [[Hash]] instance for public keys, using Keccak-256 over the
+    * 64-byte representation.
+    */
   inline given Hash[PublicKey] = Hash.build
 
   /** [[cats.Eq]] instance comparing public keys by their (x, y) coordinates. */

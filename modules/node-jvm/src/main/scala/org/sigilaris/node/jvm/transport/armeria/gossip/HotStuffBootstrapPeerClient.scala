@@ -220,7 +220,7 @@ final class HotStuffBootstrapPeerClient[F[_]: Async] private (
         val preparedEither =
           for
             prepared <- prepare(GossipTapirClientCore.baseUri(baseUri))
-            signed <- GossipTapirClientCore.withBootstrapAuth(
+            signed   <- GossipTapirClientCore.withBootstrapAuth(
               prepared,
               transportAuth,
               session,

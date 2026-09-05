@@ -49,8 +49,8 @@ final class FileTxPipelineStore private (
   ): EitherT[IO, TxPipelineStoreFailure, Option[TxPipelineRecord]] =
     for
       binding <- readIdempotencyBinding(idempotencyKey)
-      record <- binding match
-        case None => EitherT.rightT[IO, TxPipelineStoreFailure](None)
+      record  <- binding match
+        case None        => EitherT.rightT[IO, TxPipelineStoreFailure](None)
         case Some(value) =>
           get(value.pipelineId).flatMap:
             case Some(record) =>
@@ -120,16 +120,15 @@ final class FileTxPipelineStore private (
       record: TxPipelineRecord,
   ): EitherT[IO, TxPipelineStoreFailure, TxPipelineRecord] =
     for
-      exists <- pathExists(recordPath(record.pipelineId))
+      exists  <- pathExists(recordPath(record.pipelineId))
       created <-
         if exists then
           EitherT.leftT[IO, TxPipelineRecord](
             TxPipelineStoreFailure.PipelineAlreadyExists(record.pipelineId),
           )
         else
-          checkIdempotency(record).flatMap(_ =>
-            persistRecord(record).as(record),
-          )
+          checkIdempotency(record)
+            .flatMap(_ => persistRecord(record).as(record))
     yield created
 
   private def updateUnderGate(
@@ -155,10 +154,10 @@ final class FileTxPipelineStore private (
       record: TxPipelineRecord,
   ): EitherT[IO, TxPipelineStoreFailure, Unit] =
     record.idempotencyKey match
-      case None => EitherT.rightT(())
+      case None      => EitherT.rightT(())
       case Some(key) =>
         readIdempotencyBinding(key).flatMap:
-          case None => EitherT.rightT(())
+          case None           => EitherT.rightT(())
           case Some(existing) =>
             EitherT.leftT[IO, Unit](
               TxPipelineStoreFailure.IdempotencyKeyAlreadyExists(
@@ -223,7 +222,7 @@ final class FileTxPipelineStore private (
       idempotencyKey: TxPipelineIdempotencyKey,
   ): EitherT[IO, TxPipelineStoreFailure, Option[TxPipelineIdempotencyBinding]] =
     readTextFile(idempotencyPath(idempotencyKey)).flatMap:
-      case None => EitherT.rightT[IO, TxPipelineStoreFailure](None)
+      case None        => EitherT.rightT[IO, TxPipelineStoreFailure](None)
       case Some(value) =>
         decode[TxPipelineIdempotencyBinding](value) match
           case Right(binding) =>
@@ -267,7 +266,7 @@ final class FileTxPipelineStore private (
       path: Path,
   ): EitherT[IO, TxPipelineStoreFailure, Option[TxPipelineRecord]] =
     readTextFile(path).flatMap:
-      case None => EitherT.rightT[IO, TxPipelineStoreFailure](None)
+      case None       => EitherT.rightT[IO, TxPipelineStoreFailure](None)
       case Some(json) =>
         EitherT.fromEither[IO]:
           decode[TxPipelineRecord](json)

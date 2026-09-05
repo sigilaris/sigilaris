@@ -33,7 +33,7 @@ private[compiletime] object EvidencePretty:
                 val nameRepr  = args(0)
                 val keyRepr   = args(1)
                 val valueRepr = args(2)
-                val nameStr = nameRepr match
+                val nameStr   = nameRepr match
                   case ConstantType(StringConstant(str)) => str
                   case other                             => other.show
                 val keyStr   = keyRepr.show

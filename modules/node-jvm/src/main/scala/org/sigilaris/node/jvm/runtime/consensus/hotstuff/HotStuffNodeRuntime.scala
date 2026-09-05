@@ -74,9 +74,9 @@ final case class HotStuffNodeRuntime[F[_]: Sync](
     pacemakerPolicy: HotStuffPacemakerPolicy = HotStuffPacemakerPolicy.default,
     finalityDrivePolicy: HotStuffFinalityDrivePolicy =
       HotStuffFinalityDrivePolicy.disabled,
-    proposalDependencyConfig:
-      HotStuffProposalApplicationDependencyRuntimeConfig[F] =
-      HotStuffProposalApplicationDependencyRuntimeConfig.legacyCompatible[F],
+    proposalDependencyConfig: HotStuffProposalApplicationDependencyRuntimeConfig[
+      F,
+    ] = HotStuffProposalApplicationDependencyRuntimeConfig.legacyCompatible[F],
 ):
   def localPeer: PeerIdentity = bootstrapInput.localPeer
 
@@ -652,8 +652,9 @@ object HotStuffNodeRuntime:
         HotStuffPacemakerPolicy.default,
       finalityDrivePolicy: HotStuffFinalityDrivePolicy =
         HotStuffFinalityDrivePolicy.disabled,
-      proposalDependencyConfig:
-        HotStuffProposalApplicationDependencyRuntimeConfig[F],
+      proposalDependencyConfig: HotStuffProposalApplicationDependencyRuntimeConfig[
+        F,
+      ],
   ): HotStuffNodeRuntime[F] =
     HotStuffNodeRuntime(
       bootstrapInput = bootstrapInput,
@@ -683,9 +684,9 @@ object HotStuffNodeRuntime:
         HotStuffPacemakerPolicy.default,
       finalityDrivePolicy: HotStuffFinalityDrivePolicy =
         HotStuffFinalityDrivePolicy.disabled,
-      proposalDependencyConfig:
-        HotStuffProposalApplicationDependencyRuntimeConfig[F] =
-        HotStuffProposalApplicationDependencyRuntimeConfig.legacyCompatible[F],
+      proposalDependencyConfig: HotStuffProposalApplicationDependencyRuntimeConfig[
+        F,
+      ] = HotStuffProposalApplicationDependencyRuntimeConfig.legacyCompatible[F],
   ): Either[HotStuffPolicyViolation, HotStuffNodeRuntime[F]] =
     validateBootstrapInput(bootstrapInput)
       .map(
@@ -763,9 +764,9 @@ object HotStuffNodeRuntime:
         HotStuffFinalityDrivePolicy.disabled,
       sinkRetention: HotStuffArtifactSinkRetention =
         HotStuffArtifactSinkRetention.default,
-      proposalDependencyConfig:
-        HotStuffProposalApplicationDependencyRuntimeConfig[F] =
-        HotStuffProposalApplicationDependencyRuntimeConfig.legacyCompatible[F],
+      proposalDependencyConfig: HotStuffProposalApplicationDependencyRuntimeConfig[
+        F,
+      ] = HotStuffProposalApplicationDependencyRuntimeConfig.legacyCompatible[F],
   )(using
       clock: GossipClock[F],
   ): F[Either[HotStuffPolicyViolation, HotStuffNodeRuntime[F]]] =

@@ -3,7 +3,7 @@ package crypto
 
 import cats.{Contravariant, Eq}
 
-import io.circe.{KeyEncoder}
+import io.circe.KeyEncoder
 import scodec.bits.ByteVector
 
 import codec.byte.{ByteDecoder, ByteEncoder}
@@ -82,11 +82,15 @@ object Hash:
       */
     def apply[A](uint256: UInt256): Value[A] = uint256
 
-    /** JSON decoder for hash values, delegating to [[datatype.UInt256]] decoding. */
+    /** JSON decoder for hash values, delegating to [[datatype.UInt256]]
+      * decoding.
+      */
     given jsonValueDecoder[A]: JsonDecoder[Value[A]] =
       UInt256.uint256JsonDecoder.map(Value[A](_))
 
-    /** JSON encoder for hash values, delegating to [[datatype.UInt256]] encoding. */
+    /** JSON encoder for hash values, delegating to [[datatype.UInt256]]
+      * encoding.
+      */
     given jsonValueEncoder[A]: JsonEncoder[Value[A]] =
       UInt256.uint256JsonEncoder.contramap[Value[A]](_.toUInt256)
 
@@ -101,15 +105,21 @@ object Hash:
       KeyEncoder.encodeKeyString.contramap[Value[A]]:
         _.toUInt256.toBytes.toHex
 
-    /** Binary decoder for hash values, reading 32 bytes as [[datatype.UInt256]]. */
+    /** Binary decoder for hash values, reading 32 bytes as
+      * [[datatype.UInt256]].
+      */
     given byteValueDecoder[A]: ByteDecoder[Value[A]] =
       UInt256.uint256ByteDecoder.map(Value[A](_))
 
-    /** Binary encoder for hash values, writing 32 bytes from [[datatype.UInt256]]. */
+    /** Binary encoder for hash values, writing 32 bytes from
+      * [[datatype.UInt256]].
+      */
     given byteValueEncoder[A]: ByteEncoder[Value[A]] =
       UInt256.uint256ByteEncoder.contramap[Value[A]](_.toUInt256)
 
-    /** [[cats.Eq]] instance for hash values, comparing by underlying [[datatype.UInt256]]. */
+    /** [[cats.Eq]] instance for hash values, comparing by underlying
+      * [[datatype.UInt256]].
+      */
     given eqValue[A]: Eq[Value[A]] = UInt256.eq
 
     extension [A](value: Value[A])
@@ -125,7 +135,7 @@ object Hash:
         * @return
         *   64-character hex string representation of the hash
         */
-      def hex: String        = toUInt256.toHexLower
+      def hex: String = toUInt256.toHexLower
 
   /** Extension methods for hashing. */
   object ops:

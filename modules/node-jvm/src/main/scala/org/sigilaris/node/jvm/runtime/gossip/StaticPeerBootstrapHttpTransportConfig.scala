@@ -63,7 +63,8 @@ object StaticPeerBootstrapHttpTransportConfig:
       path: String = DefaultPath,
   ): Either[String, Option[StaticPeerBootstrapHttpTransportConfig]] =
     if config.hasPath(path) then
-      TypesafeConfigParsing.requiredSection(config, path)
+      TypesafeConfigParsing
+        .requiredSection(config, path)
         .flatMap(loadSection(_, topology))
     else none[StaticPeerBootstrapHttpTransportConfig].asRight[String]
 
@@ -107,40 +108,44 @@ object StaticPeerBootstrapHttpTransportConfig:
       TypesafeConfigParsing.requiredSection(config, path).flatMap(parseSection)
     else none[StaticPeerBootstrapHttpTransportConfigInput].asRight[String]
 
-  /** Parses the raw bootstrap transport input model from a pre-resolved section. */
+  /** Parses the raw bootstrap transport input model from a pre-resolved
+    * section.
+    */
   def parseSection(
       section: Config,
   ): Either[String, Option[StaticPeerBootstrapHttpTransportConfigInput]] =
-    Bootstrap.optional(section).flatMap:
-      case None =>
-        none[StaticPeerBootstrapHttpTransportConfigInput].asRight[String]
-      case Some(bootstrapSection) =>
-        for
-          peerBaseUrisRaw <- PeerBaseUris.required(bootstrapSection)
-          peerBaseUris <- parsePeerBaseUris(peerBaseUrisRaw)
-          requestTimeout <- RequestTimeout.optionalOrDefault(
-            bootstrapSection,
-            DefaultRequestTimeout,
-          )
-          maxConcurrentRequests <- MaxConcurrentRequests.optionalOrDefault(
-            bootstrapSection,
-            DefaultMaxConcurrentRequests,
-          )
-          _ <- Either.cond(
-            maxConcurrentRequests > 0,
-            (),
-            "maxConcurrentRequests must be positive",
-          )
-          _ <- Either.cond(
-            requestTimeout.compareTo(Duration.ZERO) > 0,
-            (),
-            "requestTimeoutMs must be positive",
-          )
-        yield StaticPeerBootstrapHttpTransportConfigInput(
-          peerBaseUris = peerBaseUris,
-          requestTimeout = requestTimeout,
-          maxConcurrentRequests = maxConcurrentRequests,
-        ).some
+    Bootstrap
+      .optional(section)
+      .flatMap:
+        case None =>
+          none[StaticPeerBootstrapHttpTransportConfigInput].asRight[String]
+        case Some(bootstrapSection) =>
+          for
+            peerBaseUrisRaw <- PeerBaseUris.required(bootstrapSection)
+            peerBaseUris    <- parsePeerBaseUris(peerBaseUrisRaw)
+            requestTimeout  <- RequestTimeout.optionalOrDefault(
+              bootstrapSection,
+              DefaultRequestTimeout,
+            )
+            maxConcurrentRequests <- MaxConcurrentRequests.optionalOrDefault(
+              bootstrapSection,
+              DefaultMaxConcurrentRequests,
+            )
+            _ <- Either.cond(
+              maxConcurrentRequests > 0,
+              (),
+              "maxConcurrentRequests must be positive",
+            )
+            _ <- Either.cond(
+              requestTimeout.compareTo(Duration.ZERO) > 0,
+              (),
+              "requestTimeoutMs must be positive",
+            )
+          yield StaticPeerBootstrapHttpTransportConfigInput(
+            peerBaseUris = peerBaseUris,
+            requestTimeout = requestTimeout,
+            maxConcurrentRequests = maxConcurrentRequests,
+          ).some
 
   private val Bootstrap =
     ConfigField(
@@ -177,7 +182,7 @@ object StaticPeerBootstrapHttpTransportConfig:
       .traverse: (peerRaw, uriRaw) =>
         for
           peer <- PeerIdentity.parse(peerRaw)
-          uri <- Either
+          uri  <- Either
             .catchNonFatal(URI.create(uriRaw))
             .leftMap(_.getMessage)
           _ <- Either.cond(

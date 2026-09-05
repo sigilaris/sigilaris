@@ -1,11 +1,16 @@
 package org.sigilaris.core.application.support.runtime
 
 import org.sigilaris.core.application.feature.accounts.domain.Account
-import org.sigilaris.core.application.transactions.{AccountSignature, Signed, Tx}
+import org.sigilaris.core.application.transactions.{
+  AccountSignature,
+  Signed,
+  Tx,
+}
 import org.sigilaris.core.crypto.{Hash, KeyPair, Sign}
 import org.sigilaris.core.failure.SigilarisFailure
 
-/** Helper utilities for building [[org.sigilaris.core.application.transactions.Signed]] transactions.
+/** Helper utilities for building
+  * [[org.sigilaris.core.application.transactions.Signed]] transactions.
   *
   * Tests and integration code frequently need to sign transactions with real
   * key pairs. Repeating the same `Hash`/`Sign` workflow across the codebase is
@@ -24,29 +29,37 @@ object SignedTxBuilder:
     * @tparam A
     *   transaction type
     * @return
-    *   either a [[org.sigilaris.core.application.transactions.Signed]] transaction or the signing failure
+    *   either a [[org.sigilaris.core.application.transactions.Signed]]
+    *   transaction or the signing failure
     */
   def sign[A <: Tx: Hash: Sign](
       tx: A,
       account: Account,
       keyPair: KeyPair,
   ): Either[SigilarisFailure, Signed[A]] =
-    Sign[A].apply(tx, keyPair).map(sig => Signed(AccountSignature(account, sig), tx))
+    Sign[A]
+      .apply(tx, keyPair)
+      .map(sig => Signed(AccountSignature(account, sig), tx))
 
   /** Creates a reusable builder bound to a specific account/key pair. */
   def forAccount(account: Account, keyPair: KeyPair): ForAccount =
     new ForAccount(account, keyPair)
 
-  /** Builder that caches the signing context (account and key pair) for repeated use. */
+  /** Builder that caches the signing context (account and key pair) for
+    * repeated use.
+    */
   final class ForAccount private[SignedTxBuilder] (
       account: Account,
       keyPair: KeyPair,
   ):
     /** Signs a transaction using the cached account and key pair.
       *
-      * @tparam A the transaction type
-      * @param tx the transaction to sign
-      * @return either a signing failure or the signed transaction
+      * @tparam A
+      *   the transaction type
+      * @param tx
+      *   the transaction to sign
+      * @return
+      *   either a signing failure or the signed transaction
       */
     def sign[A <: Tx: Hash: Sign](tx: A): Either[SigilarisFailure, Signed[A]] =
       SignedTxBuilder.sign(tx, account, keyPair)

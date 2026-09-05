@@ -66,7 +66,9 @@ import failure.DecodeFailure
   */
 opaque type Utf8 = String
 
-/** Companion object providing constructors and typeclass instances for [[Utf8]]. */
+/** Companion object providing constructors and typeclass instances for
+  * [[Utf8]].
+  */
 object Utf8:
   /** Constructs a Utf8 value from a String.
     *

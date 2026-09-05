@@ -18,6 +18,7 @@ import sttp.tapir.server.ServerEndpoint
 import org.sigilaris.core.codec.byte.ByteEncoder
 import org.sigilaris.node.gossip.*
 import org.sigilaris.node.gossip.tx.*
+
 /** Server-side Armeria/Tapir adapter for transaction gossip protocol endpoints.
   *
   * Exposes session open, event stream polling, control batch, and disconnect
@@ -25,7 +26,8 @@ import org.sigilaris.node.gossip.tx.*
   */
 @SuppressWarnings(Array("org.wartremover.warts.Any"))
 object TxGossipArmeriaAdapter:
-  /** Creates the list of Tapir server endpoints for the transaction gossip protocol.
+  /** Creates the list of Tapir server endpoints for the transaction gossip
+    * protocol.
     *
     * @tparam F
     *   the effect type
@@ -36,7 +38,8 @@ object TxGossipArmeriaAdapter:
     * @param transportAuth
     *   transport authentication for verifying peer requests
     * @return
-    *   list of server endpoints for session open, events, control, and disconnect
+    *   list of server endpoints for session open, events, control, and
+    *   disconnect
     */
   def endpoints[F[_]: Async, A: ByteEncoder](
       runtime: TxGossipRuntime[F, A],
@@ -133,7 +136,8 @@ object TxGossipArmeriaAdapter:
       runtime: TxGossipRuntime[F, A],
       transportAuth: StaticPeerTransportAuth,
   ): ServerEndpoint[Fs2Streams[F], F] =
-    TxGossipTapirEndpoints.eventStreamOpen[F]
+    TxGossipTapirEndpoints
+      .eventStreamOpen[F]
       .serverLogic:
         (sessionIdRaw, authenticatedPeerRaw, transportProofRaw, raw) =>
           handleEventStreamOpenRequest(
@@ -204,14 +208,16 @@ object TxGossipArmeriaAdapter:
   ): F[Array[Byte]] =
     DirectionalSessionId.parse(sessionIdRaw) match
       case Left(error) =>
-        (BinaryEventStreamCodec.encodeBinary:
-          Vector(
-            eventRejection(
-              sessionIdRaw,
-              handshakeRejected("invalidSessionId", error),
-            ),
+        (BinaryEventStreamCodec
+          .encodeBinary:
+            Vector(
+              eventRejection(
+                sessionIdRaw,
+                handshakeRejected("invalidSessionId", error),
+              ),
+            )
           )
-        ).pure[F]
+          .pure[F]
       case Right(sessionId) =>
         authenticateRequest(
           transportAuth = transportAuth,
@@ -221,17 +227,21 @@ object TxGossipArmeriaAdapter:
           requestBody = raw,
         ) match
           case Left(rendered) =>
-            (BinaryEventStreamCodec.encodeBinary:
-              Vector(eventRejection(sessionId.value, rendered))
-            ).pure[F]
+            (BinaryEventStreamCodec
+              .encodeBinary:
+                Vector(eventRejection(sessionId.value, rendered))
+              )
+              .pure[F]
           case Right(authenticatedPeer) =>
             runtime
               .authorizeSessionPeer(sessionId, authenticatedPeer)
               .flatMap:
                 case Left(rejection) =>
-                  (BinaryEventStreamCodec.encodeBinary:
-                    Vector(eventRejection(sessionId.value, rejection))
-                  ).pure[F]
+                  (BinaryEventStreamCodec
+                    .encodeBinary:
+                      Vector(eventRejection(sessionId.value, rejection))
+                    )
+                    .pure[F]
                 case Right(_) =>
                   decodeOrRejectionEvent[EventRequestWire](
                     sessionId,
@@ -247,14 +257,20 @@ object TxGossipArmeriaAdapter:
                             .pollEvents(sessionId)
                             .flatMap:
                               case Left(rejection) =>
-                                (BinaryEventStreamCodec.encodeBinary:
-                                  Vector(eventRejection(sessionId.value, rejection))
-                                ).pure[F]
+                                (BinaryEventStreamCodec
+                                  .encodeBinary:
+                                    Vector(
+                                      eventRejection(sessionId.value, rejection),
+                                    )
+                                  )
+                                  .pure[F]
                               case Right(messages) if messages.nonEmpty =>
-                                (BinaryEventStreamCodec.encodeBinary:
-                                  messages
-                                    .map(toBinaryEventEnvelope(sessionId, _))
-                                ).pure[F]
+                                (BinaryEventStreamCodec
+                                  .encodeBinary:
+                                    messages
+                                      .map(toBinaryEventEnvelope(sessionId, _))
+                                  )
+                                  .pure[F]
                               case Right(_) =>
                                 runtime
                                   .eventKeepAlive(sessionId)
@@ -262,45 +278,61 @@ object TxGossipArmeriaAdapter:
                                     case Left(rejection) =>
                                       BinaryEventStreamCodec.encodeBinary:
                                         Vector(
-                                          eventRejection(sessionId.value, rejection),
+                                          eventRejection(
+                                            sessionId.value,
+                                            rejection,
+                                          ),
                                         )
                                     case Right(message) =>
                                       BinaryEventStreamCodec.encodeBinary:
-                                        Vector(toBinaryEventEnvelope(sessionId, message))
+                                        Vector(
+                                          toBinaryEventEnvelope(
+                                            sessionId,
+                                            message,
+                                          ),
+                                        )
                         case "eventKeepAlive" =>
                           runtime
                             .eventKeepAlive(sessionId)
                             .map:
                               case Left(rejection) =>
                                 BinaryEventStreamCodec.encodeBinary:
-                                  Vector(eventRejection(sessionId.value, rejection))
+                                  Vector(
+                                    eventRejection(sessionId.value, rejection),
+                                  )
                               case Right(message) =>
                                 BinaryEventStreamCodec.encodeBinary:
-                                  Vector(toBinaryEventEnvelope(sessionId, message))
+                                  Vector(
+                                    toBinaryEventEnvelope(sessionId, message),
+                                  )
                         case "controlKeepAlive" =>
-                          (BinaryEventStreamCodec.encodeBinary:
-                            Vector(
-                              eventRejection(
-                                sessionId.value,
-                                controlRejected(
-                                  "wrongChannelMessageKind",
-                                  "controlKeepAlive",
+                          (BinaryEventStreamCodec
+                            .encodeBinary:
+                              Vector(
+                                eventRejection(
+                                  sessionId.value,
+                                  controlRejected(
+                                    "wrongChannelMessageKind",
+                                    "controlKeepAlive",
+                                  ),
                                 ),
-                              ),
+                              )
                             )
-                          ).pure[F]
+                            .pure[F]
                         case other =>
-                          (BinaryEventStreamCodec.encodeBinary:
-                            Vector(
-                              eventRejection(
-                                sessionId.value,
-                                handshakeRejected(
-                                  "unknownEventRequestKind",
-                                  other,
+                          (BinaryEventStreamCodec
+                            .encodeBinary:
+                              Vector(
+                                eventRejection(
+                                  sessionId.value,
+                                  handshakeRejected(
+                                    "unknownEventRequestKind",
+                                    other,
+                                  ),
                                 ),
-                              ),
+                              )
                             )
-                          ).pure[F]
+                            .pure[F]
 
   private def handleEventStreamOpenRequest[F[_]: Async, A: ByteEncoder](
       runtime: TxGossipRuntime[F, A],
@@ -320,7 +352,8 @@ object TxGossipArmeriaAdapter:
           transportAuth = transportAuth,
           authenticatedPeerRaw = authenticatedPeerRaw,
           transportProofRaw = transportProofRaw,
-          requestPath = TxGossipTapirEndpoints.eventStreamOpenPath(sessionIdRaw),
+          requestPath =
+            TxGossipTapirEndpoints.eventStreamOpenPath(sessionIdRaw),
           requestBody = raw,
         ) match
           case Left(rejection) =>
@@ -691,8 +724,8 @@ object TxGossipArmeriaAdapter:
       wire: ControlOpWire,
   ): Either[CanonicalRejection.ControlBatchRejected, ExactKnownSetScope] =
     for
-      chainId <- requiredChainId(wire)
-      topic   <- requiredTopic(wire)
+      chainId   <- requiredChainId(wire)
+      topic     <- requiredTopic(wire)
       windowKey <- wire.windowKey
         .toRight(controlRejected("missingWindowKey", wire.kind))
         .flatMap(value =>

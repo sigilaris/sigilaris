@@ -163,8 +163,8 @@ object Nibbles:
       val nibbleSizeLong = nibbleSize.toBigInt.toLong
       ByteDecoder
         .fromFixedSizeBytes((nibbleSizeLong + 1) / 2): nibbleBytes =>
-          val bitsSize = nibbleSizeLong * 4
-          val padSize  = bitsSize - nibbleBytes.size * 8
+          val bitsSize   = nibbleSizeLong * 4
+          val padSize    = bitsSize - nibbleBytes.size * 8
           val nibbleBits =
             if padSize > 0 then nibbleBytes.bits.padLeft(padSize)
             else nibbleBytes.bits

@@ -18,8 +18,10 @@ import org.sigilaris.node.gossip.{
 sealed trait BootstrapTrustRoot:
   /** The validator set that this trust root guarantees. */
   def validatorSet: ValidatorSet
+
   /** The optional consensus window anchoring this trust root. */
   def anchorWindow: Option[HotStuffWindow]
+
   /** The optional expiry instant for weak subjectivity freshness. */
   def weakSubjectivityFreshUntil: Option[Instant]
 
@@ -27,7 +29,9 @@ sealed trait BootstrapTrustRoot:
   final def validatorSetHash: ValidatorSetHash =
     validatorSet.hash
 
-/** Companion for `BootstrapTrustRoot`, providing factory methods for different trust root kinds. */
+/** Companion for `BootstrapTrustRoot`, providing factory methods for different
+  * trust root kinds.
+  */
 object BootstrapTrustRoot:
   /** A trust root based on a static validator set with no anchor window. */
   final case class StaticValidatorSet(
@@ -36,7 +40,9 @@ object BootstrapTrustRoot:
     override val anchorWindow: Option[HotStuffWindow]        = None
     override val weakSubjectivityFreshUntil: Option[Instant] = None
 
-  /** A trust root anchored at a specific consensus window with a trusted checkpoint. */
+  /** A trust root anchored at a specific consensus window with a trusted
+    * checkpoint.
+    */
   final case class TrustedCheckpoint(
       window: HotStuffWindow,
       validatorSet: ValidatorSet,
@@ -44,7 +50,9 @@ object BootstrapTrustRoot:
     override val anchorWindow: Option[HotStuffWindow]        = Some(window)
     override val weakSubjectivityFreshUntil: Option[Instant] = None
 
-  /** A trust root with a weak subjectivity anchor that expires at a given instant. */
+  /** A trust root with a weak subjectivity anchor that expires at a given
+    * instant.
+    */
   final case class WeakSubjectivityAnchor(
       window: HotStuffWindow,
       validatorSet: ValidatorSet,
@@ -72,7 +80,9 @@ object BootstrapTrustRoot:
   ): BootstrapTrustRoot =
     StaticValidatorSet(validatorSet)
 
-  /** Creates a trusted checkpoint trust root, validating the window against the validator set. */
+  /** Creates a trusted checkpoint trust root, validating the window against the
+    * validator set.
+    */
   def trustedCheckpoint(
       window: HotStuffWindow,
       validatorSet: ValidatorSet,
@@ -80,7 +90,8 @@ object BootstrapTrustRoot:
     validateRootWindow("trustedCheckpoint", window, validatorSet)
       .map(_ => new TrustedCheckpoint(window, validatorSet))
 
-  /** Creates a weak subjectivity anchor trust root with a freshness deadline. */
+  /** Creates a weak subjectivity anchor trust root with a freshness deadline.
+    */
   def weakSubjectivityAnchor(
       window: HotStuffWindow,
       validatorSet: ValidatorSet,
@@ -89,7 +100,9 @@ object BootstrapTrustRoot:
     validateRootWindow("weakSubjectivityAnchor", window, validatorSet)
       .map(_ => new WeakSubjectivityAnchor(window, validatorSet, freshUntil))
 
-/** Resolves validator sets for consensus windows, rooted in a bootstrap trust root. */
+/** Resolves validator sets for consensus windows, rooted in a bootstrap trust
+  * root.
+  */
 trait ValidatorSetLookup[F[_]]:
   /** The trust root anchoring validator set resolution. */
   def trustRoot: BootstrapTrustRoot
@@ -107,7 +120,9 @@ object ValidatorSetLookup:
   ): ValidatorSetLookup[F] =
     fromInventory(root, Vector.empty)
 
-  /** Creates a lookup from a trust root and an inventory of known validator sets. */
+  /** Creates a lookup from a trust root and an inventory of known validator
+    * sets.
+    */
   def fromInventory[F[_]: Applicative](
       root: BootstrapTrustRoot,
       validatorSets: Iterable[ValidatorSet],
@@ -136,20 +151,26 @@ object ValidatorSetLookup:
           )
           .pure[F]
 
-/** A proof of finalization consisting of a child and grandchild proposal that extend an anchor.
+/** A proof of finalization consisting of a child and grandchild proposal that
+  * extend an anchor.
   *
-  * @param child the child proposal in the finalization chain
-  * @param grandchild the grandchild proposal completing the three-chain proof
+  * @param child
+  *   the child proposal in the finalization chain
+  * @param grandchild
+  *   the grandchild proposal completing the three-chain proof
   */
 final case class FinalizedProof(
     child: Proposal,
     grandchild: Proposal,
 )
 
-/** A suggestion for a finalized anchor, consisting of a proposal and its three-chain proof.
+/** A suggestion for a finalized anchor, consisting of a proposal and its
+  * three-chain proof.
   *
-  * @param proposal the anchor proposal that has been finalized
-  * @param finalizedProof the child and grandchild proposals proving finality
+  * @param proposal
+  *   the anchor proposal that has been finalized
+  * @param finalizedProof
+  *   the child and grandchild proposals proving finality
   */
 final case class FinalizedAnchorSuggestion(
     proposal: Proposal,
@@ -177,13 +198,19 @@ final case class FinalizedAnchorSuggestion(
       stateRoot = proposal.block.stateRoot,
     )
 
-/** Identifies a finalized block as an anchor point for state snapshot synchronization.
+/** Identifies a finalized block as an anchor point for state snapshot
+  * synchronization.
   *
-  * @param chainId the chain this anchor belongs to
-  * @param proposalId the proposal that produced this block
-  * @param blockId the block identifier
-  * @param height the block height
-  * @param stateRoot the state root at this block
+  * @param chainId
+  *   the chain this anchor belongs to
+  * @param proposalId
+  *   the proposal that produced this block
+  * @param blockId
+  *   the block identifier
+  * @param height
+  *   the block height
+  * @param stateRoot
+  *   the state root at this block
   */
 final case class SnapshotAnchor(
     chainId: ChainId,
@@ -197,20 +224,28 @@ final case class SnapshotAnchor(
 enum SnapshotStatus:
   /** Snapshot sync has been requested but not yet started. */
   case Pending
+
   /** Snapshot nodes are actively being fetched. */
   case Syncing
+
   /** Snapshot sync completed successfully. */
   case Complete
+
   /** Snapshot sync failed. */
   case Failed
 
 /** Metadata tracking the progress of a snapshot synchronization.
   *
-  * @param anchor the snapshot anchor being synced
-  * @param status the current sync status
-  * @param verifiedNodeCount the number of verified trie nodes
-  * @param pendingNodeCount the number of pending trie nodes
-  * @param lastUpdatedAt the time of the last status update
+  * @param anchor
+  *   the snapshot anchor being synced
+  * @param status
+  *   the current sync status
+  * @param verifiedNodeCount
+  *   the number of verified trie nodes
+  * @param pendingNodeCount
+  *   the number of pending trie nodes
+  * @param lastUpdatedAt
+  *   the time of the last status update
   */
 final case class SnapshotMetadata(
     anchor: SnapshotAnchor,
@@ -222,19 +257,25 @@ final case class SnapshotMetadata(
 
 /** A Merkle trie node paired with its expected hash, used during snapshot sync.
   *
-  * @param hash the expected Merkle hash of the node
-  * @param node the trie node data
+  * @param hash
+  *   the expected Merkle hash of the node
+  * @param node
+  *   the trie node data
   */
 final case class SnapshotTrieNode(
     hash: MerkleTrieNode.MerkleHash,
     node: MerkleTrieNode,
 )
 
-/** Binds a bootstrap session to a peer identity for authenticated communication.
+/** Binds a bootstrap session to a peer identity for authenticated
+  * communication.
   *
-  * @param peer the target peer identity
-  * @param sessionId the directional session identifier
-  * @param authenticatedPeer the authenticated peer identity
+  * @param peer
+  *   the target peer identity
+  * @param sessionId
+  *   the directional session identifier
+  * @param authenticatedPeer
+  *   the authenticated peer identity
   */
 final case class BootstrapSessionBinding(
     peer: PeerIdentity,
@@ -266,7 +307,9 @@ trait SnapshotNodeFetchService[F[_]]:
       hashes: Vector[MerkleTrieNode.MerkleHash],
   ): F[Either[CanonicalRejection, Vector[SnapshotTrieNode]]]
 
-/** Service for replaying proposals after a snapshot anchor during forward catch-up. */
+/** Service for replaying proposals after a snapshot anchor during forward
+  * catch-up.
+  */
 trait ProposalReplayService[F[_]]:
   def readNext(
       session: BootstrapSessionBinding,
@@ -276,7 +319,8 @@ trait ProposalReplayService[F[_]]:
       limit: Int,
   ): F[Either[CanonicalRejection, Vector[Proposal]]]
 
-/** Service for fetching historical proposals before a given block for backfill. */
+/** Service for fetching historical proposals before a given block for backfill.
+  */
 trait HistoricalBackfillService[F[_]]:
   def readPrevious(
       session: BootstrapSessionBinding,
@@ -290,10 +334,13 @@ trait HistoricalBackfillService[F[_]]:
 enum BootstrapPhase:
   /** Discovering finalized anchor suggestions from peers. */
   case Discovery
+
   /** Synchronizing the state snapshot from peers. */
   case SnapshotSync
+
   /** Replaying proposals to catch up to the chain tip. */
   case ForwardCatchUp
+
   /** Bootstrap is complete; the node is ready for consensus participation. */
   case Ready
 
@@ -301,6 +348,7 @@ enum BootstrapPhase:
 enum BootstrapVoteReadiness:
   /** Voting is held back for the specified reason (e.g., pending bootstrap). */
   case Held(reason: String)
+
   /** The node is ready to vote. */
   case Ready
 
@@ -308,16 +356,22 @@ enum BootstrapVoteReadiness:
 enum HistoricalBackfillPriority:
   /** Low-priority background backfill. */
   case Background
+
   /** High-priority archive backfill. */
   case Archive
 
 /** Tracks the progress of a historical backfill operation.
   *
-  * @param anchor the snapshot anchor being backfilled from
-  * @param nextBeforeBlockId the next block ID to fetch before
-  * @param nextBeforeHeight the next height to fetch before
-  * @param fetchedProposalCount total number of proposals fetched so far
-  * @param lastUpdatedAt the time of the last progress update
+  * @param anchor
+  *   the snapshot anchor being backfilled from
+  * @param nextBeforeBlockId
+  *   the next block ID to fetch before
+  * @param nextBeforeHeight
+  *   the next height to fetch before
+  * @param fetchedProposalCount
+  *   total number of proposals fetched so far
+  * @param lastUpdatedAt
+  *   the time of the last progress update
   */
 final case class HistoricalBackfillProgress(
     anchor: SnapshotAnchor,
@@ -389,7 +443,9 @@ trait BootstrapDiagnosticsSource[F[_]]:
 
 /** Companion for `BootstrapDiagnosticsSource`. */
 object BootstrapDiagnosticsSource:
-  /** Creates a diagnostics source that always returns the given constant diagnostics. */
+  /** Creates a diagnostics source that always returns the given constant
+    * diagnostics.
+    */
   def const[F[_]: Applicative](
       diagnostics: BootstrapDiagnostics,
   ): BootstrapDiagnosticsSource[F] =
@@ -408,7 +464,9 @@ final case class HotStuffBootstrapServices[F[_]](
     diagnostics: BootstrapDiagnosticsSource[F],
 )
 
-/** Transport-layer bootstrap services, optionally overriding catch-up readiness. */
+/** Transport-layer bootstrap services, optionally overriding catch-up
+  * readiness.
+  */
 @SuppressWarnings(Array("org.wartremover.warts.DefaultArguments"))
 final case class HotStuffBootstrapTransportServices[F[_]](
     finalizedAnchorSuggestions: FinalizedAnchorSuggestionService[F],
@@ -420,7 +478,9 @@ final case class HotStuffBootstrapTransportServices[F[_]](
 
 /** Companion for `HotStuffBootstrapTransportServices`. */
 object HotStuffBootstrapTransportServices:
-  /** Creates transport services from full bootstrap services, with no custom readiness. */
+  /** Creates transport services from full bootstrap services, with no custom
+    * readiness.
+    */
   def fromBootstrapServices[F[_]](
       services: HotStuffBootstrapServices[F],
   ): HotStuffBootstrapTransportServices[F] =
@@ -434,7 +494,9 @@ object HotStuffBootstrapTransportServices:
 
 /** Companion for `HotStuffBootstrapServices`. */
 object HotStuffBootstrapServices:
-  /** Creates a static bootstrap services instance with no-op transport services. */
+  /** Creates a static bootstrap services instance with no-op transport
+    * services.
+    */
   def static[F[_]: Applicative](
       validatorSet: ValidatorSet,
   ): HotStuffBootstrapServices[F] =

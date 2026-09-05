@@ -202,7 +202,7 @@ final class TxPipelineAdmissionService[F[_]: Sync] private (
       canonicalHash: TxPipelineCanonicalPayloadHash,
   ): EitherT[F, TxPipelineAdmissionFailure, Option[TxPipelineRecord]] =
     idempotencyKey match
-      case None => EitherT.rightT(None)
+      case None      => EitherT.rightT(None)
       case Some(key) =>
         store
           .getByIdempotencyKey(key)
@@ -232,7 +232,7 @@ final class TxPipelineAdmissionService[F[_]: Sync] private (
           .map(_.leftMap(TxPipelineAdmissionFailure.ValidationRejected(_)))
       txHashes   <- hashTransactions(normalized)
       acceptedAt <- EitherT.right[TxPipelineAdmissionFailure](clock.now)
-      record <- EitherT.fromEither[F]:
+      record     <- EitherT.fromEither[F]:
         TxPipelineRecord
           .accepted(
             pipelineId = identity.pipelineId,
@@ -244,7 +244,7 @@ final class TxPipelineAdmissionService[F[_]: Sync] private (
           )
           .leftMap(TxPipelineAdmissionFailure.ValidationRejected(_))
       created <- createOrReplay(record, identity.canonicalPayloadHash)
-      _ <-
+      _       <-
         if created.created then
           EitherT.right[TxPipelineAdmissionFailure]:
             workNotifier.notifyApplicationWorkAvailable
@@ -261,7 +261,7 @@ final class TxPipelineAdmissionService[F[_]: Sync] private (
     EitherT:
       createPermit.use: _ =>
         val result = for
-          replay <- existingReplay(record.idempotencyKey, canonicalHash)
+          replay  <- existingReplay(record.idempotencyKey, canonicalHash)
           outcome <- replay match
             case Some(existing) =>
               EitherT.rightT[F, TxPipelineAdmissionFailure](
@@ -402,7 +402,7 @@ final class TxPipelineAdmissionService[F[_]: Sync] private (
       canonicalHash: TxPipelineCanonicalPayloadHash,
   ): EitherT[F, TxPipelineAdmissionFailure, TxPipelineRecord] =
     idempotencyKey match
-      case None => EitherT.rightT[F, TxPipelineAdmissionFailure](record)
+      case None      => EitherT.rightT[F, TxPipelineAdmissionFailure](record)
       case Some(key) =>
         store
           .addIdempotencyAlias(

@@ -221,7 +221,7 @@ object HotStuffProposalTxUniqueness:
       bounds: HotStuffProposalTxUniquenessBounds,
       cache: HotStuffProposalTxUniquenessCache,
   ): (HotStuffProposalTxUniquenessCache, HotStuffProposalTxUniquenessResult) =
-    val chainId = proposal.window.chainId
+    val chainId              = proposal.window.chainId
     val bestFinalizedBlockId =
       finalization.get(chainId).flatMap(_.bestFinalized.map(_.anchorBlockId))
     val key =
@@ -305,7 +305,7 @@ object HotStuffProposalTxUniqueness:
       proposals = proposals,
     ) match
       case Left(unavailable) => unavailable
-      case Right(None) =>
+      case Right(None)       =>
         HotStuffProposalTxUniquenessResult.Accepted(
           exclusion(
             chainId = chainId,
@@ -519,7 +519,7 @@ object HotStuffProposalTxUniqueness:
   ): HotStuffProposalTxUniquenessResult =
     exclusionResult match
       case accepted @ HotStuffProposalTxUniquenessResult.Accepted(exclusion) =>
-        val excluded = exclusion.excludedTxIds.txIds.toSet
+        val excluded  = exclusion.excludedTxIds.txIds.toSet
         val conflicts =
           ProposalTxSet.canonical(
             ProposalTxSet(candidateTxSet.txIds.filter(excluded.contains)),
@@ -575,7 +575,7 @@ object HotStuffProposalTxUniqueness:
       proposals: Vector[Proposal],
   ): Option[Proposal] =
     proposals.foldLeft(Option.empty[Proposal]):
-      case (None, next) => Some(next)
+      case (None, next)          => Some(next)
       case (Some(current), next) =>
         val currentKey = current.proposalId.toHexLower
         val nextKey    = next.proposalId.toHexLower
@@ -586,7 +586,7 @@ object HotStuffProposalTxUniqueness:
       proposals: Iterable[Proposal],
   ): ProposalIndex =
     val proposalVector = proposals.iterator.toVector
-    val byProposalId =
+    val byProposalId   =
       proposalVector.iterator
         .map(proposal => proposal.proposalId -> proposal)
         .toMap
@@ -594,9 +594,8 @@ object HotStuffProposalTxUniqueness:
       proposalVector
         .groupBy(proposal => proposal.window.chainId -> proposal.targetBlockId)
         .flatMap: (key, blockProposals) =>
-          canonicalBlockProposal(blockProposals).map(proposal =>
-            key -> proposal,
-          )
+          canonicalBlockProposal(blockProposals)
+            .map(proposal => key -> proposal)
         .toMap
     ProposalIndex(
       byProposalId = byProposalId,

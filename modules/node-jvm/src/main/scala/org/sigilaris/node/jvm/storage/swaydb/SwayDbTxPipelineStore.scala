@@ -49,8 +49,8 @@ final class SwayDbTxPipelineStore private (
   ): EitherT[IO, TxPipelineStoreFailure, Option[TxPipelineRecord]] =
     for
       binding <- loadIdempotencyBinding(idempotencyKey)
-      record <- binding match
-        case None => EitherT.rightT[IO, TxPipelineStoreFailure](None)
+      record  <- binding match
+        case None        => EitherT.rightT[IO, TxPipelineStoreFailure](None)
         case Some(value) =>
           loadByPipelineId(value.pipelineId).flatMap:
             case Some(record) =>
@@ -114,7 +114,7 @@ final class SwayDbTxPipelineStore private (
   ): EitherT[IO, TxPipelineStoreFailure, TxPipelineRecord] =
     for
       existing <- loadByPipelineId(record.pipelineId)
-      created <- existing match
+      created  <- existing match
         case Some(_) =>
           EitherT.leftT[IO, TxPipelineRecord](
             TxPipelineStoreFailure.PipelineAlreadyExists(record.pipelineId),
@@ -147,10 +147,10 @@ final class SwayDbTxPipelineStore private (
       record: TxPipelineRecord,
   ): EitherT[IO, TxPipelineStoreFailure, Unit] =
     record.idempotencyKey match
-      case None => EitherT.rightT(())
+      case None      => EitherT.rightT(())
       case Some(key) =>
         loadIdempotencyBinding(key).flatMap:
-          case None => EitherT.rightT(())
+          case None           => EitherT.rightT(())
           case Some(existing) =>
             EitherT.leftT[IO, Unit](
               TxPipelineStoreFailure.IdempotencyKeyAlreadyExists(
@@ -166,7 +166,7 @@ final class SwayDbTxPipelineStore private (
       .get(Utf8(pipelineId.value))
       .leftMap(failure => TxPipelineStoreFailure.DecodeFailed(failure.msg))
       .flatMap:
-        case None => EitherT.rightT[IO, TxPipelineStoreFailure](None)
+        case None        => EitherT.rightT[IO, TxPipelineStoreFailure](None)
         case Some(value) =>
           EitherT.fromEither[IO](decodeRecord(value).map(Some(_)))
 
@@ -229,7 +229,7 @@ final class SwayDbTxPipelineStore private (
       .get(Utf8(idempotencyKey.value))
       .leftMap(failure => TxPipelineStoreFailure.DecodeFailed(failure.msg))
       .flatMap:
-        case None => EitherT.rightT[IO, TxPipelineStoreFailure](None)
+        case None        => EitherT.rightT[IO, TxPipelineStoreFailure](None)
         case Some(value) =>
           decode[TxPipelineIdempotencyBinding](value.asString) match
             case Right(binding) =>

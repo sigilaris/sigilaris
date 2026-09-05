@@ -100,7 +100,7 @@ final class TxPipelineEligibilityService[F[_]: Sync](
       request: HotStuffProposalInputRequest,
   ): F[Either[TxPipelineEligibilityFailure, TxPipelineEligibilitySelection]] =
     val result = for
-      records <- loadRecords(offset = 0, accumulated = Vector.empty)
+      records   <- loadRecords(offset = 0, accumulated = Vector.empty)
       selection <- selectFromRecords(
         records = records,
         branchContext = request.branchContext,
@@ -127,7 +127,7 @@ final class TxPipelineEligibilityService[F[_]: Sync](
             TxPipelineStoreUpdate(
               record = updated.record,
               changed = updated.changed,
-            )
+            ),
           )
           .leftMap(TxPipelineEligibilityFailure.StoreRejected(_))
           .flatMap:
@@ -326,7 +326,7 @@ final class TxPipelineEligibilityService[F[_]: Sync](
               certifiedBlockHashes.contains(placement.blockHash),
             )
         unsatisfied match
-          case None => TxPipelineStageBarrier.Open
+          case None     => TxPipelineStageBarrier.Open
           case Some(tx) =>
             val detail =
               tx.placements.headOption.map(_.blockHash)
@@ -414,7 +414,9 @@ final class TxPipelineEligibilityService[F[_]: Sync](
       transactionUpdates.map(_.transaction)
     val selectedTransactionChanged =
       transactionUpdates.exists(update =>
-        selectedTransactionIndexes.contains(update.transaction.transactionIndex) &&
+        selectedTransactionIndexes.contains(
+          update.transaction.transactionIndex,
+        ) &&
           update.changed,
       )
     val status =
@@ -429,9 +431,8 @@ final class TxPipelineEligibilityService[F[_]: Sync](
         placements = placements.placements,
         transactions = transactions,
       ),
-      changed =
-        transactionUpdates.exists(_.changed) || status.changed ||
-          placements.changed,
+      changed = transactionUpdates.exists(_.changed) || status.changed ||
+        placements.changed,
     )
 
   private def markTransactionProposed(

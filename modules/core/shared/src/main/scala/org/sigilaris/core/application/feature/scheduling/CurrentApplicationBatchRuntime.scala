@@ -89,13 +89,14 @@ object BatchIdempotencyKey
   ): Either[DecodeFailure, BatchIdempotencyKey] =
     Right[DecodeFailure, BatchIdempotencyKey](wrap(repr))
 
-  extension (key: BatchIdempotencyKey)
-    inline def toUtf8: Utf8 = key
+  extension (key: BatchIdempotencyKey) inline def toUtf8: Utf8 = key
 
 /** A batch of signed transactions submitted for execution.
   *
-  * @param idempotencyKey unique key for deduplication across retries
-  * @param items the ordered transactions in this batch
+  * @param idempotencyKey
+  *   unique key for deduplication across retries
+  * @param items
+  *   the ordered transactions in this batch
   */
 final case class CurrentApplicationBatch(
     idempotencyKey: BatchIdempotencyKey,
@@ -108,8 +109,10 @@ object CurrentApplicationBatch:
       idempotencyKey: String,
       items: Vector[CurrentApplicationSignedTx],
   ): Either[String, CurrentApplicationBatch] =
-    BatchIdempotencyKey.fromString(idempotencyKey).map:
-      CurrentApplicationBatch(_, items)
+    BatchIdempotencyKey
+      .fromString(idempotencyKey)
+      .map:
+        CurrentApplicationBatch(_, items)
 
   @SuppressWarnings(Array("org.wartremover.warts.Throw"))
   def unsafe(
@@ -117,14 +120,16 @@ object CurrentApplicationBatch:
       items: Vector[CurrentApplicationSignedTx],
   ): CurrentApplicationBatch =
     apply(idempotencyKey = idempotencyKey, items = items) match
-      case Right(batch)  => batch
-      case Left(error)   => throw new IllegalArgumentException(error)
+      case Right(batch) => batch
+      case Left(error)  => throw new IllegalArgumentException(error)
 
 /** Describes the execution mode used for a batch. */
 enum CurrentApplicationBatchMode:
   /** All transactions were schedulable (conflict-free). */
   case Schedulable
-  /** Batch fell back to compatibility mode due to non-schedulable transactions. */
+
+  /** Batch fell back to compatibility mode due to non-schedulable transactions.
+    */
   case Compatibility(
       reason: CompatibilityReason,
       mode: CompatibilityMode,
@@ -132,9 +137,12 @@ enum CurrentApplicationBatchMode:
 
 /** Diagnostic information collected during batch planning.
   *
-  * @param mode the execution mode (schedulable or compatibility)
-  * @param duplicatesDropped transactions removed during deduplication
-  * @param classifications scheduling classification for each transaction
+  * @param mode
+  *   the execution mode (schedulable or compatibility)
+  * @param duplicatesDropped
+  *   transactions removed during deduplication
+  * @param classifications
+  *   scheduling classification for each transaction
   */
 final case class CurrentApplicationBatchDiagnostics(
     mode: CurrentApplicationBatchMode,
@@ -144,8 +152,10 @@ final case class CurrentApplicationBatchDiagnostics(
 
 /** A single executed transaction projected onto the public receipt surface.
   *
-  * @param tx the original signed transaction
-  * @param execution explicit execution projection for receipt/public consumers
+  * @param tx
+  *   the original signed transaction
+  * @param execution
+  *   explicit execution projection for receipt/public consumers
   */
 final case class CurrentApplicationExecutedTx(
     tx: CurrentApplicationSignedTx,
@@ -154,8 +164,10 @@ final case class CurrentApplicationExecutedTx(
 
 /** Receipt produced after a batch is fully executed.
   *
-  * @param diagnostics planning diagnostics for the batch
-  * @param executions per-transaction execution results in order
+  * @param diagnostics
+  *   planning diagnostics for the batch
+  * @param executions
+  *   per-transaction execution results in order
   */
 final case class CurrentApplicationBatchReceipt(
     diagnostics: CurrentApplicationBatchDiagnostics,
@@ -166,17 +178,23 @@ final case class CurrentApplicationBatchReceipt(
 enum CurrentApplicationBatchOutcome:
   /** The batch was newly applied. */
   case Applied(receipt: CurrentApplicationBatchReceipt)
+
   /** The batch was a duplicate (idempotency key already seen). */
   case Deduplicated(receipt: CurrentApplicationBatchReceipt)
 
 /** Mutable-free runtime state for batch processing.
   *
-  * @param storeState the current Merkle trie store state
-  * @param receiptsByIdempotencyKey map of processed batch receipts keyed by idempotency key
+  * @param storeState
+  *   the current Merkle trie store state
+  * @param receiptsByIdempotencyKey
+  *   map of processed batch receipts keyed by idempotency key
   */
 final case class CurrentApplicationBatchRuntimeState(
     storeState: StoreState,
-    receiptsByIdempotencyKey: Map[BatchIdempotencyKey, CurrentApplicationBatchReceipt],
+    receiptsByIdempotencyKey: Map[
+      BatchIdempotencyKey,
+      CurrentApplicationBatchReceipt,
+    ],
 )
 
 /** Companion for [[CurrentApplicationBatchRuntimeState]]. */
@@ -196,7 +214,10 @@ enum CurrentApplicationBatchRejected:
       conflict: FootprintConflict[CurrentApplicationSignedTx],
       diagnostics: CurrentApplicationBatchDiagnostics,
   )
-  /** A schedulable transaction failed during execution or footprint conformance. */
+
+  /** A schedulable transaction failed during execution or footprint
+    * conformance.
+    */
   case SchedulableExecutionFailed(
       failure: SchedulableExecutionFailure[
         CurrentApplicationSignedTx,
@@ -204,6 +225,7 @@ enum CurrentApplicationBatchRejected:
       ],
       diagnostics: CurrentApplicationBatchDiagnostics,
   )
+
   /** A compatibility-mode transaction failed during execution. */
   case CompatibilityExecutionFailed(
       tx: CurrentApplicationSignedTx,
@@ -217,17 +239,22 @@ object CurrentApplicationBatchRuntime:
   type RuntimeF[A] = Either[SigilarisFailure, A]
 
   /** Function type that classifies a signed transaction for scheduling. */
-  type Classifier  = CurrentApplicationSignedTx => SchedulingClassification
+  type Classifier = CurrentApplicationSignedTx => SchedulingClassification
 
-  /** The default classifier that delegates to [[CurrentApplicationScheduling.classify]]. */
+  /** The default classifier that delegates to
+    * [[CurrentApplicationScheduling.classify]].
+    */
   val defaultClassifier: Classifier =
     signedTx => CurrentApplicationScheduling.classify(signedTx)
 
   /** Creates a runtime with a custom transaction classifier.
     *
-    * @param classifyTx the classification function
-    * @param nodeStore the MerkleTrie node store
-    * @return a new batch runtime instance
+    * @param classifyTx
+    *   the classification function
+    * @param nodeStore
+    *   the MerkleTrie node store
+    * @return
+    *   a new batch runtime instance
     */
   def createWithClassifier(
       classifyTx: Classifier,
@@ -238,8 +265,10 @@ object CurrentApplicationBatchRuntime:
 
   /** Creates a runtime using the default transaction classifier.
     *
-    * @param nodeStore the MerkleTrie node store
-    * @return a new batch runtime instance
+    * @param nodeStore
+    *   the MerkleTrie node store
+    * @return
+    *   a new batch runtime instance
     */
   def createDefault()(using
       nodeStore: MerkleTrie.NodeStore[RuntimeF],
@@ -248,9 +277,9 @@ object CurrentApplicationBatchRuntime:
 
 /** Batch transaction runtime for the current application.
   *
-  * Mounts the accounts and groups modules, wires their dependencies,
-  * and provides batch execution with scheduling, deduplication, and
-  * compatibility fallback.
+  * Mounts the accounts and groups modules, wires their dependencies, and
+  * provides batch execution with scheduling, deduplication, and compatibility
+  * fallback.
   */
 final class CurrentApplicationBatchRuntime private (
     classifyTx: CurrentApplicationBatchRuntime.Classifier,
@@ -271,13 +300,16 @@ final class CurrentApplicationBatchRuntime private (
 
   /** Applies a batch of transactions to the given runtime state.
     *
-    * Handles deduplication via idempotency keys, schedules transactions
-    * using the configured classifier, and falls back to compatibility
-    * mode when necessary.
+    * Handles deduplication via idempotency keys, schedules transactions using
+    * the configured classifier, and falls back to compatibility mode when
+    * necessary.
     *
-    * @param state the current runtime state
-    * @param batch the batch of transactions to apply
-    * @return either a rejection reason or the updated state with outcome
+    * @param state
+    *   the current runtime state
+    * @param batch
+    *   the batch of transactions to apply
+    * @return
+    *   either a rejection reason or the updated state with outcome
     */
   def applyBatch(
       state: CurrentApplicationBatchRuntimeState,

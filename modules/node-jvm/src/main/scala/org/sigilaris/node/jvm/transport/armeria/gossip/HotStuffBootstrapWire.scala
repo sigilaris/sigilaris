@@ -63,7 +63,9 @@ object SnapshotNodeFetchRequestWire:
       hashes <- request.hashes.traverse: hash =>
         UInt256
           .fromHex(hash)
-          .leftMap(error => bootstrapRejected("invalidSnapshotNodeHash", error.toString))
+          .leftMap(error =>
+            bootstrapRejected("invalidSnapshotNodeHash", error.toString),
+          )
           .map(Hash.Value[org.sigilaris.core.merkle.MerkleTrieNode](_))
     yield SnapshotNodeFetchRequest(
       stateRoot = stateRoot,
@@ -137,7 +139,9 @@ object ProposalPageRequestWire:
       heightReason = "invalidReplayHeight",
     )
 
-  /** Parses a historical backfill request using backfill-specific rejection reasons. */
+  /** Parses a historical backfill request using backfill-specific rejection
+    * reasons.
+    */
   def parseHistoricalBackfill(
       request: ProposalPageRequestWire,
   ): Either[CanonicalRejection.BackfillUnavailable, ProposalPageRequest] =
@@ -157,7 +161,7 @@ object ProposalPageRequestWire:
         .fromHex(request.blockId)
         .leftMap(bootstrapRejected(blockIdReason, _))
       height <- parseBlockHeight(request.height, heightReason)
-      _ <- Either.cond(
+      _      <- Either.cond(
         request.limit >= 0 &&
           request.limit <= HotStuffBootstrapTransportLimits.MaxProposalPageLimit,
         (),
@@ -193,7 +197,8 @@ final case class ProposalPageRequest(
     limit: Int,
 )
 
-/** Wire format for a batch of proposals returned from replay or backfill requests.
+/** Wire format for a batch of proposals returned from replay or backfill
+  * requests.
   *
   * @param proposalsBase64Url
   *   Base64URL-encoded serialized proposals
@@ -213,7 +218,7 @@ object HotStuffBootstrapTransportLimits:
   val MaxSnapshotNodeHashes: Int = 256
 
   /** Maximum page size for proposal replay and backfill requests. */
-  val MaxProposalPageLimit: Int  = 256
+  val MaxProposalPageLimit: Int = 256
 
 private def bootstrapRejected(
     reason: String,

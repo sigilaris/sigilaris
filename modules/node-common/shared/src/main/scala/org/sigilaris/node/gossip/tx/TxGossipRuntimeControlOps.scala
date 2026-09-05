@@ -161,7 +161,7 @@ private[tx] trait TxGossipRuntimeControlOps[F[_]: Sync, A]
         validateTxSubscription(sessionState, chainId, GossipTopic.tx).flatMap:
           _ =>
             val distinctNewIds = ids.toSet
-            val mergedIds = sessionState.exactKnownIds.getOrElse(
+            val mergedIds      = sessionState.exactKnownIds.getOrElse(
               chainId,
               Set.empty[StableArtifactId],
             ) ++ distinctNewIds
@@ -183,7 +183,7 @@ private[tx] trait TxGossipRuntimeControlOps[F[_]: Sync, A]
       case ControlOp.SetKnownExact(scope, ids) =>
         validateExactKnownSubscription(sessionState, scope).flatMap: contract =>
           val distinctNewIds = ids.toSet
-          val existing =
+          val existing       =
             sessionState.exactKnownScopeIds.getOrElse(
               scope,
               Set.empty[StableArtifactId],
@@ -253,7 +253,7 @@ private[tx] trait TxGossipRuntimeControlOps[F[_]: Sync, A]
 
       case ControlOp.RequestByIdExact(scope, ids) =>
         validateExactKnownSubscription(sessionState, scope).flatMap: contract =>
-          val distinctIds = ids.distinct
+          val distinctIds    = ids.distinct
           val nextRetryCount =
             sessionState.requestScopeRetryCounts.getOrElse(scope, 0) + 1
           contract.requestByIdLimit match

@@ -2,14 +2,16 @@ package org.sigilaris.node.jvm.runtime.consensus.hotstuff
 
 import scodec.bits.ByteVector
 
-import org.sigilaris.core.codec.byte.{ByteDecoder, ByteEncoder}
-import org.sigilaris.core.codec.byte.ByteDecoder.{BigNat as DecoderBigNat}
+import org.sigilaris.core.application.protocol.ExecutionPlanRoot
+import org.sigilaris.core.codec.byte.{ByteDecoder, ByteEncoder, DecodeResult}
+import org.sigilaris.core.codec.byte.ByteDecoder.BigNat as DecoderBigNat
 import org.sigilaris.core.codec.OrderedCodec.orderedByteVector
 import org.sigilaris.core.crypto.Signature
 import org.sigilaris.core.datatype.{BigNat as DataBigNat, UInt256, Utf8}
 import org.sigilaris.core.failure.DecodeFailure
 import org.sigilaris.node.jvm.runtime.block.{
   BlockHeader,
+  BlockHeaderVersion,
   BlockHeight,
   BlockId,
   BlockTimestamp,
@@ -61,6 +63,9 @@ given ByteDecoder[StateRoot] =
 given ByteDecoder[BodyRoot] =
   ByteDecoder[UInt256].map(BodyRoot(_))
 
+given ByteDecoder[ExecutionPlanRoot] =
+  ByteDecoder[UInt256].map(ExecutionPlanRoot(_))
+
 given ByteDecoder[BlockTimestamp] =
   ByteDecoder[Long].emap: value =>
     BlockTimestamp.fromEpochMillis(value).left.map(DecodeFailure(_))
@@ -92,7 +97,7 @@ given ByteDecoder[TimeoutVoteSubject]       = ByteDecoder.derived
 given ByteDecoder[TimeoutVote]              = ByteDecoder.derived
 given ByteDecoder[TimeoutCertificate]       = ByteDecoder.derived
 given ByteDecoder[NewView]                  = ByteDecoder.derived
-given ByteDecoder[ProposalTxSet] =
+given ByteDecoder[ProposalTxSet]            =
   val proposalTxIdDecoder =
     ByteDecoder
       .fromFixedSizeBytes[ByteVector](UInt256.Size.toLong)(identity)
@@ -104,8 +109,98 @@ given ByteDecoder[ProposalTxSet] =
       given ByteDecoder[StableArtifactId] = proposalTxIdDecoder
       ByteDecoder.sizedListDecoder[StableArtifactId](size)
     .map(txIds => ProposalTxSet(txIds.toVector))
-given ByteDecoder[BlockHeader] = ByteDecoder.derived
-given ByteDecoder[Proposal]    = ByteDecoder.derived
+private final case class LegacyBlockHeaderEncoding(
+    parent: Option[BlockId],
+    height: BlockHeight,
+    stateRoot: StateRoot,
+    bodyRoot: BodyRoot,
+    timestamp: BlockTimestamp,
+)
+
+private given ByteDecoder[LegacyBlockHeaderEncoding] = ByteDecoder.derived
+
+private final case class V2BlockHeaderEncoding(
+    versionTag: Byte,
+    parent: Option[BlockId],
+    height: BlockHeight,
+    stateRoot: StateRoot,
+    bodyRoot: BodyRoot,
+    timestamp: BlockTimestamp,
+    executionPlanRoot: ExecutionPlanRoot,
+)
+
+@SuppressWarnings(Array("org.wartremover.warts.Nothing"))
+private given ByteDecoder[V2BlockHeaderEncoding] =
+  ByteDecoder[Byte].flatMap: versionTag =>
+    ByteDecoder[Option[BlockId]].flatMap: parent =>
+      ByteDecoder[BlockHeight].flatMap: height =>
+        ByteDecoder[StateRoot].flatMap: stateRoot =>
+          ByteDecoder[BodyRoot].flatMap: bodyRoot =>
+            ByteDecoder[BlockTimestamp].flatMap: timestamp =>
+              ByteDecoder[Byte].flatMap: rootMarker =>
+                if rootMarker == 1.toByte then
+                  ByteDecoder[ExecutionPlanRoot].map: executionPlanRoot =>
+                    V2BlockHeaderEncoding(
+                      versionTag,
+                      parent,
+                      height,
+                      stateRoot,
+                      bodyRoot,
+                      timestamp,
+                      executionPlanRoot,
+                    )
+                else
+                  (_: ByteVector) =>
+                    Left(
+                      DecodeFailure("v2 execution plan root must be present"),
+                    )
+
+@SuppressWarnings(Array("org.wartremover.warts.Nothing"))
+given ByteDecoder[BlockHeader] with
+  override def decode(
+      bytes: ByteVector,
+  ): Either[org.sigilaris.core.failure.DecodeFailure, DecodeResult[
+    BlockHeader,
+  ]] =
+    bytes.headOption match
+      case Some(tag) if tag == BlockHeaderVersion.V2.tag =>
+        ByteDecoder[V2BlockHeaderEncoding]
+          .decode(bytes)
+          .flatMap:
+            case DecodeResult(value, remainder) =>
+              Either
+                .cond(
+                  value.versionTag == BlockHeaderVersion.V2.tag,
+                  BlockHeader(
+                    parent = value.parent,
+                    height = value.height,
+                    stateRoot = value.stateRoot,
+                    bodyRoot = value.bodyRoot,
+                    timestamp = value.timestamp,
+                    version = BlockHeaderVersion.V2,
+                    executionPlanRoot = Some(value.executionPlanRoot),
+                  ),
+                  DecodeFailure("unsupported block header version"),
+                )
+                .map(DecodeResult(_, remainder))
+      case Some(tag) if tag == 0.toByte || tag == 1.toByte =>
+        ByteDecoder[LegacyBlockHeaderEncoding]
+          .decode(bytes)
+          .map:
+            case DecodeResult(value, remainder) =>
+              DecodeResult(
+                BlockHeader(
+                  parent = value.parent,
+                  height = value.height,
+                  stateRoot = value.stateRoot,
+                  bodyRoot = value.bodyRoot,
+                  timestamp = value.timestamp,
+                ),
+                remainder,
+              )
+      case _ =>
+        Left(DecodeFailure("unsupported block header version"))
+given ByteDecoder[Proposal] = ByteDecoder.derived
 
 given ByteEncoder[SnapshotStatus] =
   ByteEncoder[Utf8].contramap:

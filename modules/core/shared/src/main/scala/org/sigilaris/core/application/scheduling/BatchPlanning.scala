@@ -7,8 +7,10 @@ import org.sigilaris.core.application.state.StoreState
 
 /** Describes why a transaction or batch fell back to compatibility mode.
   *
-  * @param reason short machine-readable reason code
-  * @param detail optional human-readable detail
+  * @param reason
+  *   short machine-readable reason code
+  * @param detail
+  *   optional human-readable detail
   */
 final case class CompatibilityReason(
     reason: String,
@@ -19,8 +21,10 @@ final case class CompatibilityReason(
 object CompatibilityReason:
   /** Converts a footprint derivation failure into a compatibility reason.
     *
-    * @param failure the derivation failure
-    * @return a CompatibilityReason with the same reason and detail
+    * @param failure
+    *   the derivation failure
+    * @return
+    *   a CompatibilityReason with the same reason and detail
     */
   def fromDerivationFailure(
       failure: FootprintDerivationFailure,
@@ -34,6 +38,7 @@ object CompatibilityReason:
 enum SchedulingClassification:
   /** Transaction has a known conflict footprint and can be scheduled. */
   case Schedulable(footprint: ConflictFootprint)
+
   /** Transaction must be executed in compatibility (sequential) mode. */
   case Compatibility(reason: CompatibilityReason)
 
@@ -41,22 +46,31 @@ enum SchedulingClassification:
 object SchedulingClassification:
   /** Creates a classification from a footprint derivation result.
     *
-    * @param result either a derivation failure (compatibility) or a conflict footprint (schedulable)
-    * @return the corresponding classification
+    * @param result
+    *   either a derivation failure (compatibility) or a conflict footprint
+    *   (schedulable)
+    * @return
+    *   the corresponding classification
     */
   def fromDerivation(
       result: Either[FootprintDerivationFailure, ConflictFootprint],
   ): SchedulingClassification =
     result.fold(
-      failure => SchedulingClassification.Compatibility(CompatibilityReason.fromDerivationFailure(failure)),
+      failure =>
+        SchedulingClassification.Compatibility(
+          CompatibilityReason.fromDerivationFailure(failure),
+        ),
       footprint => SchedulingClassification.Schedulable(footprint),
     )
 
   /** Derives a classification for a value using its FootprintDeriver instance.
     *
-    * @tparam A the item type with a FootprintDeriver
-    * @param value the item to classify
-    * @return the scheduling classification
+    * @tparam A
+    *   the item type with a FootprintDeriver
+    * @param value
+    *   the item to classify
+    * @return
+    *   the scheduling classification
     */
   def derive[A: FootprintDeriver](
       value: A,
@@ -65,17 +79,22 @@ object SchedulingClassification:
 
 /** A batch item paired with its scheduling classification.
   *
-  * @tparam A the item type
-  * @param item the original item
-  * @param classification the scheduling classification
+  * @tparam A
+  *   the item type
+  * @param item
+  *   the original item
+  * @param classification
+  *   the scheduling classification
   */
 final case class ClassifiedItem[A](
     item: A,
     classification: SchedulingClassification,
 ):
-  /** Extracts this item as a schedulable item if its classification is Schedulable.
+  /** Extracts this item as a schedulable item if its classification is
+    * Schedulable.
     *
-    * @return Some(SchedulableItem) if schedulable, None if compatibility
+    * @return
+    *   Some(SchedulableItem) if schedulable, None if compatibility
     */
   def schedulable: Option[SchedulableItem[A]] =
     classification match
@@ -84,11 +103,15 @@ final case class ClassifiedItem[A](
       case SchedulingClassification.Compatibility(_) =>
         None
 
-/** A batch item with a declared conflict footprint, eligible for schedulable execution.
+/** A batch item with a declared conflict footprint, eligible for schedulable
+  * execution.
   *
-  * @tparam A the item type
-  * @param item the original item
-  * @param declaredFootprint the declared read/write footprint
+  * @tparam A
+  *   the item type
+  * @param item
+  *   the original item
+  * @param declaredFootprint
+  *   the declared read/write footprint
   */
 final case class SchedulableItem[A](
     item: A,
@@ -99,14 +122,18 @@ final case class SchedulableItem[A](
 enum CompatibilityMode:
   /** Batch contains both schedulable and compatibility transactions. */
   case MixedBatch
+
   /** All transactions in the batch require compatibility mode. */
   case CompatibilityOnly
 
 /** Batch execution plan for compatibility mode (sequential execution).
   *
-  * @tparam A the item type
-  * @param items the classified items in execution order
-  * @param mode the compatibility mode (mixed or compatibility-only)
+  * @tparam A
+  *   the item type
+  * @param items
+  *   the classified items in execution order
+  * @param mode
+  *   the compatibility mode (mixed or compatibility-only)
   */
 final case class CompatibilityBatchPlan[A](
     items: Vector[ClassifiedItem[A]],
@@ -115,9 +142,12 @@ final case class CompatibilityBatchPlan[A](
 
 /** Batch execution plan for schedulable mode (conflict-free transactions).
   *
-  * @tparam A the item type
-  * @param items the schedulable items with their declared footprints
-  * @param aggregate the aggregate footprint of all items (verified conflict-free)
+  * @tparam A
+  *   the item type
+  * @param items
+  *   the schedulable items with their declared footprints
+  * @param aggregate
+  *   the aggregate footprint of all items (verified conflict-free)
   */
 final case class SchedulableBatchPlan[A](
     items: Vector[SchedulableItem[A]],
@@ -126,15 +156,19 @@ final case class SchedulableBatchPlan[A](
 
 /** The result of batch planning: either a schedulable or compatibility plan.
   *
-  * @tparam A the item type
+  * @tparam A
+  *   the item type
   */
 enum BatchPlan[A]:
   /** All items are schedulable and conflict-free. */
   case Schedulable(plan: SchedulableBatchPlan[A])
+
   /** Some or all items require compatibility-mode execution. */
   case Compatibility(plan: CompatibilityBatchPlan[A])
 
-/** Classifies and plans batches of items for execution based on conflict footprints. */
+/** Classifies and plans batches of items for execution based on conflict
+  * footprints.
+  */
 object BatchPlanner:
   private def compatibilityResult[A](
       plan: CompatibilityBatchPlan[A],
@@ -143,10 +177,14 @@ object BatchPlanner:
 
   /** Classifies a single item using the provided classification function.
     *
-    * @tparam A the item type
-    * @param item the item to classify
-    * @param classifyItem the classification function
-    * @return the classified item
+    * @tparam A
+    *   the item type
+    * @param item
+    *   the item to classify
+    * @param classifyItem
+    *   the classification function
+    * @return
+    *   the classified item
     */
   def classify[A](
       item: A,
@@ -157,9 +195,12 @@ object BatchPlanner:
 
   /** Classifies a single item using its FootprintDeriver instance.
     *
-    * @tparam A the item type with a FootprintDeriver
-    * @param item the item to classify
-    * @return the classified item
+    * @tparam A
+    *   the item type with a FootprintDeriver
+    * @param item
+    *   the item to classify
+    * @return
+    *   the classified item
     */
   def classifyWithDeriver[A: FootprintDeriver](
       item: A,
@@ -168,10 +209,14 @@ object BatchPlanner:
 
   /** Classifies all items in a collection.
     *
-    * @tparam A the item type
-    * @param items the items to classify
-    * @param classifyItem the classification function
-    * @return a vector of classified items preserving order
+    * @tparam A
+    *   the item type
+    * @param items
+    *   the items to classify
+    * @param classifyItem
+    *   the classification function
+    * @return
+    *   a vector of classified items preserving order
     */
   def classifyAll[A](
       items: Iterable[A],
@@ -180,11 +225,15 @@ object BatchPlanner:
   ): Vector[ClassifiedItem[A]] =
     items.iterator.map(item => classify(item)(classifyItem)).toVector
 
-  /** Plans a batch from already-classified items, verifying conflict-freedom if all are schedulable.
+  /** Plans a batch from already-classified items, verifying conflict-freedom if
+    * all are schedulable.
     *
-    * @tparam A the item type
-    * @param classified the pre-classified items
-    * @return either a conflict or a batch plan
+    * @tparam A
+    *   the item type
+    * @param classified
+    *   the pre-classified items
+    * @return
+    *   either a conflict or a batch plan
     */
   def planClassified[A](
       classified: Vector[ClassifiedItem[A]],
@@ -214,10 +263,14 @@ object BatchPlanner:
 
   /** Classifies and plans a batch in one step.
     *
-    * @tparam A the item type
-    * @param items the items to plan
-    * @param classifyItem the classification function
-    * @return either a conflict or a batch plan
+    * @tparam A
+    *   the item type
+    * @param items
+    *   the items to plan
+    * @param classifyItem
+    *   the classification function
+    * @return
+    *   either a conflict or a batch plan
     */
   def plan[A](
       items: Iterable[A],
@@ -228,9 +281,12 @@ object BatchPlanner:
 
   /** Classifies and plans a batch using the FootprintDeriver typeclass.
     *
-    * @tparam A the item type with a FootprintDeriver
-    * @param items the items to plan
-    * @return either a conflict or a batch plan
+    * @tparam A
+    *   the item type with a FootprintDeriver
+    * @param items
+    *   the items to plan
+    * @return
+    *   either a conflict or a batch plan
     */
   def planWithDeriver[A: FootprintDeriver](
       items: Iterable[A],
@@ -239,17 +295,21 @@ object BatchPlanner:
 
 /** Failure that may occur during schedulable batch execution.
   *
-  * @tparam A the item type
-  * @tparam E the execution error type
+  * @tparam A
+  *   the item type
+  * @tparam E
+  *   the execution error type
   */
 enum SchedulableExecutionFailure[A, E]:
   /** The transaction's execution function returned an error. */
   case ExecutionFailed(item: A, cause: E)
+
   /** The actual footprint could not be derived from the access log. */
   case ActualFootprintUnavailable(
       item: A,
       violation: ConflictFootprint.AccessLogInvariantViolation,
   )
+
   /** The actual footprint exceeded the declared footprint. */
   case ConformanceFailed(
       item: A,
@@ -258,7 +318,8 @@ enum SchedulableExecutionFailure[A, E]:
 
 /** Conformance check failure for a single executed item.
   *
-  * @tparam A the item type
+  * @tparam A
+  *   the item type
   */
 enum ExecutionConformanceFailure[A]:
   /** The actual footprint could not be derived from the access log. */
@@ -266,17 +327,22 @@ enum ExecutionConformanceFailure[A]:
       item: A,
       violation: ConflictFootprint.AccessLogInvariantViolation,
   )
+
   /** The actual footprint exceeded the declared footprint. */
   case ConformanceFailed(
       item: A,
       failure: FootprintConformanceFailure,
   )
 
-/** A schedulable item that has been executed, pairing the plan with the execution result.
+/** A schedulable item that has been executed, pairing the plan with the
+  * execution result.
   *
-  * @tparam A the item type
-  * @param planned the original planned schedulable item
-  * @param execution the execution result
+  * @tparam A
+  *   the item type
+  * @param planned
+  *   the original planned schedulable item
+  * @param execution
+  *   the execution result
   */
 final case class ExecutedSchedulableItem[A](
     planned: SchedulableItem[A],
@@ -285,23 +351,32 @@ final case class ExecutedSchedulableItem[A](
 
 /** Result of executing a schedulable batch plan.
   *
-  * @tparam A the item type
-  * @param nextState the store state after all transactions have been applied
-  * @param items the executed items in order
+  * @tparam A
+  *   the item type
+  * @param nextState
+  *   the store state after all transactions have been applied
+  * @param items
+  *   the executed items in order
   */
 final case class SchedulableBatchExecution[A](
     nextState: StoreState,
     items: Vector[ExecutedSchedulableItem[A]],
 )
 
-/** Validates that an executed transaction's actual footprint conforms to its declared footprint. */
+/** Validates that an executed transaction's actual footprint conforms to its
+  * declared footprint.
+  */
 object SchedulableExecutionVerifier:
   /** Validates conformance of a single executed item.
     *
-    * @tparam A the item type
-    * @param planned the planned schedulable item with declared footprint
-    * @param execution the execution result containing the actual footprint
-    * @return either a conformance failure or unit on success
+    * @tparam A
+    *   the item type
+    * @param planned
+    *   the planned schedulable item with declared footprint
+    * @param execution
+    *   the execution result containing the actual footprint
+    * @return
+    *   either a conformance failure or unit on success
     */
   def validate[A](
       planned: SchedulableItem[A],
@@ -323,7 +398,9 @@ object SchedulableExecutionVerifier:
               failure = failure,
             )
 
-/** Executes a schedulable batch plan sequentially, verifying footprint conformance after each item. */
+/** Executes a schedulable batch plan sequentially, verifying footprint
+  * conformance after each item.
+  */
 object SchedulableBatchExecutor:
   private def widenFailure[A, E](
       failure: ExecutionConformanceFailure[A],
@@ -360,14 +437,21 @@ object SchedulableBatchExecutor:
           .map(widenFailure[A, E])
           .map(_ => execution)
 
-  /** Executes all items in a schedulable batch plan sequentially, verifying conformance after each.
+  /** Executes all items in a schedulable batch plan sequentially, verifying
+    * conformance after each.
     *
-    * @tparam A the item type
-    * @tparam E the execution error type
-    * @param initial the initial store state
-    * @param plan the schedulable batch plan to execute
-    * @param execute the function that executes a single item against a store state
-    * @return either an execution failure or the batch execution result
+    * @tparam A
+    *   the item type
+    * @tparam E
+    *   the execution error type
+    * @param initial
+    *   the initial store state
+    * @param plan
+    *   the schedulable batch plan to execute
+    * @param execute
+    *   the function that executes a single item against a store state
+    * @return
+    *   either an execution failure or the batch execution result
     */
   def executeSequentially[A, E](
       initial: StoreState,

@@ -17,15 +17,24 @@ import org.sigilaris.node.gossip.*
 
 /** Configuration for bootstrapping a HotStuff consensus node.
   *
-  * @param role the local node's role (validator or audit)
-  * @param validatorSet the current active validator set
-  * @param holders the validator key holder bindings
-  * @param localKeys locally available signing keys by validator ID
-  * @param gossipPolicy the gossip topic policies
-  * @param sinkRetention the in-memory sink retention policy
-  * @param bootstrapTrustRootOverride optional override for the bootstrap trust root
-  * @param historicalValidatorSets previously active validator sets for cross-epoch verification
-  * @param historicalSyncEnabled whether historical backfill is enabled
+  * @param role
+  *   the local node's role (validator or audit)
+  * @param validatorSet
+  *   the current active validator set
+  * @param holders
+  *   the validator key holder bindings
+  * @param localKeys
+  *   locally available signing keys by validator ID
+  * @param gossipPolicy
+  *   the gossip topic policies
+  * @param sinkRetention
+  *   the in-memory sink retention policy
+  * @param bootstrapTrustRootOverride
+  *   optional override for the bootstrap trust root
+  * @param historicalValidatorSets
+  *   previously active validator sets for cross-epoch verification
+  * @param historicalSyncEnabled
+  *   whether historical backfill is enabled
   */
 @SuppressWarnings(Array("org.wartremover.warts.DefaultArguments"))
 final case class HotStuffBootstrapConfig(
@@ -40,12 +49,15 @@ final case class HotStuffBootstrapConfig(
     historicalValidatorSets: Vector[ValidatorSet] = Vector.empty,
     historicalSyncEnabled: Boolean = true,
 ):
-  /** Returns the effective bootstrap trust root, using the override if present. */
+  /** Returns the effective bootstrap trust root, using the override if present.
+    */
   def bootstrapTrustRoot: BootstrapTrustRoot =
     bootstrapTrustRootOverride.getOrElse:
       BootstrapTrustRoot.staticValidatorSet(validatorSet)
 
-  /** Returns the deduplicated inventory of validator sets for cross-epoch lookups. */
+  /** Returns the deduplicated inventory of validator sets for cross-epoch
+    * lookups.
+    */
   def validatorSetLookupInventory: Vector[ValidatorSet] =
     (Vector(
       bootstrapTrustRoot.validatorSet,
@@ -58,12 +70,16 @@ final case class HotStuffBootstrapConfig(
           (seen + next.hash) -> (acc :+ next)
       ._2
 
-/** Companion for `HotStuffBootstrapConfig`, providing configuration loading from Typesafe Config. */
+/** Companion for `HotStuffBootstrapConfig`, providing configuration loading
+  * from Typesafe Config.
+  */
 object HotStuffBootstrapConfig:
   /** The default configuration path. */
   val DefaultPath: String = "sigilaris.node.consensus.hotstuff"
 
-  /** Loads the bootstrap configuration from the given Config at the specified path. */
+  /** Loads the bootstrap configuration from the given Config at the specified
+    * path.
+    */
   @SuppressWarnings(Array("org.wartremover.warts.DefaultArguments"))
   def load(
       config: Config,
@@ -87,19 +103,19 @@ object HotStuffBootstrapConfig:
       validators <- requiredConfigList(section, "validators", "validators")
         .flatMap(parseValidators)
       validatorSet <- ValidatorSet(validators).leftMap(_.message)
-      holders <- requiredConfigList(section, "key-holders", "keyHolders")
+      holders      <- requiredConfigList(section, "key-holders", "keyHolders")
         .flatMap(parseHolders)
       localKeys <- requiredConfigList(section, "local-signers", "localSigners")
         .flatMap(parseLocalKeys(validatorSet))
-      gossipPolicy <- loadGossipPolicy(section)
-      sinkRetention <- loadSinkRetention(section)
+      gossipPolicy          <- loadGossipPolicy(section)
+      sinkRetention         <- loadSinkRetention(section)
       historicalSyncEnabled <- optionalBoolean(
         section,
         "historical-sync-enabled",
         "historicalSyncEnabled",
         default = true,
       )
-      historicalValidatorSets <- loadHistoricalValidatorSets(section)
+      historicalValidatorSets    <- loadHistoricalValidatorSets(section)
       bootstrapTrustRootOverride <- loadBootstrapTrustRoot(
         section,
         validatorSet,
@@ -385,7 +401,7 @@ object HotStuffBootstrapConfig:
     value.trim.toLowerCase(Locale.ROOT) match
       case "active" => ValidatorKeyHolderStatus.Active.asRight[String]
       case "fenced" => ValidatorKeyHolderStatus.Fenced.asRight[String]
-      case other =>
+      case other    =>
         ss"unsupported key holder status: ${other}"
           .asLeft[ValidatorKeyHolderStatus]
 
@@ -446,9 +462,10 @@ object HotStuffBootstrapConfig:
           ).find(retentionSection.hasPath)
         unsupportedRejectedSampleKey match
           case Some(_) =>
-            "retainedRejectedEventSamples is not supported yet; remove it from sink-retention".asLeft[
-              HotStuffArtifactSinkRetention,
-            ]
+            "retainedRejectedEventSamples is not supported yet; remove it from sink-retention"
+              .asLeft[
+                HotStuffArtifactSinkRetention,
+              ]
           case None =>
             for
               finalizedHeightLag <- optionalLong(

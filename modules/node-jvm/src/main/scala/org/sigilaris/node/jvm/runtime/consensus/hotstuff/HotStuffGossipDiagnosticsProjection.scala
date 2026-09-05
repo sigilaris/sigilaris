@@ -23,11 +23,11 @@ final case class HotStuffGossipDiagnosticsProjectionPolicy private (
 )
 
 object HotStuffGossipDiagnosticsProjectionPolicy:
-  val MaxDecimalDigitsLimit: Int                 = 4096
-  val MaxProjectionDroppedEntryGroupLimit: Int   = 4096
-  val MaxStringUtf8BytesLimit: Int               = 1024 * 1024
-  val MaxVectorEntriesLimit: Int                 = 65536
-  val MaxEstimateProductLimit: Long =
+  val MaxDecimalDigitsLimit: Int               = 4096
+  val MaxProjectionDroppedEntryGroupLimit: Int = 4096
+  val MaxStringUtf8BytesLimit: Int             = 1024 * 1024
+  val MaxVectorEntriesLimit: Int               = 65536
+  val MaxEstimateProductLimit: Long            =
     64L * 1024L * 1024L
 
   private def decimalDigits(
@@ -68,7 +68,7 @@ object HotStuffGossipDiagnosticsProjectionPolicy:
       (projectionDroppedEntryGroupLimit > 0) ->
         "projectionDroppedEntryGroupLimit must be positive",
       (
-        projectionDroppedEntryGroupLimit <= MaxProjectionDroppedEntryGroupLimit,
+        projectionDroppedEntryGroupLimit <= MaxProjectionDroppedEntryGroupLimit
       ) ->
         "projectionDroppedEntryGroupLimit must be less than or equal to 4096",
       (projectionDroppedEntryGroupLimit <= maxVectorEntries) ->
@@ -163,7 +163,7 @@ object HotStuffGossipDiagnosticsProjection:
   private val WarningFixedEstimatedBytes: BigInt      = BigInt(160)
   private val DropFixedEstimatedBytes: BigInt         = BigInt(256)
   private val DropOverflowFixedEstimatedBytes: BigInt = BigInt(192)
-  private val ValidatorSetHashHexBytes: BigInt =
+  private val ValidatorSetHashHexBytes: BigInt        =
     BigInt(64)
   private val SourceFixedEstimatedBytes: BigInt =
     BigInt(512)
@@ -318,13 +318,12 @@ object HotStuffGossipDiagnosticsProjection:
           staleCursorRejections.drops
       ComponentProjection(
         snapshot = snapshot,
-        variableEntries =
-          retained.entries.size.toLong +
-            appended.entries.size.toLong +
-            pruned.entries.size.toLong +
-            readByIdMisses.entries.size.toLong +
-            invalidCursorRejections.entries.size.toLong +
-            staleCursorRejections.entries.size.toLong,
+        variableEntries = retained.entries.size.toLong +
+          appended.entries.size.toLong +
+          pruned.entries.size.toLong +
+          readByIdMisses.entries.size.toLong +
+          invalidCursorRejections.entries.size.toLong +
+          staleCursorRejections.entries.size.toLong,
         estimatedBytes = estimateSource(snapshot),
         drops = drops,
       )
@@ -346,7 +345,10 @@ object HotStuffGossipDiagnosticsProjection:
         diagnostics.retentionPolicy,
         policy,
       )
-      retainedCounts <- projectRetainedCounts(diagnostics.retainedCounts, policy)
+      retainedCounts <- projectRetainedCounts(
+        diagnostics.retainedCounts,
+        policy,
+      )
       prunedCounts <- projectPrunedCounts(diagnostics.prunedCounts, policy)
     yield
       val retentionWatermarks =
@@ -392,11 +394,10 @@ object HotStuffGossipDiagnosticsProjection:
         snapshot = snapshot,
         // Fixed retention/count structures are represented in estimatedBytes;
         // variableEntries counts only emitted variable-length vectors.
-        variableEntries =
-          retentionWatermarks.variableEntries +
-            relayed.entries.size.toLong +
-            duplicates.entries.size.toLong +
-            rejected.entries.size.toLong,
+        variableEntries = retentionWatermarks.variableEntries +
+          relayed.entries.size.toLong +
+          duplicates.entries.size.toLong +
+          rejected.entries.size.toLong,
         estimatedBytes = estimateSink(snapshot),
         drops = drops,
       )
@@ -519,7 +520,12 @@ object HotStuffGossipDiagnosticsProjection:
       policy: HotStuffGossipDiagnosticsProjectionPolicy,
   ): Either[ProjectionFailure, HotStuffSinkRetentionCountsSnapshot] =
     for
-      proposals <- fixedBigNat(component, ss"${prefix}.proposals", values.proposals, policy)
+      proposals <- fixedBigNat(
+        component,
+        ss"${prefix}.proposals",
+        values.proposals,
+        policy,
+      )
       votes <- fixedBigNat(component, ss"${prefix}.votes", values.votes, policy)
       voteAccumulatorVotes <- fixedBigNat(
         component,
@@ -557,7 +563,12 @@ object HotStuffGossipDiagnosticsProjection:
         values.timeoutCertificates,
         policy,
       )
-      newViews <- fixedBigNat(component, ss"${prefix}.newViews", values.newViews, policy)
+      newViews <- fixedBigNat(
+        component,
+        ss"${prefix}.newViews",
+        values.newViews,
+        policy,
+      )
       newViewsBySenderWindow <- fixedBigNat(
         component,
         ss"${prefix}.newViewsBySenderWindow",
@@ -584,8 +595,7 @@ object HotStuffGossipDiagnosticsProjection:
       voteAccumulatorEquivocationKeys = voteAccumulatorEquivocationKeys,
       timeoutVotes = timeoutVotes,
       timeoutAccumulatorVotes = timeoutAccumulatorVotes,
-      timeoutAccumulatorEquivocationKeys =
-        timeoutAccumulatorEquivocationKeys,
+      timeoutAccumulatorEquivocationKeys = timeoutAccumulatorEquivocationKeys,
       timeoutCertificates = timeoutCertificates,
       newViews = newViews,
       newViewsBySenderWindow = newViewsBySenderWindow,
@@ -636,11 +646,10 @@ object HotStuffGossipDiagnosticsProjection:
           certified.entries.size.toLong +
           timeout.entries.size.toLong +
           newView.entries.size.toLong,
-      drops =
-        finalized.drops ++
-          certified.drops ++
-          timeout.drops ++
-          newView.drops,
+      drops = finalized.drops ++
+        certified.drops ++
+        timeout.drops ++
+        newView.drops,
     )
 
   private def componentState[Raw, Snapshot](
@@ -649,7 +658,9 @@ object HotStuffGossipDiagnosticsProjection:
       projectComponent: Raw => Either[ProjectionFailure, ComponentProjection[
         Snapshot,
       ]],
-      sourceSnapshot: Snapshot => Option[HotStuffGossipSourceDiagnosticsSnapshot],
+      sourceSnapshot: Snapshot => Option[
+        HotStuffGossipSourceDiagnosticsSnapshot,
+      ],
       sinkSnapshot: Snapshot => Option[HotStuffGossipSinkDiagnosticsSnapshot],
       policy: HotStuffGossipDiagnosticsProjectionPolicy,
   ): ComponentState =
@@ -662,7 +673,11 @@ object HotStuffGossipDiagnosticsProjection:
           estimatedBytes = BigInt(0),
           drops = Vector.empty[ProjectionDrop],
           warnings = Vector(
-            warning(component, "read-failure", Some(boundMessage(error, policy))),
+            warning(
+              component,
+              "read-failure",
+              Some(boundMessage(error, policy)),
+            ),
           ),
           emergencySuppressed = false,
           emergencySuppressionReason = None,
@@ -700,12 +715,11 @@ object HotStuffGossipDiagnosticsProjection:
                   variableEntries = projection.variableEntries,
                   estimatedBytes = projection.estimatedBytes,
                   drops = projection.drops,
-                  warnings =
-                    sizeWarnings :+ warning(
-                      component,
-                      "emergency-suppressed",
-                      Some(reason),
-                    ),
+                  warnings = sizeWarnings :+ warning(
+                    component,
+                    "emergency-suppressed",
+                    Some(reason),
+                  ),
                   emergencySuppressed = true,
                   emergencySuppressionReason = Some(reason),
                 )
@@ -788,10 +802,12 @@ object HotStuffGossipDiagnosticsProjection:
         sinkState.emergencySuppressionReason,
       )
     val parentEmergency =
-      preliminaryParentEntries > BigInt(policy.parentEmergencyVariableEntries) ||
+      preliminaryParentEntries > BigInt(
+        policy.parentEmergencyVariableEntries,
+      ) ||
         preliminaryParentBytes > BigInt(policy.parentEmergencyEstimatedBytes)
     if parentEmergency then
-      val reason = "parent-emergency-guard-exceeded"
+      val reason        = "parent-emergency-guard-exceeded"
       val parentWarning =
         warning("parent", "emergency-suppressed", Some(reason))
       val parentWarnings = warnings :+ parentWarning
@@ -827,7 +843,10 @@ object HotStuffGossipDiagnosticsProjection:
                   emergencySuppressed = true,
                   emergencySuppressionReason = Some(reason),
                 )
-              HotStuffGossipDiagnosticsProjectionResult(Some(snapshot), parentWarnings)
+              HotStuffGossipDiagnosticsProjectionResult(
+                Some(snapshot),
+                parentWarnings,
+              )
     else
       val emergencyReason =
         if childEmergencySuppressed then childSuppressedReason
@@ -869,7 +888,9 @@ object HotStuffGossipDiagnosticsProjection:
       policy: HotStuffGossipDiagnosticsProjectionPolicy,
   ): Vector[HotStuffGossipDiagnosticsProjectionWarning] =
     val entryWarning =
-      Option.when(projection.variableEntries > policy.childWarningVariableEntries):
+      Option.when(
+        projection.variableEntries > policy.childWarningVariableEntries,
+      ):
         warning(
           component,
           "size-warning-entries",
@@ -903,7 +924,9 @@ object HotStuffGossipDiagnosticsProjection:
           ss"${component}-variable-entry-emergency-guard-exceeded",
         ),
         Option.when(
-          projection.estimatedBytes > BigInt(policy.childEmergencyEstimatedBytes),
+          projection.estimatedBytes > BigInt(
+            policy.childEmergencyEstimatedBytes,
+          ),
         )(
           ss"${component}-estimated-byte-emergency-guard-exceeded",
         ),
@@ -911,8 +934,10 @@ object HotStuffGossipDiagnosticsProjection:
     reasons match
       case Vector()       => None
       case Vector(reason) => Some(reason)
-      case many =>
-        Some(ss"multiple-${component}-emergency-guards-exceeded:${many.mkString(";")}")
+      case many           =>
+        Some(
+          ss"multiple-${component}-emergency-guards-exceeded:${many.mkString(";")}",
+        )
 
   private def childSuppressionReason(
       sourceReason: Option[String],
@@ -939,7 +964,7 @@ object HotStuffGossipDiagnosticsProjection:
         rawEntries = values,
         policy = policy,
       ) { case (chainTopic, _) =>
-          (chainTopic.chainId.value, chainTopic.topic.value)
+        (chainTopic.chainId.value, chainTopic.topic.value)
       } { case (chainTopic, _) => chainTopicContext(chainTopic) }
     collectEntries(capped.entries) { case (chainTopic, value) =>
       entryBigNat(
@@ -1034,7 +1059,9 @@ object HotStuffGossipDiagnosticsProjection:
         field = field,
         rawEntries = values,
         policy = policy,
-      ) { case (chainId, _) => chainId.value } { case (chainId, _) => chainId.value }
+      ) { case (chainId, _) => chainId.value } { case (chainId, _) =>
+        chainId.value
+      }
     collectEntries(capped.entries) { case (chainId, value) =>
       entryBigNat(
         component = "sink",
@@ -1060,7 +1087,9 @@ object HotStuffGossipDiagnosticsProjection:
         field = field,
         rawEntries = values,
         policy = policy,
-      ) { case (chainId, _) => chainId.value } { case (chainId, _) => chainId.value }
+      ) { case (chainId, _) => chainId.value } { case (chainId, _) =>
+        chainId.value
+      }
     collectEntries(capped.entries) { case (chainId, window) =>
       if chainId.value =!= window.chainId.value then
         Left[ProjectionDrop, HotStuffGossipWindowWatermarkSnapshot](
@@ -1102,11 +1131,12 @@ object HotStuffGossipDiagnosticsProjection:
       project: A => Either[ProjectionDrop, B],
   ): EntryProjection[B] =
     val (entries, drops) =
-      values.foldLeft((List.empty[B], List.empty[ProjectionDrop])): (acc, value) =>
-        val (entries, drops) = acc
-        project(value) match
-          case Right(entry) => (entry :: entries, drops)
-          case Left(drop)   => (entries, drop :: drops)
+      values.foldLeft((List.empty[B], List.empty[ProjectionDrop])):
+        (acc, value) =>
+          val (entries, drops) = acc
+          project(value) match
+            case Right(entry) => (entry :: entries, drops)
+            case Left(drop)   => (entries, drop :: drops)
     EntryProjection(entries.reverse.toVector, drops.reverse.toVector)
 
   private def capSortedEntries[A, K](
@@ -1140,15 +1170,15 @@ object HotStuffGossipDiagnosticsProjection:
             if tieCompare =!= 0 then tieCompare
             else java.lang.Long.compare(left.ordinal, right.ordinal)
     val (kept, total) =
-      rawEntries.foldLeft((TreeSet.empty[SortCandidate[K, A]](using candidateOrdering), 0L)):
-        (state, entry) =>
+      rawEntries.foldLeft(
+        (TreeSet.empty[SortCandidate[K, A]](using candidateOrdering), 0L),
+      ): (state, entry) =>
         val (kept, count) = state
-        val key       = sortKey(entry)
-        val tie       = tieKey(entry)
-        val candidate = SortCandidate(key, tie, count, entry)
-        val nextKept =
-          if kept.sizeIs < policy.maxVectorEntries then
-            kept + candidate
+        val key           = sortKey(entry)
+        val tie           = tieKey(entry)
+        val candidate     = SortCandidate(key, tie, count, entry)
+        val nextKept      =
+          if kept.sizeIs < policy.maxVectorEntries then kept + candidate
           else
             kept.lastOption match
               case Some(last) if candidateOrdering.lt(candidate, last) =>
@@ -1277,7 +1307,9 @@ object HotStuffGossipDiagnosticsProjection:
     // deterministic sort below before capping or emitting drops.
     val grouped =
       drops
-        .groupBy(drop => (drop.component, drop.field, drop.reason, drop.context))
+        .groupBy(drop =>
+          (drop.component, drop.field, drop.reason, drop.context),
+        )
         .view
         .map { case ((component, field, reason, context), values) =>
           ProjectionDrop(
@@ -1317,7 +1349,7 @@ object HotStuffGossipDiagnosticsProjection:
     ): (acc, drop) =>
       for
         entries <- acc
-        count <- metricBigNat(
+        count   <- metricBigNat(
           "projectionDroppedEntries.count",
           drop.count,
           policy,
@@ -1355,7 +1387,9 @@ object HotStuffGossipDiagnosticsProjection:
         (DropFixedEstimatedBytes + BigInt(policy.maxStringUtf8Bytes) +
           BigInt(policy.maxDecimalDigits))
     val dropOverflowBytes =
-      DropOverflowFixedEstimatedBytes + BigInt(policy.maxDecimalDigits) * BigInt(2)
+      DropOverflowFixedEstimatedBytes + BigInt(
+        policy.maxDecimalDigits,
+      ) * BigInt(2)
     val parentEstimatedBytes =
       ParentFixedEstimatedBytes + sourceEstimatedBytes + sinkEstimatedBytes +
         warningBytes + dropBytes + dropOverflowBytes
@@ -1448,7 +1482,9 @@ object HotStuffGossipDiagnosticsProjection:
       sumEstimates(snapshot.invalidCursorRejectionsByTopic)(
         estimateChainTopicCount,
       ) +
-      sumEstimates(snapshot.staleCursorRejectionsByTopic)(estimateChainTopicCount)
+      sumEstimates(snapshot.staleCursorRejectionsByTopic)(
+        estimateChainTopicCount,
+      )
 
   private def estimateSink(
       snapshot: HotStuffGossipSinkDiagnosticsSnapshot,
@@ -1470,7 +1506,9 @@ object HotStuffGossipDiagnosticsProjection:
       sumEstimates(
         snapshot.retentionWatermarks.retainedNewViewWindowFloorByChain,
       )(estimateWindow) +
-      sumEstimates(snapshot.relayedValidatedArtifactsByTopic)(estimateTopicCount) +
+      sumEstimates(snapshot.relayedValidatedArtifactsByTopic)(
+        estimateTopicCount,
+      ) +
       sumEstimates(snapshot.duplicateArtifactsSuppressedByTopic)(
         estimateTopicCount,
       ) +
@@ -1623,7 +1661,7 @@ object HotStuffGossipDiagnosticsProjection:
       limit: Int,
   ): String =
     takeUtf8Prefix(value, limit, offset = 0, usedBytes = 0L, acc = Nil) match
-      case None => value
+      case None         => value
       case Some(prefix) =>
         buildUtf8Prefix(prefix.reverse)
 

@@ -148,8 +148,8 @@ private final case class FinalityDriveRuntimeState(
       reportingKey: HotStuffPacemakerKey,
       now: Instant,
   ): (FinalityDriveRuntimeState, FinalityDriveRequestDecision) =
-    val key     = FinalityDriveAnchorKey.fromAnchor(candidate.anchor)
-    val current = attemptsByAnchor.get(key)
+    val key              = FinalityDriveAnchorKey.fromAnchor(candidate.anchor)
+    val current          = attemptsByAnchor.get(key)
     val firstRequestedAt =
       current.fold(now)(_.firstRequestedAt)
     val rawElapsed =
@@ -365,9 +365,8 @@ private final class InMemoryHotStuffPacemakerDriver[F[_]: Sync](
     clock.now.flatMap: now =>
       stateRef.get
         .map(
-          _.keys.toVector.sortBy(key =>
-            (key.chainId.value, key.localValidator.value),
-          ),
+          _.keys.toVector
+            .sortBy(key => (key.chainId.value, key.localValidator.value)),
         )
         .flatMap(_.traverse_(driveEntry(_, now)))
 
@@ -410,7 +409,7 @@ private final class InMemoryHotStuffPacemakerDriver[F[_]: Sync](
   ): F[Unit] =
     for
       holdReason <- bootstrapHoldReason(key.chainId)
-      _ <- updateEntry(key): snapshot =>
+      _          <- updateEntry(key): snapshot =>
         snapshot.state.map: state =>
           runtimeFor(key.localValidator).updateBootstrapHold(state, holdReason)
       _ <- updateEntry(key): snapshot =>
@@ -488,37 +487,39 @@ private final class InMemoryHotStuffPacemakerDriver[F[_]: Sync](
                 view = proposal.window.view.next,
               )
             bootstrapHoldReason(nextWindow.chainId).flatMap: holdReason =>
-              localValidators.traverse { validatorId =>
-                updateEntry(
-                  HotStuffPacemakerKey(nextWindow.chainId, validatorId),
-                ): snapshot =>
-                  snapshot.state match
-                    case Some(existing)
-                        if compareWindow(
-                          nextWindow,
-                          existing.activeWindow,
-                        ).contains(-1) =>
-                      None
-                    case Some(existing)
-                        if existing.activeWindow === nextWindow &&
-                          existing.highestKnownQc.subject === qc.subject =>
-                      None
-                    case Some(existing)
-                        if compareWindow(
-                          nextWindow,
-                          existing.activeWindow,
-                        ).isEmpty =>
-                      None
-                    case _ =>
-                      Some(
-                        runtimeFor(validatorId).start(
-                          activeWindow = nextWindow,
-                          highestKnownQc = qc,
-                          now = now,
-                          bootstrapHoldReason = holdReason,
-                        ),
-                      )
-              }.map(_.exists(identity))
+              localValidators
+                .traverse { validatorId =>
+                  updateEntry(
+                    HotStuffPacemakerKey(nextWindow.chainId, validatorId),
+                  ): snapshot =>
+                    snapshot.state match
+                      case Some(existing)
+                          if compareWindow(
+                            nextWindow,
+                            existing.activeWindow,
+                          ).contains(-1) =>
+                        None
+                      case Some(existing)
+                          if existing.activeWindow === nextWindow &&
+                            existing.highestKnownQc.subject === qc.subject =>
+                        None
+                      case Some(existing)
+                          if compareWindow(
+                            nextWindow,
+                            existing.activeWindow,
+                          ).isEmpty =>
+                        None
+                      case _ =>
+                        Some(
+                          runtimeFor(validatorId).start(
+                            activeWindow = nextWindow,
+                            highestKnownQc = qc,
+                            now = now,
+                            bootstrapHoldReason = holdReason,
+                          ),
+                        )
+                }
+                .map(_.exists(identity))
 
   private def observeTimeoutVote(
       timeoutVote: TimeoutVote,
@@ -678,14 +679,16 @@ private final class InMemoryHotStuffPacemakerDriver[F[_]: Sync](
       case None =>
         Sync[F].unit
       case Some(state) =>
-        Ref.of[F, Boolean](false).flatMap: emittedRef =>
-          attemptReservedProposalEmission(key, window, leader, state, now)
-            .flatTap(emittedRef.set)
-            .void
-            .guarantee:
-              emittedRef.get.flatMap: emitted =>
-                releaseProposalEmissionReservation(key, window)
-                  .unlessA(emitted)
+        Ref
+          .of[F, Boolean](false)
+          .flatMap: emittedRef =>
+            attemptReservedProposalEmission(key, window, leader, state, now)
+              .flatTap(emittedRef.set)
+              .void
+              .guarantee:
+                emittedRef.get.flatMap: emitted =>
+                  releaseProposalEmissionReservation(key, window)
+                    .unlessA(emitted)
 
   private def attemptReservedProposalEmission(
       key: HotStuffPacemakerKey,
@@ -883,7 +886,7 @@ private final class InMemoryHotStuffPacemakerDriver[F[_]: Sync](
                     updated -> (
                       request.copy(finalityDrive = Some(hint)),
                       finalizedEvents :+
-                        FinalityDriveDiagnosticEvent.Requested(hint)
+                        FinalityDriveDiagnosticEvent.Requested(hint),
                     )
                   case FinalityDriveRequestDecision.Suppressed(
                         suppression,
@@ -891,7 +894,7 @@ private final class InMemoryHotStuffPacemakerDriver[F[_]: Sync](
                     updated -> (
                       request,
                       finalizedEvents :+
-                        FinalityDriveDiagnosticEvent.Suppressed(suppression)
+                        FinalityDriveDiagnosticEvent.Suppressed(suppression),
                     )
               case None =>
                 pruned -> (request, finalizedEvents)
@@ -957,8 +960,7 @@ private final class InMemoryHotStuffPacemakerDriver[F[_]: Sync](
               request,
               result,
               fallbackUsed = false,
-            ).as(false)
-        )
+            ).as(false))
 
   private def useProviderInput(
       key: HotStuffPacemakerKey,
@@ -1015,12 +1017,12 @@ private final class InMemoryHotStuffPacemakerDriver[F[_]: Sync](
             validation.detail,
             fallbackUsed = true,
           ) *> useLegacyProposalInput(
-              key,
-              request,
-              now,
-              validation.reason,
-              validation.detail,
-            )
+            key,
+            request,
+            now,
+            validation.reason,
+            validation.detail,
+          )
         case HotStuffProposalInputFallbackPolicy.RequireProviderInput =>
           recordProposalInputDiagnostic(
             key,
@@ -1372,8 +1374,7 @@ private final class InMemoryHotStuffPacemakerDriver[F[_]: Sync](
           if entry.proposalEmissionReservationWindow.contains(window) =>
         Some(entry.copy(proposalEmissionReservationWindow = None))
       case other =>
-        other,
-    )
+        other)
 
   private def markProposalEmitted(
       key: HotStuffPacemakerKey,
@@ -1388,8 +1389,7 @@ private final class InMemoryHotStuffPacemakerDriver[F[_]: Sync](
           ),
         )
       case None =>
-        None,
-    )
+        None)
 
   private def proposalInputProvider: HotStuffProposalInputProvider[F] =
     proposalInputProviderOverride.getOrElse(legacyProposalInputProvider)
@@ -1473,8 +1473,7 @@ private final class InMemoryHotStuffPacemakerDriver[F[_]: Sync](
           ),
         )
       case None =>
-        None,
-    )
+        None)
 
   private def recordFinalityDriveProviderResultDiagnostic(
       key: HotStuffPacemakerKey,
@@ -1500,8 +1499,7 @@ private final class InMemoryHotStuffPacemakerDriver[F[_]: Sync](
             ),
           )
         case None =>
-          None,
-      )
+          None)
 
   private def recordFinalityDriveSuppressedDiagnostic(
       key: HotStuffPacemakerKey,
@@ -1525,8 +1523,7 @@ private final class InMemoryHotStuffPacemakerDriver[F[_]: Sync](
           ),
         )
       case None =>
-        None,
-    )
+        None)
 
   private def recordFinalityDriveTargetFinalizedDiagnostic(
       key: HotStuffPacemakerKey,
@@ -1553,8 +1550,7 @@ private final class InMemoryHotStuffPacemakerDriver[F[_]: Sync](
           ),
         )
       case None =>
-        None,
-    )
+        None)
 
   private def recordProposalInputAttemptTimingDiagnostic(
       key: HotStuffPacemakerKey,
@@ -1578,8 +1574,7 @@ private final class InMemoryHotStuffPacemakerDriver[F[_]: Sync](
           ),
         )
       case None =>
-        None,
-    )
+        None)
 
   private def recordProposalInputDiagnostic(
       key: HotStuffPacemakerKey,
@@ -1606,8 +1601,7 @@ private final class InMemoryHotStuffPacemakerDriver[F[_]: Sync](
           ),
         )
       case None =>
-        None,
-    )
+        None)
 
   private def recordProposalInputTxExclusionDiagnostic(
       key: HotStuffPacemakerKey,
@@ -1632,8 +1626,7 @@ private final class InMemoryHotStuffPacemakerDriver[F[_]: Sync](
           ),
         )
       case None =>
-        None,
-    )
+        None)
 
   private def recordLocalProposalEmittedDiagnostic(
       key: HotStuffPacemakerKey,
@@ -1657,8 +1650,7 @@ private final class InMemoryHotStuffPacemakerDriver[F[_]: Sync](
           ),
         )
       case None =>
-        None,
-    )
+        None)
 
   private def recordLocalVoteEmittedDiagnostic(
       key: HotStuffPacemakerKey,
@@ -1680,8 +1672,7 @@ private final class InMemoryHotStuffPacemakerDriver[F[_]: Sync](
           ),
         )
       case None =>
-        None,
-    )
+        None)
 
   private def recordUnsafeTxUniquenessDiagnostic(
       key: HotStuffPacemakerKey,
@@ -1702,8 +1693,7 @@ private final class InMemoryHotStuffPacemakerDriver[F[_]: Sync](
       case Some(entry) =>
         Some(entry.copy(diagnostics = entry.diagnostics :+ diagnostic))
       case None =>
-        None,
-    )
+        None)
 
   private def recordProposalValidationDiagnostic(
       key: HotStuffPacemakerKey,
@@ -1732,8 +1722,7 @@ private final class InMemoryHotStuffPacemakerDriver[F[_]: Sync](
           ),
         )
       case None =>
-        None,
-    )
+        None)
 
   private def diagnosticOutcomeFor(
       result: HotStuffProposalInputProviderResult,

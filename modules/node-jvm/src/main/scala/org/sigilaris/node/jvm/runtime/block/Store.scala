@@ -46,9 +46,8 @@ trait BlockQuery[F[_], TxRef, ResultRef, Event]:
     * @param blockId
     *   the block identifier to look up
     * @return
-    *   `Right(Some(view))` if both parts exist and are valid,
-    *   `Right(None)` if either part is missing, or
-    *   `Left(failure)` if validation fails
+    *   `Right(Some(view))` if both parts exist and are valid, `Right(None)` if
+    *   either part is missing, or `Left(failure)` if validation fails
     */
   def getView(
       blockId: BlockId,
@@ -56,8 +55,8 @@ trait BlockQuery[F[_], TxRef, ResultRef, Event]:
     BlockView[TxRef, ResultRef, Event],
   ]]
 
-/** Mutable store for persisting and retrieving blocks, extending
-  * `BlockQuery` with write operations.
+/** Mutable store for persisting and retrieving blocks, extending `BlockQuery`
+  * with write operations.
   *
   * @tparam F
   *   effect type
@@ -76,11 +75,12 @@ trait BlockStore[F[_], TxRef, ResultRef, Event]
     * @param header
     *   the block header to persist
     * @return
-    *   the computed block identifier
+    *   `Right(blockId)` after versioned-commitment validation, or
+    *   `Left(failure)` without mutating the store
     */
   def putHeader(
       header: BlockHeader,
-  ): F[BlockId]
+  ): EitherT[F, BlockValidationFailure, BlockId]
 
   /** Stores a block body, optionally validating against an existing header.
     *
@@ -128,18 +128,20 @@ object BlockStore:
     * @return
     *   an effectfully allocated in-memory block store
     */
-  def inMemory[F[_]
-    : Sync, TxRef: ByteEncoder, ResultRef: ByteEncoder, Event: ByteEncoder]
+  def inMemory[F[
+      _,
+  ]: Sync, TxRef: ByteEncoder, ResultRef: ByteEncoder, Event: ByteEncoder]
       : F[BlockStore[F, TxRef, ResultRef, Event]] =
     for
       headers <- Ref.of[F, Map[BlockId, BlockHeader]](Map.empty)
-      bodies <- Ref.of[F, Map[BlockId, BlockBody[TxRef, ResultRef, Event]]](
+      bodies  <- Ref.of[F, Map[BlockId, BlockBody[TxRef, ResultRef, Event]]](
         Map.empty,
       )
     yield InMemoryBlockStore(headers, bodies)
 
-  private final class InMemoryBlockStore[F[_]
-    : Sync, TxRef: ByteEncoder, ResultRef: ByteEncoder, Event: ByteEncoder](
+  private final class InMemoryBlockStore[F[
+      _,
+  ]: Sync, TxRef: ByteEncoder, ResultRef: ByteEncoder, Event: ByteEncoder](
       headers: Ref[F, Map[BlockId, BlockHeader]],
       bodies: Ref[F, Map[BlockId, BlockBody[TxRef, ResultRef, Event]]],
   ) extends BlockStore[F, TxRef, ResultRef, Event]:
@@ -174,9 +176,12 @@ object BlockStore:
 
     override def putHeader(
         header: BlockHeader,
-    ): F[BlockId] =
-      val blockId = BlockHeader.computeId(header)
-      headers.update(_.updated(blockId, header)).as(blockId)
+    ): EitherT[F, BlockValidationFailure, BlockId] =
+      EitherT
+        .fromEither[F](BlockHeader.validateVersionedCommitment(header))
+        .semiflatMap: _ =>
+          val blockId = BlockHeader.computeId(header)
+          headers.update(_.updated(blockId, header)).as(blockId)
 
     override def putBody(
         blockId: BlockId,
@@ -186,7 +191,7 @@ object BlockStore:
         _ <- EitherT.fromEither[F]:
           BlockBody.computeBodyRoot(body).void
         maybeHeader <- EitherT.right[BlockValidationFailure](getHeader(blockId))
-        _ <- maybeHeader match
+        _           <- maybeHeader match
           case Some(header) =>
             EitherT.fromEither[F]:
               BlockBody.verifyBodyRoot(body, header.bodyRoot)
@@ -200,11 +205,13 @@ object BlockStore:
     override def putView(
         view: BlockView[TxRef, ResultRef, Event],
     ): EitherT[F, BlockValidationFailure, BlockId] =
-      (EitherT.fromEither[F]:
+      (EitherT
+        .fromEither[F]:
           BlockView.validate(view)
-      ).semiflatMap: _ =>
-        val blockId = BlockHeader.computeId(view.header)
-        (
-          headers.update(_.updated(blockId, view.header)),
-          bodies.update(_.updated(blockId, view.body)),
-        ).tupled.as(blockId)
+        )
+        .semiflatMap: _ =>
+          val blockId = BlockHeader.computeId(view.header)
+          (
+            headers.update(_.updated(blockId, view.header)),
+            bodies.update(_.updated(blockId, view.body)),
+          ).tupled.as(blockId)

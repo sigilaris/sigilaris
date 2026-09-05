@@ -11,7 +11,8 @@ package codec.json
   *   - `KebabCase` - Convert to kebab-case
   *   - `CamelCase` - Convert to camelCase
   *
-  * @note Naming policies are applied bidirectionally to both encoding and decoding.
+  * @note
+  *   Naming policies are applied bidirectionally to both encoding and decoding.
   */
 enum FieldNamingPolicy:
   /** Keep field names as-is. */
@@ -28,9 +29,9 @@ enum FieldNamingPolicy:
 
 /** Strategy for representing subtype names in coproduct discriminator.
   *
-  * Used in the wrapped-by-type-key encoding: `{ "SubtypeName": { ... } }`.
-  * The starting point is always the canonical Scala 3 Mirror label shared by
-  * sealed traits and enums.
+  * Used in the wrapped-by-type-key encoding: `{ "SubtypeName": { ... } }`. The
+  * starting point is always the canonical Scala 3 Mirror label shared by sealed
+  * traits and enums.
   */
 enum TypeNameStrategy:
   /** Use simple class name (e.g., `Red` for `sealed trait Color`). */
@@ -46,25 +47,27 @@ enum TypeNameStrategy:
 
   /** Use custom mapping for canonical subtype labels.
     *
-    * @param mapping map from canonical Mirror label to desired JSON key
+    * @param mapping
+    *   map from canonical Mirror label to desired JSON key
     *
     * @example
-    * ```scala
-    * Custom(Map("Red" -> "red", "Blue" -> "blue"))
-    * ```
+    *   ```scala
+    *   Custom(Map("Red" -> "red", "Blue" -> "blue"))
+    *   ```
     */
   case Custom(mapping: Map[String, String])
 
 /** Discriminator configuration for coproducts (wrapped-by-type-key form).
   *
-  * @param typeNameStrategy how to project canonical subtype labels to JSON keys
+  * @param typeNameStrategy
+  *   how to project canonical subtype labels to JSON keys
   *
   * @example
-  * ```scala
-  * val config = DiscriminatorConfig(TypeNameStrategy.SimpleName)
-  * // Encodes: sealed trait Color; case object Red extends Color
-  * //   → { "Red": {} }
-  * ```
+  *   ```scala
+  *   val config = DiscriminatorConfig(TypeNameStrategy.SimpleName)
+  *   // Encodes: sealed trait Color; case object Red extends Color
+  *   //   → { "Red": {} }
+  *   ```
   */
 @SuppressWarnings(Array("org.wartremover.warts.DefaultArguments"))
 final case class DiscriminatorConfig(
@@ -76,20 +79,26 @@ final case class DiscriminatorConfig(
   * Controls all aspects of JSON encoding and decoding, including field naming,
   * null handling, number formatting, and discriminator strategy.
   *
-  * @param fieldNaming how to transform field names
-  * @param dropNullValues if true, null values are omitted from encoded objects
-  * @param treatAbsentAsNull if true, missing fields decode as null (for Option)
-  * @param writeBigIntAsString if true, BigInt is encoded as JSON string
-  * @param writeBigDecimalAsString if true, BigDecimal is encoded as JSON string
-  * @param discriminator configuration for coproduct type discrimination
+  * @param fieldNaming
+  *   how to transform field names
+  * @param dropNullValues
+  *   if true, null values are omitted from encoded objects
+  * @param treatAbsentAsNull
+  *   if true, missing fields decode as null (for Option)
+  * @param writeBigIntAsString
+  *   if true, BigInt is encoded as JSON string
+  * @param writeBigDecimalAsString
+  *   if true, BigDecimal is encoded as JSON string
+  * @param discriminator
+  *   configuration for coproduct type discrimination
   *
   * @example
-  * ```scala
-  * val customConfig = JsonConfig.default.copy(
-  *   fieldNaming = FieldNamingPolicy.SnakeCase,
-  *   dropNullValues = false
-  * )
-  * ```
+  *   ```scala
+  *   val customConfig = JsonConfig.default.copy(
+  *     fieldNaming = FieldNamingPolicy.SnakeCase,
+  *     dropNullValues = false,
+  *   )
+  *   ```
   */
 @SuppressWarnings(Array("org.wartremover.warts.DefaultArguments"))
 final case class JsonConfig(
@@ -105,11 +114,11 @@ object JsonConfig:
   /** Default configuration aligning with project guidelines.
     *
     * Defaults:
-    * - Field names unchanged (Identity)
-    * - Null values dropped in encoding
-    * - Absent fields treated as null in decoding
-    * - BigInt/BigDecimal encoded as strings
-    * - Simple subtype names for discriminator
+    *   - Field names unchanged (Identity)
+    *   - Null values dropped in encoding
+    *   - Absent fields treated as null in decoding
+    *   - BigInt/BigDecimal encoded as strings
+    *   - Simple subtype names for discriminator
     */
   val default: JsonConfig = JsonConfig(
     fieldNaming = FieldNamingPolicy.Identity,
@@ -123,13 +132,15 @@ object JsonConfig:
   /** Implicit default for convenience; override in scope to customize.
     *
     * @example
-    * ```scala
-    * given JsonConfig = JsonConfig.default.copy(fieldNaming = FieldNamingPolicy.SnakeCase)
-    * ```
+    *   ```scala
+    *   given JsonConfig =
+    *     JsonConfig.default.copy(fieldNaming = FieldNamingPolicy.SnakeCase)
+    *   ```
     */
   given defaultJsonConfig: JsonConfig = default
 
 object DiscriminatorConfig:
   /** Default discriminator configuration using simple type names. */
-  val default: DiscriminatorConfig = DiscriminatorConfig(TypeNameStrategy.SimpleName)
-
+  val default: DiscriminatorConfig = DiscriminatorConfig(
+    TypeNameStrategy.SimpleName,
+  )

@@ -22,9 +22,12 @@ import StoreIndexSwayInterpreter.given
   *
   * Values are serialized to byte arrays using `ByteEncoder`/`ByteDecoder`.
   *
-  * @tparam K the key type
-  * @tparam V the value type, which must have byte codec instances
-  * @param map the underlying SwayDB map
+  * @tparam K
+  *   the key type
+  * @tparam V
+  *   the value type, which must have byte codec instances
+  * @param map
+  *   the underlying SwayDB map
   */
 final class KeyValueSwayStore[K, V: ByteEncoder: ByteDecoder](
     map: Map[K, Array[Byte], Nothing, IO],
@@ -33,7 +36,7 @@ final class KeyValueSwayStore[K, V: ByteEncoder: ByteDecoder](
   override def get(key: K): EitherT[IO, DecodeFailure, Option[V]] =
     for
       arrayOpt <- EitherT.right(map.get(key))
-      decoded <- arrayOpt match
+      decoded  <- arrayOpt match
         case Some(bytes) =>
           EitherT.fromEither[IO]:
             ByteDecoder[V]
@@ -73,12 +76,17 @@ object KeyValueSwayStore:
 
     swaydb.persistent.Map[K, Array[Byte], Nothing, IO](dir)
 
-  /** Creates a new `KeyValueSwayStore` by opening a persistent SwayDB map at the given directory.
+  /** Creates a new `KeyValueSwayStore` by opening a persistent SwayDB map at
+    * the given directory.
     *
-    * @tparam K the key type
-    * @tparam V the value type
-    * @param dir the filesystem directory for the SwayDB storage
-    * @return an IO that yields the constructed store
+    * @tparam K
+    *   the key type
+    * @tparam V
+    *   the value type
+    * @param dir
+    *   the filesystem directory for the SwayDB storage
+    * @return
+    *   an IO that yields the constructed store
     */
   def apply[K: ByteEncoder: ByteDecoder, V: ByteEncoder: ByteDecoder](
       dir: Path,

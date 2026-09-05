@@ -123,7 +123,7 @@ private[node] object TxPipelineSha256:
       bytes.length.toLong <= maxSupportedInputBytes,
       "SHA-256 input is too large for an in-memory padded byte array",
     )
-    val bitLength = bytes.length.toLong * 8L
+    val bitLength    = bytes.length.toLong * 8L
     val paddedLength =
       (((bytes.length.toLong + 9L + 63L) / 64L) * 64L).toInt
     val padded = Array.fill[Byte](paddedLength)(0x00.toByte)
@@ -175,7 +175,7 @@ private[node] object TxPipelineSha256:
       while round < 64 do
         val sigma1 =
           rotateRight(e, 6) ^ rotateRight(e, 11) ^ rotateRight(e, 25)
-        val choose = (e & f) ^ (~e & g)
+        val choose     = (e & f) ^ (~e & g)
         val temporary1 =
           h + sigma1 + choose + RoundConstants(round) + schedule(round)
         val sigma0 =

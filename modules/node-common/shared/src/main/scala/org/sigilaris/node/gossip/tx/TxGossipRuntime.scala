@@ -163,7 +163,7 @@ final class TxGossipRuntime[F[_]: Sync, A](
         case Right(_) =>
           clock.now.flatMap: now =>
             stateStore.modify: state =>
-              val currentState = expireState(state, now)
+              val currentState            = expireState(state, now)
               val (updatedEngine, result) =
                 currentState.engine.handleInboundProposal(
                   proposal = proposal,
@@ -250,8 +250,7 @@ final class TxGossipRuntime[F[_]: Sync, A](
   def closeSession(
       sessionId: DirectionalSessionId,
   ): F[Either[HandshakeRejected, Unit]] =
-    clock
-      .now
+    clock.now
       .flatMap: now =>
         stateStore.modify: state =>
           val currentState = expireState(state, now)
@@ -284,8 +283,7 @@ final class TxGossipRuntime[F[_]: Sync, A](
   def markSessionDead(
       sessionId: DirectionalSessionId,
   ): F[Either[HandshakeRejected, Unit]] =
-    clock
-      .now
+    clock.now
       .flatMap: now =>
         stateStore.modify: state =>
           val currentState = expireState(state, now)
@@ -408,8 +406,8 @@ final class TxGossipRuntime[F[_]: Sync, A](
       batch: ControlBatch,
   ): F[Either[CanonicalRejection.ControlBatchRejected, ControlBatchOutcome]] =
     for
-      now      <- clock.now
-      snapshot <- snapshotAt(now)
+      now              <- clock.now
+      snapshot         <- snapshotAt(now)
       preOpenRejection <- rejectPreOpenTrafficIfNeeded(
         snapshot,
         sessionId,
@@ -486,7 +484,7 @@ final class TxGossipRuntime[F[_]: Sync, A](
       cursor: CompositeCursor,
   ): F[Either[CanonicalRejection.ControlBatchRejected, Unit]] =
     for
-      now <- clock.now
+      now    <- clock.now
       result <- stateStore.modify: state =>
         val currentState = expireState(state, now)
         openOutboundProducerSession(currentState, sessionId).fold(
@@ -497,11 +495,10 @@ final class TxGossipRuntime[F[_]: Sync, A](
                 rejection => currentState -> rejection.asLeft[Unit],
                 updatedSession =>
                   currentState.copy(
-                    outboundSessions =
-                      currentState.outboundSessions.updated(
-                        sessionId,
-                        updatedSession,
-                      ),
+                    outboundSessions = currentState.outboundSessions.updated(
+                      sessionId,
+                      updatedSession,
+                    ),
                   ) -> ().asRight[CanonicalRejection.ControlBatchRejected],
               ),
         )
@@ -527,8 +524,8 @@ final class TxGossipRuntime[F[_]: Sync, A](
       sessionId: DirectionalSessionId,
   ): F[Either[CanonicalRejection, Vector[EventStreamMessage[A]]]] =
     for
-      now      <- clock.now
-      snapshot <- snapshotAt(now)
+      now              <- clock.now
+      snapshot         <- snapshotAt(now)
       preOpenRejection <- rejectPreOpenTrafficIfNeeded(
         snapshot,
         sessionId,
@@ -583,8 +580,8 @@ final class TxGossipRuntime[F[_]: Sync, A](
       sessionId: DirectionalSessionId,
   ): F[Either[CanonicalRejection.HandshakeRejected, SessionSubscription]] =
     for
-      now      <- clock.now
-      snapshot <- snapshotAt(now)
+      now              <- clock.now
+      snapshot         <- snapshotAt(now)
       preOpenRejection <- rejectPreOpenTrafficIfNeeded(
         snapshot,
         sessionId,
@@ -604,21 +601,25 @@ final class TxGossipRuntime[F[_]: Sync, A](
       sessionId: DirectionalSessionId,
       subscription: TxGossipWakeupSubscription[F],
   )(using Temporal[F]): Stream[F, EventStreamMessage[A]] =
-    Stream.eval(drainEventStream(sessionId)).flatMap:
-      case Left(rejection) =>
-        Stream.emit(EventStreamMessage.Rejection(rejection))
-      case Right(messages) if messages.nonEmpty =>
-        Stream.emits(messages) ++ eventStreamLoop(sessionId, subscription)
-      case Right(_) =>
-        Stream.eval(waitForEventStreamWakeup(sessionId, subscription)).drain ++
-          eventStreamLoop(sessionId, subscription)
+    Stream
+      .eval(drainEventStream(sessionId))
+      .flatMap:
+        case Left(rejection) =>
+          Stream.emit(EventStreamMessage.Rejection(rejection))
+        case Right(messages) if messages.nonEmpty =>
+          Stream.emits(messages) ++ eventStreamLoop(sessionId, subscription)
+        case Right(_) =>
+          Stream
+            .eval(waitForEventStreamWakeup(sessionId, subscription))
+            .drain ++
+            eventStreamLoop(sessionId, subscription)
 
   private def drainEventStream(
       sessionId: DirectionalSessionId,
   ): F[Either[CanonicalRejection, Vector[EventStreamMessage[A]]]] =
     for
-      now      <- clock.now
-      snapshot <- snapshotAt(now)
+      now              <- clock.now
+      snapshot         <- snapshotAt(now)
       preOpenRejection <- rejectPreOpenTrafficIfNeeded(
         snapshot,
         sessionId,
@@ -728,7 +729,7 @@ final class TxGossipRuntime[F[_]: Sync, A](
 
   private def finiteDelay(now: Instant, deadline: Instant): FiniteDuration =
     val duration = Duration.between(now, deadline)
-    val nanos =
+    val nanos    =
       if duration.isNegative then 0L else duration.toNanos
     FiniteDuration(nanos, NANOSECONDS)
 
@@ -743,9 +744,9 @@ final class TxGossipRuntime[F[_]: Sync, A](
       right: Option[Instant],
   ): Option[Instant] =
     (left, right) match
-      case (None, None)             => None
-      case (Some(value), None)      => Some(value)
-      case (None, Some(value))      => Some(value)
+      case (None, None)              => None
+      case (Some(value), None)       => Some(value)
+      case (None, Some(value))       => Some(value)
       case (Some(first), Some(next)) =>
         if first.isAfter(next) then Some(next) else Some(first)
 
@@ -828,8 +829,8 @@ final class TxGossipRuntime[F[_]: Sync, A](
       sessionId: DirectionalSessionId,
   ): F[Either[CanonicalRejection.HandshakeRejected, EventStreamMessage[A]]] =
     for
-      now   <- clock.now
-      state <- snapshotAt(now)
+      now              <- clock.now
+      state            <- snapshotAt(now)
       preOpenRejection <- rejectPreOpenTrafficIfNeeded(
         state,
         sessionId,
@@ -869,8 +870,8 @@ final class TxGossipRuntime[F[_]: Sync, A](
       sessionId: DirectionalSessionId,
   ): F[Either[CanonicalRejection.ControlBatchRejected, ControlChannelMessage]] =
     for
-      now   <- clock.now
-      state <- snapshotAt(now)
+      now              <- clock.now
+      state            <- snapshotAt(now)
       preOpenRejection <- rejectPreOpenTrafficIfNeeded(
         state,
         sessionId,

@@ -10,8 +10,9 @@ import datatype.UInt256
   * coordinates. The 64-byte representation consists of x and y coordinates
   * concatenated (x||y), each being 32 bytes, big-endian.
   *
-  * @see [[org.sigilaris.core.crypto.PublicKey]] for platform-specific
-  *      implementations
+  * @see
+  *   [[org.sigilaris.core.crypto.PublicKey]] for platform-specific
+  *   implementations
   */
 trait PublicKeyLike:
   /** Returns the 64-byte uncompressed public key representation.
@@ -34,5 +35,3 @@ trait PublicKeyLike:
     *   y-coordinate as 32-byte [[datatype.UInt256]]
     */
   def y: UInt256
-
-

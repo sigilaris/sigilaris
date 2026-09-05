@@ -22,7 +22,7 @@ import org.sigilaris.core.failure.SigilarisFailure
   *   val signature = keyPair.sign(message).toOption.get
   *
   *   // Recover public key from signature
-  *   val hash = message.toHash
+  *   val hash                                           = message.toHash
   *   val recovered: Either[SigilarisFailure, PublicKey] =
   *     hash.recover(signature)
   *

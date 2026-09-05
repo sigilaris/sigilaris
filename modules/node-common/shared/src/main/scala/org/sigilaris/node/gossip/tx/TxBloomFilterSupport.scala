@@ -79,7 +79,7 @@ object TxBloomFilterSupport:
       hashFamilyId: String = SupportedHashFamilyId,
   ): GossipFilter.TxBloomFilter =
     val initial = Array.fill[Byte](bitsetBytes.max(1))(0)
-    val filter = GossipFilter.TxBloomFilter(
+    val filter  = GossipFilter.TxBloomFilter(
       bitset = ByteVector.view(initial),
       numHashes = numHashes.max(1),
       hashFamilyId = hashFamilyId,

@@ -25,8 +25,7 @@ object HotStuffGossipDiagnosticsSnapshot:
     HotStuffGossipDiagnosticsSnapshot(
       source = None,
       sink = None,
-      warnings =
-        Vector.empty[HotStuffGossipDiagnosticsProjectionWarning],
+      warnings = Vector.empty[HotStuffGossipDiagnosticsProjectionWarning],
       metrics = HotStuffGossipDiagnosticsProjectionMetrics.empty,
       projectionDroppedEntries =
         Vector.empty[HotStuffGossipProjectionDroppedEntry],
@@ -42,8 +41,9 @@ final case class HotStuffGossipSourceDiagnosticsSnapshot(
     appendedEventsByTopic: Vector[HotStuffGossipChainTopicCountSnapshot],
     prunedEventsByTopic: Vector[HotStuffGossipChainTopicCountSnapshot],
     readByIdMissesByTopic: Vector[HotStuffGossipChainTopicCountSnapshot],
-    invalidCursorRejectionsByTopic:
-      Vector[HotStuffGossipChainTopicCountSnapshot],
+    invalidCursorRejectionsByTopic: Vector[
+      HotStuffGossipChainTopicCountSnapshot,
+    ],
     staleCursorRejectionsByTopic: Vector[HotStuffGossipChainTopicCountSnapshot],
 )
 
@@ -54,10 +54,12 @@ final case class HotStuffGossipSinkDiagnosticsSnapshot(
     prunedCounts: HotStuffSinkRetentionCountsSnapshot,
     retentionWatermarks: HotStuffSinkRetentionWatermarksSnapshot,
     relayedValidatedArtifactsByTopic: Vector[HotStuffGossipTopicCountSnapshot],
-    duplicateArtifactsSuppressedByTopic:
-      Vector[HotStuffGossipTopicCountSnapshot],
-    rejectedArtifactsByTopicAndReason:
-      Vector[HotStuffGossipTopicReasonCountSnapshot],
+    duplicateArtifactsSuppressedByTopic: Vector[
+      HotStuffGossipTopicCountSnapshot,
+    ],
+    rejectedArtifactsByTopicAndReason: Vector[
+      HotStuffGossipTopicReasonCountSnapshot,
+    ],
 )
 
 final case class HotStuffSinkRetentionPolicySnapshot(
@@ -105,14 +107,18 @@ object HotStuffSinkRetentionCountsSnapshot:
     )
 
 final case class HotStuffSinkRetentionWatermarksSnapshot(
-    finalizedRetainFromHeightByChain:
-      Vector[HotStuffGossipChainHeightWatermarkSnapshot],
-    certifiedRetainFromHeightByChain:
-      Vector[HotStuffGossipChainHeightWatermarkSnapshot],
-    retainedTimeoutWindowFloorByChain:
-      Vector[HotStuffGossipWindowWatermarkSnapshot],
-    retainedNewViewWindowFloorByChain:
-      Vector[HotStuffGossipWindowWatermarkSnapshot],
+    finalizedRetainFromHeightByChain: Vector[
+      HotStuffGossipChainHeightWatermarkSnapshot,
+    ],
+    certifiedRetainFromHeightByChain: Vector[
+      HotStuffGossipChainHeightWatermarkSnapshot,
+    ],
+    retainedTimeoutWindowFloorByChain: Vector[
+      HotStuffGossipWindowWatermarkSnapshot,
+    ],
+    retainedNewViewWindowFloorByChain: Vector[
+      HotStuffGossipWindowWatermarkSnapshot,
+    ],
 )
 
 object HotStuffSinkRetentionWatermarksSnapshot:
@@ -379,7 +385,7 @@ object HotStuffGossipDiagnosticsJsonCodecs:
   given JsonDecoder[HotStuffGossipSinkDiagnosticsSnapshot] =
     objDecoder: fields =>
       for
-        policyMode <- read[String](fields, "policyMode")
+        policyMode      <- read[String](fields, "policyMode")
         retentionPolicy <-
           read[HotStuffSinkRetentionPolicySnapshot](fields, "retentionPolicy")
         retainedCounts <-
@@ -436,8 +442,8 @@ object HotStuffGossipDiagnosticsJsonCodecs:
   given JsonDecoder[HotStuffSinkRetentionPolicySnapshot] =
     objDecoder: fields =>
       for
-        finalizedHeightLag <- read[BigNat](fields, "finalizedHeightLag")
-        certifiedHeightLag <- read[BigNat](fields, "certifiedHeightLag")
+        finalizedHeightLag     <- read[BigNat](fields, "finalizedHeightLag")
+        certifiedHeightLag     <- read[BigNat](fields, "certifiedHeightLag")
         retainedTimeoutWindows <-
           read[BigNat](fields, "retainedTimeoutWindows")
         retainedNewViewWindows <-
@@ -485,22 +491,22 @@ object HotStuffGossipDiagnosticsJsonCodecs:
   given JsonDecoder[HotStuffSinkRetentionCountsSnapshot] =
     objDecoder: fields =>
       for
-        proposals <- read[BigNat](fields, "proposals")
-        votes <- read[BigNat](fields, "votes")
+        proposals            <- read[BigNat](fields, "proposals")
+        votes                <- read[BigNat](fields, "votes")
         voteAccumulatorVotes <- read[BigNat](fields, "voteAccumulatorVotes")
         voteAccumulatorEquivocationKeys <-
           read[BigNat](fields, "voteAccumulatorEquivocationKeys")
-        timeoutVotes <- read[BigNat](fields, "timeoutVotes")
+        timeoutVotes            <- read[BigNat](fields, "timeoutVotes")
         timeoutAccumulatorVotes <-
           read[BigNat](fields, "timeoutAccumulatorVotes")
         timeoutAccumulatorEquivocationKeys <-
           read[BigNat](fields, "timeoutAccumulatorEquivocationKeys")
-        timeoutCertificates <- read[BigNat](fields, "timeoutCertificates")
-        newViews <- read[BigNat](fields, "newViews")
+        timeoutCertificates    <- read[BigNat](fields, "timeoutCertificates")
+        newViews               <- read[BigNat](fields, "newViews")
         newViewsBySenderWindow <- read[BigNat](fields, "newViewsBySenderWindow")
-        qcs <- read[BigNat](fields, "qcs")
-        safetyFaults <- read[BigNat](fields, "safetyFaults")
-        duplicateSamples <- read[BigNat](fields, "duplicateSamples")
+        qcs                    <- read[BigNat](fields, "qcs")
+        safetyFaults           <- read[BigNat](fields, "safetyFaults")
+        duplicateSamples       <- read[BigNat](fields, "duplicateSamples")
       yield HotStuffSinkRetentionCountsSnapshot(
         proposals = proposals,
         votes = votes,
@@ -508,8 +514,7 @@ object HotStuffGossipDiagnosticsJsonCodecs:
         voteAccumulatorEquivocationKeys = voteAccumulatorEquivocationKeys,
         timeoutVotes = timeoutVotes,
         timeoutAccumulatorVotes = timeoutAccumulatorVotes,
-        timeoutAccumulatorEquivocationKeys =
-          timeoutAccumulatorEquivocationKeys,
+        timeoutAccumulatorEquivocationKeys = timeoutAccumulatorEquivocationKeys,
         timeoutCertificates = timeoutCertificates,
         newViews = newViews,
         newViewsBySenderWindow = newViewsBySenderWindow,
@@ -581,8 +586,8 @@ object HotStuffGossipDiagnosticsJsonCodecs:
     objDecoder: fields =>
       for
         chainId <- read[ChainId](fields, "chainId")
-        topic <- read[GossipTopic](fields, "topic")
-        count <- read[BigNat](fields, "count")
+        topic   <- read[GossipTopic](fields, "topic")
+        count   <- read[BigNat](fields, "count")
       yield HotStuffGossipChainTopicCountSnapshot(
         chainId = chainId,
         topic = topic,
@@ -614,9 +619,9 @@ object HotStuffGossipDiagnosticsJsonCodecs:
   given JsonDecoder[HotStuffGossipTopicReasonCountSnapshot] =
     objDecoder: fields =>
       for
-        topic <- read[GossipTopic](fields, "topic")
+        topic  <- read[GossipTopic](fields, "topic")
         reason <- read[String](fields, "reason")
-        count <- read[BigNat](fields, "count")
+        count  <- read[BigNat](fields, "count")
       yield HotStuffGossipTopicReasonCountSnapshot(
         topic = topic,
         reason = reason,
@@ -634,7 +639,7 @@ object HotStuffGossipDiagnosticsJsonCodecs:
     objDecoder: fields =>
       for
         chainId <- read[ChainId](fields, "chainId")
-        height <- read[BigNat](fields, "height")
+        height  <- read[BigNat](fields, "height")
       yield HotStuffGossipChainHeightWatermarkSnapshot(
         chainId = chainId,
         height = height,
@@ -652,9 +657,9 @@ object HotStuffGossipDiagnosticsJsonCodecs:
   given JsonDecoder[HotStuffGossipWindowWatermarkSnapshot] =
     objDecoder: fields =>
       for
-        chainId <- read[ChainId](fields, "chainId")
-        height <- read[BigNat](fields, "height")
-        view <- read[BigNat](fields, "view")
+        chainId          <- read[ChainId](fields, "chainId")
+        height           <- read[BigNat](fields, "height")
+        view             <- read[BigNat](fields, "view")
         validatorSetHash <- read[ValidatorSetHash](fields, "validatorSetHash")
       yield HotStuffGossipWindowWatermarkSnapshot(
         chainId = chainId,
@@ -678,9 +683,9 @@ object HotStuffGossipDiagnosticsJsonCodecs:
       for
         component <- read[String](fields, "component")
         fieldName <- read[String](fields, "field")
-        reason <- read[String](fields, "reason")
-        context <- readOptional[String](fields, "context")
-        count <- read[BigNat](fields, "count")
+        reason    <- read[String](fields, "reason")
+        context   <- readOptional[String](fields, "context")
+        count     <- read[BigNat](fields, "count")
       yield HotStuffGossipProjectionDroppedEntry(
         component = component,
         field = fieldName,
@@ -701,8 +706,8 @@ object HotStuffGossipDiagnosticsJsonCodecs:
     objDecoder: fields =>
       for
         component <- read[String](fields, "component")
-        reason <- read[String](fields, "reason")
-        message <- readOptional[String](fields, "message")
+        reason    <- read[String](fields, "reason")
+        message   <- readOptional[String](fields, "message")
       yield HotStuffGossipDiagnosticsProjectionWarning(
         component = component,
         reason = reason,
@@ -724,11 +729,11 @@ object HotStuffGossipDiagnosticsJsonCodecs:
     objDecoder: fields =>
       for
         sourceVariableEntries <- read[BigNat](fields, "sourceVariableEntries")
-        sinkVariableEntries <- read[BigNat](fields, "sinkVariableEntries")
+        sinkVariableEntries   <- read[BigNat](fields, "sinkVariableEntries")
         parentVariableEntries <- read[BigNat](fields, "parentVariableEntries")
-        sourceEstimatedBytes <- read[BigNat](fields, "sourceEstimatedBytes")
-        sinkEstimatedBytes <- read[BigNat](fields, "sinkEstimatedBytes")
-        parentEstimatedBytes <- read[BigNat](fields, "parentEstimatedBytes")
+        sourceEstimatedBytes  <- read[BigNat](fields, "sourceEstimatedBytes")
+        sinkEstimatedBytes    <- read[BigNat](fields, "sinkEstimatedBytes")
+        parentEstimatedBytes  <- read[BigNat](fields, "parentEstimatedBytes")
       yield HotStuffGossipDiagnosticsProjectionMetrics(
         sourceVariableEntries = sourceVariableEntries,
         sinkVariableEntries = sinkVariableEntries,
@@ -847,7 +852,7 @@ object HotStuffGossipDiagnosticsJsonCodecs:
       name: String,
   ): Either[DecodeFailure, Option[A]] =
     fields.get(name) match
-      case None => Right[DecodeFailure, Option[A]](None)
+      case None        => Right[DecodeFailure, Option[A]](None)
       case Some(value) =>
         JsonDecoder[Option[A]]
           .decode(value)
@@ -976,8 +981,8 @@ object HotStuffGossipDiagnosticsJsonCodecs:
   ): Boolean =
     value match
       case "0" => true
-      case _ =>
+      case _   =>
         value.nonEmpty &&
-          value.head >= '1' &&
-          value.head <= '9' &&
-          value.forall(ch => ch >= '0' && ch <= '9')
+        value.head >= '1' &&
+        value.head <= '9' &&
+        value.forall(ch => ch >= '0' && ch <= '9')

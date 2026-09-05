@@ -35,12 +35,12 @@ import failure.DecodeFailure
   *   val sum     = BigNat.add(n1, n2)      // 52
   *   val product = BigNat.multiply(n1, n2) // 420
   *
-  *   val diff = BigNat.tryToSubtract(n1, n2) // Right(32)
+  *   val diff    = BigNat.tryToSubtract(n1, n2) // Right(32)
   *   val invalid =
   *     BigNat.tryToSubtract(n2, n1) // Left("Constraint failed: ...")
   *
   *   // Safe construction from BigInt
-  *   val safe = BigNat.fromBigInt(BigInt(100)) // Right(BigNat(100))
+  *   val safe     = BigNat.fromBigInt(BigInt(100)) // Right(BigNat(100))
   *   val negative =
   *     BigNat.fromBigInt(BigInt(-1)) // Left("Constraint failed: ...")
   *   ```
@@ -63,12 +63,14 @@ opaque type BigNat = BigInt :| Positive0
 
 /** Strictly positive arbitrary-precision integer.
   *
-  * This helper is used where zero would reintroduce partial arithmetic, such
-  * as integer division.
+  * This helper is used where zero would reintroduce partial arithmetic, such as
+  * integer division.
   */
 opaque type NonZeroBigNat = BigInt :| Positive
 
-/** Companion object providing constructors, arithmetic, and typeclass instances for [[BigNat]]. */
+/** Companion object providing constructors, arithmetic, and typeclass instances
+  * for [[BigNat]].
+  */
 object BigNat:
   /** The natural number zero. */
   val Zero: BigNat = BigInt(0)
@@ -336,13 +338,17 @@ object NonZeroBigNat:
   given nonZeroBigNatEq: Eq[NonZeroBigNat] = Eq.fromUniversalEquals
 
   given nonZeroBigNatJsonDecoder: JsonDecoder[NonZeroBigNat] =
-    BigNat.bignatJsonDecoder.emap(value => fromBigNat(value).leftMap(DecodeFailure(_)))
+    BigNat.bignatJsonDecoder.emap(value =>
+      fromBigNat(value).leftMap(DecodeFailure(_)),
+    )
 
   given nonZeroBigNatJsonEncoder: JsonEncoder[NonZeroBigNat] =
     BigNat.bignatJsonEncoder.contramap(_.toBigNat)
 
   given nonZeroBigNatByteDecoder: ByteDecoder[NonZeroBigNat] =
-    BigNat.bignatByteDecoder.emap(value => fromBigNat(value).leftMap(DecodeFailure(_)))
+    BigNat.bignatByteDecoder.emap(value =>
+      fromBigNat(value).leftMap(DecodeFailure(_)),
+    )
 
   given nonZeroBigNatByteEncoder: ByteEncoder[NonZeroBigNat] =
     BigNat.bignatByteEncoder.contramap(_.toBigNat)

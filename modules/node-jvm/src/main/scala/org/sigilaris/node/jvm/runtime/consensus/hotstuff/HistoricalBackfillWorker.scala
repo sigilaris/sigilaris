@@ -15,11 +15,16 @@ import org.sigilaris.node.gossip.{CanonicalRejection, ChainId}
 
 /** Configuration for historical backfill behavior.
   *
-  * @param batchSize number of proposals to fetch per batch
-  * @param interBatchDelay delay between consecutive batches
-  * @param priority the backfill priority level
-  * @param archiveSource the archive source label for stored proposals
-  * @param enabled whether historical backfill is enabled
+  * @param batchSize
+  *   number of proposals to fetch per batch
+  * @param interBatchDelay
+  *   delay between consecutive batches
+  * @param priority
+  *   the backfill priority level
+  * @param archiveSource
+  *   the archive source label for stored proposals
+  * @param enabled
+  *   whether historical backfill is enabled
   */
 @SuppressWarnings(Array("org.wartremover.warts.DefaultArguments"))
 final case class HistoricalBackfillPolicy(
@@ -64,7 +69,9 @@ object HistoricalBackfillPolicy:
         case LocalNodeRole.Audit     => archiveDefault
     policy.copy(enabled = enabled)
 
-/** A worker that fetches historical proposals before a snapshot anchor, walking backward to genesis. */
+/** A worker that fetches historical proposals before a snapshot anchor, walking
+  * backward to genesis.
+  */
 trait HistoricalBackfillWorker[F[_]]:
   /** Starts backfill from the given anchor using the provided peer sessions. */
   def start(
@@ -124,7 +131,8 @@ object HistoricalBackfillWorker:
       override def current: F[HistoricalBackfillStatus] =
         status.pure[F]
 
-  /** Creates a backfill worker that fetches and archives historical proposals. */
+  /** Creates a backfill worker that fetches and archives historical proposals.
+    */
   def create[F[_]: Async: Clock](
       policy: HistoricalBackfillPolicy,
       historicalBackfill: HistoricalBackfillService[F],

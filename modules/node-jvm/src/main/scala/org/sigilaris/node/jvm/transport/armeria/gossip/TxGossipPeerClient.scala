@@ -185,7 +185,7 @@ object TxGossipPeerClient:
         (
           for
             prepared <- preparedEither
-            signed <- GossipTapirClientCore.withTransportAuth(
+            signed   <- GossipTapirClientCore.withTransportAuth(
               prepared,
               transportAuth,
               authenticatedPeer,

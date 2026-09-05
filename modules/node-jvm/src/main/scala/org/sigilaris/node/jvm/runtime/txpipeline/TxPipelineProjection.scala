@@ -91,7 +91,7 @@ final class TxPipelineProjectionService[F[_]: Sync](
       update: TxPipelineRecord => TxPipelineRecordUpdate,
   ): F[Either[TxPipelineProjectionFailure, Vector[TxPipelineSnapshot]]] =
     val result = for
-      records <- loadRecords(offset = 0, accumulated = Vector.empty)
+      records   <- loadRecords(offset = 0, accumulated = Vector.empty)
       snapshots <- records.traverse: record =>
         store
           .update(record.pipelineId)(latest =>
@@ -205,7 +205,7 @@ final class TxPipelineWaitCoordinator[F[_]: Concurrent] private (
     for
       version <- ref.get.map(_.version)
       loaded  <- loadSnapshot(pipelineId).value
-      result <- loaded match
+      result  <- loaded match
         case Left(failure) =>
           Concurrent[F].pure(Left(failure))
         case Right(snapshot)
@@ -315,7 +315,7 @@ private object TxPipelineProjectionService:
       record: TxPipelineRecord,
       observation: CertifiedBlockObservation,
   ): TxPipelineRecordUpdate =
-    val blockHash = observation.blockId.toHexLower
+    val blockHash          = observation.blockId.toHexLower
     val certifiedPlacement =
       TxPipelineConsensusPlacement(
         blockHash = blockHash,
@@ -343,7 +343,7 @@ private object TxPipelineProjectionService:
         TxPipelineStageUpdate(
           stage = updated.stage,
           changed = staged.changed || updated.changed,
-        )
+        ),
       )
     summarize(record, stages)
 

@@ -69,13 +69,13 @@ trait KeyLikeOpaqueValueCompanion[A, Repr]
   given opaqueJsonKeyCodec(using JsonKeyCodec[Repr]): JsonKeyCodec[A] =
     JsonKeyCodec[Repr].imap(wrap, unwrap)
 
-/** Companion mix-in for opaque values whose constructor validates the backing representation.
+/** Companion mix-in for opaque values whose constructor validates the backing
+  * representation.
   *
   * Byte / JSON decoding routes through [[apply]] so codecs cannot bypass the
   * invariant enforced at construction time.
   */
-trait ValidatedOpaqueValueCompanion[A, Repr]
-:
+trait ValidatedOpaqueValueCompanion[A, Repr]:
   protected def wrap(repr: Repr): A
 
   protected def unwrap(value: A): Repr

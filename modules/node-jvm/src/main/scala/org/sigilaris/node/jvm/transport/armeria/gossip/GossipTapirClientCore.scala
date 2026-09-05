@@ -371,8 +371,9 @@ private[gossip] object GossipTapirClientCore:
               .asRight[CanonicalRejection]
               .asRight[GossipPeerClientError]
 
-  def sendEventStreamEndpoint[F[_]
-    : Async, A: org.sigilaris.core.codec.byte.ByteDecoder](
+  def sendEventStreamEndpoint[F[
+      _,
+  ]: Async, A: org.sigilaris.core.codec.byte.ByteDecoder](
       backend: StreamBackend[F, Fs2Streams[F]],
       request: StreamRequest[
         DecodeResult[Either[String, Stream[F, Byte]]],
@@ -455,13 +456,13 @@ private[gossip] object GossipTapirClientCore:
             (
               Stream.emit(first) ++
                 tail
-                .timeoutOnPullTo(
-                  timeout.toScala,
-                  Stream.emit(
-                    streamIdleTimeoutFailure(timeout)
-                      .asLeft[EventEnvelopeWire[A]],
-                  ),
-                )
+                  .timeoutOnPullTo(
+                    timeout.toScala,
+                    Stream.emit(
+                      streamIdleTimeoutFailure(timeout)
+                        .asLeft[EventEnvelopeWire[A]],
+                    ),
+                  )
             ).pull.echo
         .stream
 
@@ -571,7 +572,7 @@ private[gossip] object GossipTapirClientCore:
   ): Option[String] =
     body match
       case DecodeResult.Value(value) => value.left.toOption
-      case failure =>
+      case failure                   =>
         Some(decodeFailureDetail(failure))
 
   private def eventStreamFailure(

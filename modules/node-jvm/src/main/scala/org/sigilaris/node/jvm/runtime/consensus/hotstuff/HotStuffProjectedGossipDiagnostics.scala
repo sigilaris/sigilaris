@@ -32,7 +32,7 @@ final case class HotStuffGossipDiagnosticsWarningKey(
 )
 
 object HotStuffGossipDiagnosticsWarningKey:
-  private val ReadFailureReason: String = "read-failure"
+  private val ReadFailureReason: String       = "read-failure"
   private val SizeWarningReasons: Set[String] =
     Set("size-warning-entries", "size-warning-bytes")
 
@@ -91,9 +91,9 @@ object HotStuffProjectedGossipDiagnostics:
   def create[F[_]: Temporal](
       runtime: HotStuffNodeRuntime[F],
       policies: HotStuffProjectedGossipDiagnosticsPolicies,
-      overflowWarning:
-        DiagnosticsWarningDedupOverflow[HotStuffGossipDiagnosticsWarningKey] =>
-          Option[HotStuffGossipDiagnosticsProjectionWarning],
+      overflowWarning: DiagnosticsWarningDedupOverflow[
+        HotStuffGossipDiagnosticsWarningKey,
+      ] => Option[HotStuffGossipDiagnosticsProjectionWarning],
   ): F[HotStuffProjectedGossipDiagnostics[F]] =
     for
       cache <- RuntimeDiagnosticsCache.create[
@@ -127,8 +127,9 @@ object HotStuffProjectedGossipDiagnostics:
     )
 
   private def defaultOverflowWarning(
-      overflow:
-        DiagnosticsWarningDedupOverflow[HotStuffGossipDiagnosticsWarningKey],
+      overflow: DiagnosticsWarningDedupOverflow[
+        HotStuffGossipDiagnosticsWarningKey,
+      ],
   ): Option[HotStuffGossipDiagnosticsProjectionWarning] =
     Some(
       HotStuffGossipDiagnosticsProjectionWarning(

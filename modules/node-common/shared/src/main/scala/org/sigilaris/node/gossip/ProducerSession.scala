@@ -181,7 +181,7 @@ object GossipProducerPolling:
       candidates.headOption.fold(Vector.empty[GossipEvent[A]]): headCandidate =>
         if threshold <= 0 then Vector.empty
         else
-          val flushByCount = candidates.sizeCompare(threshold) >= 0
+          val flushByCount    = candidates.sizeCompare(threshold) >= 0
           val flushByInterval =
             !now.isBefore(headCandidate.availableAt.plus(qos.flushInterval))
           if forceFlush || flushByCount || flushByInterval then

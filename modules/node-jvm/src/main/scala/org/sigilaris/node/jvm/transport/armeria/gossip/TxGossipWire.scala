@@ -57,7 +57,8 @@ object SessionOpenProposalWire:
   given Decoder[SessionOpenProposalWire] = deriveDecoder
   given Encoder[SessionOpenProposalWire] = deriveEncoder
 
-/** Wire format for a session open acknowledgement returned by the accepting peer.
+/** Wire format for a session open acknowledgement returned by the accepting
+  * peer.
   *
   * @param sessionId
   *   confirmed directional session identifier
@@ -242,7 +243,8 @@ object StreamOpenRequestWire:
 /** Wire format for a canonical rejection response.
   *
   * @param rejectionClass
-  *   classification of the rejection (e.g. "handshakeRejected", "controlBatchRejected")
+  *   classification of the rejection (e.g. "handshakeRejected",
+  *   "controlBatchRejected")
   * @param reason
   *   machine-readable reason code
   * @param detail
@@ -353,7 +355,8 @@ object EventWire:
   given [A: Decoder]: Decoder[EventWire[A]] = deriveDecoder
   given [A: Encoder]: Encoder[EventWire[A]] = deriveEncoder
 
-/** Wire format for an event stream envelope, which may carry an event, keep-alive, or rejection.
+/** Wire format for an event stream envelope, which may carry an event,
+  * keep-alive, or rejection.
   *
   * @tparam A
   *   the event payload type

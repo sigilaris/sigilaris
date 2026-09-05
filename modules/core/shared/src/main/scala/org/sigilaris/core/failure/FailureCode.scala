@@ -43,8 +43,7 @@ object FailureCode:
       case Right(code) => code
       case Left(err)   => throw new IllegalArgumentException(err)
 
-  extension (code: FailureCode)
-    def value: String = code
+  extension (code: FailureCode) def value: String = code
 
   given failureCodeEq: Eq[FailureCode] = Eq.fromUniversalEquals
 
@@ -52,21 +51,23 @@ object FailureCode:
   val Unknown: FailureCode = unsafe("core.unknown")
 
   /** Failure code for decoding errors. */
-  val Decode: FailureCode  = unsafe("core.decode")
+  val Decode: FailureCode = unsafe("core.decode")
 
   /** Failure code for parsing errors. */
-  val Parse: FailureCode   = unsafe("core.parse")
+  val Parse: FailureCode = unsafe("core.parse")
 
   /** Failure code for Merkle trie errors. */
-  val Trie: FailureCode    = unsafe("core.trie")
+  val Trie: FailureCode = unsafe("core.trie")
 
   /** Failure code for transaction routing errors. */
   val Routing: FailureCode = unsafe("core.routing")
 
   /** Failure code for cryptographic operation errors. */
-  val Crypto: FailureCode  = unsafe("core.crypto")
+  val Crypto: FailureCode = unsafe("core.crypto")
 
-  /** Failure codes specific to [[org.sigilaris.core.datatype.UInt256]] operations. */
+  /** Failure codes specific to [[org.sigilaris.core.datatype.UInt256]]
+    * operations.
+    */
   object UInt256:
     /** Input byte sequence exceeds the 32-byte limit. */
     val TooLong: FailureCode = unsafe("datatype.uint256.too_long")
@@ -76,7 +77,7 @@ object FailureCode:
       "datatype.uint256.negative_value"
 
     /** Input value exceeds the 2^256 - 1 upper bound. */
-    val Overflow: FailureCode   = unsafe("datatype.uint256.overflow")
+    val Overflow: FailureCode = unsafe("datatype.uint256.overflow")
 
     /** Input hex string contains invalid characters. */
     val InvalidHex: FailureCode = unsafe("datatype.uint256.invalid_hex")
@@ -93,8 +94,8 @@ final case class ErrorKey(rendered: String, code: FailureCode)
 
 /** Factory for [[ErrorKey]] instances with pattern-based validation. */
 object ErrorKey:
-  /** Builds an ErrorKey, falling back to a safe default if the candidate
-    * does not match the expected pattern.
+  /** Builds an ErrorKey, falling back to a safe default if the candidate does
+    * not match the expected pattern.
     *
     * @param candidate
     *   the proposed key string

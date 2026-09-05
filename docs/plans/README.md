@@ -55,3 +55,8 @@
 
 ## Template
 - 새 문서는 [plan-template.md](plan-template.md)를 복사해서 시작한다.
+
+## Application Safety Follow-Up
+
+- [0031: Height-Bounded Locks And Exact Pipeline Release Plan](0031-height-bounded-application-locks-and-exact-pipeline-dependencies-plan.md): 구현 완료, 5차 리뷰 통과. 후속 제안은 별도 계획으로 추적한다.
+- [0032: Application Safety And Exact Pipeline Operational Hardening](0032-application-safety-and-exact-pipeline-operational-hardening-plan.md): `Proposed`. 옵저버 격리, 저장소 오류 계약, 인덱스 재구성과 진단의 다음 마일스톤 백로그이며 M2 게시 차단 항목이 아니다.

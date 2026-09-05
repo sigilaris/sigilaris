@@ -12,15 +12,15 @@ import org.sigilaris.node.gossip.{
 
 /** HMAC-based transport authentication for gossip protocol requests.
   *
-  * Provides facilities for issuing and verifying transport proofs and bootstrap capabilities
-  * that authenticate peer-to-peer gossip HTTP requests.
+  * Provides facilities for issuing and verifying transport proofs and bootstrap
+  * capabilities that authenticate peer-to-peer gossip HTTP requests.
   */
 private[gossip] object GossipTransportAuth:
   /** HTTP header name carrying the authenticated peer identity. */
   val AuthenticatedPeerHeaderName: String = "x-sigilaris-peer-identity"
 
   /** HTTP header name carrying the HMAC transport proof. */
-  val TransportProofHeaderName: String    = "x-sigilaris-transport-proof"
+  val TransportProofHeaderName: String = "x-sigilaris-transport-proof"
 
   /** HTTP header name carrying the bootstrap capability token. */
   val BootstrapCapabilityHeaderName: String =
@@ -39,7 +39,8 @@ private[gossip] object GossipTransportAuth:
     * @param requestBodyBytes
     *   raw request body bytes
     * @return
-    *   the Base64URL-encoded HMAC proof, or an error if the peer secret is unknown
+    *   the Base64URL-encoded HMAC proof, or an error if the peer secret is
+    *   unknown
     */
   def issueTransportProof(
       transportAuth: StaticPeerTransportAuth,
@@ -58,8 +59,8 @@ private[gossip] object GossipTransportAuth:
 
   /** Authenticates an inbound request by verifying the transport proof header.
     *
-    * Parses the peer identity and transport proof from request headers, recomputes the expected
-    * HMAC, and performs a constant-time comparison.
+    * Parses the peer identity and transport proof from request headers,
+    * recomputes the expected HMAC, and performs a constant-time comparison.
     *
     * @param transportAuth
     *   the static peer transport auth containing shared secrets
@@ -87,7 +88,7 @@ private[gossip] object GossipTransportAuth:
     for
       authenticatedPeer <- parseAuthenticatedPeer(authenticatedPeerRaw)
       proof             <- parseProofHeader(transportProofRaw)
-      expected <- issueTransportProof(
+      expected          <- issueTransportProof(
         transportAuth = transportAuth,
         authenticatedPeer = authenticatedPeer,
         httpMethod = httpMethod,
@@ -104,7 +105,8 @@ private[gossip] object GossipTransportAuth:
       )
     yield authenticatedPeer
 
-  /** Computes a Base64URL-encoded HMAC bootstrap capability token for a session request.
+  /** Computes a Base64URL-encoded HMAC bootstrap capability token for a session
+    * request.
     *
     * @param transportAuth
     *   the static peer transport auth containing shared secrets
@@ -121,7 +123,8 @@ private[gossip] object GossipTransportAuth:
     * @param requestBodyBytes
     *   raw request body bytes
     * @return
-    *   the Base64URL-encoded capability token, or an error if the peer secret is unknown
+    *   the Base64URL-encoded capability token, or an error if the peer secret
+    *   is unknown
     */
   def issueBootstrapCapability(
       transportAuth: StaticPeerTransportAuth,
@@ -175,7 +178,7 @@ private[gossip] object GossipTransportAuth:
   ): Either[CanonicalRejection.HandshakeRejected, Unit] =
     for
       presented <- parseCapabilityHeader(raw)
-      expected <- issueBootstrapCapability(
+      expected  <- issueBootstrapCapability(
         transportAuth = transportAuth,
         authenticatedPeer = authenticatedPeer,
         targetPeer = targetPeer,
@@ -241,7 +244,8 @@ private[gossip] object GossipTransportAuth:
           headerName,
         )
       .flatMap: value =>
-        GossipTransportAuthCore.decodeMac(value)
+        GossipTransportAuthCore
+          .decodeMac(value)
           .toRight(handshakeRejected(invalidReason, value))
           .map(_ => value)
 

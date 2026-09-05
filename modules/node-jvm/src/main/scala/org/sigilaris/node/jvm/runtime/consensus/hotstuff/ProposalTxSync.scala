@@ -11,16 +11,22 @@ import org.sigilaris.node.gossip.{
 }
 import org.sigilaris.node.gossip.tx.TxRuntimePolicy
 
-/** Utilities for synchronizing transaction payloads referenced by consensus proposals. */
+/** Utilities for synchronizing transaction payloads referenced by consensus
+  * proposals.
+  */
 object HotStuffProposalTxSync:
-  /** Returns the transaction IDs from the proposal that are not in the known set. */
+  /** Returns the transaction IDs from the proposal that are not in the known
+    * set.
+    */
   def missingTxIds(
       proposal: Proposal,
       knownTxIds: Set[StableArtifactId],
   ): Vector[StableArtifactId] =
     proposal.txSet.txIds.filterNot(knownTxIds.contains)
 
-  /** Builds a gossip control batch to request missing transaction payloads for a proposal. */
+  /** Builds a gossip control batch to request missing transaction payloads for
+    * a proposal.
+    */
   def controlBatchForProposal(
       proposal: Proposal,
       knownTxIds: Set[StableArtifactId],
@@ -94,9 +100,10 @@ object HotStuffProposalTxSync:
               Either
                 .cond(
                   limit > 0,
-                  ids.grouped(limit).toVector.map(chunk =>
-                    ControlOp.RequestByIdExact(scope, chunk),
-                  ),
+                  ids
+                    .grouped(limit)
+                    .toVector
+                    .map(chunk => ControlOp.RequestByIdExact(scope, chunk)),
                   controlRejected(
                     "invalidRequestByIdLimit",
                     "scope=" + scope.topic.value + " limit=" + limit.toString,

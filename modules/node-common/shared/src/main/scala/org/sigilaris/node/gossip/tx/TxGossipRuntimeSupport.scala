@@ -66,8 +66,8 @@ final case class TxReceiveEventsResult[A](
   */
 trait TxCascadeStrategy[A]:
 
-  /** Selects live events from candidates, filtering out known and
-    * Bloom-matched artifacts.
+  /** Selects live events from candidates, filtering out known and Bloom-matched
+    * artifacts.
     *
     * @param filter
     *   optional Bloom filter from the peer

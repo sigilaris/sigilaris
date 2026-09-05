@@ -63,11 +63,11 @@ object StaticPeerTopologyConfig:
   ): Either[String, StaticPeerTopologyConfigInput] =
     for
       localNodeIdentityRaw <- LocalNodeIdentity.required(section)
-      localNodeIdentity <- PeerIdentity.parse(localNodeIdentityRaw)
-      knownPeersRaw <- KnownPeers.required(section)
-      knownPeers <- knownPeersRaw.traverse(PeerIdentity.parse)
-      directNeighborsRaw <- DirectNeighbors.required(section)
-      directNeighbors <- directNeighborsRaw.traverse(PeerIdentity.parse)
+      localNodeIdentity    <- PeerIdentity.parse(localNodeIdentityRaw)
+      knownPeersRaw        <- KnownPeers.required(section)
+      knownPeers           <- knownPeersRaw.traverse(PeerIdentity.parse)
+      directNeighborsRaw   <- DirectNeighbors.required(section)
+      directNeighbors      <- directNeighborsRaw.traverse(PeerIdentity.parse)
     yield StaticPeerTopologyConfigInput(
       localNodeIdentity = localNodeIdentity,
       knownPeers = knownPeers,

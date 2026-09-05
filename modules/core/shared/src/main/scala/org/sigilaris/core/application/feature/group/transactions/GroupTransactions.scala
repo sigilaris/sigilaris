@@ -30,9 +30,7 @@ final case class CreateGroup(
     groupId: GroupId,
     name: Utf8,
     coordinator: Account,
-) extends Tx
-    derives ByteEncoder,
-      ByteDecoder:
+) extends Tx derives ByteEncoder, ByteDecoder:
   type Reads  = Entry["groups", GroupId, GroupData] *: EmptyTuple
   type Writes = Entry["groups", GroupId, GroupData] *: EmptyTuple
   type Result = GroupsResult[Unit]
@@ -59,10 +57,8 @@ final case class DisbandGroup(
     envelope: TxEnvelope,
     groupId: GroupId,
     groupNonce: GroupNonce,
-) extends Tx
-    derives ByteEncoder,
-      ByteDecoder:
-  type Reads = Entry["groups", GroupId, GroupData] *: EmptyTuple
+) extends Tx derives ByteEncoder, ByteDecoder:
+  type Reads  = Entry["groups", GroupId, GroupData] *: EmptyTuple
   type Writes = Entry["groups", GroupId, GroupData] *:
     Entry["groupAccounts", (GroupId, Account), Unit] *: EmptyTuple
   type Result = GroupsResult[Unit]
@@ -105,9 +101,7 @@ final case class AddAccounts private (
     groupId: GroupId,
     accounts: NonEmptyGroupAccounts,
     groupNonce: GroupNonce,
-) extends Tx
-    derives ByteEncoder,
-      ByteDecoder:
+) extends Tx derives ByteEncoder, ByteDecoder:
   type Reads = Entry["groups", GroupId, GroupData] *:
     Entry["groupAccounts", (GroupId, Account), Unit] *: EmptyTuple
   type Writes = Entry["groups", GroupId, GroupData] *:
@@ -124,12 +118,12 @@ object AddAccounts:
       groupNonce: BigNat,
   ): Either[String, AddAccounts] =
     NonEmptyGroupAccounts(accounts).map: validatedAccounts =>
-        AddAccounts(
-          envelope = envelope,
-          groupId = groupId,
-          accounts = validatedAccounts,
-          groupNonce = GroupNonce(groupNonce),
-        )
+      AddAccounts(
+        envelope = envelope,
+        groupId = groupId,
+        accounts = validatedAccounts,
+        groupNonce = GroupNonce(groupNonce),
+      )
 
   @SuppressWarnings(Array("org.wartremover.warts.Throw"))
   def unsafe(
@@ -144,8 +138,8 @@ object AddAccounts:
       accounts = accounts,
       groupNonce = groupNonce,
     ) match
-      case Right(tx)    => tx
-      case Left(error)  => throw new IllegalArgumentException(error)
+      case Right(tx)   => tx
+      case Left(error) => throw new IllegalArgumentException(error)
 
   given addAccountsEq: Eq[AddAccounts]           = Eq.fromUniversalEquals
   given addAccountsHash: Hash[AddAccounts]       = Hash.build
@@ -170,9 +164,7 @@ final case class RemoveAccounts private (
     groupId: GroupId,
     accounts: NonEmptyGroupAccounts,
     groupNonce: GroupNonce,
-) extends Tx
-    derives ByteEncoder,
-      ByteDecoder:
+) extends Tx derives ByteEncoder, ByteDecoder:
   type Reads = Entry["groups", GroupId, GroupData] *:
     Entry["groupAccounts", (GroupId, Account), Unit] *: EmptyTuple
   type Writes = Entry["groups", GroupId, GroupData] *:
@@ -189,12 +181,12 @@ object RemoveAccounts:
       groupNonce: BigNat,
   ): Either[String, RemoveAccounts] =
     NonEmptyGroupAccounts(accounts).map: validatedAccounts =>
-        RemoveAccounts(
-          envelope = envelope,
-          groupId = groupId,
-          accounts = validatedAccounts,
-          groupNonce = GroupNonce(groupNonce),
-        )
+      RemoveAccounts(
+        envelope = envelope,
+        groupId = groupId,
+        accounts = validatedAccounts,
+        groupNonce = GroupNonce(groupNonce),
+      )
 
   @SuppressWarnings(Array("org.wartremover.warts.Throw"))
   def unsafe(
@@ -209,8 +201,8 @@ object RemoveAccounts:
       accounts = accounts,
       groupNonce = groupNonce,
     ) match
-      case Right(tx)    => tx
-      case Left(error)  => throw new IllegalArgumentException(error)
+      case Right(tx)   => tx
+      case Left(error) => throw new IllegalArgumentException(error)
 
   given removeAccountsEq: Eq[RemoveAccounts]           = Eq.fromUniversalEquals
   given removeAccountsHash: Hash[RemoveAccounts]       = Hash.build
@@ -235,15 +227,14 @@ final case class ReplaceCoordinator(
     groupId: GroupId,
     newCoordinator: Account,
     groupNonce: GroupNonce,
-) extends Tx
-    derives ByteEncoder,
-      ByteDecoder:
+) extends Tx derives ByteEncoder, ByteDecoder:
   type Reads  = Entry["groups", GroupId, GroupData] *: EmptyTuple
   type Writes = Entry["groups", GroupId, GroupData] *: EmptyTuple
   type Result = GroupsResult[Unit]
   type Event  = GroupsEvent[GroupCoordinatorReplaced]
 
-/** Companion for [[ReplaceCoordinator]], providing codec and crypto instances. */
+/** Companion for [[ReplaceCoordinator]], providing codec and crypto instances.
+  */
 object ReplaceCoordinator:
   @targetName("applyBigNat")
   def apply(
@@ -268,9 +259,12 @@ sealed trait GroupEvent
 
 /** Event emitted when a new group is created.
   *
-  * @param groupId the group identifier
-  * @param coordinator the initial coordinator account
-  * @param name the human-readable group name
+  * @param groupId
+  *   the group identifier
+  * @param coordinator
+  *   the initial coordinator account
+  * @param name
+  *   the human-readable group name
   */
 final case class GroupCreated(
     groupId: GroupId,
@@ -280,31 +274,39 @@ final case class GroupCreated(
 
 /** Event emitted when a group is disbanded.
   *
-  * @param groupId the group identifier
+  * @param groupId
+  *   the group identifier
   */
 final case class GroupDisbanded(groupId: GroupId) extends GroupEvent
 
 /** Event emitted when members are added to a group.
   *
-  * @param groupId the group identifier
-  * @param added the set of accounts actually added (excludes already-present members)
+  * @param groupId
+  *   the group identifier
+  * @param added
+  *   the set of accounts actually added (excludes already-present members)
   */
 final case class GroupMembersAdded(groupId: GroupId, added: Set[Account])
     extends GroupEvent
 
 /** Event emitted when members are removed from a group.
   *
-  * @param groupId the group identifier
-  * @param removed the set of accounts actually removed
+  * @param groupId
+  *   the group identifier
+  * @param removed
+  *   the set of accounts actually removed
   */
 final case class GroupMembersRemoved(groupId: GroupId, removed: Set[Account])
     extends GroupEvent
 
 /** Event emitted when a group's coordinator is replaced.
   *
-  * @param groupId the group identifier
-  * @param oldCoordinator the previous coordinator account
-  * @param newCoordinator the new coordinator account
+  * @param groupId
+  *   the group identifier
+  * @param oldCoordinator
+  *   the previous coordinator account
+  * @param newCoordinator
+  *   the new coordinator account
   */
 final case class GroupCoordinatorReplaced(
     groupId: GroupId,

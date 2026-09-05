@@ -27,7 +27,8 @@ enum FailureDiagnosticFamily:
   case HotStuffPolicyViolation
   case SnapshotSync
 
-/** Shared surface for failures that expose machine-readable reason/detail data. */
+/** Shared surface for failures that expose machine-readable reason/detail data.
+  */
 trait StructuredFailureDiagnostic:
   def diagnosticFamily: FailureDiagnosticFamily
   def reason: String

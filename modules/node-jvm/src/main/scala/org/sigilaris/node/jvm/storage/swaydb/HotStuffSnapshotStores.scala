@@ -16,8 +16,10 @@ object HotStuffSnapshotStores:
 
   /** Creates a SwayDB-backed store for snapshot metadata, keyed by chain ID.
     *
-    * @param layout the storage layout defining directory paths
-    * @return a resource that yields a `SnapshotMetadataStore`
+    * @param layout
+    *   the storage layout defining directory paths
+    * @return
+    *   a resource that yields a `SnapshotMetadataStore`
     */
   def metadata(
       layout: StorageLayout,
@@ -28,8 +30,10 @@ object HotStuffSnapshotStores:
 
   /** Creates a SwayDB-backed store for Merkle trie nodes used in snapshots.
     *
-    * @param layout the storage layout defining directory paths
-    * @return a resource that yields a `SnapshotNodeStore`
+    * @param layout
+    *   the storage layout defining directory paths
+    * @return
+    *   a resource that yields a `SnapshotNodeStore`
     */
   def nodes(
       layout: StorageLayout,

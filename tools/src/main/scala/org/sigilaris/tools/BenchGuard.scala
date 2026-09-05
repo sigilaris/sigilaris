@@ -105,7 +105,7 @@ object BenchGuard:
     val shaRaw = sys.process
       .Process(Seq("git", "rev-parse", "--short", "HEAD"))
       .!!
-    val sha = shaRaw.trimOption.map(sanitize).getOrElse("unknown")
+    val sha     = shaRaw.trimOption.map(sanitize).getOrElse("unknown")
     val tagPart =
       cfg.tag.filter(_.nonEmpty).map(t => s"_${sanitize(t)}").getOrElse("")
     val suffix = if cfg.enableGc then "_jmh-gc.json" else "_jmh.json"
@@ -140,8 +140,8 @@ object BenchGuard:
       resultPath: String,
       cfg: Cfg,
   ): Boolean =
-    val bAll = index(parse(baselinePath))
-    val nAll = index(parse(resultPath))
+    val bAll                           = index(parse(baselinePath))
+    val nAll                           = index(parse(resultPath))
     def primaryScore(v: Value): Double =
       v.obj
         .get("primaryMetric")
@@ -184,13 +184,13 @@ object BenchGuard:
 
             val bBytes = sec(b, "gc.alloc.rate.norm")
             val nBytes = sec(n, "gc.alloc.rate.norm")
-            val dBytes = (for (bb <- bBytes; nb <- nBytes)
-              yield pctChange(nb, bb)).getOrElse(Double.NaN)
+            val dBytes = (for bb <- bBytes; nb <- nBytes
+            yield pctChange(nb, bb)).getOrElse(Double.NaN)
 
             val bGc = sec(b, "gc.time")
             val nGc = sec(n, "gc.time")
-            val dGc = (for (bg <- bGc; ng <- nGc)
-              yield pctChange(ng, bg)).getOrElse(Double.NaN)
+            val dGc = (for bg <- bGc; ng <- nGc
+            yield pctChange(ng, bg)).getOrElse(Double.NaN)
 
             println:
               List(

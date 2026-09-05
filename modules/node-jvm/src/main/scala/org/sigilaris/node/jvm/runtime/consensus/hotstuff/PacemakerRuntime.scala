@@ -397,7 +397,7 @@ final case class HotStuffPacemakerRuntime(
       )
     else
       val nextFailures = state.consecutiveTimeoutWindows + 1
-      val updated =
+      val updated      =
         state.copy(
           timeoutDeadline =
             now.plus(timeoutFor(state.activeWindow, nextFailures)),
@@ -595,7 +595,7 @@ final case class HotStuffPacemakerRuntime(
   ): Duration =
     val exponent =
       math.min(consecutiveTimeoutWindows, policy.maxBackoffExponent)
-    val multiplier = 1L << exponent
+    val multiplier  = 1L << exponent
     val jitterSlots =
       if policy.maxJitterSlots === 0 then 0L
       else
@@ -682,7 +682,7 @@ final case class HotStuffPacemakerRuntime(
     else
       val heightOrdering = summon[Ordering[HotStuffHeight]]
       val viewOrdering   = summon[Ordering[HotStuffView]]
-      val heightCompare =
+      val heightCompare  =
         heightOrdering.compare(candidate.height, active.height)
       if heightCompare =!= 0 then Some(java.lang.Integer.signum(heightCompare))
       else

@@ -4,13 +4,16 @@ import scodec.bits.ByteVector
 
 import org.sigilaris.core.application.state.AccessLog
 
-/** Describes the set of state references a transaction reads from and writes to.
+/** Describes the set of state references a transaction reads from and writes
+  * to.
   *
   * Used by the batch scheduler to detect read-write and write-write conflicts
   * between transactions within a batch.
   *
-  * @param reads the state references read by the transaction
-  * @param writes the state references written by the transaction
+  * @param reads
+  *   the state references read by the transaction
+  * @param writes
+  *   the state references written by the transaction
   */
 final case class ConflictFootprint(
     reads: Set[StateRef],
@@ -18,8 +21,10 @@ final case class ConflictFootprint(
 ):
   /** Combines this footprint with another by unioning reads and writes.
     *
-    * @param other the other footprint
-    * @return the combined footprint
+    * @param other
+    *   the other footprint
+    * @return
+    *   the combined footprint
     */
   def combine(
       other: ConflictFootprint,
@@ -31,8 +36,10 @@ final case class ConflictFootprint(
 
   /** Tests whether this footprint conflicts with another.
     *
-    * @param other the other footprint to test against
-    * @return true if there is a read-write or write-write overlap
+    * @param other
+    *   the other footprint to test against
+    * @return
+    *   true if there is a read-write or write-write overlap
     */
   def conflictsWith(
       other: ConflictFootprint,
@@ -42,10 +49,13 @@ final case class ConflictFootprint(
       writesSeen = writes,
     ).accept((), other).isLeft
 
-  /** Computes the reads and writes in this footprint that are not in the declared footprint.
+  /** Computes the reads and writes in this footprint that are not in the
+    * declared footprint.
     *
-    * @param declared the declared footprint to compare against
-    * @return a footprint containing only the unexpected state references
+    * @param declared
+    *   the declared footprint to compare against
+    * @return
+    *   a footprint containing only the unexpected state references
     */
   def unexpectedAgainst(
       declared: ConflictFootprint,
@@ -55,12 +65,17 @@ final case class ConflictFootprint(
       writes = writes.diff(declared.writes),
     )
 
-/** Companion for [[ConflictFootprint]], providing construction from access logs. */
+/** Companion for [[ConflictFootprint]], providing construction from access
+  * logs.
+  */
 object ConflictFootprint:
-  /** Indicates an access log entry where the stored key does not have the expected table prefix.
+  /** Indicates an access log entry where the stored key does not have the
+    * expected table prefix.
     *
-    * @param tablePrefix the expected table prefix
-    * @param key the actual key that violates the invariant
+    * @param tablePrefix
+    *   the expected table prefix
+    * @param key
+    *   the actual key that violates the invariant
     */
   final case class AccessLogInvariantViolation(
       tablePrefix: ByteVector,
@@ -74,10 +89,13 @@ object ConflictFootprint:
       writes = Set.empty,
     )
 
-  /** Constructs a ConflictFootprint from an access log, validating the prefix invariant.
+  /** Constructs a ConflictFootprint from an access log, validating the prefix
+    * invariant.
     *
-    * @param accessLog the access log recorded during transaction execution
-    * @return either an invariant violation or the derived footprint
+    * @param accessLog
+    *   the access log recorded during transaction execution
+    * @return
+    *   either an invariant violation or the derived footprint
     */
   def fromAccessLog(
       accessLog: AccessLog,

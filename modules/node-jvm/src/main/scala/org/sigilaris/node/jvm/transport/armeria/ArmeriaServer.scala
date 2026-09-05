@@ -33,7 +33,9 @@ final case class ArmeriaServerConfig(
     requestTimeout: Duration = Duration.ofMinutes(10),
 )
 
-/** Factory for building and managing Armeria HTTP servers backed by Tapir endpoints. */
+/** Factory for building and managing Armeria HTTP servers backed by Tapir
+  * endpoints.
+  */
 object ArmeriaServer:
   /** Builds an Armeria server without starting it.
     *
@@ -100,7 +102,7 @@ object ArmeriaServer:
       // the long-lived stream route while preserving the finite-route guard.
       val options =
         ArmeriaCatsServerOptions.customiseInterceptors[F](dispatcher).options
-      val interpreter = ArmeriaCatsServerInterpreter[F](options)
+      val interpreter   = ArmeriaCatsServerInterpreter[F](options)
       val finiteService =
         interpreter.toService(finiteEndpoints)
       val streamService =
@@ -117,7 +119,8 @@ object ArmeriaServer:
         .build(streamService)
         .build()
 
-  /** Builds and starts an Armeria server, returning the running server instance.
+  /** Builds and starts an Armeria server, returning the running server
+    * instance.
     *
     * @tparam F
     *   the effect type
@@ -163,7 +166,8 @@ object ArmeriaServer:
         Async[F].fromCompletableFuture(Async[F].delay(server.start())),
       )(_ => server)
 
-  /** Creates a managed resource that starts an Armeria server and shuts it down on release.
+  /** Creates a managed resource that starts an Armeria server and shuts it down
+    * on release.
     *
     * @tparam F
     *   the effect type
@@ -193,7 +197,7 @@ object ArmeriaServer:
   ): Resource[F, Server] =
     for
       dispatcher <- Dispatcher.parallel[F]
-      server <- Resource.fromAutoCloseable(
+      server     <- Resource.fromAutoCloseable(
         startWithScopedStreamTimeout(
           config = config,
           dispatcher = dispatcher,

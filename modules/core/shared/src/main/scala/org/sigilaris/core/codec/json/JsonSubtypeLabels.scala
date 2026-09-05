@@ -46,7 +46,8 @@ final case class JsonSubtypeLabels private (
 
 /** Companion object for [[JsonSubtypeLabels]]. */
 object JsonSubtypeLabels:
-  /** Constructs a [[JsonSubtypeLabels]] from Mirror labels and discriminator config.
+  /** Constructs a [[JsonSubtypeLabels]] from Mirror labels and discriminator
+    * config.
     *
     * @param labels
     *   the raw Mirror element labels
@@ -63,7 +64,8 @@ object JsonSubtypeLabels:
     val encoded   = canonical.map(encodedLabel(_, discriminator))
     JsonSubtypeLabels(canonical, encoded)
 
-  /** Returns the canonical form of a Mirror label (identity in the current implementation).
+  /** Returns the canonical form of a Mirror label (identity in the current
+    * implementation).
     *
     * @param label
     *   the raw Mirror label
@@ -87,7 +89,7 @@ object JsonSubtypeLabels:
   ): String =
     val canonical = canonicalLabel(label)
     discriminator.typeNameStrategy match
-      case TypeNameStrategy.SimpleName     => canonical
-      case TypeNameStrategy.FullyQualified => canonical
+      case TypeNameStrategy.SimpleName      => canonical
+      case TypeNameStrategy.FullyQualified  => canonical
       case TypeNameStrategy.Custom(mapping) =>
         mapping.getOrElse(canonical, canonical)

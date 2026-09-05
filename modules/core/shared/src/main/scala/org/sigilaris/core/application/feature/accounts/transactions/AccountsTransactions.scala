@@ -31,16 +31,15 @@ final case class CreateNamedAccount(
     name: Utf8,
     initialKeyId: KeyId20,
     guardian: Option[Account],
-) extends Tx
-    derives ByteEncoder,
-      ByteDecoder:
-  type Reads = Entry["accounts", Utf8, AccountInfo] *: EmptyTuple
+) extends Tx derives ByteEncoder, ByteDecoder:
+  type Reads  = Entry["accounts", Utf8, AccountInfo] *: EmptyTuple
   type Writes = Entry["accounts", Utf8, AccountInfo] *:
     Entry["nameKey", (Utf8, KeyId20), KeyInfo] *: EmptyTuple
   type Result = AccountsResult[Unit]
   type Event  = AccountsEvent[AccountCreated]
 
-/** Companion for [[CreateNamedAccount]], providing codec and crypto instances. */
+/** Companion for [[CreateNamedAccount]], providing codec and crypto instances.
+  */
 object CreateNamedAccount:
   given createNamedAccountEq: Eq[CreateNamedAccount] = Eq.fromUniversalEquals
   given createNamedAccountHash: Hash[CreateNamedAccount]       = Hash.build
@@ -65,9 +64,7 @@ final case class UpdateAccount(
     name: Utf8,
     nonce: AccountNonce,
     newGuardian: Option[Account],
-) extends Tx
-    derives ByteEncoder,
-      ByteDecoder:
+) extends Tx derives ByteEncoder, ByteDecoder:
   type Reads  = Entry["accounts", Utf8, AccountInfo] *: EmptyTuple
   type Writes = Entry["accounts", Utf8, AccountInfo] *: EmptyTuple
   type Result = AccountsResult[Unit]
@@ -115,9 +112,7 @@ final case class AddKeyIds private (
     nonce: AccountNonce,
     keyIds: NonEmptyKeyIdDescriptions,
     expiresAt: Option[Instant],
-) extends Tx
-    derives ByteEncoder,
-      ByteDecoder:
+) extends Tx derives ByteEncoder, ByteDecoder:
   type Reads = Entry["accounts", Utf8, AccountInfo] *:
     Entry["nameKey", (Utf8, KeyId20), KeyInfo] *: EmptyTuple
   type Writes = Entry["accounts", Utf8, AccountInfo] *:
@@ -158,8 +153,8 @@ object AddKeyIds:
       keyIds = keyIds,
       expiresAt = expiresAt,
     ) match
-      case Right(tx)    => tx
-      case Left(error)  => throw new IllegalArgumentException(error)
+      case Right(tx)   => tx
+      case Left(error) => throw new IllegalArgumentException(error)
 
   given addKeyIdsEq: Eq[AddKeyIds]           = Eq.fromUniversalEquals
   given addKeyIdsHash: Hash[AddKeyIds]       = Hash.build
@@ -184,9 +179,7 @@ final case class RemoveKeyIds private (
     name: Utf8,
     nonce: AccountNonce,
     keyIds: NonEmptyKeyIds,
-) extends Tx
-    derives ByteEncoder,
-      ByteDecoder:
+) extends Tx derives ByteEncoder, ByteDecoder:
   type Reads = Entry["accounts", Utf8, AccountInfo] *:
     Entry["nameKey", (Utf8, KeyId20), KeyInfo] *: EmptyTuple
   type Writes = Entry["accounts", Utf8, AccountInfo] *:
@@ -223,8 +216,8 @@ object RemoveKeyIds:
       nonce = nonce,
       keyIds = keyIds,
     ) match
-      case Right(tx)    => tx
-      case Left(error)  => throw new IllegalArgumentException(error)
+      case Right(tx)   => tx
+      case Left(error) => throw new IllegalArgumentException(error)
 
   given removeKeyIdsEq: Eq[RemoveKeyIds]           = Eq.fromUniversalEquals
   given removeKeyIdsHash: Hash[RemoveKeyIds]       = Hash.build
@@ -246,10 +239,8 @@ final case class RemoveAccount(
     envelope: TxEnvelope,
     name: Utf8,
     nonce: AccountNonce,
-) extends Tx
-    derives ByteEncoder,
-      ByteDecoder:
-  type Reads = Entry["accounts", Utf8, AccountInfo] *: EmptyTuple
+) extends Tx derives ByteEncoder, ByteDecoder:
+  type Reads  = Entry["accounts", Utf8, AccountInfo] *: EmptyTuple
   type Writes = Entry["accounts", Utf8, AccountInfo] *:
     Entry["nameKey", (Utf8, KeyId20), KeyInfo] *: EmptyTuple
   type Result = AccountsResult[Unit]
@@ -278,38 +269,47 @@ sealed trait AccountEvent
 
 /** Event emitted when a new named account is created.
   *
-  * @param name the account name
-  * @param guardian optional guardian account
+  * @param name
+  *   the account name
+  * @param guardian
+  *   optional guardian account
   */
 final case class AccountCreated(name: Utf8, guardian: Option[Account])
     extends AccountEvent
 
 /** Event emitted when an account's metadata is updated.
   *
-  * @param name the account name
-  * @param newGuardian the updated guardian (None if removed)
+  * @param name
+  *   the account name
+  * @param newGuardian
+  *   the updated guardian (None if removed)
   */
 final case class AccountUpdated(name: Utf8, newGuardian: Option[Account])
     extends AccountEvent
 
 /** Event emitted when public keys are added to an account.
   *
-  * @param name the account name
-  * @param keyIds the set of key identifiers that were added
+  * @param name
+  *   the account name
+  * @param keyIds
+  *   the set of key identifiers that were added
   */
 final case class KeysAdded(name: Utf8, keyIds: Set[KeyId20])
     extends AccountEvent
 
 /** Event emitted when public keys are removed from an account.
   *
-  * @param name the account name
-  * @param keyIds the set of key identifiers that were removed
+  * @param name
+  *   the account name
+  * @param keyIds
+  *   the set of key identifiers that were removed
   */
 final case class KeysRemoved(name: Utf8, keyIds: Set[KeyId20])
     extends AccountEvent
 
 /** Event emitted when an account is removed.
   *
-  * @param name the account name
+  * @param name
+  *   the account name
   */
 final case class AccountRemoved(name: Utf8) extends AccountEvent

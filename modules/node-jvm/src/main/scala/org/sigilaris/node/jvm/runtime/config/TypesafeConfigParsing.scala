@@ -57,14 +57,20 @@ object TypesafeConfigParsing:
       long.read(config, path).map(Duration.ofMillis)
 
     val stringMap: ConfigReader[Map[String, String]] = (config, path) =>
-      configSection.read(config, path).flatMap: section =>
-        section.root().entrySet().asScala.toList
-          .traverse: entry =>
-            Either
-              .catchNonFatal(section.getString(entry.getKey))
-              .leftMap(_.getMessage)
-              .map(entry.getKey -> _)
-          .map(_.toMap)
+      configSection
+        .read(config, path)
+        .flatMap: section =>
+          section
+            .root()
+            .entrySet()
+            .asScala
+            .toList
+            .traverse: entry =>
+              Either
+                .catchNonFatal(section.getString(entry.getKey))
+                .leftMap(_.getMessage)
+                .map(entry.getKey -> _)
+            .map(_.toMap)
 
   final case class ConfigField[A](
       aliases: ConfigAliases,

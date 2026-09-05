@@ -8,6 +8,9 @@ runtime-only certified observation surface, dependency reason-code taxonomy,
 proposal input and validation context requirements, and low-latency measurement
 labels.
 
+ADR-0036 keeps certified-ancestor execution as the default and adds one separately activated exact ordered-atomic
+pipeline profile. It does not change this ADR's branch-local certified-ancestor safety rules.
+
 ## Context
 - ADR-0017 defines the HotStuff proposal, vote, and QC baseline.
 - ADR-0022 defines the pacemaker and view-change baseline that low-latency
@@ -24,7 +27,7 @@ labels.
   - an on-chain mint transaction creates a deposit-token UTXO for the customer;
   - a second on-chain transaction spends that newly minted UTXO into payment
     escrow for a shop.
-- The mint and escrow transactions cannot be placed in the same block when the
+- In the default profile, the mint and escrow transactions cannot be placed in the same block when the
   escrow input must reference the mint output. Waiting for the mint block to be
   finalized before submitting the escrow transaction serializes two finality
   paths and makes a sub-second payment target unrealistic under the existing
@@ -191,11 +194,12 @@ labels.
   progress from final settlement.
 
 ## Rejected Alternatives
-1. **Put dependent transactions in the same block**
-   - This does not work for UTXO models where the second transaction input must
-     reference an output created by the first transaction.
-   - Same-block execution order would require application-specific intra-block
-     semantics that Sigilaris should not standardize as a HotStuff rule.
+1. **Allow arbitrary dependent transactions in the same block**
+   - Dynamic output discovery and a general transaction DAG would require application-specific intra-block semantics
+     that Sigilaris should not infer from ordinary transaction order.
+   - ADR-0036's application-registered exact `Producer -> Consumer` ordered-atomic mode is a narrower exception: the
+     whole plan is signed, the consumer names the producer's deterministic exact output before submission, and the batch
+     commits atomically.
 
 2. **Wait for the mint transaction to finalize before submitting escrow**
    - This is the simplest safety story, but it serializes two finality paths.
@@ -234,5 +238,6 @@ labels.
 - [ADR-0022: HotStuff Pacemaker And View-Change Baseline](0022-hotstuff-pacemaker-and-view-change-baseline.md)
 - [ADR-0028: HotStuff Finalization Observability And Embedder Failure Semantics](0028-hotstuff-finalization-observability-and-embedder-failure-semantics.md)
 - [ADR-0029: HotStuff Proposal Tx Uniqueness Policy](0029-hotstuff-proposal-tx-uniqueness-policy.md)
+- [ADR-0036: Height-bounded application locks and explicit pipeline dependencies](0036-height-bounded-application-locks-and-explicit-pipeline-dependencies.md)
 - [0021 - HotStuff Proposal Tx Uniqueness Policy Plan](../plans/0021-hotstuff-proposal-tx-uniqueness-policy-plan.md)
 - [0023 - Certified Ancestor Dependent Transaction Pipelining Plan](../plans/0023-certified-ancestor-dependent-transaction-pipelining-plan.md)

@@ -8,32 +8,43 @@ import scodec.bits.ByteVector
 
 /** Store that holds a single optional value.
   *
-  * @tparam F the effect type
-  * @tparam A the type of value stored
+  * @tparam F
+  *   the effect type
+  * @tparam A
+  *   the type of value stored
   */
 trait SingleValueStore[F[_], A]:
 
   /** Retrieves the stored value.
     *
-    * @return the value if present, or None
+    * @return
+    *   the value if present, or None
     */
   def get(): EitherT[F, DecodeFailure, Option[A]]
 
   /** Replaces the stored value.
     *
-    * @param a the value to store
+    * @param a
+    *   the value to store
     */
   def put(a: A): F[Unit]
 
-/** Provides a `SingleValueStore` derived from a `KeyValueStore` using a fixed key. */
+/** Provides a `SingleValueStore` derived from a `KeyValueStore` using a fixed
+  * key.
+  */
 object SingleValueStore:
 
-  /** Creates a `SingleValueStore` backed by a `KeyValueStore` with a constant key.
+  /** Creates a `SingleValueStore` backed by a `KeyValueStore` with a constant
+    * key.
     *
-    * @tparam F the effect type
-    * @tparam A the value type
-    * @param kvStore the underlying key-value store keyed by `ByteVector`
-    * @return a single-value store delegating to the key-value store
+    * @tparam F
+    *   the effect type
+    * @tparam A
+    *   the value type
+    * @param kvStore
+    *   the underlying key-value store keyed by `ByteVector`
+    * @return
+    *   a single-value store delegating to the key-value store
     */
   def fromKeyValueStore[F[_], A](using
       kvStore: KeyValueStore[F, ByteVector, A],
