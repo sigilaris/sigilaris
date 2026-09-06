@@ -25,3 +25,9 @@ node js/target/scala-3.7.3/js-opt/main.js
 The npm lock pins the same `elliptic` and `js-sha3` versions used by the
 library build. Maven coordinates do not install JavaScript runtime packages.
 The final Node invocation also executes the fully optimized consumer.
+
+The lock reproduces M2's tested dependencies, including an unresolved
+Critical advisory in `elliptic 6.5.4`; it is not a production security
+recommendation. See the
+[dependency security follow-up](../docs/releases/v0.3.0-M2-release-notes.md#dependency-security-follow-up)
+before production signing.
