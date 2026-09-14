@@ -7,6 +7,11 @@ import cats.syntax.all.*
 
 import org.sigilaris.node.gossip.ChainId
 import org.sigilaris.node.jvm.runtime.block.BlockId
+import org.sigilaris.node.jvm.runtime.application.v2.{
+  FinalizedApplicationRuntime,
+  HotStuffControlledSigning,
+  VerifiedInitialParent,
+}
 
 /** Application-neutral request for validating a received proposal before a
   * local vote is signed.
@@ -33,6 +38,7 @@ object HotStuffProposalValidationBranchContext:
   val empty: HotStuffProposalInputBranchContext =
     HotStuffProposalInputBranchContext.empty
 
+  @SuppressWarnings(Array("org.wartremover.warts.DefaultArguments"))
   private[hotstuff] def fromParent(
       chainId: ChainId,
       parentBlockId: Option[BlockId],
@@ -40,6 +46,7 @@ object HotStuffProposalValidationBranchContext:
       proposals: Iterable[Proposal],
       finalization: Map[ChainId, FinalizationTrackerSnapshot],
       bounds: HotStuffProposalTxUniquenessBounds,
+      initialParent: Option[VerifiedInitialParent] = None,
   ): HotStuffProposalInputBranchContext =
     HotStuffProposalInputBranchContext.fromParent(
       chainId = chainId,
@@ -48,12 +55,15 @@ object HotStuffProposalValidationBranchContext:
       proposals = proposals,
       finalization = finalization,
       bounds = bounds,
+      initialParent = initialParent,
     )
 
+  @SuppressWarnings(Array("org.wartremover.warts.DefaultArguments"))
   private[hotstuff] def fromSnapshot(
       proposal: Proposal,
       snapshot: InMemoryHotStuffSinkSnapshot,
       bounds: HotStuffProposalTxUniquenessBounds,
+      initialParent: Option[VerifiedInitialParent] = None,
   ): HotStuffProposalInputBranchContext =
     fromParent(
       chainId = proposal.window.chainId,
@@ -62,6 +72,7 @@ object HotStuffProposalValidationBranchContext:
       proposals = snapshot.proposals.values,
       finalization = snapshot.finalization,
       bounds = bounds,
+      initialParent = initialParent,
     )
 
   private[hotstuff] def unavailable(
@@ -126,10 +137,129 @@ enum HotStuffProposalValidationMissingProviderPolicy:
 final case class HotStuffProposalValidationRuntimeConfig[F[_]](
     provider: Option[HotStuffProposalValidationProvider[F]],
     missingProviderPolicy: HotStuffProposalValidationMissingProviderPolicy,
+    applicationVoting: Option[HotStuffApplicationVoting[F]],
+    applicationFinalization: Option[FinalizedApplicationRuntime[F]],
+    controlledSigning: Option[HotStuffControlledSigning[F]],
+    initialParent: Option[VerifiedInitialParent],
 )
 
 /** Companion for `HotStuffProposalValidationRuntimeConfig`. */
+@SuppressWarnings(Array("org.wartremover.warts.Overloading"))
 object HotStuffProposalValidationRuntimeConfig:
+  def apply[F[_]](
+      provider: Option[HotStuffProposalValidationProvider[F]],
+      missingProviderPolicy: HotStuffProposalValidationMissingProviderPolicy,
+      applicationVoting: Option[HotStuffApplicationVoting[F]],
+      applicationFinalization: Option[FinalizedApplicationRuntime[F]],
+  ): HotStuffProposalValidationRuntimeConfig[F] =
+    new HotStuffProposalValidationRuntimeConfig(
+      provider,
+      missingProviderPolicy,
+      applicationVoting,
+      applicationFinalization,
+      None,
+      None,
+    )
+
+  def controlledApplication[F[_]](
+      voting: HotStuffApplicationVoting[F],
+      finalization: FinalizedApplicationRuntime[F],
+      signing: HotStuffControlledSigning[F],
+      initial: Option[VerifiedInitialParent],
+      additionalProvider: Option[HotStuffProposalValidationProvider[F]],
+  ): HotStuffProposalValidationRuntimeConfig[F] =
+    new HotStuffProposalValidationRuntimeConfig(
+      additionalProvider,
+      HotStuffProposalValidationMissingProviderPolicy.RequireProvider,
+      Some(voting),
+      Some(finalization),
+      Some(signing),
+      initial,
+    )
+
+  def validateControlledSigning[F[_]](
+      config: HotStuffProposalValidationRuntimeConfig[F],
+      keys: Map[ValidatorId, org.sigilaris.core.crypto.KeyPair],
+      members: ValidatorSet,
+  ): Either[HotStuffPolicyViolation, Unit] =
+    Either.cond(
+      (config.initialParent.isEmpty || config.controlledSigning
+        .exists(_.installed)) &&
+        config.controlledSigning.forall(signer =>
+          keys.isEmpty && signer.publicKeys.forall((id, key) =>
+            members.member(id).exists(_.publicKey.toBytes === key),
+          ),
+        ),
+      (),
+      HotStuffPolicyViolation(
+        "controlledSigningRequired",
+        Some(
+          "installed runtime requires the same closed controller keys and no raw-key fallback",
+        ),
+      ),
+    )
+
+  def apply[F[_]](
+      provider: Option[HotStuffProposalValidationProvider[F]],
+      missingProviderPolicy: HotStuffProposalValidationMissingProviderPolicy,
+  ): HotStuffProposalValidationRuntimeConfig[F] =
+    HotStuffProposalValidationRuntimeConfig(
+      provider,
+      missingProviderPolicy,
+      None,
+      None,
+    )
+
+  def application[F[_]](
+      voting: HotStuffApplicationVoting[F],
+      finalization: FinalizedApplicationRuntime[F],
+      additionalProvider: Option[HotStuffProposalValidationProvider[F]],
+  ): HotStuffProposalValidationRuntimeConfig[F] =
+    HotStuffProposalValidationRuntimeConfig(
+      additionalProvider,
+      HotStuffProposalValidationMissingProviderPolicy.RequireProvider,
+      Some(voting),
+      Some(finalization),
+    )
+
+  def validateApplicationAssembly[F[_]](
+      input: HotStuffProposalInputRuntimeConfig[F],
+      validation: HotStuffProposalValidationRuntimeConfig[F],
+  ): Either[HotStuffPolicyViolation, Unit] =
+    Either.cond(
+      input.applicationAssembly.isEmpty || (validation.applicationVoting.nonEmpty && validation.applicationFinalization.nonEmpty),
+      (),
+      HotStuffPolicyViolation(
+        "durableApplicationVotingRequired",
+        Some(
+          "ordinary application proposal assembly requires typed durable voting and finalized application runtimes",
+        ),
+      ),
+    )
+
+  def recoverApplication[F[_]: Sync](
+      config: HotStuffProposalValidationRuntimeConfig[F],
+  ): F[Either[HotStuffPolicyViolation, Unit]] =
+    config.applicationFinalization match
+      case None          => ().asRight[HotStuffPolicyViolation].pure[F]
+      case Some(runtime) =>
+        runtime.recover.value.attempt.map {
+          case Left(error) =>
+            HotStuffPolicyViolation(
+              "applicationRecoveryFailed",
+              Some(error.getClass.getName),
+            ).asLeft[Unit]
+          case Right(result) =>
+            result
+              .leftMap(error =>
+                HotStuffPolicyViolation(
+                  "applicationRecoveryRequired",
+                  Some(error.message),
+                ),
+              )
+              .void
+        }
+
   def legacyCompatible[F[_]]: HotStuffProposalValidationRuntimeConfig[F] =
     HotStuffProposalValidationRuntimeConfig(
       provider = None,
@@ -172,6 +302,8 @@ object HotStuffProposalValidationRuntimeConfig:
       case HotStuffProposalValidationMissingProviderPolicy.RequireProvider =>
         config.provider match
           case Some(_) =>
+            ().asRight[HotStuffPolicyViolation]
+          case None if config.applicationVoting.nonEmpty =>
             ().asRight[HotStuffPolicyViolation]
           case None =>
             HotStuffPolicyViolation(
@@ -320,7 +452,11 @@ object HotStuffProposalValidationDecision:
             case Right(result) => fromProviderResult(result)
             case Left(error)   => fromProviderFailure(error)
       case None =>
-        fromMissingProviderPolicy(config.missingProviderPolicy).pure[F]
+        if config.applicationVoting.nonEmpty then
+          HotStuffProposalValidationDecision
+            .Accept("durableApplicationValidationAtSigning", None)
+            .pure[F]
+        else fromMissingProviderPolicy(config.missingProviderPolicy).pure[F]
 
   def evaluateForLocalVote[F[_]: Sync](
       config: HotStuffProposalValidationRuntimeConfig[F],

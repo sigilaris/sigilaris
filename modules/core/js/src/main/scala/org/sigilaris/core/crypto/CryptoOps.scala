@@ -2,6 +2,7 @@ package org.sigilaris.core
 package crypto
 
 import scala.scalajs.js
+import scala.util.Try
 import scala.scalajs.js.JSConverters.*
 import scala.scalajs.js.typedarray.Uint8Array
 
@@ -19,7 +20,8 @@ import util.SafeStringInterp.*
   * Provides secp256k1 elliptic curve operations including:
   *   - Keccak-256 hashing via keccak npm package
   *   - Key pair generation and derivation via elliptic.js
-  *   - ECDSA signing with recovery parameter computation
+  *   - ECDSA signing with Low-S normalization and recovery parameter
+  *     computation
   *   - Public key recovery from signatures
   *
   * All operations delegate to JavaScript libraries through Scala.js facades,
@@ -50,6 +52,12 @@ import util.SafeStringInterp.*
   *   [[facade]] for JavaScript library facades
   */
 object CryptoOps extends CryptoOpsLike:
+  private val CurveOrder =
+    BigInt(
+      "fffffffffffffffffffffffffffffffebaaedce6af48a03bbfd25e8cd0364141",
+      16,
+    )
+
   @SuppressWarnings(Array("org.wartremover.warts.Throw"))
   def keccak256(input: Array[Byte]): Array[Byte] =
     val hexString: String = Keccak256.update(input.toUint8Array).hex()
@@ -100,10 +108,27 @@ object CryptoOps extends CryptoOpsLike:
       keyPair: KeyPair,
       transactionHash: Array[Byte],
   ): Either[failure.SigilarisFailure, Signature] =
-    val jsSig             = keyPair.toJs.sign(transactionHash.toUint8Array)
+    transactionHash.length match
+      case 32 =>
+        Try(signDigest(keyPair, transactionHash)).toEither.left
+          .map(_ => failure.DecodeFailure("Could not sign message hash"))
+          .flatMap(identity)
+      case _ =>
+        Left[failure.SigilarisFailure, Signature](
+          failure.DecodeFailure("Signing requires a 32-byte message hash"),
+        )
+
+  private def signDigest(
+      keyPair: KeyPair,
+      transactionHash: Array[Byte],
+  ): Either[failure.SigilarisFailure, Signature] =
+    val jsSig = keyPair.toJs.sign(transactionHash.toUint8Array)
+    val rawS  = BigInt(jsSig.s.toStringBase(16), 16)
+    val lowS  = if rawS > CurveOrder / 2 then CurveOrder - rawS else rawS
+    // Recover using normalized S so the recovery parity changes with S when needed.
     val sigObj: js.Object = js.Dynamic.literal(
       "r" -> jsSig.r.toStringBase(16),
-      "s" -> jsSig.s.toStringBase(16),
+      "s" -> lowS.toString(16),
     )
     val pub0: PublicKey = ec
       .recoverPubKey(
@@ -134,7 +159,7 @@ object CryptoOps extends CryptoOpsLike:
       r <- UInt256
         .fromBigIntUnsigned(BigInt(jsSig.r.toStringBase(16), 16))
       s <- UInt256
-        .fromBigIntUnsigned(BigInt(jsSig.s.toStringBase(16), 16))
+        .fromBigIntUnsigned(lowS)
     yield Signature(v, r, s)
 
   extension (keyPair: KeyPair)
@@ -145,17 +170,23 @@ object CryptoOps extends CryptoOpsLike:
       signature: Signature,
       hashArray: Array[Byte],
   ): Either[failure.SigilarisFailure, PublicKey] =
-    val jsSig: js.Object = js.Dynamic.literal(
-      "r" -> signature.r.toHexLower,
-      "s" -> signature.s.toHexLower,
-    )
-
-    val pub: PublicKey = ec
-      .recoverPubKey(
-        hashArray.toUint8Array,
-        jsSig,
-        signature.v - 27,
-        js.undefined,
+    Try {
+      val jsSig: js.Object = js.Dynamic.literal(
+        "r" -> signature.r.toHexLower,
+        "s" -> signature.s.toHexLower,
       )
-      .asScala
-    pub.asRight[failure.SigilarisFailure]
+      // Keep elliptic's original recovery-parameter interpretation unchanged.
+      val pub = ec
+        .recoverPubKey(
+          hashArray.toUint8Array,
+          jsSig,
+          signature.v - 27,
+          js.undefined,
+        )
+        .asScala
+      // Reject lazy infinity coordinates within the same typed boundary.
+      val _ = pub.toBytes
+      pub
+    }.toEither.left.map(_ =>
+      failure.DecodeFailure("Could not recover public key from signature"),
+    )

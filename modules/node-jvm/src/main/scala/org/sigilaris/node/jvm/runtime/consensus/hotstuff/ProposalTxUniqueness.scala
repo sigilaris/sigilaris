@@ -71,7 +71,20 @@ final case class HotStuffProposalTxUniquenessCacheKey(
     chainId: ChainId,
     parentBlockId: Option[BlockId],
     bestFinalizedBlockId: Option[BlockId],
+    initialStopBlockId: Option[BlockId],
 )
+object HotStuffProposalTxUniquenessCacheKey:
+  def apply(
+      chainId: ChainId,
+      parentBlockId: Option[BlockId],
+      bestFinalizedBlockId: Option[BlockId],
+  ): HotStuffProposalTxUniquenessCacheKey =
+    new HotStuffProposalTxUniquenessCacheKey(
+      chainId,
+      parentBlockId,
+      bestFinalizedBlockId,
+      None,
+    )
 
 /** Bounded cache for successful ancestor exclusion computations. */
 final case class HotStuffProposalTxUniquenessCache(
@@ -175,6 +188,7 @@ object HotStuffProposalTxUniqueness:
       byChainAndBlockId: Map[(ChainId, BlockId), Proposal],
   )
 
+  @SuppressWarnings(Array("org.wartremover.warts.DefaultArguments"))
   def exclusionForParent(
       chainId: ChainId,
       parentBlockId: Option[BlockId],
@@ -182,99 +196,158 @@ object HotStuffProposalTxUniqueness:
       finalization: Map[ChainId, FinalizationTrackerSnapshot],
       bounds: HotStuffProposalTxUniquenessBounds,
       cache: HotStuffProposalTxUniquenessCache,
+      initialParent: Option[
+        org.sigilaris.node.jvm.runtime.application.v2.VerifiedInitialParent,
+      ] = None,
   ): (HotStuffProposalTxUniquenessCache, HotStuffProposalTxUniquenessResult) =
-    val bestFinalizedBlockId =
+    val actualFinalizedBlockId =
       finalization.get(chainId).flatMap(_.bestFinalized.map(_.anchorBlockId))
-    val key =
+    val initialStopBlockId = initialParent
+      .filter(_.context.chainId.asString === chainId.value)
+      .map(_.genesisBlockId)
+    val bestFinalizedBlockId = actualFinalizedBlockId.orElse(initialStopBlockId)
+    val key                  =
       HotStuffProposalTxUniquenessCacheKey(
         chainId = chainId,
         parentBlockId = parentBlockId,
-        bestFinalizedBlockId = bestFinalizedBlockId,
+        bestFinalizedBlockId = actualFinalizedBlockId,
+        initialStopBlockId = initialStopBlockId,
       )
-    cache.get(key) match
-      case Some(cached) =>
-        val fromCache =
-          cached.copy(metadata = cached.metadata.copy(fromCache = true))
-        cache -> HotStuffProposalTxUniquenessResult.Accepted(fromCache)
-      case None =>
-        val result =
-          computeExclusion(
-            chainId = chainId,
-            start = AncestorStart(
-              parentBlockId = parentBlockId,
-              parentProposalId = None,
-            ),
-            proposals = proposals,
-            bestFinalizedBlockId = bestFinalizedBlockId,
-            bounds = bounds,
-          )
-        result match
-          case HotStuffProposalTxUniquenessResult.Accepted(exclusion) =>
-            cache.updated(key, exclusion) -> result
-          case _ =>
-            cache -> result
+    val result =
+      cache.get(key) match
+        case Some(cached) =>
+          val fromCache =
+            cached.copy(metadata = cached.metadata.copy(fromCache = true))
+          cache -> HotStuffProposalTxUniquenessResult.Accepted(fromCache)
+        case None =>
+          val result =
+            computeExclusion(
+              chainId = chainId,
+              start = AncestorStart(
+                parentBlockId = parentBlockId,
+                parentProposalId = None,
+              ),
+              proposals = proposals,
+              bestFinalizedBlockId = bestFinalizedBlockId,
+              bounds = bounds,
+            )
+          result match
+            case HotStuffProposalTxUniquenessResult.Accepted(exclusion) =>
+              cache.updated(
+                key,
+                exclusion.copy(metadata =
+                  exclusion.metadata.copy(bestFinalizedBlockId =
+                    actualFinalizedBlockId,
+                  ),
+                ),
+              ) -> result
+            case _ =>
+              cache -> result
+    result._1 -> reportActualFinality(result._2, actualFinalizedBlockId)
 
+  @SuppressWarnings(Array("org.wartremover.warts.DefaultArguments"))
   def checkProposal(
       proposal: Proposal,
       proposals: Iterable[Proposal],
       finalization: Map[ChainId, FinalizationTrackerSnapshot],
       bounds: HotStuffProposalTxUniquenessBounds,
       cache: HotStuffProposalTxUniquenessCache,
+      initialParent: Option[
+        org.sigilaris.node.jvm.runtime.application.v2.VerifiedInitialParent,
+      ] = None,
   ): (HotStuffProposalTxUniquenessCache, HotStuffProposalTxUniquenessResult) =
-    val chainId              = proposal.window.chainId
-    val bestFinalizedBlockId =
+    val chainId                = proposal.window.chainId
+    val actualFinalizedBlockId =
       finalization.get(chainId).flatMap(_.bestFinalized.map(_.anchorBlockId))
-    val key =
+    val initialStopBlockId = initialParent
+      .filter(_.context.chainId.asString === chainId.value)
+      .map(_.genesisBlockId)
+    val bestFinalizedBlockId = actualFinalizedBlockId.orElse(initialStopBlockId)
+    val key                  =
       HotStuffProposalTxUniquenessCacheKey(
         chainId = chainId,
         parentBlockId = proposal.block.parent,
-        bestFinalizedBlockId = bestFinalizedBlockId,
+        bestFinalizedBlockId = actualFinalizedBlockId,
+        initialStopBlockId = initialStopBlockId,
       )
-    proposalStart(
-      proposal = proposal,
-      bestFinalizedBlockId = bestFinalizedBlockId,
-    ) match
-      case Left(unavailable) =>
-        cache -> unavailable
-      case Right(start) =>
-        val proposalIndex = indexProposals(proposals)
-        startProposal(
-          chainId = chainId,
-          start = start,
-          bestFinalizedBlockId = bestFinalizedBlockId,
-          proposals = proposalIndex,
-        ) match
-          case Left(unavailable) =>
-            cache -> unavailable
-          case Right(_) =>
-            val (updatedCache, exclusionResult) =
-              cache.get(key) match
-                case Some(cached) =>
-                  val fromCache =
-                    cached.copy(
-                      metadata = cached.metadata.copy(fromCache = true),
+    val result =
+      proposalStart(
+        proposal = proposal,
+        bestFinalizedBlockId = bestFinalizedBlockId,
+      ) match
+        case Left(unavailable) =>
+          cache -> unavailable
+        case Right(start) =>
+          val proposalIndex = indexProposals(proposals)
+          startProposal(
+            chainId = chainId,
+            start = start,
+            bestFinalizedBlockId = bestFinalizedBlockId,
+            proposals = proposalIndex,
+          ) match
+            case Left(unavailable) =>
+              cache -> unavailable
+            case Right(_) =>
+              val (updatedCache, exclusionResult) =
+                cache.get(key) match
+                  case Some(cached) =>
+                    val fromCache =
+                      cached.copy(
+                        metadata = cached.metadata.copy(fromCache = true),
+                      )
+                    cache -> HotStuffProposalTxUniquenessResult.Accepted(
+                      fromCache,
                     )
-                  cache -> HotStuffProposalTxUniquenessResult.Accepted(
-                    fromCache,
-                  )
-                case None =>
-                  val computed =
-                    computeExclusionFromIndex(
-                      chainId = chainId,
-                      start = start,
-                      proposals = proposalIndex,
-                      bestFinalizedBlockId = bestFinalizedBlockId,
-                      bounds = bounds,
-                    )
-                  computed match
-                    case HotStuffProposalTxUniquenessResult.Accepted(
-                          exclusion,
-                        ) =>
-                      cache.updated(key, exclusion) -> computed
-                    case _ =>
-                      cache -> computed
+                  case None =>
+                    val computed =
+                      computeExclusionFromIndex(
+                        chainId = chainId,
+                        start = start,
+                        proposals = proposalIndex,
+                        bestFinalizedBlockId = bestFinalizedBlockId,
+                        bounds = bounds,
+                      )
+                    computed match
+                      case HotStuffProposalTxUniquenessResult.Accepted(
+                            exclusion,
+                          ) =>
+                        cache.updated(
+                          key,
+                          exclusion.copy(metadata =
+                            exclusion.metadata.copy(bestFinalizedBlockId =
+                              actualFinalizedBlockId,
+                            ),
+                          ),
+                        ) -> computed
+                      case _ =>
+                        cache -> computed
 
-            updatedCache -> conflictResult(proposal.txSet, exclusionResult)
+              updatedCache -> conflictResult(proposal.txSet, exclusionResult)
+    result._1 -> reportActualFinality(result._2, actualFinalizedBlockId)
+
+  private def reportActualFinality(
+      result: HotStuffProposalTxUniquenessResult,
+      actual: Option[BlockId],
+  ): HotStuffProposalTxUniquenessResult =
+    def corrected(
+        value: HotStuffProposalTxExclusion,
+    ): HotStuffProposalTxExclusion =
+      value.copy(metadata = value.metadata.copy(bestFinalizedBlockId = actual))
+    result match
+      case HotStuffProposalTxUniquenessResult.Accepted(value) =>
+        HotStuffProposalTxUniquenessResult.Accepted(corrected(value))
+      case HotStuffProposalTxUniquenessResult.Conflict(ids, value) =>
+        HotStuffProposalTxUniquenessResult.Conflict(ids, corrected(value))
+      case HotStuffProposalTxUniquenessResult.Unavailable(
+            reason,
+            detail,
+            metadata,
+          ) =>
+        HotStuffProposalTxUniquenessResult.Unavailable(
+          reason,
+          detail,
+          metadata.copy(bestFinalizedBlockId = actual),
+        )
 
   private def computeExclusion(
       chainId: ChainId,

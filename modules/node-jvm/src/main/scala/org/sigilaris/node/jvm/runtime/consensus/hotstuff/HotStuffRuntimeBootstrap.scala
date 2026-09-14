@@ -510,8 +510,17 @@ object HotStuffRuntimeBootstrap:
         gossipPolicy = consensusConfig.gossipPolicy,
         bootstrapTrustRootOverride = consensusConfig.bootstrapTrustRoot.some,
       )
-    HotStuffNodeRuntime
+    val validated = HotStuffNodeRuntime
       .validateBootstrapInput(bootstrapInput)
+      .flatMap(input =>
+        HotStuffProposalValidationRuntimeConfig
+          .validateControlledSigning(
+            proposalValidationConfig,
+            consensusConfig.localKeys,
+            consensusConfig.validatorSet,
+          )
+          .as(input),
+      )
       .flatMap: validatedInput =>
         // This assembled bootstrap always attaches the automatic pacemaker.
         for
@@ -519,161 +528,183 @@ object HotStuffRuntimeBootstrap:
             .validateForAutomaticConsensus(proposalInputConfig)
           _ <- HotStuffProposalValidationRuntimeConfig
             .validateForAutomaticConsensus(proposalValidationConfig)
+          _ <- HotStuffProposalValidationRuntimeConfig
+            .validateApplicationAssembly(
+              proposalInputConfig,
+              proposalValidationConfig,
+            )
           _ <- HotStuffProposalTxUniquenessRuntimeConfig
             .validateForAutomaticConsensus(txUniquenessConfig)
         yield validatedInput
-      .leftMap(renderPolicyViolation) match
+      .leftMap(renderPolicyViolation)
+    val recovered = validated match
       case Left(rejection) =>
-        Resource.pure(rejection.asLeft[B])
-      case Right(validatedInput) =>
-        Resource
-          .eval(clock.now)
-          .flatMap: now =>
-            ensureBootstrapTrustRootFreshness(
-              validatedInput.bootstrapTrustRoot,
-              now,
-            ) match
-              case Left(error) =>
-                Resource.pure(error.asLeft[B])
-              case Right(_) =>
-                Resource
-                  .eval:
-                    HistoricalProposalArchive
-                      .swaydb[F](storageLayout)
-                      .attempt
-                  .flatMap:
-                    case Left(error) =>
-                      Resource.pure(
-                        renderThrowable(error)
-                          .asLeft[B],
-                      )
-                    case Right(historicalArchive) =>
-                      Resource
-                        .make(Async[F].pure(historicalArchive))(_.close)
-                        .evalMap: archive =>
-                          TxGossipWakeupBus
-                            .create[F]
-                            .flatMap: wakeupBus =>
-                              HotStuffNodeRuntime
-                                .inMemoryServices[F](
-                                  validatorSet = validatedInput.validatorSet,
-                                  gossipPolicy = validatedInput.gossipPolicy,
-                                  relayPolicy = HotStuffRelayPolicy
-                                    .forRole(validatedInput.role),
-                                  sinkRetention = consensusConfig.sinkRetention,
-                                  sourceAppendNotifier = Some(wakeupBus),
-                                )
-                                .flatMap: (services, diagnostics) =>
-                                  for
-                                    metadataStore <- SnapshotMetadataStore
-                                      .inMemory[F]
-                                    nodeStore <- SnapshotNodeStore.inMemory[F]
-                                    forwardStore <- ForwardCatchUpStore
-                                      .inMemory[F]
-                                    emptyDiagnostics =
-                                      BootstrapDiagnosticsSource
-                                        .const[F](
-                                          BootstrapDiagnostics.empty,
-                                        )
-                                    bootstrapServices =
-                                      HotStuffBootstrapServicesRuntime
-                                        .fromTrustRootWithNodeStore[F](
-                                          trustRoot =
-                                            validatedInput.bootstrapTrustRoot,
-                                          validatorSetInventory =
-                                            consensusConfig.validatorSetLookupInventory,
-                                          sink = diagnostics.sink,
-                                          snapshotNodeStore = nodeStore.some,
-                                          diagnostics = emptyDiagnostics,
-                                        )
-                                    transportServices =
-                                      bootstrapTransport.getOrElse(
-                                        HotStuffBootstrapTransportServices
-                                          .fromBootstrapServices(
-                                            bootstrapServices,
-                                          ),
-                                      )
-                                    proposalCatchUpReadiness =
-                                      transportServices.proposalCatchUpReadiness
-                                        .getOrElse:
-                                          // The application-neutral fallback closes
-                                          // proposals whose body commitment is
-                                          // derivable from the carried tx-set itself.
-                                          // Richer application-owned bodies can still
-                                          // override this via `bootstrapTransport`.
-                                          ApplicationNeutralProposalView
-                                            .readiness[F](
-                                              validatedInput.validatorSet,
-                                            )
-                                    bootstrapLifecycle <-
-                                      HotStuffBootstrapLifecycle
-                                        .inMemory[F](
-                                          metadataStore = metadataStore,
-                                          nodeStore = nodeStore,
-                                          validatorSetLookup =
-                                            bootstrapServices.validatorSetLookup,
-                                          finalizedAnchorSuggestions =
-                                            transportServices.finalizedAnchorSuggestions,
-                                          snapshotNodeFetch =
-                                            transportServices.snapshotNodeFetch,
-                                          proposalReplay =
-                                            transportServices.proposalReplay,
-                                          historicalBackfill =
-                                            transportServices.historicalBackfill,
-                                          forwardStore = forwardStore,
-                                          historicalArchive = archive,
-                                          retryPolicy =
-                                            BootstrapRetryPolicy.boundedDefault,
-                                          historicalBackfillPolicy =
-                                            HistoricalBackfillPolicy.forRole(
-                                              validatedInput.role,
-                                              enabled = consensusConfig.historicalSyncEnabled,
+        rejection.asLeft[HotStuffRuntimeBootstrapInput].pure[F]
+      case Right(input) =>
+        HotStuffProposalValidationRuntimeConfig
+          .recoverApplication(proposalValidationConfig)
+          .map(_.leftMap(renderPolicyViolation).as(input))
+    Resource
+      .eval(recovered)
+      .flatMap:
+        case Left(rejection) =>
+          Resource.pure(rejection.asLeft[B])
+        case Right(validatedInput) =>
+          Resource
+            .eval(clock.now)
+            .flatMap: now =>
+              ensureBootstrapTrustRootFreshness(
+                validatedInput.bootstrapTrustRoot,
+                now,
+              ) match
+                case Left(error) =>
+                  Resource.pure(error.asLeft[B])
+                case Right(_) =>
+                  Resource
+                    .eval:
+                      HistoricalProposalArchive
+                        .swaydb[F](storageLayout)
+                        .attempt
+                    .flatMap:
+                      case Left(error) =>
+                        Resource.pure(
+                          renderThrowable(error)
+                            .asLeft[B],
+                        )
+                      case Right(historicalArchive) =>
+                        Resource
+                          .make(Async[F].pure(historicalArchive))(_.close)
+                          .evalMap: archive =>
+                            TxGossipWakeupBus
+                              .create[F]
+                              .flatMap: wakeupBus =>
+                                HotStuffNodeRuntime
+                                  .inMemoryServices[F](
+                                    validatorSet = validatedInput.validatorSet,
+                                    gossipPolicy = validatedInput.gossipPolicy,
+                                    relayPolicy = HotStuffRelayPolicy
+                                      .forRole(validatedInput.role),
+                                    sinkRetention =
+                                      consensusConfig.sinkRetention,
+                                    sourceAppendNotifier = Some(wakeupBus),
+                                    applicationFinalization =
+                                      proposalValidationConfig.applicationFinalization,
+                                  )
+                                  .flatMap: (services, diagnostics) =>
+                                    for
+                                      metadataStore <- SnapshotMetadataStore
+                                        .inMemory[F]
+                                      nodeStore <- SnapshotNodeStore.inMemory[F]
+                                      forwardStore <- ForwardCatchUpStore
+                                        .inMemory[F]
+                                      emptyDiagnostics =
+                                        BootstrapDiagnosticsSource
+                                          .const[F](
+                                            BootstrapDiagnostics.empty,
+                                          )
+                                      bootstrapServices =
+                                        HotStuffBootstrapServicesRuntime
+                                          .fromTrustRootWithNodeStore[F](
+                                            trustRoot =
+                                              validatedInput.bootstrapTrustRoot,
+                                            validatorSetInventory =
+                                              consensusConfig.validatorSetLookupInventory,
+                                            sink = diagnostics.sink,
+                                            snapshotNodeStore = nodeStore.some,
+                                            diagnostics = emptyDiagnostics,
+                                          )
+                                      transportServices =
+                                        bootstrapTransport.getOrElse(
+                                          HotStuffBootstrapTransportServices
+                                            .fromBootstrapServices(
+                                              bootstrapServices,
                                             ),
-                                          beforeCoordinatorBuild = None,
-                                          readiness = proposalCatchUpReadiness,
-                                          currentInstant = clock.now,
                                         )
-                                    assembledServices =
-                                      services.copy(
-                                        bootstrap = bootstrapServices
-                                          .copy(diagnostics =
-                                            bootstrapLifecycle,
-                                          ),
-                                      )
-                                    consensus <- InMemoryHotStuffPacemakerDriver
-                                      .attach(
-                                        HotStuffNodeRuntime
-                                          .fromValidatedServices[F](
-                                            bootstrapInput = validatedInput,
-                                            services = assembledServices,
-                                            diagnostics = Some(diagnostics),
-                                            bootstrapLifecycle =
-                                              bootstrapLifecycle.some,
-                                            proposalDependencyConfig =
-                                              proposalDependencyConfig,
-                                            proposalValidationConfig =
-                                              proposalValidationConfig,
+                                      proposalCatchUpReadiness =
+                                        transportServices.proposalCatchUpReadiness
+                                          .getOrElse:
+                                            // The application-neutral fallback closes
+                                            // proposals whose body commitment is
+                                            // derivable from the carried tx-set itself.
+                                            // Richer application-owned bodies can still
+                                            // override this via `bootstrapTransport`.
+                                            ApplicationNeutralProposalView
+                                              .readiness[F](
+                                                validatedInput.validatorSet,
+                                              )
+                                      bootstrapLifecycle <-
+                                        HotStuffBootstrapLifecycle
+                                          .inMemory[F](
+                                            metadataStore = metadataStore,
+                                            nodeStore = nodeStore,
+                                            validatorSetLookup =
+                                              bootstrapServices.validatorSetLookup,
+                                            finalizedAnchorSuggestions =
+                                              transportServices.finalizedAnchorSuggestions,
+                                            snapshotNodeFetch =
+                                              transportServices.snapshotNodeFetch,
+                                            proposalReplay =
+                                              transportServices.proposalReplay,
+                                            historicalBackfill =
+                                              transportServices.historicalBackfill,
+                                            forwardStore = forwardStore,
+                                            historicalArchive = archive,
+                                            retryPolicy =
+                                              BootstrapRetryPolicy.boundedDefault,
+                                            historicalBackfillPolicy =
+                                              HistoricalBackfillPolicy.forRole(
+                                                validatedInput.role,
+                                                enabled = consensusConfig.historicalSyncEnabled,
+                                              ),
+                                            beforeCoordinatorBuild = None,
+                                            readiness =
+                                              proposalCatchUpReadiness,
+                                            currentInstant = clock.now,
+                                          )
+                                      assembledServices =
+                                        services.copy(
+                                          bootstrap = bootstrapServices
+                                            .copy(diagnostics =
+                                              bootstrapLifecycle,
+                                            ),
+                                        )
+                                      consensus <-
+                                        InMemoryHotStuffPacemakerDriver
+                                          .attach(
+                                            HotStuffNodeRuntime
+                                              .fromValidatedServices[F](
+                                                bootstrapInput = validatedInput,
+                                                services = assembledServices,
+                                                diagnostics = Some(diagnostics),
+                                                bootstrapLifecycle =
+                                                  bootstrapLifecycle.some,
+                                                proposalDependencyConfig =
+                                                  proposalDependencyConfig,
+                                                proposalValidationConfig =
+                                                  proposalValidationConfig,
+                                                txUniquenessConfig =
+                                                  txUniquenessConfig,
+                                                pacemakerPolicy =
+                                                  pacemakerPolicy,
+                                                finalityDrivePolicy =
+                                                  finalityDrivePolicy,
+                                              ),
+                                            automaticConsensus = true,
+                                            proposalInputConfig =
+                                              proposalInputConfig,
                                             txUniquenessConfig =
                                               txUniquenessConfig,
-                                            pacemakerPolicy = pacemakerPolicy,
                                             finalityDrivePolicy =
                                               finalityDrivePolicy,
-                                          ),
-                                        automaticConsensus = true,
-                                        proposalInputConfig =
-                                          proposalInputConfig,
-                                        txUniquenessConfig = txUniquenessConfig,
-                                        finalityDrivePolicy =
-                                          finalityDrivePolicy,
+                                          )
+                                      gossipBootstrap <- buildGossipRuntime(
+                                        consensus,
+                                        wakeupBus,
                                       )
-                                    gossipBootstrap <- buildGossipRuntime(
+                                    yield assembleBootstrap(
                                       consensus,
-                                      wakeupBus,
-                                    )
-                                  yield assembleBootstrap(
-                                    consensus,
-                                    gossipBootstrap,
-                                  ).asRight[String]
+                                      gossipBootstrap,
+                                    ).asRight[String]
 
   private def renderPolicyViolation(
       rejection: HotStuffPolicyViolation,

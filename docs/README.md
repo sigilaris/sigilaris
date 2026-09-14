@@ -30,6 +30,8 @@
 - [dev/tx-pipeline-api-handoff.md](dev/tx-pipeline-api-handoff.md): stage-based transaction pipeline API and provider composition handoff notes
 - [adr/0035-application-execution-lanes-ordered-waves-and-certified-fast-admission.md](adr/0035-application-execution-lanes-ordered-waves-and-certified-fast-admission.md): `v0.3.0-M1` application execution lanes, ordered working-state waves, and certified-fast admission boundary
 - [adr/0036-height-bounded-application-locks-and-explicit-pipeline-dependencies.md](adr/0036-height-bounded-application-locks-and-explicit-pipeline-dependencies.md): finalized-height-bounded application locks, maintenance drain-to-empty, and explicit exact pipeline dependencies
+- [adr/0037-versioned-application-execution-upgrade-and-empty-blocks.md](adr/0037-versioned-application-execution-upgrade-and-empty-blocks.md): proposed canonical empty V2 blocks, immutable historical contracts, and post-M2 compatibility and activation policy
+- [plans/0033-application-execution-conformance-and-v2-activation-plan.md](plans/0033-application-execution-conformance-and-v2-activation-plan.md): proposed application execution conformance, durable vote/footprint safety, V2 integration, recovery and public conformance work
 - [adr/0034-canonical-bignat-wire-encoding.md](adr/0034-canonical-bignat-wire-encoding.md): canonical BigNat exact-120 reservation, long-form widths, and decoder validation
 - [dev/hotstuff-low-latency-profile.md](dev/hotstuff-low-latency-profile.md): HotStuff warm-cluster low-latency profile and residual risk notes
 - [dev/hotstuff-transitive-relay-handoff.md](dev/hotstuff-transitive-relay-handoff.md): HotStuff consensus artifact transitive relay deployment and diagnostics handoff notes

@@ -9,7 +9,7 @@ import scodec.bits.ByteVector
 
 import org.sigilaris.core.codec.byte.ByteEncoder
 import org.sigilaris.core.codec.byte.ByteEncoder.ops.*
-import org.sigilaris.core.crypto.{CryptoOps, KeyPair}
+import org.sigilaris.core.crypto.CryptoOps
 import org.sigilaris.core.datatype.{UInt256, Utf8}
 import org.sigilaris.core.util.SafeStringInterp.*
 import org.sigilaris.node.jvm.runtime.block.{
@@ -282,6 +282,7 @@ private final class InMemoryHotStuffPacemakerDriver[F[_]: Sync](
     finalityDriveStateRef: Ref[F, FinalityDriveRuntimeState],
     automaticConsensus: Boolean,
     proposalInputProviderOverride: Option[HotStuffProposalInputProvider[F]],
+    proposalApplicationAssembly: Option[HotStuffProposalApplicationAssembly[F]],
     proposalInputFallbackPolicy: HotStuffProposalInputFallbackPolicy,
     proposalValidationConfig: HotStuffProposalValidationRuntimeConfig[F],
     txUniquenessConfig: HotStuffProposalTxUniquenessRuntimeConfig,
@@ -291,7 +292,10 @@ private final class InMemoryHotStuffPacemakerDriver[F[_]: Sync](
     clock: GossipClock[F],
 ):
   private val localValidators =
-    bootstrapInput.localKeys.keys.toVector.sortBy(_.value)
+    proposalValidationConfig.controlledSigning
+      .fold(bootstrapInput.localKeys.keySet)(_.validators)
+      .toVector
+      .sortBy(_.value)
   private val AutomaticProposalStateRootDomain =
     Utf8("sigilaris.hotstuff.auto-proposal.state-root.v1")
   private val AutomaticProposalBodyRootDomain =
@@ -650,22 +654,23 @@ private final class InMemoryHotStuffPacemakerDriver[F[_]: Sync](
       case Some(state)
           if state.activeWindow === window &&
             state.bootstrapHoldReason.isEmpty =>
-        withLocalSigner(voter): keyPair =>
-          TimeoutVote
-            .sign(
+        withLocalSigner(voter): signer =>
+          signer
+            .timeout(
               UnsignedTimeoutVote(
-                subject = TimeoutVoteSubject(window, highestKnownQc.subject),
-                voter = voter,
+                TimeoutVoteSubject(window, highestKnownQc.subject),
+                voter,
               ),
-              keyPair,
             )
-            .toOption
-            .traverse: timeoutVote =>
-              applyLocalArtifact(
-                HotStuffGossipArtifact.TimeoutVoteArtifact(timeoutVote),
-                now,
-              )
-            .void
+            .flatMap(
+              _.toOption.traverse_(vote =>
+                applyLocalArtifact(
+                  HotStuffGossipArtifact.TimeoutVoteArtifact(vote),
+                  now,
+                ),
+              ),
+            )
+
       case _ =>
         Sync[F].unit
 
@@ -765,6 +770,7 @@ private final class InMemoryHotStuffPacemakerDriver[F[_]: Sync](
                   proposals = snapshot.proposals.values,
                   finalization = snapshot.finalization,
                   bounds = txUniquenessConfig.bounds,
+                  initialParent = proposalValidationConfig.initialParent,
                   cache = cache,
                 )
               updatedCache -> result
@@ -823,6 +829,7 @@ private final class InMemoryHotStuffPacemakerDriver[F[_]: Sync](
         proposals = snapshot.proposals.values,
         finalization = snapshot.finalization,
         bounds = txUniquenessConfig.bounds,
+        initialParent = proposalValidationConfig.initialParent,
       )
     request.copy(
       branchContext = branchContext,
@@ -1101,50 +1108,48 @@ private final class InMemoryHotStuffPacemakerDriver[F[_]: Sync](
     resolveSigner(request.proposer) match
       case Left(_) =>
         false.pure[F]
-      case Right(keyPair) =>
+      case Right(signer) =>
         val block = input.blockHeader
-        Proposal
-          .sign(
+        signer
+          .proposal(
             UnsignedProposal(
-              window = request.window,
-              proposer = request.proposer,
-              targetBlockId = BlockHeader.computeId(block),
-              block = block,
-              txSet = input.txSet,
-              justify = request.justify,
+              request.window,
+              request.proposer,
+              BlockHeader.computeId(block),
+              block,
+              input.txSet,
+              request.justify,
             ),
-            keyPair,
           )
-          .toOption match
-          case None =>
-            false.pure[F]
-          case Some(proposal) =>
-            HotStuffValidator.validateProposal(
-              proposal,
-              bootstrapInput.validatorSet,
-            ) match
-              case Left(validation) =>
-                recordProposalInputDiagnostic(
-                  key,
-                  request.window,
-                  request.proposer,
-                  HotStuffProposalInputDiagnosticOutcome.Invalid,
-                  validation.reason,
-                  validation.detail,
-                  fallbackUsed = fallbackUsed,
-                ).as(false)
-              case Right(_) =>
-                applyLocalArtifact(
-                  HotStuffGossipArtifact.ProposalArtifact(proposal),
-                  now,
-                ) *> markProposalEmitted(key, request.window) *>
-                  recordLocalProposalEmittedDiagnostic(
+          .flatMap:
+            case Left(_)         => false.pure[F]
+            case Right(proposal) =>
+              HotStuffValidator.validateProposal(
+                proposal,
+                bootstrapInput.validatorSet,
+              ) match
+                case Left(validation) =>
+                  recordProposalInputDiagnostic(
                     key,
                     request.window,
                     request.proposer,
-                    proposal,
+                    HotStuffProposalInputDiagnosticOutcome.Invalid,
+                    validation.reason,
+                    validation.detail,
+                    fallbackUsed = fallbackUsed,
+                  ).as(false)
+                case Right(_) =>
+                  applyLocalArtifact(
+                    HotStuffGossipArtifact.ProposalArtifact(proposal),
                     now,
-                  ).as(true)
+                  ) *> markProposalEmitted(key, request.window) *>
+                    recordLocalProposalEmittedDiagnostic(
+                      key,
+                      request.window,
+                      request.proposer,
+                      proposal,
+                      now,
+                    ).as(true)
 
   private def emitNewView(
       sender: ValidatorId,
@@ -1161,25 +1166,26 @@ private final class InMemoryHotStuffPacemakerDriver[F[_]: Sync](
       )
     stateFor(HotStuffPacemakerKey(nextWindow.chainId, sender)).flatMap:
       case Some(state) if state.bootstrapHoldReason.isEmpty =>
-        withLocalSigner(sender): keyPair =>
-          NewView
-            .sign(
+        withLocalSigner(sender): signer =>
+          signer
+            .newView(
               UnsignedNewView(
-                window = nextWindow,
-                sender = sender,
-                nextLeader = nextLeader,
-                highestKnownQc = highestKnownQc,
-                timeoutCertificate = timeoutCertificate,
+                nextWindow,
+                sender,
+                nextLeader,
+                highestKnownQc,
+                timeoutCertificate,
               ),
-              keyPair,
             )
-            .toOption
-            .traverse: newView =>
-              applyLocalArtifact(
-                HotStuffGossipArtifact.NewViewArtifact(newView),
-                now,
-              )
-            .void
+            .flatMap(
+              _.toOption.traverse_(value =>
+                applyLocalArtifact(
+                  HotStuffGossipArtifact.NewViewArtifact(value),
+                  now,
+                ),
+              ),
+            )
+
       case _ =>
         Sync[F].unit
 
@@ -1207,7 +1213,7 @@ private final class InMemoryHotStuffPacemakerDriver[F[_]: Sync](
           case true =>
             Sync[F].unit
           case false =>
-            withLocalSigner(voter): keyPair =>
+            withLocalSigner(voter): signer =>
               validateProposalForLocalVote(key, voter, proposal, now).flatMap:
                 case decision if decision.voteSuppressed =>
                   recordProposalValidationDiagnostic(
@@ -1217,34 +1223,38 @@ private final class InMemoryHotStuffPacemakerDriver[F[_]: Sync](
                     decision,
                   )
                 case decision =>
-                  Vote
-                    .sign(
-                      UnsignedVote(
-                        window = proposal.window,
-                        voter = voter,
-                        targetProposalId = proposal.proposalId,
-                      ),
-                      keyPair,
-                    ) match
-                    case Left(_) =>
-                      Sync[F].unit
-                    case Right(vote) =>
-                      applyLocalArtifact(
-                        HotStuffGossipArtifact.VoteArtifact(vote),
-                        now,
-                      ) *>
-                        recordLocalVoteEmittedDiagnostic(
-                          key,
-                          proposal,
-                          voter,
-                          now,
-                        ) *>
+                  signer
+                    .vote(proposalValidationConfig, voter, proposal)
+                    .flatMap {
+                      case Left(error) =>
                         recordProposalValidationDiagnostic(
                           key,
                           proposal,
                           voter,
-                          decision,
+                          HotStuffProposalValidationDecision.Suppress(
+                            HotStuffProposalValidationOutcome.Rejected,
+                            error.reason,
+                            error.detail,
+                          ),
                         )
+                      case Right(vote) =>
+                        applyLocalArtifact(
+                          HotStuffGossipArtifact.VoteArtifact(vote),
+                          now,
+                        ) *>
+                          recordLocalVoteEmittedDiagnostic(
+                            key,
+                            proposal,
+                            voter,
+                            now,
+                          ) *>
+                          recordProposalValidationDiagnostic(
+                            key,
+                            proposal,
+                            voter,
+                            decision,
+                          )
+                    }
       case _ =>
         Sync[F].unit
 
@@ -1279,6 +1289,7 @@ private final class InMemoryHotStuffPacemakerDriver[F[_]: Sync](
       proposal = proposal,
       snapshot = snapshot,
       bounds = txUniquenessConfig.bounds,
+      initialParent = proposalValidationConfig.initialParent,
     )
 
   private def proposalTxUniquenessDecision(
@@ -1298,6 +1309,7 @@ private final class InMemoryHotStuffPacemakerDriver[F[_]: Sync](
                   proposals = snapshot.proposals.values,
                   finalization = snapshot.finalization,
                   bounds = txUniquenessConfig.bounds,
+                  initialParent = proposalValidationConfig.initialParent,
                   cache = cache,
                 )
               updatedCache -> result
@@ -1321,7 +1333,7 @@ private final class InMemoryHotStuffPacemakerDriver[F[_]: Sync](
   private def withLocalSigner(
       validatorId: ValidatorId,
   )(
-      f: KeyPair => F[Unit],
+      f: HotStuffLocalSigning[F] => F[Unit],
   ): F[Unit] =
     resolveSigner(validatorId) match
       case Left(_) =>
@@ -1391,8 +1403,10 @@ private final class InMemoryHotStuffPacemakerDriver[F[_]: Sync](
       case None =>
         None)
 
-  private def proposalInputProvider: HotStuffProposalInputProvider[F] =
-    proposalInputProviderOverride.getOrElse(legacyProposalInputProvider)
+  private lazy val proposalInputProvider: HotStuffProposalInputProvider[F] =
+    val legacy =
+      proposalInputProviderOverride.getOrElse(legacyProposalInputProvider)
+    proposalApplicationAssembly.fold(legacy)(_.provider(legacy))
 
   private def legacyProposalInputProvider: HotStuffProposalInputProvider[F] =
     new LegacyEmptyHotStuffProposalInputProvider[F](
@@ -1745,7 +1759,7 @@ private final class InMemoryHotStuffPacemakerDriver[F[_]: Sync](
   private def markObservedLeaderProposal(
       proposal: Proposal,
   ): F[Unit] =
-    if bootstrapInput.localKeys.contains(proposal.proposer) then
+    if localValidators.contains(proposal.proposer) then
       markProposalEmitted(
         HotStuffPacemakerKey(proposal.window.chainId, proposal.proposer),
         proposal.window,
@@ -1843,7 +1857,7 @@ private final class InMemoryHotStuffPacemakerDriver[F[_]: Sync](
 
   private def resolveSigner(
       validatorId: ValidatorId,
-  ): Either[HotStuffPolicyViolation, KeyPair] =
+  ): Either[HotStuffPolicyViolation, HotStuffLocalSigning[F]] =
     HotStuffPolicy
       .canEmitLocally(
         bootstrapInput.role,
@@ -1852,13 +1866,11 @@ private final class InMemoryHotStuffPacemakerDriver[F[_]: Sync](
         bootstrapInput.holders,
       )
       .flatMap(_ =>
-        bootstrapInput.localKeys
-          .get(validatorId)
-          .toRight:
-            HotStuffPolicyViolation(
-              reason = "localValidatorKeyUnavailable",
-              detail = Some(validatorId.value),
-            ),
+        HotStuffLocalSigning.resolve(
+          proposalValidationConfig,
+          bootstrapInput.localKeys,
+          validatorId,
+        ),
       )
 
   private def bootstrapHoldReason(
@@ -1911,7 +1923,7 @@ private object InMemoryHotStuffPacemakerDriver:
     runtime.diagnostics match
       case Some(inMemoryDiagnostics)
           if runtime.role === LocalNodeRole.Validator &&
-            runtime.localKeys.nonEmpty =>
+            runtime.localValidators.nonEmpty =>
         (
           Ref.of[F, Map[HotStuffPacemakerKey, HotStuffPacemakerEntrySnapshot]](
             Map.empty,
@@ -1944,6 +1956,8 @@ private object InMemoryHotStuffPacemakerDriver:
                 finalityDriveStateRef = finalityDriveStateRef,
                 automaticConsensus = automaticConsensus,
                 proposalInputProviderOverride = proposalInputConfig.provider,
+                proposalApplicationAssembly =
+                  proposalInputConfig.applicationAssembly,
                 proposalInputFallbackPolicy =
                   proposalInputConfig.fallbackPolicy,
                 proposalValidationConfig = runtime.proposalValidationConfig,

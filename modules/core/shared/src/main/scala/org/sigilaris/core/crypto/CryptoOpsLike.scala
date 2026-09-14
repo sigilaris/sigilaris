@@ -67,6 +67,7 @@ trait CryptoOpsLike:
     *   - Uses deterministic k-generation (RFC 6979)
     *   - Normalizes signatures to Low-S form
     *   - Includes recovery parameter (v = 27 + recId)
+    *   - Rejects hashes whose length is not exactly 32 bytes before signing
     */
   def sign(
       keyPair: KeyPair,

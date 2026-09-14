@@ -8,9 +8,11 @@ import cats.effect.kernel.Sync
 import cats.syntax.all.*
 
 import org.sigilaris.core.util.SafeStringInterp.*
+import org.sigilaris.core.application.protocol.ExecutionPlanRoot
 import org.sigilaris.node.jvm.runtime.block.{
   BlockId,
   BlockHeader,
+  BlockHeaderVersion,
   BlockHeight,
   BlockTimestamp,
   BodyRoot,
@@ -86,6 +88,7 @@ object HotStuffProposalInputBranchContext:
       byChainAndBlockId: Map[(ChainId, BlockId), Proposal],
   )
 
+  @SuppressWarnings(Array("org.wartremover.warts.DefaultArguments"))
   private[hotstuff] def fromParent(
       chainId: ChainId,
       parentBlockId: Option[BlockId],
@@ -93,63 +96,74 @@ object HotStuffProposalInputBranchContext:
       proposals: Iterable[Proposal],
       finalization: Map[ChainId, FinalizationTrackerSnapshot],
       bounds: HotStuffProposalTxUniquenessBounds,
+      initialParent: Option[
+        org.sigilaris.node.jvm.runtime.application.v2.VerifiedInitialParent,
+      ] = None,
   ): HotStuffProposalInputBranchContext =
-    val bestFinalizedBlockId =
+    val actualFinalizedBlockId =
       finalization.get(chainId).flatMap(_.bestFinalized.map(_.anchorBlockId))
-    parentBlockId match
-      case None =>
-        complete(
-          parentBlockId,
-          bestFinalizedBlockId,
-          Vector.empty[HotStuffProposalInputBranchAncestor],
-        )
-      case Some(parent) if bestFinalizedBlockId.exists(_ === parent) =>
-        complete(
-          parentBlockId,
-          bestFinalizedBlockId,
-          Vector.empty[HotStuffProposalInputBranchAncestor],
-        )
-      case Some(parent) =>
-        val proposalVector = proposals.iterator.toVector
-        val index          = ProposalIndex(
-          byProposalId = proposalVector.iterator
-            .map(p => p.proposalId -> p)
-            .toMap,
-          byChainAndBlockId = proposalVector.iterator
-            .map(p => (p.window.chainId -> p.targetBlockId) -> p)
-            .toMap,
-        )
-        index.byProposalId.get(justify.subject.proposalId) match
-          case Some(proposal)
-              if proposal.window.chainId === chainId &&
-                proposal.targetBlockId === parent =>
-            collectAncestors(
-              chainId = chainId,
-              current = proposal,
-              certifiedBy = justify.subject,
-              parentBlockId = parentBlockId,
-              bestFinalizedBlockId = bestFinalizedBlockId,
-              byChainAndBlockId = index.byChainAndBlockId,
-              bounds = bounds,
-              traversedAncestorCount = 0,
-              ancestors = Vector.empty[HotStuffProposalInputBranchAncestor],
-            )
-          case Some(_) =>
-            incomplete(
-              parentBlockId,
-              bestFinalizedBlockId,
-              Vector.empty[HotStuffProposalInputBranchAncestor],
-              HotStuffProposalInputDependencyReason.BranchConflict,
-              Some(justify.subject.proposalId.toHexLower),
-            )
-          case None =>
-            incomplete(
-              parentBlockId,
-              bestFinalizedBlockId,
-              Vector.empty[HotStuffProposalInputBranchAncestor],
-              HotStuffProposalInputDependencyReason.AncestorUnavailable,
-              Some(justify.subject.proposalId.toHexLower),
-            )
+    // G is a separate authenticated traversal stop; it is not reported as finality.
+    val bestFinalizedBlockId = actualFinalizedBlockId.orElse(
+      initialParent
+        .filter(_.context.chainId.asString === chainId.value)
+        .map(_.genesisBlockId),
+    )
+    val result =
+      parentBlockId match
+        case None =>
+          complete(
+            parentBlockId,
+            bestFinalizedBlockId,
+            Vector.empty[HotStuffProposalInputBranchAncestor],
+          )
+        case Some(parent) if bestFinalizedBlockId.exists(_ === parent) =>
+          complete(
+            parentBlockId,
+            bestFinalizedBlockId,
+            Vector.empty[HotStuffProposalInputBranchAncestor],
+          )
+        case Some(parent) =>
+          val proposalVector = proposals.iterator.toVector
+          val index          = ProposalIndex(
+            byProposalId = proposalVector.iterator
+              .map(p => p.proposalId -> p)
+              .toMap,
+            byChainAndBlockId = proposalVector.iterator
+              .map(p => (p.window.chainId -> p.targetBlockId) -> p)
+              .toMap,
+          )
+          index.byProposalId.get(justify.subject.proposalId) match
+            case Some(proposal)
+                if proposal.window.chainId === chainId &&
+                  proposal.targetBlockId === parent =>
+              collectAncestors(
+                chainId = chainId,
+                current = proposal,
+                certifiedBy = justify.subject,
+                parentBlockId = parentBlockId,
+                bestFinalizedBlockId = bestFinalizedBlockId,
+                byChainAndBlockId = index.byChainAndBlockId,
+                bounds = bounds,
+                traversedAncestorCount = 0,
+                ancestors = Vector.empty[HotStuffProposalInputBranchAncestor],
+              )
+            case Some(_) =>
+              incomplete(
+                parentBlockId,
+                bestFinalizedBlockId,
+                Vector.empty[HotStuffProposalInputBranchAncestor],
+                HotStuffProposalInputDependencyReason.BranchConflict,
+                Some(justify.subject.proposalId.toHexLower),
+              )
+            case None =>
+              incomplete(
+                parentBlockId,
+                bestFinalizedBlockId,
+                Vector.empty[HotStuffProposalInputBranchAncestor],
+                HotStuffProposalInputDependencyReason.AncestorUnavailable,
+                Some(justify.subject.proposalId.toHexLower),
+              )
+    result.copy(bestFinalizedBlockId = actualFinalizedBlockId)
 
   @tailrec
   private def collectAncestors(
@@ -345,6 +359,8 @@ final case class HotStuffProposalInput(
     bodyRoot: BodyRoot,
     timestamp: BlockTimestamp,
     txSet: ProposalTxSet,
+    headerVersion: BlockHeaderVersion,
+    executionPlanRoot: Option[ExecutionPlanRoot],
 ):
   def blockHeader: BlockHeader =
     BlockHeader(
@@ -353,6 +369,29 @@ final case class HotStuffProposalInput(
       stateRoot = stateRoot,
       bodyRoot = bodyRoot,
       timestamp = timestamp,
+      version = headerVersion,
+      executionPlanRoot = executionPlanRoot,
+    )
+
+/** Preserves the historical six-argument V1 construction contract. */
+object HotStuffProposalInput:
+  def apply(
+      parent: Option[BlockId],
+      height: BlockHeight,
+      stateRoot: StateRoot,
+      bodyRoot: BodyRoot,
+      timestamp: BlockTimestamp,
+      txSet: ProposalTxSet,
+  ): HotStuffProposalInput =
+    HotStuffProposalInput(
+      parent,
+      height,
+      stateRoot,
+      bodyRoot,
+      timestamp,
+      txSet,
+      BlockHeaderVersion.V1,
+      None,
     )
 
 /** Taxonomy for application proposal input lookup results. */
@@ -402,10 +441,31 @@ enum HotStuffProposalInputFallbackPolicy:
 final case class HotStuffProposalInputRuntimeConfig[F[_]](
     provider: Option[HotStuffProposalInputProvider[F]],
     fallbackPolicy: HotStuffProposalInputFallbackPolicy,
+    applicationAssembly: Option[HotStuffProposalApplicationAssembly[F]],
 )
 
 /** Companion for `HotStuffProposalInputRuntimeConfig`. */
 object HotStuffProposalInputRuntimeConfig:
+  def apply[F[_]](
+      provider: Option[HotStuffProposalInputProvider[F]],
+      fallbackPolicy: HotStuffProposalInputFallbackPolicy,
+  ): HotStuffProposalInputRuntimeConfig[F] =
+    HotStuffProposalInputRuntimeConfig(provider, fallbackPolicy, None)
+
+  /** Uses the ordinary runtime builder with authenticated historical dispatch.
+    * Missing V2 execution/preimages suppress proposals instead of invoking a
+    * legacy empty fallback.
+    */
+  def application[F[_]](
+      assembly: HotStuffProposalApplicationAssembly[F],
+      legacyProvider: Option[HotStuffProposalInputProvider[F]],
+  ): HotStuffProposalInputRuntimeConfig[F] =
+    HotStuffProposalInputRuntimeConfig(
+      legacyProvider,
+      HotStuffProposalInputFallbackPolicy.RequireProviderInput,
+      Some(assembly),
+    )
+
   def legacyCompatible[F[_]]: HotStuffProposalInputRuntimeConfig[F] =
     HotStuffProposalInputRuntimeConfig(
       provider = None,
@@ -439,6 +499,16 @@ object HotStuffProposalInputRuntimeConfig:
   ): Either[HotStuffPolicyViolation, Unit] =
     config.fallbackPolicy match
       case HotStuffProposalInputFallbackPolicy.AllowLegacyEmpty =>
+        Either.cond(
+          config.applicationAssembly.isEmpty,
+          (),
+          HotStuffPolicyViolation(
+            "applicationProfileLegacyFallbackForbidden",
+            None,
+          ),
+        )
+      case HotStuffProposalInputFallbackPolicy.RequireProviderInput
+          if config.applicationAssembly.nonEmpty =>
         ().asRight[HotStuffPolicyViolation]
       case HotStuffProposalInputFallbackPolicy.RequireProviderInput =>
         config.provider match
@@ -492,6 +562,9 @@ object HotStuffProposalInputValidator:
       input: HotStuffProposalInput,
   ): Either[HotStuffValidationFailure, HotStuffProposalInput] =
     for
+      _ <- BlockHeader
+        .validateVersionedCommitment(input.blockHeader)
+        .leftMap(error => HotStuffValidationFailure(error.reason, error.detail))
       _ <- ensure(
         input.parent === request.parent,
         "proposalInputParentMismatch",

@@ -4,12 +4,14 @@
 
 Accepted as the `v0.3.0-M1` target contract.
 
-As of `2026-08-28`, this ADR describes a target contract. The M1 application-vote signature algorithm, domains,
-non-threshold certificate representation, validator-set binding, and quorum derivation are fixed below. The current
-implementation still exposes
-`Schedulable(footprint)` and `Compatibility(reason)`, commits unordered block-body membership, and has no certified-fast
-input-lock or execution-certificate runtime. No current API should be described as implementing this ADR until the
-follow-up plan's activation gates have passed.
+Implementation status as of `2026-09-08`: M1 and M2 publish execution-plan, application certification, safety-journal and
+exact-pipeline APIs. They do not yet complete this target contract's input/lock/footprint separation, consensus-only
+execution, durable vote issuance and integrated V2 activation. The signature algorithm, domains, certificate
+representation, validator-set binding and quorum derivation below remain the target decisions.
+
+[Plan 0033](../plans/0033-application-execution-conformance-and-v2-activation-plan.md) tracks conformance work and its
+activation evidence. [ADR-0037](0037-versioned-application-execution-upgrade-and-empty-blocks.md) proposes the empty-block
+and post-M2 compatibility supplement. Its proposed rules do not change the meaning of published M1/M2 artifacts.
 
 ADR-0036 supersedes this ADR's original unbounded lock recovery/frontier profile and its unconditional prohibition on
 pre-final created-output consumption. M1 now uses signed inclusion-height bounds and permits only explicitly activated
@@ -597,3 +599,5 @@ certified-fast result has canonical or final status.
 - [ADR-0031: Certified Ancestor Dependent Transaction Pipelining](0031-certified-ancestor-dependent-transaction-pipelining.md)
 - [ADR-0032: Stage-Based Transaction Pipeline API](0032-stage-based-transaction-pipeline-api.md)
 - [ADR-0036: Height-bounded application locks and explicit pipeline dependencies](0036-height-bounded-application-locks-and-explicit-pipeline-dependencies.md)
+- [ADR-0037: Versioned Application Execution Upgrade And Empty Blocks](0037-versioned-application-execution-upgrade-and-empty-blocks.md)
+- [Plan 0033: Application Execution Conformance And V2 Activation](../plans/0033-application-execution-conformance-and-v2-activation-plan.md)

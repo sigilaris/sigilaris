@@ -1,0 +1,4196 @@
+{
+  "schema": 1,
+  "observed_at": "2026-09-12T17:34:41.001943+00:00",
+  "base_revision": "7b60f01",
+  "scope": "Signing/hash/provider and selected Armeria/Netty TLS closure; build/type findings separately retained. Not a whole-project security clearance. Database responses are time-specific.",
+  "input_hashes": {
+    "build.sbt": "a045200784b27bbf7c840ea1aba6889f2bc8e73b6699c4ee3e90608db869bbcf",
+    "modules/core/js/yarn.lock": "4a11cc4c357cbb4e3319a18d36b017d438ebccd21dbd503c9751b34e2a465eb6",
+    "modules/node-common/js/yarn.lock": "03bcc947d36a26a1a9a68317d1873fb955f3fe9b5fce7c961c8246bc204c82a8",
+    "release-conformance/package.json": "94c4e29d6f7f101ffbebff9e5bfeaf4f15ce380008070578819bfa0fffd56613",
+    "release-conformance/package-lock.json": "37a6972aea4d88ca6639734802fc73d785567bad671c18029729c1854c5bc1f8",
+    "docs/conformance/public-conformance-inputs.sha256": "ba8eb37fb744cda5275d1a452a7adc20b6caa61eabc59cee5a97be6b440abc28"
+  },
+  "standalone_npm": {
+    "command": "npm audit --json",
+    "before": {
+      "auditReportVersion": 2,
+      "vulnerabilities": {
+        "elliptic": {
+          "name": "elliptic",
+          "severity": "critical",
+          "isDirect": true,
+          "via": [
+            {
+              "source": 1102901,
+              "name": "elliptic",
+              "dependency": "elliptic",
+              "title": "Elliptic's private key extraction in ECDSA upon signing a malformed input (e.g. a string)",
+              "url": "https://github.com/advisories/GHSA-vjh7-7g9h-fjfh",
+              "severity": "critical",
+              "cwe": [
+                "CWE-200"
+              ],
+              "cvss": {
+                "score": 0,
+                "vectorString": null
+              },
+              "range": "<=6.6.0"
+            },
+            {
+              "source": 1109566,
+              "name": "elliptic",
+              "dependency": "elliptic",
+              "title": "Elliptic's EDDSA missing signature length check",
+              "url": "https://github.com/advisories/GHSA-f7q4-pwc6-w24p",
+              "severity": "low",
+              "cwe": [
+                "CWE-347"
+              ],
+              "cvss": {
+                "score": 5.3,
+                "vectorString": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:L/I:N/A:N"
+              },
+              "range": ">=4.0.0 <=6.5.6"
+            },
+            {
+              "source": 1109567,
+              "name": "elliptic",
+              "dependency": "elliptic",
+              "title": "Elliptic's ECDSA missing check for whether leading bit of r and s is zero",
+              "url": "https://github.com/advisories/GHSA-977x-g7h5-7qgw",
+              "severity": "low",
+              "cwe": [
+                "CWE-130"
+              ],
+              "cvss": {
+                "score": 5.3,
+                "vectorString": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:L/I:N/A:N"
+              },
+              "range": ">=2.0.0 <=6.5.6"
+            },
+            {
+              "source": 1109568,
+              "name": "elliptic",
+              "dependency": "elliptic",
+              "title": "Elliptic allows BER-encoded signatures",
+              "url": "https://github.com/advisories/GHSA-49q7-c7j4-3p7m",
+              "severity": "low",
+              "cwe": [
+                "CWE-347"
+              ],
+              "cvss": {
+                "score": 5.3,
+                "vectorString": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:L/I:N/A:N"
+              },
+              "range": ">=5.2.1 <=6.5.6"
+            },
+            {
+              "source": 1111036,
+              "name": "elliptic",
+              "dependency": "elliptic",
+              "title": "Valid ECDSA signatures erroneously rejected in Elliptic",
+              "url": "https://github.com/advisories/GHSA-fc9h-whq2-v747",
+              "severity": "low",
+              "cwe": [
+                "CWE-347"
+              ],
+              "cvss": {
+                "score": 4.8,
+                "vectorString": "CVSS:3.1/AV:N/AC:H/PR:N/UI:N/S:U/C:N/I:L/A:L"
+              },
+              "range": "<6.6.0"
+            },
+            {
+              "source": 1111037,
+              "name": "elliptic",
+              "dependency": "elliptic",
+              "title": "Elliptic's verify function omits uniqueness validation",
+              "url": "https://github.com/advisories/GHSA-434g-2637-qmqr",
+              "severity": "low",
+              "cwe": [
+                "CWE-347"
+              ],
+              "cvss": {
+                "score": 5.3,
+                "vectorString": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:N/I:L/A:N"
+              },
+              "range": "<6.5.6"
+            },
+            {
+              "source": 1112030,
+              "name": "elliptic",
+              "dependency": "elliptic",
+              "title": "Elliptic Uses a Cryptographic Primitive with a Risky Implementation",
+              "url": "https://github.com/advisories/GHSA-848j-6mx2-7j84",
+              "severity": "low",
+              "cwe": [
+                "CWE-1240"
+              ],
+              "cvss": {
+                "score": 5.6,
+                "vectorString": "CVSS:3.1/AV:N/AC:H/PR:N/UI:N/S:U/C:L/I:L/A:L"
+              },
+              "range": "<=6.6.1"
+            }
+          ],
+          "effects": [],
+          "range": "*",
+          "nodes": [
+            "node_modules/elliptic"
+          ],
+          "fixAvailable": {
+            "name": "elliptic",
+            "version": "6.6.1",
+            "isSemVerMajor": false
+          }
+        }
+      },
+      "metadata": {
+        "vulnerabilities": {
+          "info": 0,
+          "low": 0,
+          "moderate": 0,
+          "high": 0,
+          "critical": 1,
+          "total": 1
+        },
+        "dependencies": {
+          "prod": 10,
+          "dev": 0,
+          "optional": 0,
+          "peer": 0,
+          "peerOptional": 0,
+          "total": 9
+        }
+      }
+    },
+    "after": {
+      "auditReportVersion": 2,
+      "vulnerabilities": {
+        "elliptic": {
+          "name": "elliptic",
+          "severity": "low",
+          "isDirect": true,
+          "via": [
+            {
+              "source": 1112030,
+              "name": "elliptic",
+              "dependency": "elliptic",
+              "title": "Elliptic Uses a Cryptographic Primitive with a Risky Implementation",
+              "url": "https://github.com/advisories/GHSA-848j-6mx2-7j84",
+              "severity": "low",
+              "cwe": [
+                "CWE-1240"
+              ],
+              "cvss": {
+                "score": 5.6,
+                "vectorString": "CVSS:3.1/AV:N/AC:H/PR:N/UI:N/S:U/C:L/I:L/A:L"
+              },
+              "range": "<=6.6.1"
+            }
+          ],
+          "effects": [],
+          "range": "*",
+          "nodes": [
+            "node_modules/elliptic"
+          ],
+          "fixAvailable": false
+        }
+      },
+      "metadata": {
+        "vulnerabilities": {
+          "info": 0,
+          "low": 1,
+          "moderate": 0,
+          "high": 0,
+          "critical": 0,
+          "total": 1
+        },
+        "dependencies": {
+          "prod": 10,
+          "dev": 0,
+          "optional": 0,
+          "peer": 0,
+          "peerOptional": 0,
+          "total": 9
+        }
+      }
+    }
+  },
+  "osv_version_queries": [
+    {
+      "advisories": [
+        {
+          "id": "GHSA-378v-28hj-76wf",
+          "aliases": [
+            "CVE-2026-2739"
+          ],
+          "summary": "bn.js affected by an infinite loop",
+          "severity": [
+            {
+              "type": "CVSS_V3",
+              "score": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:N/I:N/A:L"
+            },
+            {
+              "type": "CVSS_V4",
+              "score": "CVSS:4.0/AV:N/AC:L/AT:N/PR:N/UI:N/VC:N/VI:N/VA:L/SC:N/SI:N/SA:N/E:P"
+            }
+          ],
+          "affected": [
+            {
+              "package": {
+                "name": "bn.js",
+                "ecosystem": "npm",
+                "purl": "pkg:npm/bn.js"
+              },
+              "ranges": [
+                {
+                  "type": "SEMVER",
+                  "events": [
+                    {
+                      "introduced": "0"
+                    },
+                    {
+                      "fixed": "4.12.3"
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "package": {
+                "name": "bn.js",
+                "ecosystem": "npm",
+                "purl": "pkg:npm/bn.js"
+              },
+              "ranges": [
+                {
+                  "type": "SEMVER",
+                  "events": [
+                    {
+                      "introduced": "5.0.0"
+                    },
+                    {
+                      "fixed": "5.2.3"
+                    }
+                  ]
+                }
+              ]
+            }
+          ],
+          "url": "https://osv.dev/vulnerability/GHSA-378v-28hj-76wf"
+        }
+      ],
+      "query": {
+        "package": {
+          "ecosystem": "npm",
+          "name": "bn.js"
+        },
+        "version": "4.12.2"
+      }
+    },
+    {
+      "advisories": [],
+      "query": {
+        "package": {
+          "ecosystem": "npm",
+          "name": "bn.js"
+        },
+        "version": "4.12.5"
+      }
+    },
+    {
+      "advisories": [],
+      "query": {
+        "package": {
+          "ecosystem": "Maven",
+          "name": "com.linecorp.armeria:armeria"
+        },
+        "version": "1.41.1"
+      }
+    },
+    {
+      "advisories": [
+        {
+          "id": "GHSA-434g-2637-qmqr",
+          "aliases": [
+            "CVE-2024-48949"
+          ],
+          "summary": "Elliptic's verify function omits uniqueness validation",
+          "severity": [
+            {
+              "type": "CVSS_V3",
+              "score": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:N/I:L/A:N"
+            },
+            {
+              "type": "CVSS_V4",
+              "score": "CVSS:4.0/AV:N/AC:L/AT:N/PR:N/UI:N/VC:N/VI:L/VA:N/SC:N/SI:N/SA:N/E:U"
+            }
+          ],
+          "affected": [
+            {
+              "package": {
+                "name": "elliptic",
+                "ecosystem": "npm",
+                "purl": "pkg:npm/elliptic"
+              },
+              "ranges": [
+                {
+                  "type": "SEMVER",
+                  "events": [
+                    {
+                      "introduced": "0"
+                    },
+                    {
+                      "fixed": "6.5.6"
+                    }
+                  ]
+                }
+              ]
+            }
+          ],
+          "url": "https://osv.dev/vulnerability/GHSA-434g-2637-qmqr"
+        },
+        {
+          "id": "GHSA-49q7-c7j4-3p7m",
+          "aliases": [
+            "CVE-2024-42461"
+          ],
+          "summary": "Elliptic allows BER-encoded signatures",
+          "severity": [
+            {
+              "type": "CVSS_V3",
+              "score": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:L/I:N/A:N"
+            },
+            {
+              "type": "CVSS_V4",
+              "score": "CVSS:4.0/AV:N/AC:L/AT:N/PR:N/UI:N/VC:L/VI:N/VA:N/SC:N/SI:N/SA:N/E:U"
+            }
+          ],
+          "affected": [
+            {
+              "package": {
+                "name": "elliptic",
+                "ecosystem": "npm",
+                "purl": "pkg:npm/elliptic"
+              },
+              "ranges": [
+                {
+                  "type": "SEMVER",
+                  "events": [
+                    {
+                      "introduced": "5.2.1"
+                    },
+                    {
+                      "fixed": "6.5.7"
+                    }
+                  ]
+                }
+              ]
+            }
+          ],
+          "url": "https://osv.dev/vulnerability/GHSA-49q7-c7j4-3p7m"
+        },
+        {
+          "id": "GHSA-848j-6mx2-7j84",
+          "aliases": [
+            "CVE-2025-14505"
+          ],
+          "summary": "Elliptic Uses a Cryptographic Primitive with a Risky Implementation",
+          "severity": [
+            {
+              "type": "CVSS_V3",
+              "score": "CVSS:3.1/AV:N/AC:H/PR:N/UI:N/S:U/C:L/I:L/A:L"
+            },
+            {
+              "type": "CVSS_V4",
+              "score": "CVSS:4.0/AV:N/AC:L/AT:P/PR:N/UI:N/VC:L/VI:L/VA:L/SC:N/SI:N/SA:N/E:P"
+            }
+          ],
+          "affected": [
+            {
+              "package": {
+                "name": "elliptic",
+                "ecosystem": "npm",
+                "purl": "pkg:npm/elliptic"
+              },
+              "ranges": [
+                {
+                  "type": "SEMVER",
+                  "events": [
+                    {
+                      "introduced": "0"
+                    },
+                    {
+                      "last_affected": "6.6.1"
+                    }
+                  ]
+                }
+              ]
+            }
+          ],
+          "url": "https://osv.dev/vulnerability/GHSA-848j-6mx2-7j84"
+        },
+        {
+          "id": "GHSA-977x-g7h5-7qgw",
+          "aliases": [
+            "CVE-2024-42460"
+          ],
+          "summary": "Elliptic's ECDSA missing check for whether leading bit of r and s is zero",
+          "severity": [
+            {
+              "type": "CVSS_V3",
+              "score": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:L/I:N/A:N"
+            },
+            {
+              "type": "CVSS_V4",
+              "score": "CVSS:4.0/AV:N/AC:L/AT:N/PR:N/UI:N/VC:L/VI:N/VA:N/SC:N/SI:N/SA:N/E:U"
+            }
+          ],
+          "affected": [
+            {
+              "package": {
+                "name": "elliptic",
+                "ecosystem": "npm",
+                "purl": "pkg:npm/elliptic"
+              },
+              "ranges": [
+                {
+                  "type": "SEMVER",
+                  "events": [
+                    {
+                      "introduced": "2.0.0"
+                    },
+                    {
+                      "fixed": "6.5.7"
+                    }
+                  ]
+                }
+              ]
+            }
+          ],
+          "url": "https://osv.dev/vulnerability/GHSA-977x-g7h5-7qgw"
+        },
+        {
+          "id": "GHSA-f7q4-pwc6-w24p",
+          "aliases": [
+            "CVE-2024-42459"
+          ],
+          "summary": "Elliptic's EDDSA missing signature length check",
+          "severity": [
+            {
+              "type": "CVSS_V3",
+              "score": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:L/I:N/A:N"
+            },
+            {
+              "type": "CVSS_V4",
+              "score": "CVSS:4.0/AV:N/AC:L/AT:N/PR:N/UI:N/VC:L/VI:N/VA:N/SC:N/SI:N/SA:N/E:U"
+            }
+          ],
+          "affected": [
+            {
+              "package": {
+                "name": "elliptic",
+                "ecosystem": "npm",
+                "purl": "pkg:npm/elliptic"
+              },
+              "ranges": [
+                {
+                  "type": "SEMVER",
+                  "events": [
+                    {
+                      "introduced": "4.0.0"
+                    },
+                    {
+                      "fixed": "6.5.7"
+                    }
+                  ]
+                }
+              ]
+            }
+          ],
+          "url": "https://osv.dev/vulnerability/GHSA-f7q4-pwc6-w24p"
+        },
+        {
+          "id": "GHSA-fc9h-whq2-v747",
+          "aliases": [
+            "CVE-2024-48948"
+          ],
+          "summary": "Valid ECDSA signatures erroneously rejected in Elliptic",
+          "severity": [
+            {
+              "type": "CVSS_V3",
+              "score": "CVSS:3.1/AV:N/AC:H/PR:N/UI:N/S:U/C:N/I:L/A:L"
+            },
+            {
+              "type": "CVSS_V4",
+              "score": "CVSS:4.0/AV:N/AC:H/AT:P/PR:N/UI:P/VC:N/VI:L/VA:L/SC:N/SI:N/SA:N"
+            }
+          ],
+          "affected": [
+            {
+              "package": {
+                "name": "elliptic",
+                "ecosystem": "npm",
+                "purl": "pkg:npm/elliptic"
+              },
+              "ranges": [
+                {
+                  "type": "SEMVER",
+                  "events": [
+                    {
+                      "introduced": "0"
+                    },
+                    {
+                      "fixed": "6.6.0"
+                    }
+                  ]
+                }
+              ]
+            }
+          ],
+          "url": "https://osv.dev/vulnerability/GHSA-fc9h-whq2-v747"
+        },
+        {
+          "id": "GHSA-vjh7-7g9h-fjfh",
+          "summary": "Elliptic's private key extraction in ECDSA upon signing a malformed input (e.g. a string)",
+          "severity": [
+            {
+              "type": "CVSS_V4",
+              "score": "CVSS:4.0/AV:N/AC:L/AT:P/PR:N/UI:N/VC:H/VI:N/VA:N/SC:H/SI:H/SA:N"
+            }
+          ],
+          "affected": [
+            {
+              "package": {
+                "name": "elliptic",
+                "ecosystem": "npm",
+                "purl": "pkg:npm/elliptic"
+              },
+              "ranges": [
+                {
+                  "type": "SEMVER",
+                  "events": [
+                    {
+                      "introduced": "0"
+                    },
+                    {
+                      "fixed": "6.6.1"
+                    }
+                  ]
+                }
+              ]
+            }
+          ],
+          "url": "https://osv.dev/vulnerability/GHSA-vjh7-7g9h-fjfh"
+        }
+      ],
+      "query": {
+        "package": {
+          "ecosystem": "npm",
+          "name": "elliptic"
+        },
+        "version": "6.5.4"
+      }
+    },
+    {
+      "advisories": [
+        {
+          "id": "GHSA-848j-6mx2-7j84",
+          "aliases": [
+            "CVE-2025-14505"
+          ],
+          "summary": "Elliptic Uses a Cryptographic Primitive with a Risky Implementation",
+          "severity": [
+            {
+              "type": "CVSS_V3",
+              "score": "CVSS:3.1/AV:N/AC:H/PR:N/UI:N/S:U/C:L/I:L/A:L"
+            },
+            {
+              "type": "CVSS_V4",
+              "score": "CVSS:4.0/AV:N/AC:L/AT:P/PR:N/UI:N/VC:L/VI:L/VA:L/SC:N/SI:N/SA:N/E:P"
+            }
+          ],
+          "affected": [
+            {
+              "package": {
+                "name": "elliptic",
+                "ecosystem": "npm",
+                "purl": "pkg:npm/elliptic"
+              },
+              "ranges": [
+                {
+                  "type": "SEMVER",
+                  "events": [
+                    {
+                      "introduced": "0"
+                    },
+                    {
+                      "last_affected": "6.6.1"
+                    }
+                  ]
+                }
+              ]
+            }
+          ],
+          "url": "https://osv.dev/vulnerability/GHSA-848j-6mx2-7j84"
+        }
+      ],
+      "query": {
+        "package": {
+          "ecosystem": "npm",
+          "name": "elliptic"
+        },
+        "version": "6.6.1"
+      }
+    },
+    {
+      "advisories": [],
+      "query": {
+        "package": {
+          "ecosystem": "Maven",
+          "name": "io.netty:netty-handler"
+        },
+        "version": "4.2.18.Final"
+      }
+    },
+    {
+      "advisories": [
+        {
+          "id": "GHSA-3qp7-7mw8-wx86",
+          "aliases": [
+            "CVE-2026-44249"
+          ],
+          "summary": "Netty has an IPv6 Subnet Filter Bypass via Incorrect Comparator Masking",
+          "severity": [
+            {
+              "type": "CVSS_V3",
+              "score": "CVSS:3.1/AV:N/AC:H/PR:N/UI:N/S:U/C:H/I:H/A:H"
+            }
+          ],
+          "affected": [
+            {
+              "package": {
+                "name": "io.netty:netty-handler",
+                "ecosystem": "Maven",
+                "purl": "pkg:maven/io.netty/netty-handler"
+              },
+              "ranges": [
+                {
+                  "type": "ECOSYSTEM",
+                  "events": [
+                    {
+                      "introduced": "4.2.0.Final"
+                    },
+                    {
+                      "fixed": "4.2.15.Final"
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "package": {
+                "name": "io.netty:netty-handler",
+                "ecosystem": "Maven",
+                "purl": "pkg:maven/io.netty/netty-handler"
+              },
+              "ranges": [
+                {
+                  "type": "ECOSYSTEM",
+                  "events": [
+                    {
+                      "introduced": "0"
+                    },
+                    {
+                      "fixed": "4.1.135.Final"
+                    }
+                  ]
+                }
+              ]
+            }
+          ],
+          "url": "https://osv.dev/vulnerability/GHSA-3qp7-7mw8-wx86"
+        },
+        {
+          "id": "GHSA-c4c3-7fpv-j4q5",
+          "aliases": [
+            "CVE-2026-75595"
+          ],
+          "summary": "Netty: SNI Routing Bypass via Fragmented TLS ClientHello Causing Fallback to Default SslContext",
+          "severity": [
+            {
+              "type": "CVSS_V4",
+              "score": "CVSS:4.0/AV:N/AC:L/AT:P/PR:N/UI:N/VC:H/VI:H/VA:N/SC:N/SI:N/SA:N"
+            }
+          ],
+          "affected": [
+            {
+              "package": {
+                "name": "io.netty:netty-handler",
+                "ecosystem": "Maven",
+                "purl": "pkg:maven/io.netty/netty-handler"
+              },
+              "ranges": [
+                {
+                  "type": "ECOSYSTEM",
+                  "events": [
+                    {
+                      "introduced": "4.2.0.Final"
+                    },
+                    {
+                      "fixed": "4.2.17.Final"
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "package": {
+                "name": "io.netty:netty-handler",
+                "ecosystem": "Maven",
+                "purl": "pkg:maven/io.netty/netty-handler"
+              },
+              "ranges": [
+                {
+                  "type": "ECOSYSTEM",
+                  "events": [
+                    {
+                      "introduced": "0"
+                    },
+                    {
+                      "fixed": "4.1.137.Final"
+                    }
+                  ]
+                }
+              ]
+            }
+          ],
+          "url": "https://osv.dev/vulnerability/GHSA-c4c3-7fpv-j4q5"
+        },
+        {
+          "id": "GHSA-c653-97m9-rcg9",
+          "aliases": [
+            "CVE-2026-50010"
+          ],
+          "summary": "Netty: Wrapping plain trust manager silently disables hostname verification",
+          "severity": [
+            {
+              "type": "CVSS_V3",
+              "score": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:N/A:N"
+            }
+          ],
+          "affected": [
+            {
+              "package": {
+                "name": "io.netty:netty-handler",
+                "ecosystem": "Maven",
+                "purl": "pkg:maven/io.netty/netty-handler"
+              },
+              "ranges": [
+                {
+                  "type": "ECOSYSTEM",
+                  "events": [
+                    {
+                      "introduced": "4.2.0.Final"
+                    },
+                    {
+                      "fixed": "4.2.15.Final"
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "package": {
+                "name": "io.netty:netty-handler",
+                "ecosystem": "Maven",
+                "purl": "pkg:maven/io.netty/netty-handler"
+              },
+              "ranges": [
+                {
+                  "type": "ECOSYSTEM",
+                  "events": [
+                    {
+                      "introduced": "0"
+                    },
+                    {
+                      "fixed": "4.1.135.Final"
+                    }
+                  ]
+                }
+              ]
+            }
+          ],
+          "url": "https://osv.dev/vulnerability/GHSA-c653-97m9-rcg9"
+        },
+        {
+          "id": "GHSA-fccg-mwvh-qqg4",
+          "aliases": [
+            "CVE-2026-75596"
+          ],
+          "summary": "Netty: Fragmented ClientHello records trigger quadratic pre-handshake reassembly in default SNI parsing",
+          "severity": [
+            {
+              "type": "CVSS_V4",
+              "score": "CVSS:4.0/AV:N/AC:L/AT:N/PR:N/UI:N/VC:N/VI:N/VA:L/SC:N/SI:N/SA:N"
+            }
+          ],
+          "affected": [
+            {
+              "package": {
+                "name": "io.netty:netty-handler",
+                "ecosystem": "Maven",
+                "purl": "pkg:maven/io.netty/netty-handler"
+              },
+              "ranges": [
+                {
+                  "type": "ECOSYSTEM",
+                  "events": [
+                    {
+                      "introduced": "4.2.0.Final"
+                    },
+                    {
+                      "fixed": "4.2.17.Final"
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "package": {
+                "name": "io.netty:netty-handler",
+                "ecosystem": "Maven",
+                "purl": "pkg:maven/io.netty/netty-handler"
+              },
+              "ranges": [
+                {
+                  "type": "ECOSYSTEM",
+                  "events": [
+                    {
+                      "introduced": "0"
+                    },
+                    {
+                      "fixed": "4.1.137.Final"
+                    }
+                  ]
+                }
+              ]
+            }
+          ],
+          "url": "https://osv.dev/vulnerability/GHSA-fccg-mwvh-qqg4"
+        },
+        {
+          "id": "GHSA-x4gw-5cx5-pgmh",
+          "aliases": [
+            "CVE-2026-45416"
+          ],
+          "summary": "Netty: SNI handler pre-allocates up to 16 MiB from nine attacker bytes",
+          "severity": [
+            {
+              "type": "CVSS_V3",
+              "score": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:N/I:N/A:H"
+            }
+          ],
+          "affected": [
+            {
+              "package": {
+                "name": "io.netty:netty-handler",
+                "ecosystem": "Maven",
+                "purl": "pkg:maven/io.netty/netty-handler"
+              },
+              "ranges": [
+                {
+                  "type": "ECOSYSTEM",
+                  "events": [
+                    {
+                      "introduced": "4.2.0.Final"
+                    },
+                    {
+                      "fixed": "4.2.15.Final"
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "package": {
+                "name": "io.netty:netty-handler",
+                "ecosystem": "Maven",
+                "purl": "pkg:maven/io.netty/netty-handler"
+              },
+              "ranges": [
+                {
+                  "type": "ECOSYSTEM",
+                  "events": [
+                    {
+                      "introduced": "0"
+                    },
+                    {
+                      "fixed": "4.1.135.Final"
+                    }
+                  ]
+                }
+              ]
+            }
+          ],
+          "url": "https://osv.dev/vulnerability/GHSA-x4gw-5cx5-pgmh"
+        }
+      ],
+      "query": {
+        "package": {
+          "ecosystem": "Maven",
+          "name": "io.netty:netty-handler"
+        },
+        "version": "4.2.4.Final"
+      }
+    },
+    {
+      "advisories": [],
+      "query": {
+        "package": {
+          "ecosystem": "Maven",
+          "name": "io.netty:netty-tcnative-boringssl-static"
+        },
+        "version": "2.0.72.Final"
+      }
+    },
+    {
+      "advisories": [],
+      "query": {
+        "package": {
+          "ecosystem": "Maven",
+          "name": "io.netty:netty-tcnative-boringssl-static"
+        },
+        "version": "2.0.84.Final"
+      }
+    },
+    {
+      "advisories": [],
+      "query": {
+        "package": {
+          "ecosystem": "Maven",
+          "name": "io.netty:netty-tcnative-classes"
+        },
+        "version": "2.0.72.Final"
+      }
+    },
+    {
+      "advisories": [],
+      "query": {
+        "package": {
+          "ecosystem": "Maven",
+          "name": "io.netty:netty-tcnative-classes"
+        },
+        "version": "2.0.84.Final"
+      }
+    },
+    {
+      "advisories": [],
+      "query": {
+        "package": {
+          "ecosystem": "npm",
+          "name": "js-sha3"
+        },
+        "version": "0.8.0"
+      }
+    },
+    {
+      "advisories": [
+        {
+          "id": "GHSA-4h8f-2wvx-gg5w",
+          "aliases": [
+            "CVE-2024-34447"
+          ],
+          "summary": "Bouncy Castle Java Cryptography API vulnerable to DNS poisoning",
+          "severity": [
+            {
+              "type": "CVSS_V3",
+              "score": "CVSS:3.1/AV:N/AC:H/PR:N/UI:N/S:U/C:N/I:H/A:N"
+            }
+          ],
+          "affected": [
+            {
+              "package": {
+                "name": "org.bouncycastle:bcprov-jdk18on",
+                "ecosystem": "Maven",
+                "purl": "pkg:maven/org.bouncycastle/bcprov-jdk18on"
+              },
+              "ranges": [
+                {
+                  "type": "ECOSYSTEM",
+                  "events": [
+                    {
+                      "introduced": "1.61"
+                    },
+                    {
+                      "fixed": "1.78"
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "package": {
+                "name": "org.bouncycastle:bcprov-jdk15to18",
+                "ecosystem": "Maven",
+                "purl": "pkg:maven/org.bouncycastle/bcprov-jdk15to18"
+              },
+              "ranges": [
+                {
+                  "type": "ECOSYSTEM",
+                  "events": [
+                    {
+                      "introduced": "1.61"
+                    },
+                    {
+                      "fixed": "1.78"
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "package": {
+                "name": "org.bouncycastle:bcprov-jdk14",
+                "ecosystem": "Maven",
+                "purl": "pkg:maven/org.bouncycastle/bcprov-jdk14"
+              },
+              "ranges": [
+                {
+                  "type": "ECOSYSTEM",
+                  "events": [
+                    {
+                      "introduced": "1.61"
+                    },
+                    {
+                      "fixed": "1.78"
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "package": {
+                "name": "org.bouncycastle:bcprov-jdk12",
+                "ecosystem": "Maven",
+                "purl": "pkg:maven/org.bouncycastle/bcprov-jdk12"
+              },
+              "ranges": [
+                {
+                  "type": "ECOSYSTEM",
+                  "events": [
+                    {
+                      "introduced": "1.61"
+                    },
+                    {
+                      "fixed": "1.78"
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "package": {
+                "name": "org.bouncycastle:bctls-fips",
+                "ecosystem": "Maven",
+                "purl": "pkg:maven/org.bouncycastle/bctls-fips"
+              },
+              "ranges": [
+                {
+                  "type": "ECOSYSTEM",
+                  "events": [
+                    {
+                      "introduced": "0"
+                    },
+                    {
+                      "fixed": "1.0.19"
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "package": {
+                "name": "org.bouncycastle:bcprov-lts8on",
+                "ecosystem": "Maven",
+                "purl": "pkg:maven/org.bouncycastle/bcprov-lts8on"
+              },
+              "ranges": [
+                {
+                  "type": "ECOSYSTEM",
+                  "events": [
+                    {
+                      "introduced": "0"
+                    },
+                    {
+                      "fixed": "2.73.6"
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "package": {
+                "name": "org.bouncycastle:bcprov-jdk15on",
+                "ecosystem": "Maven",
+                "purl": "pkg:maven/org.bouncycastle/bcprov-jdk15on"
+              },
+              "ranges": [
+                {
+                  "type": "ECOSYSTEM",
+                  "events": [
+                    {
+                      "introduced": "1.61"
+                    },
+                    {
+                      "fixed": "1.78"
+                    }
+                  ]
+                }
+              ]
+            }
+          ],
+          "url": "https://osv.dev/vulnerability/GHSA-4h8f-2wvx-gg5w"
+        },
+        {
+          "id": "GHSA-8xfc-gm6g-vgpv",
+          "aliases": [
+            "CVE-2024-29857"
+          ],
+          "summary": "Bouncy Castle certificate parsing issues cause high CPU usage during parameter evaluation.",
+          "severity": [
+            {
+              "type": "CVSS_V3",
+              "score": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:N/I:N/A:L"
+            }
+          ],
+          "affected": [
+            {
+              "package": {
+                "name": "org.bouncycastle:bcprov-jdk18on",
+                "ecosystem": "Maven",
+                "purl": "pkg:maven/org.bouncycastle/bcprov-jdk18on"
+              },
+              "ranges": [
+                {
+                  "type": "ECOSYSTEM",
+                  "events": [
+                    {
+                      "introduced": "0"
+                    },
+                    {
+                      "fixed": "1.78"
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "package": {
+                "name": "org.bouncycastle:bcprov-jdk15on",
+                "ecosystem": "Maven",
+                "purl": "pkg:maven/org.bouncycastle/bcprov-jdk15on"
+              },
+              "ranges": [
+                {
+                  "type": "ECOSYSTEM",
+                  "events": [
+                    {
+                      "introduced": "0"
+                    },
+                    {
+                      "fixed": "1.78"
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "package": {
+                "name": "org.bouncycastle:bcprov-jdk15to18",
+                "ecosystem": "Maven",
+                "purl": "pkg:maven/org.bouncycastle/bcprov-jdk15to18"
+              },
+              "ranges": [
+                {
+                  "type": "ECOSYSTEM",
+                  "events": [
+                    {
+                      "introduced": "0"
+                    },
+                    {
+                      "fixed": "1.78"
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "package": {
+                "name": "org.bouncycastle:bcprov-jdk14",
+                "ecosystem": "Maven",
+                "purl": "pkg:maven/org.bouncycastle/bcprov-jdk14"
+              },
+              "ranges": [
+                {
+                  "type": "ECOSYSTEM",
+                  "events": [
+                    {
+                      "introduced": "0"
+                    },
+                    {
+                      "fixed": "1.78"
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "package": {
+                "name": "org.bouncycastle:bctls-jdk18on",
+                "ecosystem": "Maven",
+                "purl": "pkg:maven/org.bouncycastle/bctls-jdk18on"
+              },
+              "ranges": [
+                {
+                  "type": "ECOSYSTEM",
+                  "events": [
+                    {
+                      "introduced": "0"
+                    },
+                    {
+                      "fixed": "1.78"
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "package": {
+                "name": "org.bouncycastle:bctls-jdk14",
+                "ecosystem": "Maven",
+                "purl": "pkg:maven/org.bouncycastle/bctls-jdk14"
+              },
+              "ranges": [
+                {
+                  "type": "ECOSYSTEM",
+                  "events": [
+                    {
+                      "introduced": "0"
+                    },
+                    {
+                      "fixed": "1.78"
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "package": {
+                "name": "org.bouncycastle:bctls-jdk15to18",
+                "ecosystem": "Maven",
+                "purl": "pkg:maven/org.bouncycastle/bctls-jdk15to18"
+              },
+              "ranges": [
+                {
+                  "type": "ECOSYSTEM",
+                  "events": [
+                    {
+                      "introduced": "0"
+                    },
+                    {
+                      "fixed": "1.78"
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "package": {
+                "name": "org.bouncycastle:bc-fips",
+                "ecosystem": "Maven",
+                "purl": "pkg:maven/org.bouncycastle/bc-fips"
+              },
+              "ranges": [
+                {
+                  "type": "ECOSYSTEM",
+                  "events": [
+                    {
+                      "introduced": "0"
+                    },
+                    {
+                      "fixed": "1.0.2.5"
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "package": {
+                "name": "BouncyCastle",
+                "ecosystem": "NuGet",
+                "purl": "pkg:nuget/BouncyCastle"
+              },
+              "ranges": [
+                {
+                  "type": "ECOSYSTEM",
+                  "events": [
+                    {
+                      "introduced": "0"
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "package": {
+                "name": "BouncyCastle.Cryptography",
+                "ecosystem": "NuGet",
+                "purl": "pkg:nuget/BouncyCastle.Cryptography"
+              },
+              "ranges": [
+                {
+                  "type": "ECOSYSTEM",
+                  "events": [
+                    {
+                      "introduced": "0"
+                    },
+                    {
+                      "fixed": "2.3.1"
+                    }
+                  ]
+                }
+              ]
+            }
+          ],
+          "url": "https://osv.dev/vulnerability/GHSA-8xfc-gm6g-vgpv"
+        },
+        {
+          "id": "GHSA-hr8g-6v94-x4m9",
+          "aliases": [
+            "CVE-2023-33201"
+          ],
+          "summary": "Bouncy Castle For Java LDAP injection vulnerability",
+          "severity": [
+            {
+              "type": "CVSS_V3",
+              "score": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:L/I:N/A:N"
+            }
+          ],
+          "affected": [
+            {
+              "package": {
+                "name": "org.bouncycastle:bcprov-jdk18on",
+                "ecosystem": "Maven",
+                "purl": "pkg:maven/org.bouncycastle/bcprov-jdk18on"
+              },
+              "ranges": [
+                {
+                  "type": "ECOSYSTEM",
+                  "events": [
+                    {
+                      "introduced": "0"
+                    },
+                    {
+                      "fixed": "1.74"
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "package": {
+                "name": "org.bouncycastle:bcprov-jdk15to18",
+                "ecosystem": "Maven",
+                "purl": "pkg:maven/org.bouncycastle/bcprov-jdk15to18"
+              },
+              "ranges": [
+                {
+                  "type": "ECOSYSTEM",
+                  "events": [
+                    {
+                      "introduced": "0"
+                    },
+                    {
+                      "fixed": "1.74"
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "package": {
+                "name": "org.bouncycastle:bcprov-jdk14",
+                "ecosystem": "Maven",
+                "purl": "pkg:maven/org.bouncycastle/bcprov-jdk14"
+              },
+              "ranges": [
+                {
+                  "type": "ECOSYSTEM",
+                  "events": [
+                    {
+                      "introduced": "1.49"
+                    },
+                    {
+                      "fixed": "1.74"
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "package": {
+                "name": "org.bouncycastle:bcprov-ext-jdk14",
+                "ecosystem": "Maven",
+                "purl": "pkg:maven/org.bouncycastle/bcprov-ext-jdk14"
+              },
+              "ranges": [
+                {
+                  "type": "ECOSYSTEM",
+                  "events": [
+                    {
+                      "introduced": "1.49"
+                    },
+                    {
+                      "fixed": "1.74"
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "package": {
+                "name": "org.bouncycastle:bcprov-ext-jdk15to18",
+                "ecosystem": "Maven",
+                "purl": "pkg:maven/org.bouncycastle/bcprov-ext-jdk15to18"
+              },
+              "ranges": [
+                {
+                  "type": "ECOSYSTEM",
+                  "events": [
+                    {
+                      "introduced": "0"
+                    },
+                    {
+                      "fixed": "1.74"
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "package": {
+                "name": "org.bouncycastle:bcprov-ext-jdk18on",
+                "ecosystem": "Maven",
+                "purl": "pkg:maven/org.bouncycastle/bcprov-ext-jdk18on"
+              },
+              "ranges": [
+                {
+                  "type": "ECOSYSTEM",
+                  "events": [
+                    {
+                      "introduced": "0"
+                    },
+                    {
+                      "fixed": "1.74"
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "package": {
+                "name": "org.bouncycastle:bcprov-debug-jdk14",
+                "ecosystem": "Maven",
+                "purl": "pkg:maven/org.bouncycastle/bcprov-debug-jdk14"
+              },
+              "ranges": [
+                {
+                  "type": "ECOSYSTEM",
+                  "events": [
+                    {
+                      "introduced": "1.49"
+                    },
+                    {
+                      "fixed": "1.74"
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "package": {
+                "name": "org.bouncycastle:bcprov-debug-jdk15to18",
+                "ecosystem": "Maven",
+                "purl": "pkg:maven/org.bouncycastle/bcprov-debug-jdk15to18"
+              },
+              "ranges": [
+                {
+                  "type": "ECOSYSTEM",
+                  "events": [
+                    {
+                      "introduced": "0"
+                    },
+                    {
+                      "fixed": "1.74"
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "package": {
+                "name": "org.bouncycastle:bcprov-debug-jdk18on",
+                "ecosystem": "Maven",
+                "purl": "pkg:maven/org.bouncycastle/bcprov-debug-jdk18on"
+              },
+              "ranges": [
+                {
+                  "type": "ECOSYSTEM",
+                  "events": [
+                    {
+                      "introduced": "0"
+                    },
+                    {
+                      "fixed": "1.74"
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "package": {
+                "name": "org.bouncycastle:bcprov-jdk15on",
+                "ecosystem": "Maven",
+                "purl": "pkg:maven/org.bouncycastle/bcprov-jdk15on"
+              },
+              "ranges": [
+                {
+                  "type": "ECOSYSTEM",
+                  "events": [
+                    {
+                      "introduced": "1.49"
+                    },
+                    {
+                      "last_affected": "1.70"
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "package": {
+                "name": "org.bouncycastle:bcprov-ext-jdk15on",
+                "ecosystem": "Maven",
+                "purl": "pkg:maven/org.bouncycastle/bcprov-ext-jdk15on"
+              },
+              "ranges": [
+                {
+                  "type": "ECOSYSTEM",
+                  "events": [
+                    {
+                      "introduced": "1.49"
+                    },
+                    {
+                      "last_affected": "1.70"
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "package": {
+                "name": "org.bouncycastle:bcprov-debug-jdk15on",
+                "ecosystem": "Maven",
+                "purl": "pkg:maven/org.bouncycastle/bcprov-debug-jdk15on"
+              },
+              "ranges": [
+                {
+                  "type": "ECOSYSTEM",
+                  "events": [
+                    {
+                      "introduced": "1.49"
+                    },
+                    {
+                      "last_affected": "1.70"
+                    }
+                  ]
+                }
+              ]
+            }
+          ],
+          "url": "https://osv.dev/vulnerability/GHSA-hr8g-6v94-x4m9"
+        },
+        {
+          "id": "GHSA-v435-xc8x-wvr9",
+          "aliases": [
+            "CVE-2024-30171"
+          ],
+          "summary": "Bouncy Castle affected by timing side-channel for RSA key exchange (\"The Marvin Attack\")",
+          "severity": [
+            {
+              "type": "CVSS_V3",
+              "score": "CVSS:3.1/AV:N/AC:H/PR:N/UI:N/S:U/C:H/I:N/A:N"
+            }
+          ],
+          "affected": [
+            {
+              "package": {
+                "name": "org.bouncycastle:bctls-fips",
+                "ecosystem": "Maven",
+                "purl": "pkg:maven/org.bouncycastle/bctls-fips"
+              },
+              "ranges": [
+                {
+                  "type": "ECOSYSTEM",
+                  "events": [
+                    {
+                      "introduced": "0"
+                    },
+                    {
+                      "fixed": "1.0.19"
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "package": {
+                "name": "org.bouncycastle:bcprov-jdk18on",
+                "ecosystem": "Maven",
+                "purl": "pkg:maven/org.bouncycastle/bcprov-jdk18on"
+              },
+              "ranges": [
+                {
+                  "type": "ECOSYSTEM",
+                  "events": [
+                    {
+                      "introduced": "0"
+                    },
+                    {
+                      "fixed": "1.78"
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "package": {
+                "name": "org.bouncycastle:bcprov-jdk15on",
+                "ecosystem": "Maven",
+                "purl": "pkg:maven/org.bouncycastle/bcprov-jdk15on"
+              },
+              "ranges": [
+                {
+                  "type": "ECOSYSTEM",
+                  "events": [
+                    {
+                      "introduced": "0"
+                    },
+                    {
+                      "fixed": "1.78"
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "package": {
+                "name": "org.bouncycastle:bcprov-jdk15to18",
+                "ecosystem": "Maven",
+                "purl": "pkg:maven/org.bouncycastle/bcprov-jdk15to18"
+              },
+              "ranges": [
+                {
+                  "type": "ECOSYSTEM",
+                  "events": [
+                    {
+                      "introduced": "0"
+                    },
+                    {
+                      "fixed": "1.78"
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "package": {
+                "name": "org.bouncycastle:bcprov-jdk14",
+                "ecosystem": "Maven",
+                "purl": "pkg:maven/org.bouncycastle/bcprov-jdk14"
+              },
+              "ranges": [
+                {
+                  "type": "ECOSYSTEM",
+                  "events": [
+                    {
+                      "introduced": "0"
+                    },
+                    {
+                      "fixed": "1.78"
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "package": {
+                "name": "org.bouncycastle:bctls-jdk18on",
+                "ecosystem": "Maven",
+                "purl": "pkg:maven/org.bouncycastle/bctls-jdk18on"
+              },
+              "ranges": [
+                {
+                  "type": "ECOSYSTEM",
+                  "events": [
+                    {
+                      "introduced": "0"
+                    },
+                    {
+                      "fixed": "1.78"
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "package": {
+                "name": "org.bouncycastle:bctls-jdk14",
+                "ecosystem": "Maven",
+                "purl": "pkg:maven/org.bouncycastle/bctls-jdk14"
+              },
+              "ranges": [
+                {
+                  "type": "ECOSYSTEM",
+                  "events": [
+                    {
+                      "introduced": "0"
+                    },
+                    {
+                      "fixed": "1.78"
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "package": {
+                "name": "org.bouncycastle:bctls-jdk15to18",
+                "ecosystem": "Maven",
+                "purl": "pkg:maven/org.bouncycastle/bctls-jdk15to18"
+              },
+              "ranges": [
+                {
+                  "type": "ECOSYSTEM",
+                  "events": [
+                    {
+                      "introduced": "0"
+                    },
+                    {
+                      "fixed": "1.78"
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "package": {
+                "name": "BouncyCastle",
+                "ecosystem": "NuGet",
+                "purl": "pkg:nuget/BouncyCastle"
+              },
+              "ranges": [
+                {
+                  "type": "ECOSYSTEM",
+                  "events": [
+                    {
+                      "introduced": "0"
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "package": {
+                "name": "BouncyCastle.Cryptography",
+                "ecosystem": "NuGet",
+                "purl": "pkg:nuget/BouncyCastle.Cryptography"
+              },
+              "ranges": [
+                {
+                  "type": "ECOSYSTEM",
+                  "events": [
+                    {
+                      "introduced": "0"
+                    },
+                    {
+                      "fixed": "2.3.1"
+                    }
+                  ]
+                }
+              ]
+            }
+          ],
+          "url": "https://osv.dev/vulnerability/GHSA-v435-xc8x-wvr9"
+        },
+        {
+          "id": "GHSA-wjxj-5m7g-mg7q",
+          "aliases": [
+            "CVE-2023-33202"
+          ],
+          "summary": "Bouncy Castle Denial of Service (DoS)",
+          "severity": [
+            {
+              "type": "CVSS_V3",
+              "score": "CVSS:3.1/AV:L/AC:L/PR:N/UI:R/S:U/C:N/I:N/A:H"
+            }
+          ],
+          "affected": [
+            {
+              "package": {
+                "name": "org.bouncycastle:bcprov-ext-jdk16",
+                "ecosystem": "Maven",
+                "purl": "pkg:maven/org.bouncycastle/bcprov-ext-jdk16"
+              },
+              "ranges": [
+                {
+                  "type": "ECOSYSTEM",
+                  "events": [
+                    {
+                      "introduced": "0"
+                    },
+                    {
+                      "fixed": "1.73"
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "package": {
+                "name": "org.bouncycastle:bcprov-jdk14",
+                "ecosystem": "Maven",
+                "purl": "pkg:maven/org.bouncycastle/bcprov-jdk14"
+              },
+              "ranges": [
+                {
+                  "type": "ECOSYSTEM",
+                  "events": [
+                    {
+                      "introduced": "0"
+                    },
+                    {
+                      "fixed": "1.73"
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "package": {
+                "name": "org.bouncycastle:bcprov-jdk15",
+                "ecosystem": "Maven",
+                "purl": "pkg:maven/org.bouncycastle/bcprov-jdk15"
+              },
+              "ranges": [
+                {
+                  "type": "ECOSYSTEM",
+                  "events": [
+                    {
+                      "introduced": "0"
+                    },
+                    {
+                      "fixed": "1.73"
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "package": {
+                "name": "org.bouncycastle:bcprov-jdk15to18",
+                "ecosystem": "Maven",
+                "purl": "pkg:maven/org.bouncycastle/bcprov-jdk15to18"
+              },
+              "ranges": [
+                {
+                  "type": "ECOSYSTEM",
+                  "events": [
+                    {
+                      "introduced": "0"
+                    },
+                    {
+                      "fixed": "1.73"
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "package": {
+                "name": "org.bouncycastle:bcprov-jdk16",
+                "ecosystem": "Maven",
+                "purl": "pkg:maven/org.bouncycastle/bcprov-jdk16"
+              },
+              "ranges": [
+                {
+                  "type": "ECOSYSTEM",
+                  "events": [
+                    {
+                      "introduced": "0"
+                    },
+                    {
+                      "fixed": "1.73"
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "package": {
+                "name": "org.bouncycastle:bcprov-jdk15on",
+                "ecosystem": "Maven",
+                "purl": "pkg:maven/org.bouncycastle/bcprov-jdk15on"
+              },
+              "ranges": [
+                {
+                  "type": "ECOSYSTEM",
+                  "events": [
+                    {
+                      "introduced": "0"
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "package": {
+                "name": "org.bouncycastle:bcpkix-jdk18on",
+                "ecosystem": "Maven",
+                "purl": "pkg:maven/org.bouncycastle/bcpkix-jdk18on"
+              },
+              "ranges": [
+                {
+                  "type": "ECOSYSTEM",
+                  "events": [
+                    {
+                      "introduced": "0"
+                    },
+                    {
+                      "fixed": "1.73"
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "package": {
+                "name": "org.bouncycastle:bcprov-ext-jdk15on",
+                "ecosystem": "Maven",
+                "purl": "pkg:maven/org.bouncycastle/bcprov-ext-jdk15on"
+              },
+              "ranges": [
+                {
+                  "type": "ECOSYSTEM",
+                  "events": [
+                    {
+                      "introduced": "0"
+                    },
+                    {
+                      "fixed": "1.73"
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "package": {
+                "name": "org.bouncycastle:bcprov-jdk18on",
+                "ecosystem": "Maven",
+                "purl": "pkg:maven/org.bouncycastle/bcprov-jdk18on"
+              },
+              "ranges": [
+                {
+                  "type": "ECOSYSTEM",
+                  "events": [
+                    {
+                      "introduced": "0"
+                    },
+                    {
+                      "fixed": "1.73"
+                    }
+                  ]
+                }
+              ]
+            }
+          ],
+          "url": "https://osv.dev/vulnerability/GHSA-wjxj-5m7g-mg7q"
+        }
+      ],
+      "query": {
+        "package": {
+          "ecosystem": "Maven",
+          "name": "org.bouncycastle:bcprov-jdk15on"
+        },
+        "version": "1.70"
+      }
+    },
+    {
+      "advisories": [],
+      "query": {
+        "package": {
+          "ecosystem": "Maven",
+          "name": "org.bouncycastle:bcprov-jdk18on"
+        },
+        "version": "1.86"
+      }
+    }
+  ],
+  "selected_tls_closure_osv": [
+    {
+      "query": {
+        "package": {
+          "ecosystem": "Maven",
+          "name": "com.linecorp.armeria:armeria"
+        },
+        "version": "1.41.1"
+      }
+    },
+    {
+      "query": {
+        "package": {
+          "ecosystem": "Maven",
+          "name": "io.netty:netty-buffer"
+        },
+        "version": "4.2.18.Final"
+      }
+    },
+    {
+      "query": {
+        "package": {
+          "ecosystem": "Maven",
+          "name": "io.netty:netty-codec-base"
+        },
+        "version": "4.2.18.Final"
+      }
+    },
+    {
+      "query": {
+        "package": {
+          "ecosystem": "Maven",
+          "name": "io.netty:netty-codec-compression"
+        },
+        "version": "4.2.18.Final"
+      }
+    },
+    {
+      "query": {
+        "package": {
+          "ecosystem": "Maven",
+          "name": "io.netty:netty-codec-dns"
+        },
+        "version": "4.2.18.Final"
+      }
+    },
+    {
+      "query": {
+        "package": {
+          "ecosystem": "Maven",
+          "name": "io.netty:netty-codec-haproxy"
+        },
+        "version": "4.2.18.Final"
+      }
+    },
+    {
+      "query": {
+        "package": {
+          "ecosystem": "Maven",
+          "name": "io.netty:netty-codec-http"
+        },
+        "version": "4.2.18.Final"
+      }
+    },
+    {
+      "query": {
+        "package": {
+          "ecosystem": "Maven",
+          "name": "io.netty:netty-codec-http2"
+        },
+        "version": "4.2.18.Final"
+      }
+    },
+    {
+      "query": {
+        "package": {
+          "ecosystem": "Maven",
+          "name": "io.netty:netty-codec-socks"
+        },
+        "version": "4.2.18.Final"
+      }
+    },
+    {
+      "query": {
+        "package": {
+          "ecosystem": "Maven",
+          "name": "io.netty:netty-common"
+        },
+        "version": "4.2.18.Final"
+      }
+    },
+    {
+      "query": {
+        "package": {
+          "ecosystem": "Maven",
+          "name": "io.netty:netty-handler"
+        },
+        "version": "4.2.18.Final"
+      }
+    },
+    {
+      "query": {
+        "package": {
+          "ecosystem": "Maven",
+          "name": "io.netty:netty-handler-proxy"
+        },
+        "version": "4.2.18.Final"
+      }
+    },
+    {
+      "query": {
+        "package": {
+          "ecosystem": "Maven",
+          "name": "io.netty:netty-resolver"
+        },
+        "version": "4.2.18.Final"
+      }
+    },
+    {
+      "query": {
+        "package": {
+          "ecosystem": "Maven",
+          "name": "io.netty:netty-resolver-dns"
+        },
+        "version": "4.2.18.Final"
+      }
+    },
+    {
+      "query": {
+        "package": {
+          "ecosystem": "Maven",
+          "name": "io.netty:netty-resolver-dns-classes-macos"
+        },
+        "version": "4.2.18.Final"
+      }
+    },
+    {
+      "query": {
+        "package": {
+          "ecosystem": "Maven",
+          "name": "io.netty:netty-resolver-dns-native-macos"
+        },
+        "version": "4.2.18.Final"
+      }
+    },
+    {
+      "query": {
+        "package": {
+          "ecosystem": "Maven",
+          "name": "io.netty:netty-tcnative-boringssl-static"
+        },
+        "version": "2.0.84.Final"
+      }
+    },
+    {
+      "query": {
+        "package": {
+          "ecosystem": "Maven",
+          "name": "io.netty:netty-tcnative-classes"
+        },
+        "version": "2.0.84.Final"
+      }
+    },
+    {
+      "query": {
+        "package": {
+          "ecosystem": "Maven",
+          "name": "io.netty:netty-transport"
+        },
+        "version": "4.2.18.Final"
+      }
+    },
+    {
+      "query": {
+        "package": {
+          "ecosystem": "Maven",
+          "name": "io.netty:netty-transport-classes-epoll"
+        },
+        "version": "4.2.18.Final"
+      }
+    },
+    {
+      "query": {
+        "package": {
+          "ecosystem": "Maven",
+          "name": "io.netty:netty-transport-classes-io_uring"
+        },
+        "version": "4.2.18.Final"
+      }
+    },
+    {
+      "query": {
+        "package": {
+          "ecosystem": "Maven",
+          "name": "io.netty:netty-transport-classes-kqueue"
+        },
+        "version": "4.2.18.Final"
+      }
+    },
+    {
+      "query": {
+        "package": {
+          "ecosystem": "Maven",
+          "name": "io.netty:netty-transport-native-epoll"
+        },
+        "version": "4.2.18.Final"
+      }
+    },
+    {
+      "query": {
+        "package": {
+          "ecosystem": "Maven",
+          "name": "io.netty:netty-transport-native-io_uring"
+        },
+        "version": "4.2.18.Final"
+      }
+    },
+    {
+      "query": {
+        "package": {
+          "ecosystem": "Maven",
+          "name": "io.netty:netty-transport-native-kqueue"
+        },
+        "version": "4.2.18.Final"
+      }
+    },
+    {
+      "query": {
+        "package": {
+          "ecosystem": "Maven",
+          "name": "io.netty:netty-transport-native-unix-common"
+        },
+        "version": "4.2.18.Final"
+      }
+    }
+  ],
+  "source_builds": {
+    "core": {
+      "command": "yarn audit --json",
+      "summary": {
+        "vulnerabilities": {
+          "info": 0,
+          "low": 7,
+          "moderate": 40,
+          "high": 46,
+          "critical": 3
+        },
+        "dependencies": 527,
+        "devDependencies": 0,
+        "optionalDependencies": 0,
+        "totalDependencies": 527
+      },
+      "configuration": {
+        "private": true,
+        "license": "UNLICENSED",
+        "dependencies": {
+          "js-sha3": "0.8.0",
+          "elliptic": "6.6.1",
+          "bn.js": "4.12.5",
+          "@types/elliptic": "6.4.18"
+        },
+        "devDependencies": {
+          "source-map-loader": "2.0.0",
+          "webpack": "5.24.3",
+          "concat-with-sourcemaps": "1.0.7",
+          "webpack-cli": "4.5.0",
+          "@types/node": "18.19.33",
+          "webpack-dev-server": "3.11.2"
+        }
+      },
+      "configuration_sha256": "18958bdbeb1bb4942fc4c3cc25006b82ca1ff239842dd57b3bf8a954f3963ca3",
+      "lock_sha256": "4a11cc4c357cbb4e3319a18d36b017d438ebccd21dbd503c9751b34e2a465eb6",
+      "advisories": [
+        {
+          "id": "GHSA-2328-f5f3-gj25",
+          "package": "node-forge",
+          "severity": "high",
+          "url": "https://github.com/advisories/GHSA-2328-f5f3-gj25",
+          "vulnerable_versions": "<=1.3.3",
+          "patched_versions": ">=1.4.0",
+          "paths": [
+            "webpack-dev-server>selfsigned>node-forge"
+          ],
+          "selected_versions": [
+            "0.10.0"
+          ],
+          "scope": "build-or-types-follow-up"
+        },
+        {
+          "id": "GHSA-23c5-xmqv-rm74",
+          "package": "minimatch",
+          "severity": "high",
+          "url": "https://github.com/advisories/GHSA-23c5-xmqv-rm74",
+          "vulnerable_versions": "<3.1.4",
+          "patched_versions": ">=3.1.4",
+          "paths": [
+            "webpack-dev-server>del>@types/glob>@types/minimatch>minimatch",
+            "webpack-dev-server>del>globby>glob>minimatch"
+          ],
+          "selected_versions": [
+            "10.0.3",
+            "3.1.2"
+          ],
+          "scope": "build-or-types-follow-up"
+        },
+        {
+          "id": "GHSA-2g4f-4pwh-qvx6",
+          "package": "ajv",
+          "severity": "moderate",
+          "url": "https://github.com/advisories/GHSA-2g4f-4pwh-qvx6",
+          "vulnerable_versions": "<6.14.0",
+          "patched_versions": ">=6.14.0",
+          "paths": [
+            "webpack>schema-utils>ajv",
+            "webpack>terser-webpack-plugin>schema-utils>ajv",
+            "webpack>terser-webpack-plugin>schema-utils>ajv-formats>ajv"
+          ],
+          "selected_versions": [
+            "6.12.6",
+            "8.17.1"
+          ],
+          "scope": "build-or-types-follow-up"
+        },
+        {
+          "id": "GHSA-2p57-rm9w-gvfp",
+          "package": "ip",
+          "severity": "high",
+          "url": "https://github.com/advisories/GHSA-2p57-rm9w-gvfp",
+          "vulnerable_versions": "<=2.0.1",
+          "patched_versions": "<0.0.0",
+          "paths": [
+            "webpack-dev-server>bonjour>multicast-dns>dns-packet>ip",
+            "webpack-dev-server>ip"
+          ],
+          "selected_versions": [
+            "1.1.9"
+          ],
+          "scope": "build-or-types-follow-up"
+        },
+        {
+          "id": "GHSA-2r2c-g63r-vccr",
+          "package": "node-forge",
+          "severity": "moderate",
+          "url": "https://github.com/advisories/GHSA-2r2c-g63r-vccr",
+          "vulnerable_versions": "<1.3.0",
+          "patched_versions": ">=1.3.0",
+          "paths": [
+            "webpack-dev-server>selfsigned>node-forge"
+          ],
+          "selected_versions": [
+            "0.10.0"
+          ],
+          "scope": "build-or-types-follow-up"
+        },
+        {
+          "id": "GHSA-37ch-88jc-xwx2",
+          "package": "path-to-regexp",
+          "severity": "high",
+          "url": "https://github.com/advisories/GHSA-37ch-88jc-xwx2",
+          "vulnerable_versions": "<0.1.13",
+          "patched_versions": ">=0.1.13",
+          "paths": [
+            "webpack-dev-server>express>path-to-regexp"
+          ],
+          "selected_versions": [
+            "0.1.12"
+          ],
+          "scope": "build-or-types-follow-up"
+        },
+        {
+          "id": "GHSA-3jxr-9vmj-r5cp",
+          "package": "brace-expansion",
+          "severity": "high",
+          "url": "https://github.com/advisories/GHSA-3jxr-9vmj-r5cp",
+          "vulnerable_versions": "<1.1.16",
+          "patched_versions": ">=1.1.16",
+          "paths": [
+            "webpack-dev-server>del>globby>glob>minimatch>brace-expansion"
+          ],
+          "selected_versions": [
+            "1.1.12"
+          ],
+          "scope": "build-or-types-follow-up"
+        },
+        {
+          "id": "GHSA-3ppc-4f35-3m26",
+          "package": "minimatch",
+          "severity": "high",
+          "url": "https://github.com/advisories/GHSA-3ppc-4f35-3m26",
+          "vulnerable_versions": "<3.1.3",
+          "patched_versions": ">=3.1.3",
+          "paths": [
+            "webpack-dev-server>del>@types/glob>@types/minimatch>minimatch",
+            "webpack-dev-server>del>globby>glob>minimatch"
+          ],
+          "selected_versions": [
+            "10.0.3",
+            "3.1.2"
+          ],
+          "scope": "build-or-types-follow-up"
+        },
+        {
+          "id": "GHSA-4c8g-83qw-93j6",
+          "package": "fast-uri",
+          "severity": "high",
+          "url": "https://github.com/advisories/GHSA-4c8g-83qw-93j6",
+          "vulnerable_versions": ">=3.0.0 <3.1.3",
+          "patched_versions": ">=3.1.3",
+          "paths": [
+            "webpack>terser-webpack-plugin>schema-utils>ajv-formats>ajv>fast-uri",
+            "webpack>terser-webpack-plugin>schema-utils>ajv>fast-uri"
+          ],
+          "selected_versions": [
+            "3.1.0"
+          ],
+          "scope": "build-or-types-follow-up"
+        },
+        {
+          "id": "GHSA-4mjr-xmp4-gh2g",
+          "package": "qs",
+          "severity": "moderate",
+          "url": "https://github.com/advisories/GHSA-4mjr-xmp4-gh2g",
+          "vulnerable_versions": ">=2.2.5 <6.16.0",
+          "patched_versions": ">=6.16.0",
+          "paths": [
+            "webpack-dev-server>express>body-parser>qs",
+            "webpack-dev-server>express>qs",
+            "webpack-dev-server>url>qs"
+          ],
+          "selected_versions": [
+            "6.13.0",
+            "6.14.0"
+          ],
+          "scope": "build-or-types-follow-up"
+        },
+        {
+          "id": "GHSA-4v9v-hfq4-rm2v",
+          "package": "webpack-dev-server",
+          "severity": "moderate",
+          "url": "https://github.com/advisories/GHSA-4v9v-hfq4-rm2v",
+          "vulnerable_versions": "<=5.2.0",
+          "patched_versions": ">=5.2.1",
+          "paths": [
+            "webpack-dev-server"
+          ],
+          "selected_versions": [
+            "3.11.2"
+          ],
+          "scope": "build-or-types-follow-up"
+        },
+        {
+          "id": "GHSA-4vvj-4cpr-p986",
+          "package": "webpack",
+          "severity": "moderate",
+          "url": "https://github.com/advisories/GHSA-4vvj-4cpr-p986",
+          "vulnerable_versions": ">=5.0.0-alpha.0 <5.94.0",
+          "patched_versions": ">=5.94.0",
+          "paths": [
+            "webpack"
+          ],
+          "selected_versions": [
+            "5.24.3"
+          ],
+          "scope": "build-or-types-follow-up"
+        },
+        {
+          "id": "GHSA-554w-wpv2-vw27",
+          "package": "node-forge",
+          "severity": "high",
+          "url": "https://github.com/advisories/GHSA-554w-wpv2-vw27",
+          "vulnerable_versions": "<1.3.2",
+          "patched_versions": ">=1.3.2",
+          "paths": [
+            "webpack-dev-server>selfsigned>node-forge"
+          ],
+          "selected_versions": [
+            "0.10.0"
+          ],
+          "scope": "build-or-types-follow-up"
+        },
+        {
+          "id": "GHSA-5c6j-r48x-rmvq",
+          "package": "serialize-javascript",
+          "severity": "high",
+          "url": "https://github.com/advisories/GHSA-5c6j-r48x-rmvq",
+          "vulnerable_versions": "<=7.0.2",
+          "patched_versions": ">=7.0.3",
+          "paths": [
+            "webpack>terser-webpack-plugin>serialize-javascript"
+          ],
+          "selected_versions": [
+            "6.0.2"
+          ],
+          "scope": "build-or-types-follow-up"
+        },
+        {
+          "id": "GHSA-5gfm-wpxj-wjgq",
+          "package": "node-forge",
+          "severity": "high",
+          "url": "https://github.com/advisories/GHSA-5gfm-wpxj-wjgq",
+          "vulnerable_versions": "<1.3.2",
+          "patched_versions": ">=1.3.2",
+          "paths": [
+            "webpack-dev-server>selfsigned>node-forge"
+          ],
+          "selected_versions": [
+            "0.10.0"
+          ],
+          "scope": "build-or-types-follow-up"
+        },
+        {
+          "id": "GHSA-5m6q-g25r-mvwx",
+          "package": "node-forge",
+          "severity": "high",
+          "url": "https://github.com/advisories/GHSA-5m6q-g25r-mvwx",
+          "vulnerable_versions": "<1.4.0",
+          "patched_versions": ">=1.4.0",
+          "paths": [
+            "webpack-dev-server>selfsigned>node-forge"
+          ],
+          "selected_versions": [
+            "0.10.0"
+          ],
+          "scope": "build-or-types-follow-up"
+        },
+        {
+          "id": "GHSA-5rrq-pxf6-6jx5",
+          "package": "node-forge",
+          "severity": "low",
+          "url": "https://github.com/advisories/GHSA-5rrq-pxf6-6jx5",
+          "vulnerable_versions": "<1.0.0",
+          "patched_versions": ">=1.0.0",
+          "paths": [
+            "webpack-dev-server>selfsigned>node-forge"
+          ],
+          "selected_versions": [
+            "0.10.0"
+          ],
+          "scope": "build-or-types-follow-up"
+        },
+        {
+          "id": "GHSA-64mm-vxmg-q3vj",
+          "package": "http-proxy-middleware",
+          "severity": "moderate",
+          "url": "https://github.com/advisories/GHSA-64mm-vxmg-q3vj",
+          "vulnerable_versions": ">=0.16.0 <2.0.10",
+          "patched_versions": ">=2.0.10",
+          "paths": [
+            "webpack-dev-server>http-proxy-middleware"
+          ],
+          "selected_versions": [
+            "0.19.1"
+          ],
+          "scope": "build-or-types-follow-up"
+        },
+        {
+          "id": "GHSA-65ch-62r8-g69g",
+          "package": "node-forge",
+          "severity": "moderate",
+          "url": "https://github.com/advisories/GHSA-65ch-62r8-g69g",
+          "vulnerable_versions": "<1.3.2",
+          "patched_versions": ">=1.3.2",
+          "paths": [
+            "webpack-dev-server>selfsigned>node-forge"
+          ],
+          "selected_versions": [
+            "0.10.0"
+          ],
+          "scope": "build-or-types-follow-up"
+        },
+        {
+          "id": "GHSA-6rw7-vpxm-498p",
+          "package": "qs",
+          "severity": "moderate",
+          "url": "https://github.com/advisories/GHSA-6rw7-vpxm-498p",
+          "vulnerable_versions": "<6.14.1",
+          "patched_versions": ">=6.14.1",
+          "paths": [
+            "webpack-dev-server>express>body-parser>qs",
+            "webpack-dev-server>express>qs",
+            "webpack-dev-server>url>qs"
+          ],
+          "selected_versions": [
+            "6.13.0",
+            "6.14.0"
+          ],
+          "scope": "build-or-types-follow-up"
+        },
+        {
+          "id": "GHSA-73wf-gq98-2v4g",
+          "package": "browserslist",
+          "severity": "high",
+          "url": "https://github.com/advisories/GHSA-73wf-gq98-2v4g",
+          "vulnerable_versions": "<=4.28.6",
+          "patched_versions": ">=4.28.7",
+          "paths": [
+            "webpack>browserslist"
+          ],
+          "selected_versions": [
+            "4.26.3"
+          ],
+          "scope": "build-or-types-follow-up"
+        },
+        {
+          "id": "GHSA-79cf-xcqc-c78w",
+          "package": "webpack-dev-server",
+          "severity": "moderate",
+          "url": "https://github.com/advisories/GHSA-79cf-xcqc-c78w",
+          "vulnerable_versions": "<=5.2.3",
+          "patched_versions": ">=5.2.4",
+          "paths": [
+            "webpack-dev-server"
+          ],
+          "selected_versions": [
+            "3.11.2"
+          ],
+          "scope": "build-or-types-follow-up"
+        },
+        {
+          "id": "GHSA-7h2j-956f-4vf2",
+          "package": "@isaacs/brace-expansion",
+          "severity": "high",
+          "url": "https://github.com/advisories/GHSA-7h2j-956f-4vf2",
+          "vulnerable_versions": "<=5.0.0",
+          "patched_versions": ">=5.0.1",
+          "paths": [
+            "webpack-dev-server>del>@types/glob>@types/minimatch>minimatch>@isaacs/brace-expansion"
+          ],
+          "selected_versions": [
+            "5.0.0"
+          ],
+          "scope": "build-or-types-follow-up"
+        },
+        {
+          "id": "GHSA-7p8r-x3mc-p8w7",
+          "package": "fast-uri",
+          "severity": "high",
+          "url": "https://github.com/advisories/GHSA-7p8r-x3mc-p8w7",
+          "vulnerable_versions": ">=3.0.0 <3.1.5",
+          "patched_versions": ">=3.1.5",
+          "paths": [
+            "webpack>terser-webpack-plugin>schema-utils>ajv-formats>ajv>fast-uri",
+            "webpack>terser-webpack-plugin>schema-utils>ajv>fast-uri"
+          ],
+          "selected_versions": [
+            "3.1.0"
+          ],
+          "scope": "build-or-types-follow-up"
+        },
+        {
+          "id": "GHSA-7r86-cg39-jmmj",
+          "package": "minimatch",
+          "severity": "high",
+          "url": "https://github.com/advisories/GHSA-7r86-cg39-jmmj",
+          "vulnerable_versions": "<3.1.3",
+          "patched_versions": ">=3.1.3",
+          "paths": [
+            "webpack-dev-server>del>@types/glob>@types/minimatch>minimatch",
+            "webpack-dev-server>del>globby>glob>minimatch"
+          ],
+          "selected_versions": [
+            "10.0.3",
+            "3.1.2"
+          ],
+          "scope": "build-or-types-follow-up"
+        },
+        {
+          "id": "GHSA-848j-6mx2-7j84",
+          "package": "elliptic",
+          "severity": "low",
+          "url": "https://github.com/advisories/GHSA-848j-6mx2-7j84",
+          "vulnerable_versions": "<=6.6.1",
+          "patched_versions": "<0.0.0",
+          "paths": [
+            "elliptic"
+          ],
+          "selected_versions": [
+            "6.6.1"
+          ],
+          "scope": "runtime-crypto"
+        },
+        {
+          "id": "GHSA-8fr3-hfg3-gpgp",
+          "package": "node-forge",
+          "severity": "moderate",
+          "url": "https://github.com/advisories/GHSA-8fr3-hfg3-gpgp",
+          "vulnerable_versions": "<1.0.0",
+          "patched_versions": ">=1.0.0",
+          "paths": [
+            "webpack-dev-server>selfsigned>node-forge"
+          ],
+          "selected_versions": [
+            "0.10.0"
+          ],
+          "scope": "build-or-types-follow-up"
+        },
+        {
+          "id": "GHSA-952p-6rrq-rcjv",
+          "package": "micromatch",
+          "severity": "moderate",
+          "url": "https://github.com/advisories/GHSA-952p-6rrq-rcjv",
+          "vulnerable_versions": "<4.0.8",
+          "patched_versions": ">=4.0.8",
+          "paths": [
+            "webpack-dev-server>chokidar>anymatch>micromatch",
+            "webpack-dev-server>http-proxy-middleware>micromatch"
+          ],
+          "selected_versions": [
+            "3.1.10"
+          ],
+          "scope": "build-or-types-follow-up"
+        },
+        {
+          "id": "GHSA-96hv-2xvq-fx4p",
+          "package": "ws",
+          "severity": "high",
+          "url": "https://github.com/advisories/GHSA-96hv-2xvq-fx4p",
+          "vulnerable_versions": ">=6.0.0 <6.2.4",
+          "patched_versions": ">=6.2.4",
+          "paths": [
+            "webpack-dev-server>ws"
+          ],
+          "selected_versions": [
+            "6.2.3"
+          ],
+          "scope": "build-or-types-follow-up"
+        },
+        {
+          "id": "GHSA-9jgg-88mc-972h",
+          "package": "webpack-dev-server",
+          "severity": "moderate",
+          "url": "https://github.com/advisories/GHSA-9jgg-88mc-972h",
+          "vulnerable_versions": "<=5.2.0",
+          "patched_versions": ">=5.2.1",
+          "paths": [
+            "webpack-dev-server"
+          ],
+          "selected_versions": [
+            "3.11.2"
+          ],
+          "scope": "build-or-types-follow-up"
+        },
+        {
+          "id": "GHSA-c7qv-q95q-8v27",
+          "package": "http-proxy-middleware",
+          "severity": "high",
+          "url": "https://github.com/advisories/GHSA-c7qv-q95q-8v27",
+          "vulnerable_versions": "<2.0.7",
+          "patched_versions": ">=2.0.7",
+          "paths": [
+            "webpack-dev-server>http-proxy-middleware"
+          ],
+          "selected_versions": [
+            "0.19.1"
+          ],
+          "scope": "build-or-types-follow-up"
+        },
+        {
+          "id": "GHSA-c83g-rgw3-j3cx",
+          "package": "browserslist",
+          "severity": "high",
+          "url": "https://github.com/advisories/GHSA-c83g-rgw3-j3cx",
+          "vulnerable_versions": "<=4.28.6",
+          "patched_versions": ">=4.28.7",
+          "paths": [
+            "webpack>browserslist"
+          ],
+          "selected_versions": [
+            "4.26.3"
+          ],
+          "scope": "build-or-types-follow-up"
+        },
+        {
+          "id": "GHSA-cfm4-qjh2-4765",
+          "package": "node-forge",
+          "severity": "high",
+          "url": "https://github.com/advisories/GHSA-cfm4-qjh2-4765",
+          "vulnerable_versions": "<1.3.0",
+          "patched_versions": ">=1.3.0",
+          "paths": [
+            "webpack-dev-server>selfsigned>node-forge"
+          ],
+          "selected_versions": [
+            "0.10.0"
+          ],
+          "scope": "build-or-types-follow-up"
+        },
+        {
+          "id": "GHSA-f23m-r3pf-42rh",
+          "package": "lodash",
+          "severity": "moderate",
+          "url": "https://github.com/advisories/GHSA-f23m-r3pf-42rh",
+          "vulnerable_versions": "<=4.17.23",
+          "patched_versions": ">=4.18.0",
+          "paths": [
+            "webpack-dev-server>http-proxy-middleware>lodash"
+          ],
+          "selected_versions": [
+            "4.17.21"
+          ],
+          "scope": "build-or-types-follow-up"
+        },
+        {
+          "id": "GHSA-f5vj-f2hx-8m93",
+          "package": "webpack-dev-server",
+          "severity": "moderate",
+          "url": "https://github.com/advisories/GHSA-f5vj-f2hx-8m93",
+          "vulnerable_versions": "<=5.2.5",
+          "patched_versions": ">=5.2.6",
+          "paths": [
+            "webpack-dev-server"
+          ],
+          "selected_versions": [
+            "3.11.2"
+          ],
+          "scope": "build-or-types-follow-up"
+        },
+        {
+          "id": "GHSA-f65p-4m7j-42xc",
+          "package": "fast-uri",
+          "severity": "high",
+          "url": "https://github.com/advisories/GHSA-f65p-4m7j-42xc",
+          "vulnerable_versions": ">=3.0.0 <3.1.6",
+          "patched_versions": ">=3.1.6",
+          "paths": [
+            "webpack>terser-webpack-plugin>schema-utils>ajv-formats>ajv>fast-uri",
+            "webpack>terser-webpack-plugin>schema-utils>ajv>fast-uri"
+          ],
+          "selected_versions": [
+            "3.1.0"
+          ],
+          "scope": "build-or-types-follow-up"
+        },
+        {
+          "id": "GHSA-f886-m6hf-6m8v",
+          "package": "brace-expansion",
+          "severity": "moderate",
+          "url": "https://github.com/advisories/GHSA-f886-m6hf-6m8v",
+          "vulnerable_versions": "<1.1.13",
+          "patched_versions": ">=1.1.13",
+          "paths": [
+            "webpack-dev-server>del>globby>glob>minimatch>brace-expansion"
+          ],
+          "selected_versions": [
+            "1.1.12"
+          ],
+          "scope": "build-or-types-follow-up"
+        },
+        {
+          "id": "GHSA-gf8q-jrpm-jvxq",
+          "package": "node-forge",
+          "severity": "low",
+          "url": "https://github.com/advisories/GHSA-gf8q-jrpm-jvxq",
+          "vulnerable_versions": "<1.0.0",
+          "patched_versions": ">=1.0.0",
+          "paths": [
+            "webpack-dev-server>selfsigned>node-forge"
+          ],
+          "selected_versions": [
+            "0.10.0"
+          ],
+          "scope": "build-or-types-follow-up"
+        },
+        {
+          "id": "GHSA-grv7-fg5c-xmjg",
+          "package": "braces",
+          "severity": "high",
+          "url": "https://github.com/advisories/GHSA-grv7-fg5c-xmjg",
+          "vulnerable_versions": "<3.0.3",
+          "patched_versions": ">=3.0.3",
+          "paths": [
+            "webpack-dev-server>chokidar>anymatch>micromatch>braces",
+            "webpack-dev-server>chokidar>braces",
+            "webpack-dev-server>http-proxy-middleware>micromatch>braces"
+          ],
+          "selected_versions": [
+            "2.3.2"
+          ],
+          "scope": "build-or-types-follow-up"
+        },
+        {
+          "id": "GHSA-hc6q-2mpp-qw7j",
+          "package": "webpack",
+          "severity": "critical",
+          "url": "https://github.com/advisories/GHSA-hc6q-2mpp-qw7j",
+          "vulnerable_versions": ">=5.0.0 <5.76.0",
+          "patched_versions": ">=5.76.0",
+          "paths": [
+            "webpack"
+          ],
+          "selected_versions": [
+            "5.24.3"
+          ],
+          "scope": "build-or-types-follow-up"
+        },
+        {
+          "id": "GHSA-jqff-g426-hqxp",
+          "package": "fast-uri",
+          "severity": "high",
+          "url": "https://github.com/advisories/GHSA-jqff-g426-hqxp",
+          "vulnerable_versions": ">=3.0.0 <3.1.6",
+          "patched_versions": ">=3.1.6",
+          "paths": [
+            "webpack>terser-webpack-plugin>schema-utils>ajv-formats>ajv>fast-uri",
+            "webpack>terser-webpack-plugin>schema-utils>ajv>fast-uri"
+          ],
+          "selected_versions": [
+            "3.1.0"
+          ],
+          "scope": "build-or-types-follow-up"
+        },
+        {
+          "id": "GHSA-m28w-2pqf-7qgj",
+          "package": "webpack-dev-server",
+          "severity": "moderate",
+          "url": "https://github.com/advisories/GHSA-m28w-2pqf-7qgj",
+          "vulnerable_versions": "<=5.2.5",
+          "patched_versions": ">=5.2.6",
+          "paths": [
+            "webpack-dev-server"
+          ],
+          "selected_versions": [
+            "3.11.2"
+          ],
+          "scope": "build-or-types-follow-up"
+        },
+        {
+          "id": "GHSA-mh99-v99m-4gvg",
+          "package": "brace-expansion",
+          "severity": "high",
+          "url": "https://github.com/advisories/GHSA-mh99-v99m-4gvg",
+          "vulnerable_versions": "<1.1.17",
+          "patched_versions": ">=1.1.17",
+          "paths": [
+            "webpack-dev-server>del>globby>glob>minimatch>brace-expansion"
+          ],
+          "selected_versions": [
+            "1.1.12"
+          ],
+          "scope": "build-or-types-follow-up"
+        },
+        {
+          "id": "GHSA-mp7j-qc5w-4988",
+          "package": "websocket-driver",
+          "severity": "moderate",
+          "url": "https://github.com/advisories/GHSA-mp7j-qc5w-4988",
+          "vulnerable_versions": "<0.7.5",
+          "patched_versions": ">=0.7.5",
+          "paths": [
+            "webpack-dev-server>sockjs>faye-websocket>websocket-driver",
+            "webpack-dev-server>sockjs>websocket-driver"
+          ],
+          "selected_versions": [
+            "0.7.4"
+          ],
+          "scope": "build-or-types-follow-up"
+        },
+        {
+          "id": "GHSA-mx8g-39q3-5c79",
+          "package": "webpack-dev-server",
+          "severity": "moderate",
+          "url": "https://github.com/advisories/GHSA-mx8g-39q3-5c79",
+          "vulnerable_versions": "<5.2.5",
+          "patched_versions": ">=5.2.5",
+          "paths": [
+            "webpack-dev-server"
+          ],
+          "selected_versions": [
+            "3.11.2"
+          ],
+          "scope": "build-or-types-follow-up"
+        },
+        {
+          "id": "GHSA-ppp5-5v6c-4jwp",
+          "package": "node-forge",
+          "severity": "high",
+          "url": "https://github.com/advisories/GHSA-ppp5-5v6c-4jwp",
+          "vulnerable_versions": "<1.4.0",
+          "patched_versions": ">=1.4.0",
+          "paths": [
+            "webpack-dev-server>selfsigned>node-forge"
+          ],
+          "selected_versions": [
+            "0.10.0"
+          ],
+          "scope": "build-or-types-follow-up"
+        },
+        {
+          "id": "GHSA-q3j6-qgpj-74h6",
+          "package": "fast-uri",
+          "severity": "high",
+          "url": "https://github.com/advisories/GHSA-q3j6-qgpj-74h6",
+          "vulnerable_versions": ">=3.0.0 <=3.1.0",
+          "patched_versions": ">=3.1.1",
+          "paths": [
+            "webpack>terser-webpack-plugin>schema-utils>ajv-formats>ajv>fast-uri",
+            "webpack>terser-webpack-plugin>schema-utils>ajv>fast-uri"
+          ],
+          "selected_versions": [
+            "3.1.0"
+          ],
+          "scope": "build-or-types-follow-up"
+        },
+        {
+          "id": "GHSA-q67f-28xg-22rw",
+          "package": "node-forge",
+          "severity": "high",
+          "url": "https://github.com/advisories/GHSA-q67f-28xg-22rw",
+          "vulnerable_versions": "<1.4.0",
+          "patched_versions": ">=1.4.0",
+          "paths": [
+            "webpack-dev-server>selfsigned>node-forge"
+          ],
+          "selected_versions": [
+            "0.10.0"
+          ],
+          "scope": "build-or-types-follow-up"
+        },
+        {
+          "id": "GHSA-q8mj-m7cp-5q26",
+          "package": "qs",
+          "severity": "moderate",
+          "url": "https://github.com/advisories/GHSA-q8mj-m7cp-5q26",
+          "vulnerable_versions": ">=6.11.1 <=6.15.1",
+          "patched_versions": ">=6.15.2",
+          "paths": [
+            "webpack-dev-server>express>body-parser>qs",
+            "webpack-dev-server>express>qs",
+            "webpack-dev-server>url>qs"
+          ],
+          "selected_versions": [
+            "6.13.0",
+            "6.14.0"
+          ],
+          "scope": "build-or-types-follow-up"
+        },
+        {
+          "id": "GHSA-qj8w-gfj5-8c6v",
+          "package": "serialize-javascript",
+          "severity": "moderate",
+          "url": "https://github.com/advisories/GHSA-qj8w-gfj5-8c6v",
+          "vulnerable_versions": ">=5.0.0 <7.0.5",
+          "patched_versions": ">=7.0.5",
+          "paths": [
+            "webpack>terser-webpack-plugin>serialize-javascript"
+          ],
+          "selected_versions": [
+            "6.0.2"
+          ],
+          "scope": "build-or-types-follow-up"
+        },
+        {
+          "id": "GHSA-r4q5-vmmm-2653",
+          "package": "follow-redirects",
+          "severity": "moderate",
+          "url": "https://github.com/advisories/GHSA-r4q5-vmmm-2653",
+          "vulnerable_versions": "<=1.15.11",
+          "patched_versions": ">=1.16.0",
+          "paths": [
+            "webpack-dev-server>http-proxy-middleware>http-proxy>follow-redirects"
+          ],
+          "selected_versions": [
+            "1.15.11"
+          ],
+          "scope": "build-or-types-follow-up"
+        },
+        {
+          "id": "GHSA-r5fr-rjxr-66jc",
+          "package": "lodash",
+          "severity": "high",
+          "url": "https://github.com/advisories/GHSA-r5fr-rjxr-66jc",
+          "vulnerable_versions": ">=4.0.0 <=4.17.23",
+          "patched_versions": ">=4.18.0",
+          "paths": [
+            "webpack-dev-server>http-proxy-middleware>lodash"
+          ],
+          "selected_versions": [
+            "4.17.21"
+          ],
+          "scope": "build-or-types-follow-up"
+        },
+        {
+          "id": "GHSA-rgw5-rvv9-x895",
+          "package": "brace-expansion",
+          "severity": "high",
+          "url": "https://github.com/advisories/GHSA-rgw5-rvv9-x895",
+          "vulnerable_versions": "<1.1.18",
+          "patched_versions": ">=1.1.18",
+          "paths": [
+            "webpack-dev-server>del>globby>glob>minimatch>brace-expansion"
+          ],
+          "selected_versions": [
+            "1.1.12"
+          ],
+          "scope": "build-or-types-follow-up"
+        },
+        {
+          "id": "GHSA-v2hh-gcrm-f6hx",
+          "package": "fast-uri",
+          "severity": "high",
+          "url": "https://github.com/advisories/GHSA-v2hh-gcrm-f6hx",
+          "vulnerable_versions": ">=3.0.0 <=3.1.3",
+          "patched_versions": ">=3.1.4",
+          "paths": [
+            "webpack>terser-webpack-plugin>schema-utils>ajv-formats>ajv>fast-uri",
+            "webpack>terser-webpack-plugin>schema-utils>ajv>fast-uri"
+          ],
+          "selected_versions": [
+            "3.1.0"
+          ],
+          "scope": "build-or-types-follow-up"
+        },
+        {
+          "id": "GHSA-v39h-62p7-jpjc",
+          "package": "fast-uri",
+          "severity": "high",
+          "url": "https://github.com/advisories/GHSA-v39h-62p7-jpjc",
+          "vulnerable_versions": ">=3.0.0 <=3.1.1",
+          "patched_versions": ">=3.1.2",
+          "paths": [
+            "webpack>terser-webpack-plugin>schema-utils>ajv-formats>ajv>fast-uri",
+            "webpack>terser-webpack-plugin>schema-utils>ajv>fast-uri"
+          ],
+          "selected_versions": [
+            "3.1.0"
+          ],
+          "scope": "build-or-types-follow-up"
+        },
+        {
+          "id": "GHSA-v422-hmwv-36x6",
+          "package": "body-parser",
+          "severity": "low",
+          "url": "https://github.com/advisories/GHSA-v422-hmwv-36x6",
+          "vulnerable_versions": "<1.20.6",
+          "patched_versions": ">=1.20.6",
+          "paths": [
+            "webpack-dev-server>express>body-parser"
+          ],
+          "selected_versions": [
+            "1.20.3"
+          ],
+          "scope": "build-or-types-follow-up"
+        },
+        {
+          "id": "GHSA-vcc3-ghjq-m6fr",
+          "package": "decode-uri-component",
+          "severity": "moderate",
+          "url": "https://github.com/advisories/GHSA-vcc3-ghjq-m6fr",
+          "vulnerable_versions": "<=0.4.2",
+          "patched_versions": ">=0.5.0",
+          "paths": [
+            "webpack-dev-server>chokidar>anymatch>micromatch>braces>snapdragon>source-map-resolve>decode-uri-component",
+            "webpack-dev-server>chokidar>anymatch>micromatch>extglob>expand-brackets>snapdragon>source-map-resolve>decode-uri-component",
+            "webpack-dev-server>chokidar>braces>snapdragon>source-map-resolve>decode-uri-component",
+            "webpack-dev-server>http-proxy-middleware>micromatch>braces>snapdragon>source-map-resolve>decode-uri-component"
+          ],
+          "selected_versions": [
+            "0.2.2"
+          ],
+          "scope": "build-or-types-follow-up"
+        },
+        {
+          "id": "GHSA-w5hq-g745-h8pq",
+          "package": "uuid",
+          "severity": "moderate",
+          "url": "https://github.com/advisories/GHSA-w5hq-g745-h8pq",
+          "vulnerable_versions": "<11.1.1",
+          "patched_versions": ">=11.1.1",
+          "paths": [
+            "webpack-dev-server>sockjs>uuid",
+            "webpack-dev-server>webpack-dev-middleware>webpack-log>uuid",
+            "webpack-dev-server>webpack-log>uuid"
+          ],
+          "selected_versions": [
+            "3.4.0",
+            "8.3.2"
+          ],
+          "scope": "build-or-types-follow-up"
+        },
+        {
+          "id": "GHSA-w5vr-8v7q-w6rv",
+          "package": "baseline-browser-mapping",
+          "severity": "moderate",
+          "url": "https://github.com/advisories/GHSA-w5vr-8v7q-w6rv",
+          "vulnerable_versions": ">=2.0.0 <2.11.0",
+          "patched_versions": ">=2.11.0",
+          "paths": [
+            "webpack>browserslist>baseline-browser-mapping"
+          ],
+          "selected_versions": [
+            "2.8.19"
+          ],
+          "scope": "build-or-types-follow-up"
+        },
+        {
+          "id": "GHSA-w7fw-mjwx-w883",
+          "package": "qs",
+          "severity": "low",
+          "url": "https://github.com/advisories/GHSA-w7fw-mjwx-w883",
+          "vulnerable_versions": ">=6.7.0 <=6.14.1",
+          "patched_versions": ">=6.14.2",
+          "paths": [
+            "webpack-dev-server>express>body-parser>qs",
+            "webpack-dev-server>express>qs",
+            "webpack-dev-server>url>qs"
+          ],
+          "selected_versions": [
+            "6.13.0",
+            "6.14.0"
+          ],
+          "scope": "build-or-types-follow-up"
+        },
+        {
+          "id": "GHSA-whgm-jr23-g3j9",
+          "package": "ansi-html",
+          "severity": "high",
+          "url": "https://github.com/advisories/GHSA-whgm-jr23-g3j9",
+          "vulnerable_versions": "<0.0.8",
+          "patched_versions": ">=0.0.8",
+          "paths": [
+            "webpack-dev-server>ansi-html"
+          ],
+          "selected_versions": [
+            "0.0.7"
+          ],
+          "scope": "build-or-types-follow-up"
+        },
+        {
+          "id": "GHSA-wr3j-pwj9-hqq6",
+          "package": "webpack-dev-middleware",
+          "severity": "high",
+          "url": "https://github.com/advisories/GHSA-wr3j-pwj9-hqq6",
+          "vulnerable_versions": "<=5.3.3",
+          "patched_versions": ">=5.3.4",
+          "paths": [
+            "webpack-dev-server>webpack-dev-middleware"
+          ],
+          "selected_versions": [
+            "3.7.3"
+          ],
+          "scope": "build-or-types-follow-up"
+        },
+        {
+          "id": "GHSA-x4jg-mjrx-434g",
+          "package": "node-forge",
+          "severity": "high",
+          "url": "https://github.com/advisories/GHSA-x4jg-mjrx-434g",
+          "vulnerable_versions": "<1.3.0",
+          "patched_versions": ">=1.3.0",
+          "paths": [
+            "webpack-dev-server>selfsigned>node-forge"
+          ],
+          "selected_versions": [
+            "0.10.0"
+          ],
+          "scope": "build-or-types-follow-up"
+        },
+        {
+          "id": "GHSA-xv26-6w52-cph6",
+          "package": "websocket-driver",
+          "severity": "critical",
+          "url": "https://github.com/advisories/GHSA-xv26-6w52-cph6",
+          "vulnerable_versions": "<0.7.5",
+          "patched_versions": ">=0.7.5",
+          "paths": [
+            "webpack-dev-server>sockjs>faye-websocket>websocket-driver",
+            "webpack-dev-server>sockjs>websocket-driver"
+          ],
+          "selected_versions": [
+            "0.7.4"
+          ],
+          "scope": "build-or-types-follow-up"
+        },
+        {
+          "id": "GHSA-xxjr-mmjv-4gpg",
+          "package": "lodash",
+          "severity": "moderate",
+          "url": "https://github.com/advisories/GHSA-xxjr-mmjv-4gpg",
+          "vulnerable_versions": ">=4.0.0 <=4.17.22",
+          "patched_versions": ">=4.17.23",
+          "paths": [
+            "webpack-dev-server>http-proxy-middleware>lodash"
+          ],
+          "selected_versions": [
+            "4.17.21"
+          ],
+          "scope": "build-or-types-follow-up"
+        }
+      ]
+    },
+    "node-common": {
+      "command": "yarn audit --json",
+      "summary": {
+        "vulnerabilities": {
+          "info": 0,
+          "low": 4,
+          "moderate": 33,
+          "high": 38,
+          "critical": 3
+        },
+        "dependencies": 523,
+        "devDependencies": 0,
+        "optionalDependencies": 0,
+        "totalDependencies": 523
+      },
+      "configuration": {
+        "private": true,
+        "license": "UNLICENSED",
+        "dependencies": {
+          "js-sha3": "0.8.0",
+          "elliptic": "6.6.1",
+          "bn.js": "4.12.5",
+          "@types/elliptic": "6.4.18"
+        },
+        "devDependencies": {
+          "source-map-loader": "2.0.0",
+          "webpack": "5.24.3",
+          "concat-with-sourcemaps": "1.0.7",
+          "webpack-cli": "4.5.0",
+          "@types/node": "18.19.33",
+          "webpack-dev-server": "3.11.2"
+        }
+      },
+      "configuration_sha256": "18958bdbeb1bb4942fc4c3cc25006b82ca1ff239842dd57b3bf8a954f3963ca3",
+      "lock_sha256": "03bcc947d36a26a1a9a68317d1873fb955f3fe9b5fce7c961c8246bc204c82a8",
+      "advisories": [
+        {
+          "id": "GHSA-2328-f5f3-gj25",
+          "package": "node-forge",
+          "severity": "high",
+          "url": "https://github.com/advisories/GHSA-2328-f5f3-gj25",
+          "vulnerable_versions": "<=1.3.3",
+          "patched_versions": ">=1.4.0",
+          "paths": [
+            "webpack-dev-server>selfsigned>node-forge"
+          ],
+          "selected_versions": [
+            "0.10.0"
+          ],
+          "scope": "build-or-types-follow-up"
+        },
+        {
+          "id": "GHSA-2p57-rm9w-gvfp",
+          "package": "ip",
+          "severity": "high",
+          "url": "https://github.com/advisories/GHSA-2p57-rm9w-gvfp",
+          "vulnerable_versions": "<=2.0.1",
+          "patched_versions": "<0.0.0",
+          "paths": [
+            "webpack-dev-server>ip"
+          ],
+          "selected_versions": [
+            "1.1.9"
+          ],
+          "scope": "build-or-types-follow-up"
+        },
+        {
+          "id": "GHSA-2r2c-g63r-vccr",
+          "package": "node-forge",
+          "severity": "moderate",
+          "url": "https://github.com/advisories/GHSA-2r2c-g63r-vccr",
+          "vulnerable_versions": "<1.3.0",
+          "patched_versions": ">=1.3.0",
+          "paths": [
+            "webpack-dev-server>selfsigned>node-forge"
+          ],
+          "selected_versions": [
+            "0.10.0"
+          ],
+          "scope": "build-or-types-follow-up"
+        },
+        {
+          "id": "GHSA-3jxr-9vmj-r5cp",
+          "package": "brace-expansion",
+          "severity": "high",
+          "url": "https://github.com/advisories/GHSA-3jxr-9vmj-r5cp",
+          "vulnerable_versions": "<1.1.16",
+          "patched_versions": ">=1.1.16",
+          "paths": [
+            "webpack-dev-server>del>@types/glob>@types/minimatch>minimatch>brace-expansion",
+            "webpack-dev-server>del>globby>glob>minimatch>brace-expansion"
+          ],
+          "selected_versions": [
+            "1.1.14",
+            "5.0.5"
+          ],
+          "scope": "build-or-types-follow-up"
+        },
+        {
+          "id": "GHSA-4c8g-83qw-93j6",
+          "package": "fast-uri",
+          "severity": "high",
+          "url": "https://github.com/advisories/GHSA-4c8g-83qw-93j6",
+          "vulnerable_versions": ">=3.0.0 <3.1.3",
+          "patched_versions": ">=3.1.3",
+          "paths": [
+            "webpack>terser-webpack-plugin>schema-utils>ajv-formats>ajv>fast-uri",
+            "webpack>terser-webpack-plugin>schema-utils>ajv>fast-uri"
+          ],
+          "selected_versions": [
+            "3.1.0"
+          ],
+          "scope": "build-or-types-follow-up"
+        },
+        {
+          "id": "GHSA-4mjr-xmp4-gh2g",
+          "package": "qs",
+          "severity": "moderate",
+          "url": "https://github.com/advisories/GHSA-4mjr-xmp4-gh2g",
+          "vulnerable_versions": ">=2.2.5 <6.16.0",
+          "patched_versions": ">=6.16.0",
+          "paths": [
+            "webpack-dev-server>express>body-parser>qs",
+            "webpack-dev-server>express>qs",
+            "webpack-dev-server>url>qs"
+          ],
+          "selected_versions": [
+            "6.14.2",
+            "6.15.1"
+          ],
+          "scope": "build-or-types-follow-up"
+        },
+        {
+          "id": "GHSA-4v9v-hfq4-rm2v",
+          "package": "webpack-dev-server",
+          "severity": "moderate",
+          "url": "https://github.com/advisories/GHSA-4v9v-hfq4-rm2v",
+          "vulnerable_versions": "<=5.2.0",
+          "patched_versions": ">=5.2.1",
+          "paths": [
+            "webpack-dev-server"
+          ],
+          "selected_versions": [
+            "3.11.2"
+          ],
+          "scope": "build-or-types-follow-up"
+        },
+        {
+          "id": "GHSA-4vvj-4cpr-p986",
+          "package": "webpack",
+          "severity": "moderate",
+          "url": "https://github.com/advisories/GHSA-4vvj-4cpr-p986",
+          "vulnerable_versions": ">=5.0.0-alpha.0 <5.94.0",
+          "patched_versions": ">=5.94.0",
+          "paths": [
+            "webpack"
+          ],
+          "selected_versions": [
+            "5.24.3"
+          ],
+          "scope": "build-or-types-follow-up"
+        },
+        {
+          "id": "GHSA-554w-wpv2-vw27",
+          "package": "node-forge",
+          "severity": "high",
+          "url": "https://github.com/advisories/GHSA-554w-wpv2-vw27",
+          "vulnerable_versions": "<1.3.2",
+          "patched_versions": ">=1.3.2",
+          "paths": [
+            "webpack-dev-server>selfsigned>node-forge"
+          ],
+          "selected_versions": [
+            "0.10.0"
+          ],
+          "scope": "build-or-types-follow-up"
+        },
+        {
+          "id": "GHSA-5gfm-wpxj-wjgq",
+          "package": "node-forge",
+          "severity": "high",
+          "url": "https://github.com/advisories/GHSA-5gfm-wpxj-wjgq",
+          "vulnerable_versions": "<1.3.2",
+          "patched_versions": ">=1.3.2",
+          "paths": [
+            "webpack-dev-server>selfsigned>node-forge"
+          ],
+          "selected_versions": [
+            "0.10.0"
+          ],
+          "scope": "build-or-types-follow-up"
+        },
+        {
+          "id": "GHSA-5m6q-g25r-mvwx",
+          "package": "node-forge",
+          "severity": "high",
+          "url": "https://github.com/advisories/GHSA-5m6q-g25r-mvwx",
+          "vulnerable_versions": "<1.4.0",
+          "patched_versions": ">=1.4.0",
+          "paths": [
+            "webpack-dev-server>selfsigned>node-forge"
+          ],
+          "selected_versions": [
+            "0.10.0"
+          ],
+          "scope": "build-or-types-follow-up"
+        },
+        {
+          "id": "GHSA-5rrq-pxf6-6jx5",
+          "package": "node-forge",
+          "severity": "low",
+          "url": "https://github.com/advisories/GHSA-5rrq-pxf6-6jx5",
+          "vulnerable_versions": "<1.0.0",
+          "patched_versions": ">=1.0.0",
+          "paths": [
+            "webpack-dev-server>selfsigned>node-forge"
+          ],
+          "selected_versions": [
+            "0.10.0"
+          ],
+          "scope": "build-or-types-follow-up"
+        },
+        {
+          "id": "GHSA-64mm-vxmg-q3vj",
+          "package": "http-proxy-middleware",
+          "severity": "moderate",
+          "url": "https://github.com/advisories/GHSA-64mm-vxmg-q3vj",
+          "vulnerable_versions": ">=0.16.0 <2.0.10",
+          "patched_versions": ">=2.0.10",
+          "paths": [
+            "webpack-dev-server>http-proxy-middleware"
+          ],
+          "selected_versions": [
+            "0.19.1"
+          ],
+          "scope": "build-or-types-follow-up"
+        },
+        {
+          "id": "GHSA-65ch-62r8-g69g",
+          "package": "node-forge",
+          "severity": "moderate",
+          "url": "https://github.com/advisories/GHSA-65ch-62r8-g69g",
+          "vulnerable_versions": "<1.3.2",
+          "patched_versions": ">=1.3.2",
+          "paths": [
+            "webpack-dev-server>selfsigned>node-forge"
+          ],
+          "selected_versions": [
+            "0.10.0"
+          ],
+          "scope": "build-or-types-follow-up"
+        },
+        {
+          "id": "GHSA-73wf-gq98-2v4g",
+          "package": "browserslist",
+          "severity": "high",
+          "url": "https://github.com/advisories/GHSA-73wf-gq98-2v4g",
+          "vulnerable_versions": "<=4.28.6",
+          "patched_versions": ">=4.28.7",
+          "paths": [
+            "webpack>browserslist"
+          ],
+          "selected_versions": [
+            "4.28.2"
+          ],
+          "scope": "build-or-types-follow-up"
+        },
+        {
+          "id": "GHSA-79cf-xcqc-c78w",
+          "package": "webpack-dev-server",
+          "severity": "moderate",
+          "url": "https://github.com/advisories/GHSA-79cf-xcqc-c78w",
+          "vulnerable_versions": "<=5.2.3",
+          "patched_versions": ">=5.2.4",
+          "paths": [
+            "webpack-dev-server"
+          ],
+          "selected_versions": [
+            "3.11.2"
+          ],
+          "scope": "build-or-types-follow-up"
+        },
+        {
+          "id": "GHSA-7p8r-x3mc-p8w7",
+          "package": "fast-uri",
+          "severity": "high",
+          "url": "https://github.com/advisories/GHSA-7p8r-x3mc-p8w7",
+          "vulnerable_versions": ">=3.0.0 <3.1.5",
+          "patched_versions": ">=3.1.5",
+          "paths": [
+            "webpack>terser-webpack-plugin>schema-utils>ajv-formats>ajv>fast-uri",
+            "webpack>terser-webpack-plugin>schema-utils>ajv>fast-uri"
+          ],
+          "selected_versions": [
+            "3.1.0"
+          ],
+          "scope": "build-or-types-follow-up"
+        },
+        {
+          "id": "GHSA-848j-6mx2-7j84",
+          "package": "elliptic",
+          "severity": "low",
+          "url": "https://github.com/advisories/GHSA-848j-6mx2-7j84",
+          "vulnerable_versions": "<=6.6.1",
+          "patched_versions": "<0.0.0",
+          "paths": [
+            "elliptic"
+          ],
+          "selected_versions": [
+            "6.6.1"
+          ],
+          "scope": "runtime-crypto"
+        },
+        {
+          "id": "GHSA-8fr3-hfg3-gpgp",
+          "package": "node-forge",
+          "severity": "moderate",
+          "url": "https://github.com/advisories/GHSA-8fr3-hfg3-gpgp",
+          "vulnerable_versions": "<1.0.0",
+          "patched_versions": ">=1.0.0",
+          "paths": [
+            "webpack-dev-server>selfsigned>node-forge"
+          ],
+          "selected_versions": [
+            "0.10.0"
+          ],
+          "scope": "build-or-types-follow-up"
+        },
+        {
+          "id": "GHSA-952p-6rrq-rcjv",
+          "package": "micromatch",
+          "severity": "moderate",
+          "url": "https://github.com/advisories/GHSA-952p-6rrq-rcjv",
+          "vulnerable_versions": "<4.0.8",
+          "patched_versions": ">=4.0.8",
+          "paths": [
+            "webpack-dev-server>chokidar>anymatch>micromatch",
+            "webpack-dev-server>http-proxy-middleware>micromatch"
+          ],
+          "selected_versions": [
+            "3.1.10"
+          ],
+          "scope": "build-or-types-follow-up"
+        },
+        {
+          "id": "GHSA-96hv-2xvq-fx4p",
+          "package": "ws",
+          "severity": "high",
+          "url": "https://github.com/advisories/GHSA-96hv-2xvq-fx4p",
+          "vulnerable_versions": ">=6.0.0 <6.2.4",
+          "patched_versions": ">=6.2.4",
+          "paths": [
+            "webpack-dev-server>ws"
+          ],
+          "selected_versions": [
+            "6.2.3"
+          ],
+          "scope": "build-or-types-follow-up"
+        },
+        {
+          "id": "GHSA-9jgg-88mc-972h",
+          "package": "webpack-dev-server",
+          "severity": "moderate",
+          "url": "https://github.com/advisories/GHSA-9jgg-88mc-972h",
+          "vulnerable_versions": "<=5.2.0",
+          "patched_versions": ">=5.2.1",
+          "paths": [
+            "webpack-dev-server"
+          ],
+          "selected_versions": [
+            "3.11.2"
+          ],
+          "scope": "build-or-types-follow-up"
+        },
+        {
+          "id": "GHSA-c7qv-q95q-8v27",
+          "package": "http-proxy-middleware",
+          "severity": "high",
+          "url": "https://github.com/advisories/GHSA-c7qv-q95q-8v27",
+          "vulnerable_versions": "<2.0.7",
+          "patched_versions": ">=2.0.7",
+          "paths": [
+            "webpack-dev-server>http-proxy-middleware"
+          ],
+          "selected_versions": [
+            "0.19.1"
+          ],
+          "scope": "build-or-types-follow-up"
+        },
+        {
+          "id": "GHSA-c83g-rgw3-j3cx",
+          "package": "browserslist",
+          "severity": "high",
+          "url": "https://github.com/advisories/GHSA-c83g-rgw3-j3cx",
+          "vulnerable_versions": "<=4.28.6",
+          "patched_versions": ">=4.28.7",
+          "paths": [
+            "webpack>browserslist"
+          ],
+          "selected_versions": [
+            "4.28.2"
+          ],
+          "scope": "build-or-types-follow-up"
+        },
+        {
+          "id": "GHSA-cfm4-qjh2-4765",
+          "package": "node-forge",
+          "severity": "high",
+          "url": "https://github.com/advisories/GHSA-cfm4-qjh2-4765",
+          "vulnerable_versions": "<1.3.0",
+          "patched_versions": ">=1.3.0",
+          "paths": [
+            "webpack-dev-server>selfsigned>node-forge"
+          ],
+          "selected_versions": [
+            "0.10.0"
+          ],
+          "scope": "build-or-types-follow-up"
+        },
+        {
+          "id": "GHSA-f5vj-f2hx-8m93",
+          "package": "webpack-dev-server",
+          "severity": "moderate",
+          "url": "https://github.com/advisories/GHSA-f5vj-f2hx-8m93",
+          "vulnerable_versions": "<=5.2.5",
+          "patched_versions": ">=5.2.6",
+          "paths": [
+            "webpack-dev-server"
+          ],
+          "selected_versions": [
+            "3.11.2"
+          ],
+          "scope": "build-or-types-follow-up"
+        },
+        {
+          "id": "GHSA-f65p-4m7j-42xc",
+          "package": "fast-uri",
+          "severity": "high",
+          "url": "https://github.com/advisories/GHSA-f65p-4m7j-42xc",
+          "vulnerable_versions": ">=3.0.0 <3.1.6",
+          "patched_versions": ">=3.1.6",
+          "paths": [
+            "webpack>terser-webpack-plugin>schema-utils>ajv-formats>ajv>fast-uri",
+            "webpack>terser-webpack-plugin>schema-utils>ajv>fast-uri"
+          ],
+          "selected_versions": [
+            "3.1.0"
+          ],
+          "scope": "build-or-types-follow-up"
+        },
+        {
+          "id": "GHSA-gf8q-jrpm-jvxq",
+          "package": "node-forge",
+          "severity": "low",
+          "url": "https://github.com/advisories/GHSA-gf8q-jrpm-jvxq",
+          "vulnerable_versions": "<1.0.0",
+          "patched_versions": ">=1.0.0",
+          "paths": [
+            "webpack-dev-server>selfsigned>node-forge"
+          ],
+          "selected_versions": [
+            "0.10.0"
+          ],
+          "scope": "build-or-types-follow-up"
+        },
+        {
+          "id": "GHSA-grv7-fg5c-xmjg",
+          "package": "braces",
+          "severity": "high",
+          "url": "https://github.com/advisories/GHSA-grv7-fg5c-xmjg",
+          "vulnerable_versions": "<3.0.3",
+          "patched_versions": ">=3.0.3",
+          "paths": [
+            "webpack-dev-server>chokidar>anymatch>micromatch>braces",
+            "webpack-dev-server>chokidar>braces",
+            "webpack-dev-server>http-proxy-middleware>micromatch>braces"
+          ],
+          "selected_versions": [
+            "2.3.2"
+          ],
+          "scope": "build-or-types-follow-up"
+        },
+        {
+          "id": "GHSA-hc6q-2mpp-qw7j",
+          "package": "webpack",
+          "severity": "critical",
+          "url": "https://github.com/advisories/GHSA-hc6q-2mpp-qw7j",
+          "vulnerable_versions": ">=5.0.0 <5.76.0",
+          "patched_versions": ">=5.76.0",
+          "paths": [
+            "webpack"
+          ],
+          "selected_versions": [
+            "5.24.3"
+          ],
+          "scope": "build-or-types-follow-up"
+        },
+        {
+          "id": "GHSA-jqff-g426-hqxp",
+          "package": "fast-uri",
+          "severity": "high",
+          "url": "https://github.com/advisories/GHSA-jqff-g426-hqxp",
+          "vulnerable_versions": ">=3.0.0 <3.1.6",
+          "patched_versions": ">=3.1.6",
+          "paths": [
+            "webpack>terser-webpack-plugin>schema-utils>ajv-formats>ajv>fast-uri",
+            "webpack>terser-webpack-plugin>schema-utils>ajv>fast-uri"
+          ],
+          "selected_versions": [
+            "3.1.0"
+          ],
+          "scope": "build-or-types-follow-up"
+        },
+        {
+          "id": "GHSA-jxxr-4gwj-5jf2",
+          "package": "brace-expansion",
+          "severity": "moderate",
+          "url": "https://github.com/advisories/GHSA-jxxr-4gwj-5jf2",
+          "vulnerable_versions": ">=5.0.0 <5.0.6",
+          "patched_versions": ">=5.0.6",
+          "paths": [
+            "webpack-dev-server>del>@types/glob>@types/minimatch>minimatch>brace-expansion"
+          ],
+          "selected_versions": [
+            "5.0.5"
+          ],
+          "scope": "build-or-types-follow-up"
+        },
+        {
+          "id": "GHSA-m28w-2pqf-7qgj",
+          "package": "webpack-dev-server",
+          "severity": "moderate",
+          "url": "https://github.com/advisories/GHSA-m28w-2pqf-7qgj",
+          "vulnerable_versions": "<=5.2.5",
+          "patched_versions": ">=5.2.6",
+          "paths": [
+            "webpack-dev-server"
+          ],
+          "selected_versions": [
+            "3.11.2"
+          ],
+          "scope": "build-or-types-follow-up"
+        },
+        {
+          "id": "GHSA-mh99-v99m-4gvg",
+          "package": "brace-expansion",
+          "severity": "high",
+          "url": "https://github.com/advisories/GHSA-mh99-v99m-4gvg",
+          "vulnerable_versions": "<1.1.17",
+          "patched_versions": ">=1.1.17",
+          "paths": [
+            "webpack-dev-server>del>@types/glob>@types/minimatch>minimatch>brace-expansion",
+            "webpack-dev-server>del>globby>glob>minimatch>brace-expansion"
+          ],
+          "selected_versions": [
+            "1.1.14",
+            "5.0.5"
+          ],
+          "scope": "build-or-types-follow-up"
+        },
+        {
+          "id": "GHSA-mp7j-qc5w-4988",
+          "package": "websocket-driver",
+          "severity": "moderate",
+          "url": "https://github.com/advisories/GHSA-mp7j-qc5w-4988",
+          "vulnerable_versions": "<0.7.5",
+          "patched_versions": ">=0.7.5",
+          "paths": [
+            "webpack-dev-server>sockjs>faye-websocket>websocket-driver",
+            "webpack-dev-server>sockjs>websocket-driver"
+          ],
+          "selected_versions": [
+            "0.7.4"
+          ],
+          "scope": "build-or-types-follow-up"
+        },
+        {
+          "id": "GHSA-mx8g-39q3-5c79",
+          "package": "webpack-dev-server",
+          "severity": "moderate",
+          "url": "https://github.com/advisories/GHSA-mx8g-39q3-5c79",
+          "vulnerable_versions": "<5.2.5",
+          "patched_versions": ">=5.2.5",
+          "paths": [
+            "webpack-dev-server"
+          ],
+          "selected_versions": [
+            "3.11.2"
+          ],
+          "scope": "build-or-types-follow-up"
+        },
+        {
+          "id": "GHSA-ppp5-5v6c-4jwp",
+          "package": "node-forge",
+          "severity": "high",
+          "url": "https://github.com/advisories/GHSA-ppp5-5v6c-4jwp",
+          "vulnerable_versions": "<1.4.0",
+          "patched_versions": ">=1.4.0",
+          "paths": [
+            "webpack-dev-server>selfsigned>node-forge"
+          ],
+          "selected_versions": [
+            "0.10.0"
+          ],
+          "scope": "build-or-types-follow-up"
+        },
+        {
+          "id": "GHSA-q3j6-qgpj-74h6",
+          "package": "fast-uri",
+          "severity": "high",
+          "url": "https://github.com/advisories/GHSA-q3j6-qgpj-74h6",
+          "vulnerable_versions": ">=3.0.0 <=3.1.0",
+          "patched_versions": ">=3.1.1",
+          "paths": [
+            "webpack>terser-webpack-plugin>schema-utils>ajv-formats>ajv>fast-uri",
+            "webpack>terser-webpack-plugin>schema-utils>ajv>fast-uri"
+          ],
+          "selected_versions": [
+            "3.1.0"
+          ],
+          "scope": "build-or-types-follow-up"
+        },
+        {
+          "id": "GHSA-q67f-28xg-22rw",
+          "package": "node-forge",
+          "severity": "high",
+          "url": "https://github.com/advisories/GHSA-q67f-28xg-22rw",
+          "vulnerable_versions": "<1.4.0",
+          "patched_versions": ">=1.4.0",
+          "paths": [
+            "webpack-dev-server>selfsigned>node-forge"
+          ],
+          "selected_versions": [
+            "0.10.0"
+          ],
+          "scope": "build-or-types-follow-up"
+        },
+        {
+          "id": "GHSA-q8mj-m7cp-5q26",
+          "package": "qs",
+          "severity": "moderate",
+          "url": "https://github.com/advisories/GHSA-q8mj-m7cp-5q26",
+          "vulnerable_versions": ">=6.11.1 <=6.15.1",
+          "patched_versions": ">=6.15.2",
+          "paths": [
+            "webpack-dev-server>express>body-parser>qs",
+            "webpack-dev-server>express>qs",
+            "webpack-dev-server>url>qs"
+          ],
+          "selected_versions": [
+            "6.14.2",
+            "6.15.1"
+          ],
+          "scope": "build-or-types-follow-up"
+        },
+        {
+          "id": "GHSA-rgw5-rvv9-x895",
+          "package": "brace-expansion",
+          "severity": "high",
+          "url": "https://github.com/advisories/GHSA-rgw5-rvv9-x895",
+          "vulnerable_versions": "<1.1.18",
+          "patched_versions": ">=1.1.18",
+          "paths": [
+            "webpack-dev-server>del>@types/glob>@types/minimatch>minimatch>brace-expansion",
+            "webpack-dev-server>del>globby>glob>minimatch>brace-expansion"
+          ],
+          "selected_versions": [
+            "1.1.14",
+            "5.0.5"
+          ],
+          "scope": "build-or-types-follow-up"
+        },
+        {
+          "id": "GHSA-v2hh-gcrm-f6hx",
+          "package": "fast-uri",
+          "severity": "high",
+          "url": "https://github.com/advisories/GHSA-v2hh-gcrm-f6hx",
+          "vulnerable_versions": ">=3.0.0 <=3.1.3",
+          "patched_versions": ">=3.1.4",
+          "paths": [
+            "webpack>terser-webpack-plugin>schema-utils>ajv-formats>ajv>fast-uri",
+            "webpack>terser-webpack-plugin>schema-utils>ajv>fast-uri"
+          ],
+          "selected_versions": [
+            "3.1.0"
+          ],
+          "scope": "build-or-types-follow-up"
+        },
+        {
+          "id": "GHSA-v39h-62p7-jpjc",
+          "package": "fast-uri",
+          "severity": "high",
+          "url": "https://github.com/advisories/GHSA-v39h-62p7-jpjc",
+          "vulnerable_versions": ">=3.0.0 <=3.1.1",
+          "patched_versions": ">=3.1.2",
+          "paths": [
+            "webpack>terser-webpack-plugin>schema-utils>ajv-formats>ajv>fast-uri",
+            "webpack>terser-webpack-plugin>schema-utils>ajv>fast-uri"
+          ],
+          "selected_versions": [
+            "3.1.0"
+          ],
+          "scope": "build-or-types-follow-up"
+        },
+        {
+          "id": "GHSA-v422-hmwv-36x6",
+          "package": "body-parser",
+          "severity": "low",
+          "url": "https://github.com/advisories/GHSA-v422-hmwv-36x6",
+          "vulnerable_versions": "<1.20.6",
+          "patched_versions": ">=1.20.6",
+          "paths": [
+            "webpack-dev-server>express>body-parser"
+          ],
+          "selected_versions": [
+            "1.20.4"
+          ],
+          "scope": "build-or-types-follow-up"
+        },
+        {
+          "id": "GHSA-vcc3-ghjq-m6fr",
+          "package": "decode-uri-component",
+          "severity": "moderate",
+          "url": "https://github.com/advisories/GHSA-vcc3-ghjq-m6fr",
+          "vulnerable_versions": "<=0.4.2",
+          "patched_versions": ">=0.5.0",
+          "paths": [
+            "webpack-dev-server>chokidar>anymatch>micromatch>braces>snapdragon>source-map-resolve>decode-uri-component",
+            "webpack-dev-server>chokidar>anymatch>micromatch>extglob>expand-brackets>snapdragon>source-map-resolve>decode-uri-component",
+            "webpack-dev-server>chokidar>braces>snapdragon>source-map-resolve>decode-uri-component",
+            "webpack-dev-server>http-proxy-middleware>micromatch>braces>snapdragon>source-map-resolve>decode-uri-component"
+          ],
+          "selected_versions": [
+            "0.2.2"
+          ],
+          "scope": "build-or-types-follow-up"
+        },
+        {
+          "id": "GHSA-w5hq-g745-h8pq",
+          "package": "uuid",
+          "severity": "moderate",
+          "url": "https://github.com/advisories/GHSA-w5hq-g745-h8pq",
+          "vulnerable_versions": "<11.1.1",
+          "patched_versions": ">=11.1.1",
+          "paths": [
+            "webpack-dev-server>sockjs>uuid",
+            "webpack-dev-server>webpack-dev-middleware>webpack-log>uuid",
+            "webpack-dev-server>webpack-log>uuid"
+          ],
+          "selected_versions": [
+            "3.4.0",
+            "8.3.2"
+          ],
+          "scope": "build-or-types-follow-up"
+        },
+        {
+          "id": "GHSA-w5vr-8v7q-w6rv",
+          "package": "baseline-browser-mapping",
+          "severity": "moderate",
+          "url": "https://github.com/advisories/GHSA-w5vr-8v7q-w6rv",
+          "vulnerable_versions": ">=2.0.0 <2.11.0",
+          "patched_versions": ">=2.11.0",
+          "paths": [
+            "webpack>browserslist>baseline-browser-mapping"
+          ],
+          "selected_versions": [
+            "2.10.18"
+          ],
+          "scope": "build-or-types-follow-up"
+        },
+        {
+          "id": "GHSA-whgm-jr23-g3j9",
+          "package": "ansi-html",
+          "severity": "high",
+          "url": "https://github.com/advisories/GHSA-whgm-jr23-g3j9",
+          "vulnerable_versions": "<0.0.8",
+          "patched_versions": ">=0.0.8",
+          "paths": [
+            "webpack-dev-server>ansi-html"
+          ],
+          "selected_versions": [
+            "0.0.7"
+          ],
+          "scope": "build-or-types-follow-up"
+        },
+        {
+          "id": "GHSA-wr3j-pwj9-hqq6",
+          "package": "webpack-dev-middleware",
+          "severity": "high",
+          "url": "https://github.com/advisories/GHSA-wr3j-pwj9-hqq6",
+          "vulnerable_versions": "<=5.3.3",
+          "patched_versions": ">=5.3.4",
+          "paths": [
+            "webpack-dev-server>webpack-dev-middleware"
+          ],
+          "selected_versions": [
+            "3.7.3"
+          ],
+          "scope": "build-or-types-follow-up"
+        },
+        {
+          "id": "GHSA-x4jg-mjrx-434g",
+          "package": "node-forge",
+          "severity": "high",
+          "url": "https://github.com/advisories/GHSA-x4jg-mjrx-434g",
+          "vulnerable_versions": "<1.3.0",
+          "patched_versions": ">=1.3.0",
+          "paths": [
+            "webpack-dev-server>selfsigned>node-forge"
+          ],
+          "selected_versions": [
+            "0.10.0"
+          ],
+          "scope": "build-or-types-follow-up"
+        },
+        {
+          "id": "GHSA-x5fp-wj9c-mxmx",
+          "package": "qs",
+          "severity": "moderate",
+          "url": "https://github.com/advisories/GHSA-x5fp-wj9c-mxmx",
+          "vulnerable_versions": ">=6.14.2 <=6.15.3",
+          "patched_versions": ">=6.16.0",
+          "paths": [
+            "webpack-dev-server>express>body-parser>qs",
+            "webpack-dev-server>express>qs",
+            "webpack-dev-server>url>qs"
+          ],
+          "selected_versions": [
+            "6.14.2",
+            "6.15.1"
+          ],
+          "scope": "build-or-types-follow-up"
+        },
+        {
+          "id": "GHSA-xv26-6w52-cph6",
+          "package": "websocket-driver",
+          "severity": "critical",
+          "url": "https://github.com/advisories/GHSA-xv26-6w52-cph6",
+          "vulnerable_versions": "<0.7.5",
+          "patched_versions": ">=0.7.5",
+          "paths": [
+            "webpack-dev-server>sockjs>faye-websocket>websocket-driver",
+            "webpack-dev-server>sockjs>websocket-driver"
+          ],
+          "selected_versions": [
+            "0.7.4"
+          ],
+          "scope": "build-or-types-follow-up"
+        }
+      ]
+    }
+  },
+  "selected_tls_closure_observed_at": "2026-09-12T17:51:07.751758+00:00",
+  "selected_tls_closure_basis": "26 distinct modules represented by the 41 transport JARs in crypto-identities/m3-2026-09-13/v2-jvm-crypto.sha256; classifiers collapsed only at the advisory coordinate level."
+}

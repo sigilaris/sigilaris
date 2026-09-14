@@ -10,7 +10,7 @@ Proposed — post-M2 backlog; not an M2 publication gate.
 
 ## Last Updated
 
-2026-09-06
+2026-09-08
 
 ## Background
 
@@ -197,3 +197,7 @@ The broader items already deferred by 0031 remain separately scoped work: bounde
 primary/alias transaction, event-driven wait notification, canonical failure-aware partial helpers, and V2 activation. They are not implicit
 deliverables of this plan. A direct InMemory corruption fixture remains unnecessary unless an appropriate invariant-preserving test seam becomes
 available; shared validation and durable-store fault tests remain the existing coverage.
+
+[Plan 0033](0033-application-execution-conformance-and-v2-activation-plan.md) now tracks application execution conformance and V2 activation,
+including the format and recovery changes proposed in [ADR-0037](../adr/0037-versioned-application-execution-upgrade-and-empty-blocks.md).
+It does not make this plan's operational suggestions prerequisites by implication or include the other deferred storage/notification projects.

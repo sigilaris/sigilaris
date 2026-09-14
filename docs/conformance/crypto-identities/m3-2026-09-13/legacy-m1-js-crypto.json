@@ -1,0 +1,44 @@
+[
+  {
+    "package": "bn.js",
+    "version": "4.12.5",
+    "path": "node_modules/bn.js/lib/bn.js",
+    "sha256": "6c67724e6d6ba2c42e098ffa680148dda95364afd565c2b1f72c966f26bd2cf2"
+  },
+  {
+    "package": "bn.js",
+    "version": "4.12.5",
+    "path": "node_modules/bn.js/package.json",
+    "sha256": "34b1923a700a3a344515f0ea673cd36b22cdbfe9f68ef30dfc06dcdaf285ee0b"
+  },
+  {
+    "package": "elliptic",
+    "version": "6.6.1",
+    "path": "node_modules/elliptic/lib/elliptic.js",
+    "sha256": "4e8c1663591fb20084135f56edbb5aa7425f2b4e6e11f70c23a94c94f7f6d946"
+  },
+  {
+    "package": "elliptic",
+    "version": "6.6.1",
+    "path": "node_modules/elliptic/lib/elliptic/ec/index.js",
+    "sha256": "668741c0c921bf5174439104e8fd20636578373cbbd28736ccbcd8e59a5aeafc"
+  },
+  {
+    "package": "elliptic",
+    "version": "6.6.1",
+    "path": "node_modules/elliptic/package.json",
+    "sha256": "6fc56c88cf0e6bd7050d7f2630e9ef91b6687b8163f8dbe7444f11242052d51a"
+  },
+  {
+    "package": "js-sha3",
+    "version": "0.8.0",
+    "path": "node_modules/js-sha3/package.json",
+    "sha256": "ba89a2a2189db98b8b9a4134ec744737f2ed3e26ee59357279a170faf93709dd"
+  },
+  {
+    "package": "js-sha3",
+    "version": "0.8.0",
+    "path": "node_modules/js-sha3/src/sha3.js",
+    "sha256": "13590a201b2199f00b74ee711edc1bdf744705dca12f43cc6ef64c32b5767fa9"
+  }
+]

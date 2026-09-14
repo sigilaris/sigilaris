@@ -3,6 +3,7 @@ import org.sigilaris.node.txpipeline.*
 
 object ReleaseSmoke:
   def main(args: Array[String]): Unit =
+    M2SharedBaseline.run()
     assert(ProtocolVersion.M1.value == 1)
     assert(ExactExecutionMode.OrderedAtomic.tag == 1)
     assert(ExactExecutionMode.CertifiedAncestor.tag == 2)
@@ -25,4 +26,4 @@ object ReleaseSmoke:
         ApplicationProtocolManifestFailure.InvalidVerifierManifestDigest,
       ),
     )
-    println("0.3.0-M2 Scala.js staged-artifact smoke passed")
+    println("0.3.0-M2 Scala.js public-artifact baseline passed")

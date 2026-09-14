@@ -5,6 +5,8 @@ import java.math.BigInteger
 import java.security.{KeyPairGenerator, SecureRandom}
 import java.security.spec.ECGenParameterSpec
 
+import scala.util.Try
+
 import org.bouncycastle.asn1.x9.X9ECParameters
 import org.bouncycastle.crypto.digests.SHA256Digest
 import org.bouncycastle.crypto.params.ECDomainParameters
@@ -166,7 +168,20 @@ object CryptoOps extends CryptoOpsLike:
       keyPair: KeyPair,
       transactionHash: Array[Byte],
   ): Either[failure.SigilarisFailure, Signature] =
+    transactionHash.length match
+      case 32 =>
+        Try(signDigest(keyPair, transactionHash)).toEither.left
+          .map(_ => failure.DecodeFailure("Could not sign message hash"))
+          .flatMap(identity)
+      case _ =>
+        Left[failure.SigilarisFailure, Signature](
+          failure.DecodeFailure("Signing requires a 32-byte message hash"),
+        )
 
+  private def signDigest(
+      keyPair: KeyPair,
+      transactionHash: Array[Byte],
+  ): Either[failure.SigilarisFailure, Signature] =
     val signer     = new ECDSASigner(new HMacDSAKCalculator(new SHA256Digest()))
     val privParams = new org.bouncycastle.crypto.params.ECPrivateKeyParameters(
       keyPair.privateKey.toJavaBigIntegerUnsigned,
@@ -211,16 +226,30 @@ object CryptoOps extends CryptoOpsLike:
       signature: Signature,
       hashArray: Array[Byte],
   ): Either[failure.SigilarisFailure, PublicKey] =
-    val header = signature.v & 0xff
-    val recId  = header - 27
-    recoverFromSignature(
-      recId,
-      signature.r.toJavaBigIntegerUnsigned,
-      signature.s.toJavaBigIntegerUnsigned,
-      hashArray,
-    ).toRight:
-      failure.DecodeFailure:
-        "Could not recover public key from signature"
+    Try {
+      // Preserve the published JVM recovery-byte interpretation. V2 application-
+      // artifact callers enforce their stricter shape before this helper.
+      val header = signature.v & 0xff
+      val recId  = header - 27
+      recoverFromSignature(
+        recId,
+        signature.r.toJavaBigIntegerUnsigned,
+        signature.s.toJavaBigIntegerUnsigned,
+        hashArray,
+      ).map { key =>
+        // Coordinates are lazy; reject infinity inside the typed boundary.
+        val _ = key.toBytes
+        key
+      }
+    }.toEither.left
+      .map(_ =>
+        failure.DecodeFailure("Could not recover public key from signature"),
+      )
+      .flatMap(
+        _.toRight(
+          failure.DecodeFailure("Could not recover public key from signature"),
+        ),
+      )
 
   private def recoverFromSignature(
       recId: Int,

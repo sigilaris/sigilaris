@@ -1610,6 +1610,10 @@ final class InMemoryHotStuffArtifactSink[F[_]: Sync] private (
     sinkRetention: HotStuffArtifactSinkRetention,
     relayPublisher: HotStuffArtifactPublisher[F],
     proposalValidation: Proposal => F[Either[HotStuffValidationFailure, Unit]],
+    finalizedApplicationObserver: Map[
+      ChainId,
+      FinalizationTrackerSnapshot,
+    ] => F[Unit],
     ref: Ref[F, SinkState],
 ) extends GossipArtifactSink[F, HotStuffGossipArtifact]:
   private type RelayEnvelope = (HotStuffGossipArtifact, Instant)
@@ -2007,6 +2011,11 @@ final class InMemoryHotStuffArtifactSink[F[_]: Sync] private (
                 state.copy(snapshot = state.snapshot.recordRelay(topic)),
               )
           }
+          .flatMap(_ =>
+            ref.get.flatMap(state =>
+              finalizedApplicationObserver(state.snapshot.finalization),
+            ),
+          )
           .as(result.asRight)
 
   private def recordArtifactRejection(
@@ -2182,6 +2191,7 @@ object InMemoryHotStuffArtifactSink:
       sinkRetention,
       relayPublisher,
       HotStuffRuntimeScheduling.allowAll[F],
+      _ => Sync[F].unit,
       ref,
     )
 
@@ -2214,5 +2224,39 @@ object InMemoryHotStuffArtifactSink:
         validatorSet = validatorSet,
         blockQuery = blockQuery,
       )(classifyTx),
+      _ => Sync[F].unit,
       ref,
     )
+
+  /** Active v2 integration. The observer runs after the actual consensus Ref
+    * update, including duplicate-event retries, and outside its pure closure. A
+    * FinalizedApplicationRuntime observer retains typed application failures
+    * separately, so accepted consensus finality remains available for recovery.
+    */
+  def createWithValidationAndFinalizationObserver[F[_]: Sync](
+      validatorSet: ValidatorSet,
+      relayPolicy: HotStuffRelayPolicy,
+      relayPublisher: HotStuffArtifactPublisher[F],
+      sinkRetention: HotStuffArtifactSinkRetention,
+      proposalValidation: Proposal => F[
+        Either[HotStuffValidationFailure, Unit],
+      ],
+      finalizedApplicationObserver: Map[
+        ChainId,
+        FinalizationTrackerSnapshot,
+      ] => F[Unit],
+  )(using clock: GossipClock[F]): F[InMemoryHotStuffArtifactSink[F]] =
+    Ref
+      .of[F, SinkState](SinkState.empty(relayPolicy, sinkRetention))
+      .map(ref =>
+        new InMemoryHotStuffArtifactSink[F](
+          clock,
+          validatorSet,
+          relayPolicy,
+          sinkRetention,
+          relayPublisher,
+          proposalValidation,
+          finalizedApplicationObserver,
+          ref,
+        ),
+      )

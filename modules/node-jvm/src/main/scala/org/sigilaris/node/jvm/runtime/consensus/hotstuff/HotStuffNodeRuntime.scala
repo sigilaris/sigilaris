@@ -7,7 +7,6 @@ import cats.syntax.all.*
 
 import org.sigilaris.core.codec.byte.ByteEncoder
 import org.sigilaris.core.crypto.{Hash, KeyPair}
-import org.sigilaris.core.util.SafeStringInterp.*
 import org.sigilaris.node.jvm.runtime.block.{
   BlockBody,
   BlockHeader,
@@ -87,6 +86,10 @@ final case class HotStuffNodeRuntime[F[_]: Sync](
   def validatorSet: ValidatorSet = bootstrapInput.validatorSet
 
   def localKeys: Map[ValidatorId, KeyPair] = bootstrapInput.localKeys
+  private[hotstuff] def localValidators: Set[ValidatorId] =
+    proposalValidationConfig.controlledSigning.fold(localKeys.keySet)(
+      _.validators,
+    )
 
   def gossipPolicy: HotStuffGossipPolicy = bootstrapInput.gossipPolicy
 
@@ -208,58 +211,38 @@ final case class HotStuffNodeRuntime[F[_]: Sync](
       justify: QuorumCertificate,
       ts: Instant,
   ): F[Either[HotStuffPolicyViolation, GossipEvent[HotStuffGossipArtifact]]] =
-    withLocalSigner(proposer, window.chainId): keyPair =>
-      Proposal.sign(
-        UnsignedProposal(
-          window = window,
-          proposer = proposer,
-          targetBlockId = BlockHeader.computeId(block),
-          block = block,
-          txSet = txSet,
-          justify = justify,
-        ),
-        keyPair,
-      ) match
-        case Left(error) =>
-          HotStuffPolicyViolation(
-            reason = "proposalSigningFailed",
-            detail = Some(
-              ss"${error.reason}:${error.detail.getOrElse("")}",
-            ),
-          ).asLeft[GossipEvent[HotStuffGossipArtifact]].pure[F]
-        case Right(proposal) =>
-          services.publisher
-            .append(
-              HotStuffGossipArtifact.ProposalArtifact(proposal),
-              ts,
-            )
-            .map(_.asRight[HotStuffPolicyViolation])
+    withLocalSigner(proposer, window.chainId): signer =>
+      signer
+        .proposal(
+          UnsignedProposal(
+            window,
+            proposer,
+            BlockHeader.computeId(block),
+            block,
+            txSet,
+            justify,
+          ),
+        )
+        .flatMap:
+          case Left(error) =>
+            error.asLeft[GossipEvent[HotStuffGossipArtifact]].pure[F]
+          case Right(proposal) =>
+            services.publisher
+              .append(HotStuffGossipArtifact.ProposalArtifact(proposal), ts)
+              .map(_.asRight[HotStuffPolicyViolation])
 
   def signTimeoutVote(
       voter: ValidatorId,
       window: HotStuffWindow,
       highestKnownQc: QuorumCertificate,
   ): F[Either[HotStuffPolicyViolation, TimeoutVote]] =
-    withLocalSigner(voter, window.chainId): keyPair =>
-      TimeoutVote.sign(
+    withLocalSigner(voter, window.chainId): signer =>
+      signer.timeout(
         UnsignedTimeoutVote(
-          subject = TimeoutVoteSubject(
-            window = window,
-            highestKnownQc = highestKnownQc.subject,
-          ),
-          voter = voter,
+          TimeoutVoteSubject(window, highestKnownQc.subject),
+          voter,
         ),
-        keyPair,
-      ) match
-        case Left(error) =>
-          HotStuffPolicyViolation(
-            reason = "timeoutVoteSigningFailed",
-            detail = Some(
-              ss"${error.reason}:${error.detail.getOrElse("")}",
-            ),
-          ).asLeft[TimeoutVote].pure[F]
-        case Right(timeoutVote) =>
-          timeoutVote.asRight[HotStuffPolicyViolation].pure[F]
+      )
 
   def emitTimeoutVote(
       voter: ValidatorId,
@@ -287,26 +270,16 @@ final case class HotStuffNodeRuntime[F[_]: Sync](
       HotStuffPacemaker.nextWindowAfter(timeoutCertificate.subject.window)
     val nextLeader =
       HotStuffPacemaker.deterministicLeader(nextWindow, validatorSet)
-    withLocalSigner(sender, nextWindow.chainId): keyPair =>
-      NewView.sign(
+    withLocalSigner(sender, nextWindow.chainId): signer =>
+      signer.newView(
         UnsignedNewView(
-          window = nextWindow,
-          sender = sender,
-          nextLeader = nextLeader,
-          highestKnownQc = highestKnownQc,
-          timeoutCertificate = timeoutCertificate,
+          nextWindow,
+          sender,
+          nextLeader,
+          highestKnownQc,
+          timeoutCertificate,
         ),
-        keyPair,
-      ) match
-        case Left(error) =>
-          HotStuffPolicyViolation(
-            reason = "newViewSigningFailed",
-            detail = Some(
-              ss"${error.reason}:${error.detail.getOrElse("")}",
-            ),
-          ).asLeft[NewView].pure[F]
-        case Right(newView) =>
-          newView.asRight[HotStuffPolicyViolation].pure[F]
+      )
 
   def emitNewView(
       sender: ValidatorId,
@@ -412,33 +385,23 @@ final case class HotStuffNodeRuntime[F[_]: Sync](
       proposal: Proposal,
       ts: Instant,
   ): F[Either[HotStuffPolicyViolation, GossipEvent[HotStuffGossipArtifact]]] =
-    withLocalSigner(voter, proposal.window.chainId): keyPair =>
+    withLocalSigner(voter, proposal.window.chainId): signer =>
       validateProposalForLocalVote(voter, proposal, ts).flatMap:
         case Left(rejection) =>
           rejection.asLeft[GossipEvent[HotStuffGossipArtifact]].pure[F]
         case Right(_) =>
-          Vote.sign(
-            UnsignedVote(
-              window = proposal.window,
-              voter = voter,
-              targetProposalId = proposal.proposalId,
-            ),
-            keyPair,
-          ) match
-            case Left(error) =>
-              HotStuffPolicyViolation(
-                reason = "voteSigningFailed",
-                detail = Some(
-                  ss"${error.reason}:${error.detail.getOrElse("")}",
-                ),
-              ).asLeft[GossipEvent[HotStuffGossipArtifact]].pure[F]
-            case Right(vote) =>
-              services.publisher
-                .append(
-                  HotStuffGossipArtifact.VoteArtifact(vote),
-                  ts,
-                )
-                .map(_.asRight[HotStuffPolicyViolation])
+          signer
+            .vote(proposalValidationConfig, voter, proposal)
+            .flatMap:
+              case Left(error) =>
+                error.asLeft[GossipEvent[HotStuffGossipArtifact]].pure[F]
+              case Right(vote) =>
+                services.publisher
+                  .append(
+                    HotStuffGossipArtifact.VoteArtifact(vote),
+                    ts,
+                  )
+                  .map(_.asRight[HotStuffPolicyViolation])
 
   def emitVoteForProposalView[
       TxRef: ByteEncoder: Hash,
@@ -472,7 +435,7 @@ final case class HotStuffNodeRuntime[F[_]: Sync](
       validatorId: ValidatorId,
       chainId: ChainId,
   )(
-      f: KeyPair => F[Either[HotStuffPolicyViolation, A]],
+      f: HotStuffLocalSigning[F] => F[Either[HotStuffPolicyViolation, A]],
   ): F[Either[HotStuffPolicyViolation, A]] =
     resolveSigner(validatorId) match
       case Left(rejection) =>
@@ -486,17 +449,15 @@ final case class HotStuffNodeRuntime[F[_]: Sync](
 
   private def resolveSigner(
       validatorId: ValidatorId,
-  ): Either[HotStuffPolicyViolation, KeyPair] =
+  ): Either[HotStuffPolicyViolation, HotStuffLocalSigning[F]] =
     HotStuffPolicy
       .canEmitLocally(role, localPeer, validatorId, holders)
       .flatMap: _ =>
-        localKeys
-          .get(validatorId)
-          .toRight:
-            HotStuffPolicyViolation(
-              reason = "localValidatorKeyUnavailable",
-              detail = Some(ss"${validatorId.value}@${localPeer.value}"),
-            )
+        HotStuffLocalSigning.resolve(
+          proposalValidationConfig,
+          localKeys,
+          validatorId,
+        )
 
   private def ensureQuorumParticipationReadiness(
       chainId: ChainId,
@@ -554,6 +515,7 @@ final case class HotStuffNodeRuntime[F[_]: Sync](
             proposal = proposal,
             snapshot = snapshot,
             bounds = txUniquenessConfig.bounds,
+            initialParent = proposalValidationConfig.initialParent,
           )
       case None if proposal.block.parent.isEmpty =>
         HotStuffProposalValidationBranchContext.empty.pure[F]
@@ -583,6 +545,7 @@ final case class HotStuffNodeRuntime[F[_]: Sync](
                   proposals = snapshot.proposals.values,
                   finalization = snapshot.finalization,
                   bounds = txUniquenessConfig.bounds,
+                  initialParent = proposalValidationConfig.initialParent,
                   cache = HotStuffProposalTxUniquenessCache.empty,
                 )
               HotStuffProposalValidationDecision.fromTxUniquenessResult(result)
@@ -714,6 +677,11 @@ object HotStuffNodeRuntime:
       sinkRetention: HotStuffArtifactSinkRetention =
         HotStuffArtifactSinkRetention.default,
       sourceAppendNotifier: Option[GossipSourceAppendNotifier[F]] = None,
+      applicationFinalization: Option[
+        org.sigilaris.node.jvm.runtime.application.v2.FinalizedApplicationRuntime[
+          F,
+        ],
+      ] = None,
   )(using
       clock: GossipClock[F],
   ): F[(HotStuffRuntimeServices[F], HotStuffInMemoryRuntimeDiagnostics[F])] =
@@ -722,8 +690,20 @@ object HotStuffNodeRuntime:
     for
       source <- InMemoryHotStuffArtifactSource
         .createWithNotifier[F](appendNotifier)
-      sink <- InMemoryHotStuffArtifactSink
-        .create[F](validatorSet, relayPolicy, source, sinkRetention)
+      sink <- applicationFinalization match
+        case None =>
+          InMemoryHotStuffArtifactSink
+            .create[F](validatorSet, relayPolicy, source, sinkRetention)
+        case Some(runtime) =>
+          InMemoryHotStuffArtifactSink
+            .createWithValidationAndFinalizationObserver[F](
+              validatorSet,
+              relayPolicy,
+              source,
+              sinkRetention,
+              HotStuffRuntimeScheduling.allowAll[F],
+              runtime.observe,
+            )
     yield
       val diagnostics =
         HotStuffInMemoryRuntimeDiagnostics(source = source, sink = sink)
@@ -781,6 +761,15 @@ object HotStuffNodeRuntime:
       )
     val validatedBootstrapInput =
       validateBootstrapInput(bootstrapInput)
+        .flatMap(input =>
+          HotStuffProposalValidationRuntimeConfig
+            .validateControlledSigning(
+              proposalValidationConfig,
+              localKeys,
+              validatorSet,
+            )
+            .as(input),
+        )
         .flatMap: validatedInput =>
           if automaticConsensus then
             for
@@ -788,11 +777,23 @@ object HotStuffNodeRuntime:
                 .validateForAutomaticConsensus(proposalInputConfig)
               _ <- HotStuffProposalValidationRuntimeConfig
                 .validateForAutomaticConsensus(proposalValidationConfig)
+              _ <- HotStuffProposalValidationRuntimeConfig
+                .validateApplicationAssembly(
+                  proposalInputConfig,
+                  proposalValidationConfig,
+                )
               _ <- HotStuffProposalTxUniquenessRuntimeConfig
                 .validateForAutomaticConsensus(txUniquenessConfig)
             yield validatedInput
           else validatedInput.asRight[HotStuffPolicyViolation]
-    validatedBootstrapInput match
+    val recovered = validatedBootstrapInput match
+      case Left(rejection) =>
+        rejection.asLeft[HotStuffRuntimeBootstrapInput].pure[F]
+      case Right(validatedInput) =>
+        HotStuffProposalValidationRuntimeConfig
+          .recoverApplication(proposalValidationConfig)
+          .map(_.as(validatedInput))
+    recovered.flatMap:
       case Left(rejection) =>
         rejection.asLeft[HotStuffNodeRuntime[F]].pure[F]
       case Right(validatedInput) =>
@@ -801,6 +802,8 @@ object HotStuffNodeRuntime:
           gossipPolicy,
           HotStuffRelayPolicy.forRole(role),
           sinkRetention,
+          applicationFinalization =
+            proposalValidationConfig.applicationFinalization,
         ).flatMap: (services, diagnostics) =>
           InMemoryHotStuffPacemakerDriver
             .attach(

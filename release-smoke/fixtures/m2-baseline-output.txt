@@ -1,0 +1,40 @@
+Observed 2026-09-11; public-m2-baseline.sh exit 0.
+Order: public downloads, compiler identities, JVM, Scala.js fast, Scala.js full.
+
+sigilaris-core_3/0.3.0-M2/sigilaris-core_3-0.3.0-M2.pom: OK
+sigilaris-core_3/0.3.0-M2/sigilaris-core_3-0.3.0-M2.jar: OK
+sigilaris-core_sjs1_3/0.3.0-M2/sigilaris-core_sjs1_3-0.3.0-M2.pom: OK
+sigilaris-core_sjs1_3/0.3.0-M2/sigilaris-core_sjs1_3-0.3.0-M2.jar: OK
+sigilaris-node-common_3/0.3.0-M2/sigilaris-node-common_3-0.3.0-M2.pom: OK
+sigilaris-node-common_3/0.3.0-M2/sigilaris-node-common_3-0.3.0-M2.jar: OK
+sigilaris-node-common_sjs1_3/0.3.0-M2/sigilaris-node-common_sjs1_3-0.3.0-M2.pom: OK
+sigilaris-node-common_sjs1_3/0.3.0-M2/sigilaris-node-common_sjs1_3-0.3.0-M2.jar: OK
+sigilaris-node-jvm_3/0.3.0-M2/sigilaris-node-jvm_3-0.3.0-M2.pom: OK
+sigilaris-node-jvm_3/0.3.0-M2/sigilaris-node-jvm_3-0.3.0-M2.jar: OK
+[info] PUBLIC M2 SHA256 01a720c6a1aef74ee324ed783072e72fb575e58a9e2878598650641d8c200bd7 sigilaris-core_3-0.3.0-M2.jar
+[info] PUBLIC M2 SHA256 1fa28e32333cd870071fcc04569ba66e073f70411b331ff04acd3b5c71d9eace sigilaris-node-common_3-0.3.0-M2.jar
+[info] PUBLIC M2 SHA256 b72ad46e2e9879824fba7e3d78a2edc25e268efa533d4c9fbfde4fd8a925d24c sigilaris-node-jvm_3-0.3.0-M2.jar
+[info] PUBLIC M2 SHA256 b943366d5146a8379f8709a98b73347d792031466801392d7dbadff1f605c1ac sigilaris-core_sjs1_3-0.3.0-M2.jar
+[info] PUBLIC M2 SHA256 41c1e62d9d432b463a295a61f5e3d45b1df30bfc355a5f813c97478963f332c0 sigilaris-node-common_sjs1_3-0.3.0-M2.jar
+[info] M2 mixedReadWriteDescriptor PASS locks=106e65757472616c2e626173656c696e6500000000000000010204726561640201aa0577726974650301bb footprint=106e65757472616c2e626173656c696e6500000000000000010201aa0001bb01
+[info] M2 descriptor commitments full=1f75759b1a09fbfd53e272070320894ca124b03b3f80e3d95347bf2f7b840748 lock=0f1a270021fbf1582ac9388f75449f8aad654f46533bb97597e5356a801142ef footprint=aa2b6dd77263e934041ad770ead2f6a708ed6c944ac133047784ee89575d804a
+[info] M2 historicalEmptyPlan PASS bytes=000000000000000100 root=a57ba92e8039cd7cdafc2efb59ec67938254cf872a46f3accb3fb958e526ac4c
+[info] M2 compatibilitySingleton PASS bytes=00000000000000010102010000000000000000000000000000000000000000000000000000000000000001 root=1992e415b633263a7e62eaf030617ce98851b1d50070c4465361b2e229a20a02
+[info] M2 conflictingPreCertificateVotes PASS both accepted; no lock, vote subject, deadline or journal mutation
+[info] M2 genericEffectVoteBoundary PASS requires recorded same-deadline lock and reciprocal reservation; distinct result subjects accepted without new durable records
+[info] M2 completeReservationSuperset PASS superset rejected: reservationMissing; exact lock set accepted
+[info] M2 emptyLockExactStages orderedAtomic PASS producer and consumer rejected: lockCertificateInvalid; registration records deadline only
+[info] M2 emptyLockExactStages certifiedAncestor PASS producer and consumer rejected: lockCertificateInvalid; registration records deadline only
+[info] M2 historicalFinalizedAncestor PASS truncated tip rejects producerNotAncestor; supplied retained ancestor accepted; incomplete proof rejects producerAncestorUnavailable
+[info] 0.3.0-M2 JVM public-artifact baseline passed
+M2 mixedReadWriteDescriptor PASS locks=106e65757472616c2e626173656c696e6500000000000000010204726561640201aa0577726974650301bb footprint=106e65757472616c2e626173656c696e6500000000000000010201aa0001bb01
+M2 descriptor commitments full=1f75759b1a09fbfd53e272070320894ca124b03b3f80e3d95347bf2f7b840748 lock=0f1a270021fbf1582ac9388f75449f8aad654f46533bb97597e5356a801142ef footprint=aa2b6dd77263e934041ad770ead2f6a708ed6c944ac133047784ee89575d804a
+M2 historicalEmptyPlan PASS bytes=000000000000000100 root=a57ba92e8039cd7cdafc2efb59ec67938254cf872a46f3accb3fb958e526ac4c
+M2 compatibilitySingleton PASS bytes=00000000000000010102010000000000000000000000000000000000000000000000000000000000000001 root=1992e415b633263a7e62eaf030617ce98851b1d50070c4465361b2e229a20a02
+0.3.0-M2 Scala.js public-artifact baseline passed
+[info] Closure: 0 error(s), 0 warning(s)
+M2 mixedReadWriteDescriptor PASS locks=106e65757472616c2e626173656c696e6500000000000000010204726561640201aa0577726974650301bb footprint=106e65757472616c2e626173656c696e6500000000000000010201aa0001bb01
+M2 descriptor commitments full=1f75759b1a09fbfd53e272070320894ca124b03b3f80e3d95347bf2f7b840748 lock=0f1a270021fbf1582ac9388f75449f8aad654f46533bb97597e5356a801142ef footprint=aa2b6dd77263e934041ad770ead2f6a708ed6c944ac133047784ee89575d804a
+M2 historicalEmptyPlan PASS bytes=000000000000000100 root=a57ba92e8039cd7cdafc2efb59ec67938254cf872a46f3accb3fb958e526ac4c
+M2 compatibilitySingleton PASS bytes=00000000000000010102010000000000000000000000000000000000000000000000000000000000000001 root=1992e415b633263a7e62eaf030617ce98851b1d50070c4465361b2e229a20a02
+0.3.0-M2 Scala.js public-artifact baseline passed

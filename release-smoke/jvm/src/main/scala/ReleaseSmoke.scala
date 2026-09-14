@@ -12,6 +12,8 @@ object ReleaseSmoke extends IOApp.Simple:
   def run: IO[Unit] =
     for
       _       <- IO(checkSharedContracts())
+      _       <- IO(M2SharedBaseline.run())
+      _       <- M2JvmBaseline.run
       store   <- InMemoryExactTxPipelineStore.create[IO]
       missing <- store
         .getByRequestIdentity(ExactPipelineRequestIdentity("missing-request"))
@@ -24,7 +26,7 @@ object ReleaseSmoke extends IOApp.Simple:
         assert(unjournaled == Right(0))
         assert(ApplicationSafetyDiagnostics.SchemaVersion == 1)
       }
-      _ <- IO.println("0.3.0-M2 JVM staged-artifact smoke passed")
+      _ <- IO.println("0.3.0-M2 JVM public-artifact baseline passed")
     yield ()
 
   private def checkSharedContracts(): Unit =

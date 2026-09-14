@@ -1,0 +1,3 @@
+5bd46a41a66cd7d97bea7f4be89914213fc5e5ee1c5606b051cf72cc521414b9  release-conformance/js/src/main/scala/org/sigilaris/conformance/PlatformConformance.scala
+d056f4d466529c57ed4879b9dc71b00ae456027a52859d428b0c15e74b4e1839  release-conformance/shared/legacy/scala/org/sigilaris/conformance/LegacyProtocolVectors.scala
+415776c077c9f813b28cbcb6355a9e1690c5f0f33be0d8c298f8b5c60f051573  release-conformance/shared/runner/scala/org/sigilaris/conformance/LegacyEntrypoints.scala

@@ -60,3 +60,7 @@
 
 - [0031: Height-Bounded Locks And Exact Pipeline Release Plan](0031-height-bounded-application-locks-and-exact-pipeline-dependencies-plan.md): 구현 완료, 5차 리뷰 통과. 후속 제안은 별도 계획으로 추적한다.
 - [0032: Application Safety And Exact Pipeline Operational Hardening](0032-application-safety-and-exact-pipeline-operational-hardening-plan.md): `Proposed`. 옵저버 격리, 저장소 오류 계약, 인덱스 재구성과 진단의 다음 마일스톤 백로그이며 M2 게시 차단 항목이 아니다.
+- [0033: Application Execution Conformance And V2 Activation](0033-application-execution-conformance-and-v2-activation-plan.md): `Complete` (구현·후보 conformance 완료, 후속 리뷰 보완과 운영 활성화는 별도 기록). ADR-0035/0036 구현 차이를 해소하고, 보완 ADR-0037에 따라 빈 V2 블록과 버전 전환·복구·공개 conformance를 검증하는 별도 계획이다. 0031의 완료 기록과 0032의 운영 보완 범위를 대체하지 않는다.
+
+- [0034: V2 Recovery And Lifetime Cost Hardening](0034-v2-recovery-and-lifetime-cost-hardening-plan.md): `Proposed`. 전체 리뷰에서 남은 검증된 오프라인 복구, 이력 비용·체크포인트, 검증자 소유권, 리더 제안 내구성 및 콜백 재진입 경계를 별도로 설계·검증하는 계획이다.
+- [0035: Scala.js Build Dependency Security](0035-scala-js-build-dependency-security-plan.md): `Proposed`. M3 암호 의존성 정리에서 확인한 webpack·개발 서버 계열의 보안 권고와 도구 체인 변경을 별도로 추적한다.

@@ -2,7 +2,14 @@
 
 ## Status
 
-Accepted as the v0.3.0-M1 target contract. The current implementation does not yet expose this wire profile.
+Accepted as the v0.3.0-M1 target contract.
+
+Implementation status as of `2026-09-08`: M1 and M2 publish this deadline and exact-pipeline wire surface and a bounded
+safety runtime. Full conformance and V2 activation still require the work in
+[plan 0033](../plans/0033-application-execution-conformance-and-v2-activation-plan.md), including consensus-only stages,
+historical finalized-ancestor consumption and durable vote issuance.
+[ADR-0037](0037-versioned-application-execution-upgrade-and-empty-blocks.md) proposes the empty-block and post-M2 upgrade
+policy; it does not replace this ADR's deadline, dependency-scope or expiry decisions.
 
 ## Date
 
@@ -175,3 +182,5 @@ Before activation, conformance tests must cover at least:
 - [ADR-0032: Stage-Based Transaction Pipeline API](0032-stage-based-transaction-pipeline-api.md)
 - [ADR-0035: Application Execution Lanes, Ordered Waves, and Certified-Fast Admission](0035-application-execution-lanes-ordered-waves-and-certified-fast-admission.md)
 - [Implementation Plan 0031: v0.3.0-M1 Height-Bounded Locks And Exact Pipeline Release](../plans/0031-height-bounded-application-locks-and-exact-pipeline-dependencies-plan.md)
+- [ADR-0037: Versioned Application Execution Upgrade And Empty Blocks](0037-versioned-application-execution-upgrade-and-empty-blocks.md)
+- [Implementation Plan 0033: Application Execution Conformance And V2 Activation](../plans/0033-application-execution-conformance-and-v2-activation-plan.md)
