@@ -1,7 +1,9 @@
 # M3 release preparation (2026-09-14)
 
-Status: complete for local release preparation; publication pending. No release tag, remote push,
-Central upload or public artifact verification has been performed.
+Status: completed local preparation, archived at release commit `5aaafe7`.
+At this gate no release tag, remote push, Central upload or public artifact
+verification had been performed. The subsequent
+[publication record](m3-publication-2026-09-14.md) records those release actions.
 
 The reviewed starting revision is `ea47ed8`. Its
 [389-input inventory](m3-crypto-review-sources-2026-09-14.sha256) is preserved
@@ -127,7 +129,7 @@ From that export's `release-conformance` directory, run:
 python3 tools/verify-transition-vectors.py
 ```
 
-## Publication sequence — not executed
+## Publication sequence planned at preparation time
 
 After local preparation and its `--no-ff` merge, the release target is the
 merge commit on local `main`. Its tree must equal the prepared release branch
@@ -159,8 +161,8 @@ The next release execution must preserve the signed bundle above:
    Update publication status and record public evidence only after those gates
    pass; preserve the release tag and artifact inputs.
 
-These are future release actions. This task stops before tag creation, remote
-writes, Central upload and public-Maven verification.
+These actions were not executed by the preparation task. The later publication
+record reports their execution without changing the frozen release inputs.
 
 ## Review and lessons
 

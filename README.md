@@ -21,10 +21,9 @@ Sigilaris provides type-safe, deterministic building blocks for constructing cus
 
 ## Getting Started
 
-The `0.3.0-M3` release is prepared locally and has not yet been published.
-The coordinates below are the prepared release coordinates; use an explicit
-staging repository until publication. See the [M3 release notes](docs/releases/v0.3.0-M3-release-notes.md)
-for activation requirements, verification and remaining limitations.
+The `0.3.0-M3` milestone is published on Maven Central.
+See the [M3 release notes](docs/releases/v0.3.0-M3-release-notes.md) for
+activation requirements, public artifact verification and remaining limitations.
 
 Add Sigilaris to your `build.sbt`:
 
@@ -124,11 +123,11 @@ High-performance cryptographic primitives for blockchain applications.
 ## Documentation
 
 - **[API Documentation](https://javadoc.io/doc/org.sigilaris/sigilaris-core_3/latest/index.html)** — Comprehensive Scaladoc
-- **[v0.3.0-M3 Release Notes](docs/releases/v0.3.0-M3-release-notes.md)** — V2 application execution, durable voting, authenticated activation and crypto/TLS updates; prepared, publication pending
+- **[v0.3.0-M3 Release Notes](docs/releases/v0.3.0-M3-release-notes.md)** — V2 application execution, durable voting, authenticated activation and crypto/TLS updates
 - **[v0.3.0-M2 Release Notes](docs/releases/v0.3.0-M2-release-notes.md)** — Exact pipeline recovery and admission hardening, M1 migration, and artifact verification
 - **[v0.3.0-M2 Integration Guide](docs/releases/v0.3.0-M2-integration-guide.md)** — Application profile activation and exact-pipeline integration
 - **[v0.2.12 Release Notes](docs/releases/v0.2.12-release-notes.md)** — Published BigNat canonical-boundary fix, upgrade notes, and final verification
-- **[Latest Release](https://github.com/sigilaris/sigilaris/releases/latest)** — Release notes and artifacts
+- **[GitHub Releases](https://github.com/sigilaris/sigilaris/releases)** — Release notes and artifacts
 - **[GitHub Repository](https://github.com/sigilaris/sigilaris)** — Source code and examples
 
 ## Architecture Highlights
@@ -184,14 +183,15 @@ Built with:
 
 ---
 
-**Prepared M3 Maven Coordinates:**
+**Maven Coordinates:**
 - JVM core: `org.sigilaris:sigilaris-core_3:0.3.0-M3`
 - Scala.js core: `org.sigilaris:sigilaris-core_sjs1_3:0.3.0-M3`
 - JVM node-common: `org.sigilaris:sigilaris-node-common_3:0.3.0-M3`
 - Scala.js node-common: `org.sigilaris:sigilaris-node-common_sjs1_3:0.3.0-M3`
 - JVM node bundle: `org.sigilaris:sigilaris-node-jvm_3:0.3.0-M3`
 
-The M3 coordinates above require the prepared staging repository until publication.
-For already published artifacts, use the version shown by the Maven Central badge.
+The M3 coordinates above resolve from Maven Central. The
+[publication record](docs/conformance/m3-publication-2026-09-14.md) records the
+public tag, signed artifact identities and standalone consumer verification.
 
 **Scala Version:** 3.7.3
