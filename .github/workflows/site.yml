@@ -43,7 +43,7 @@ jobs:
             sbt-${{ runner.os }}-
 
       - name: Build static site (with API)
-        run: sbt -v -J-XX:MaxMetaspaceSize=1G ";unidoc;tlSite"
+        run: sbt -v -J-Xmx4G -J-XX:MaxMetaspaceSize=1G ";unidoc;tlSite"
 
       - name: Copy Unidoc into site/api (CI fallback)
         run: |
